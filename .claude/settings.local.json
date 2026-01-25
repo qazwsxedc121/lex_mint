@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(node node_modules/tailwindcss/lib/cli.js:*)",
+      "Bash(. venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(venv/Scripts/pip install:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(ls:*)",
+      "Bash(npm run dev:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python:*)",
+      "Bash(venv\\\\Scripts\\\\python.exe:*)",
+      "Bash(./venv/Scripts/python.exe:*)",
+      "Bash(netstat:*)"
+    ]
+  }
+}

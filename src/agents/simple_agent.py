@@ -7,30 +7,73 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.state.agent_state import SimpleAgentState
+from src.utils.llm_logger import get_llm_logger
 
 
 def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
     """Process user input and generate response."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     messages = state["messages"]
-    
+    llm_logger = get_llm_logger()
+
+    # Get session_id from state metadata if available, otherwise use "unknown"
+    session_id = state.get("session_id", "unknown")
+
+    print(f"🔧 chat_node: 准备调用 DeepSeek")
+    print(f"   会话历史消息数: {len(messages)}")
+    logger.info(f"🔧 chat_node: 准备调用 DeepSeek")
+    logger.info(f"   会话历史消息数: {len(messages)}")
+
     llm = ChatOpenAI(
         model="deepseek-chat",
         temperature=0.7,
         base_url="https://api.deepseek.com",
         api_key=os.getenv("DEEPSEEK_API_KEY")
     )
-    
+
     langchain_messages = []
-    for msg in messages:
+    for i, msg in enumerate(messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
+            print(f"   消息 {i+1}: 用户 - {msg['content'][:50]}...")
+            logger.info(f"   消息 {i+1}: 用户 - {msg['content'][:50]}...")
         elif msg.get("role") == "assistant":
             langchain_messages.append(AIMessage(content=msg["content"]))
-    
-    response = llm.invoke(langchain_messages)
-    
+            print(f"   消息 {i+1}: 助手 - {msg['content'][:50]}...")
+            logger.info(f"   消息 {i+1}: 助手 - {msg['content'][:50]}...")
+
+    try:
+        # Log the request before sending
+        print(f"🚀 正在发送 {len(langchain_messages)} 条消息到 DeepSeek API...")
+        logger.info(f"🚀 正在发送 {len(langchain_messages)} 条消息到 DeepSeek API...")
+        llm_logger.logger.info(f"Sending {len(langchain_messages)} messages to DeepSeek for session {session_id}")
+
+        # Make the LLM call
+        response = llm.invoke(langchain_messages)
+
+        print(f"✅ 收到 DeepSeek 回复，长度: {len(response.content)} 字符")
+        logger.info(f"✅ 收到 DeepSeek 回复，长度: {len(response.content)} 字符")
+
+        # Log the complete interaction
+        llm_logger.log_interaction(
+            session_id=session_id,
+            messages_sent=langchain_messages,
+            response_received=response,
+            model="deepseek-chat"
+        )
+        print(f"📝 LLM 交互已记录到日志文件")
+        logger.info(f"📝 LLM 交互已记录到日志文件")
+
+    except Exception as e:
+        print(f"❌ DeepSeek API 调用失败: {str(e)}")
+        logger.error(f"❌ DeepSeek API 调用失败: {str(e)}", exc_info=True)
+        llm_logger.log_error(session_id, e, context="chat_node LLM invocation")
+        raise
+
     new_message = {"role": "assistant", "content": response.content}
-    
+
     return {"messages": [new_message], "current_step": state["current_step"] + 1}
 
 

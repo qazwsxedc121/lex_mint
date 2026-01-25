@@ -1,0 +1,96 @@
+LangGraph Agent Web - Quick Start Guide
+====================================
+
+Welcome to LangGraph Agent Web!
+This is an AI chat system based on DeepSeek with a friendly web interface.
+
+====================================
+FIRST TIME SETUP
+====================================
+
+1. Configure API Key
+   - Open .env file with Notepad
+   - Find this line: DEEPSEEK_API_KEY=your_key_here
+   - Replace "your_key_here" with your DeepSeek API key
+   - Save and close
+
+2. Install Dependencies (First time only)
+   - Double-click install.bat
+   - Wait for installation to complete (5-10 minutes)
+   - Press any key to close when you see "Installation Complete"
+
+3. Start Services
+   - Double-click start.bat
+   - Two command windows will open (backend and frontend)
+   - Browser will automatically open http://localhost:5173
+
+====================================
+DAILY USAGE
+====================================
+
+Start:        Double-click start.bat
+Stop:         Double-click stop.bat
+Menu:         Double-click menu.bat (Recommended!)
+Check Status: Double-click status.bat
+
+====================================
+FEATURES
+====================================
+
+* Web Chat Interface
+  - Access: http://localhost:5173
+  - Multi-turn conversations
+  - Auto-save chat history
+
+* Conversation History
+  - Location: conversations folder
+  - Format: Markdown files
+  - Can be opened/edited with any text editor
+
+* Session Management
+  - Create new conversations
+  - View chat history
+  - Delete unwanted sessions
+
+====================================
+SYSTEM REQUIREMENTS
+====================================
+
+- Windows 10 or higher
+- Python 3.10 or higher
+- Node.js 18 or higher
+- Stable internet connection
+
+====================================
+TROUBLESHOOTING
+====================================
+
+Q: Browser won't open after starting?
+A: Wait about 10 seconds for services to start
+
+Q: "Virtual environment not found" error?
+A: Run install.bat first
+
+Q: Cannot send messages?
+A: Check if API key in .env is correct
+
+Q: How to backup conversations?
+A: Copy the entire conversations folder
+
+====================================
+ACCESS URLs
+====================================
+
+Web Interface:  http://localhost:5173
+API Backend:    http://localhost:8000
+API Docs:       http://localhost:8000/docs
+
+====================================
+TECHNICAL SUPPORT
+====================================
+
+For detailed documentation:
+- README_WEB.md - User guide
+- CLAUDE.md - Developer documentation
+
+Enjoy! :)
