@@ -1,5 +1,9 @@
 """Main entry point for the agent system."""
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from src.agents.simple_agent import create_simple_agent
 
 def main():
@@ -9,7 +13,7 @@ def main():
     print("Starting LangGraph Agent...")
     print("Type your message (or 'quit' to exit):")
     
-    state = {"messages": []}
+    state = {"messages": [], "current_step": 0}
     
     while True:
         user_input = input("\nUser: ")
