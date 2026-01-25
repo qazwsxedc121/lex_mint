@@ -18,6 +18,7 @@ export interface SessionDetail {
   session_id: string;
   title: string;
   created_at: string;
+  model_id: string;  // 新增：会话使用的模型 ID
   state: {
     messages: Message[];
     current_step: number;

@@ -26,12 +26,31 @@ class ConversationStorage:
         self.conversations_dir = Path(conversations_dir)
         self.conversations_dir.mkdir(exist_ok=True)
 
-    async def create_session(self) -> str:
+    async def create_session(self, model_id: Optional[str] = None) -> str:
         """Create a new conversation session.
+
+        Args:
+            model_id: 可选的模型 ID，支持简单ID或复合ID (provider_id:model_id)
+                     如果未指定则使用默认模型
 
         Returns:
             session_id: UUID string for the new session
         """
+        # 如果未指定 model_id，使用默认模型（复合格式）
+        if not model_id:
+            from .model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            default_config = await model_service.get_default_config()
+            # 存储为复合ID格式
+            model_id = f"{default_config.provider}:{default_config.model}"
+        elif ':' not in model_id:
+            # 如果提供的是简单ID，转换为复合ID（向后兼容）
+            from .model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            model_obj = await model_service.get_model(model_id)
+            if model_obj:
+                model_id = f"{model_obj.provider_id}:{model_obj.id}"
+
         session_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"{timestamp}_{session_id[:8]}.md"
@@ -43,7 +62,8 @@ class ConversationStorage:
             "session_id": session_id,
             "created_at": datetime.now().isoformat(),
             "title": "新对话",
-            "current_step": 0
+            "current_step": 0,
+            "model_id": model_id  # 存储复合ID格式
         }
 
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
@@ -63,6 +83,7 @@ class ConversationStorage:
                 "session_id": str,
                 "title": str,
                 "created_at": str,
+                "model_id": str,
                 "state": {
                     "messages": List[Dict],
                     "current_step": int
@@ -84,10 +105,26 @@ class ConversationStorage:
         # Parse messages from markdown content
         messages = self._parse_messages(post.content)
 
+        # 向后兼容：如果没有 model_id，使用默认模型
+        model_id = post.metadata.get("model_id")
+        if not model_id:
+            from .model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            default_config = await model_service.get_default_config()
+            model_id = f"{default_config.provider}:{default_config.model}"
+        elif ':' not in model_id:
+            # 简单ID转换为复合ID（向后兼容）
+            from .model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            model_obj = await model_service.get_model(model_id)
+            if model_obj:
+                model_id = f"{model_obj.provider_id}:{model_obj.id}"
+
         return {
             "session_id": post.metadata["session_id"],
             "title": post.metadata.get("title", "未命名对话"),
             "created_at": post.metadata["created_at"],
+            "model_id": model_id,  # 返回复合ID格式
             "state": {
                 "messages": messages,
                 "current_step": post.metadata.get("current_step", 0)
@@ -178,6 +215,51 @@ class ConversationStorage:
 
         return sessions
 
+    async def truncate_messages_after(self, session_id: str, keep_until_index: int):
+        """Delete all messages after specified index.
+
+        Args:
+            session_id: Session UUID
+            keep_until_index: Keep messages up to and including this index.
+                            Index -1 means delete all messages.
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Read and parse existing file
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+        messages = self._parse_messages(post.content)
+
+        # Truncate messages list
+        if keep_until_index == -1:
+            truncated_messages = []
+        else:
+            truncated_messages = messages[:keep_until_index + 1]
+
+        # Rebuild markdown content
+        new_content = ""
+        for msg in truncated_messages:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            role_display = "User" if msg["role"] == "user" else "Assistant"
+            new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
+
+        post.content = new_content
+
+        # Update current_step (count assistant messages)
+        assistant_count = sum(1 for msg in truncated_messages if msg["role"] == "assistant")
+        post.metadata["current_step"] = assistant_count
+
+        # Write back to file
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
     async def delete_session(self, session_id: str):
         """Delete a conversation session.
 
@@ -192,6 +274,31 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         filepath.unlink()
+
+    async def update_session_model(self, session_id: str, model_id: str):
+        """更新会话使用的模型.
+
+        Args:
+            session_id: 会话 UUID
+            model_id: 新的模型 ID
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # 读取现有内容
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+        post.metadata["model_id"] = model_id
+
+        # 写回文件
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
 
     async def _find_session_file(self, session_id: str) -> Optional[Path]:
         """Find the file path for a session by its ID.

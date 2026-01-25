@@ -1,0 +1,33 @@
+default:
+  provider: deepseek
+  model: deepseek-chat
+providers:
+- id: deepseek
+  name: DeepSeek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  enabled: true
+- id: openrouter
+  name: OpenRouter
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+  enabled: true
+models:
+- id: deepseek-chat
+  name: DeepSeek Chat
+  provider_id: deepseek
+  group: 对话模型
+  temperature: 0.7
+  enabled: true
+- id: deepseek-coder
+  name: DeepSeek Coder
+  provider_id: deepseek
+  group: 代码模型
+  temperature: 0.7
+  enabled: true
+- id: deepseek-chat
+  name: DeepSeek Chat (via OpenRouter)
+  provider_id: openrouter
+  group: chat
+  temperature: 0.7
+  enabled: true

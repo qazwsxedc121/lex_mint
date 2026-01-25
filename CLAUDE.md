@@ -2,6 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL Development Rules
+
+**IMPORTANT**: These rules must be followed at all times:
+
+1. **Always Use Virtual Environment**
+   - NEVER run Python commands without using venv
+   - **Correct way**: Directly call venv's python executable
+   - Example: `./venv/Scripts/python your_script.py`
+   - Example: `./venv/Scripts/pip install package_name`
+   - **WRONG**: `python your_script.py` (uses system Python)
+   - **WRONG**: `venv\Scripts\activate && python ...` (doesn't work in bash)
+
+2. **Windows Terminal Encoding**
+   - Windows terminal uses GBK encoding by default (NOT UTF-8)
+   - **NEVER use Chinese characters in print() or console output**
+   - **NEVER use emoji (✅❌⚠️) in console output**
+   - Use only ASCII characters in terminal output
+   - Example: Use "OK" instead of "✅", "FAIL" instead of "❌"
+
+3. **Code Files vs Terminal Output**
+   - Code files (.py, .md, etc.): Can use UTF-8, Chinese, emoji
+   - Terminal/console output: Only ASCII characters allowed
+
 ## Project Overview
 
 LangGraph-based AI agent system with web interface using FastAPI backend and React frontend. The system uses DeepSeek as the LLM provider and stores conversations in Markdown format for easy cross-device synchronization.
@@ -22,11 +45,8 @@ All commands and examples in this document are provided for Windows unless other
 
 ### Setup
 ```bash
-# Activate virtual environment
-venv\Scripts\activate
-
-# Install backend dependencies
-pip install -r requirements.txt
+# Install backend dependencies (use venv's pip)
+./venv/Scripts/pip install -r requirements.txt
 
 # Install frontend dependencies
 cd frontend
@@ -37,8 +57,8 @@ npm install
 
 **Backend API** (Terminal 1):
 ```bash
-venv\Scripts\activate
-uvicorn src.api.main:app --reload --port 8000
+# Use venv's uvicorn directly
+./venv/Scripts/uvicorn src.api.main:app --reload --port 8000
 ```
 
 **Frontend** (Terminal 2):
@@ -51,37 +71,32 @@ Access the web interface at http://localhost:5173
 
 **CLI Mode** (original):
 ```bash
-python -m src.main
+# Use venv's python directly
+./venv/Scripts/python -m src.main
 ```
 
 ### Testing
 ```bash
 # Run all tests
-pytest
+./venv/Scripts/pytest
 
 # Run single test file
-pytest tests/unit/test_simple_agent.py
+./venv/Scripts/pytest tests/unit/test_simple_agent.py
 
 # Run single test function
-pytest tests/unit/test_simple_agent.py::test_chat_node
+./venv/Scripts/pytest tests/unit/test_simple_agent.py::test_chat_node
 
 # Run with coverage
-pytest --cov=src --cov-report=html
+./venv/Scripts/pytest --cov=src --cov-report=html
 ```
 
-### Code Quality
+### Running Custom Scripts
 ```bash
-# Linting
-ruff check .
+# Run any Python script with venv
+./venv/Scripts/python your_script.py
 
-# Format code
-ruff format .
-
-# Type checking
-mypy .
-
-# Run all checks
-ruff check . && ruff format --check . && mypy .
+# Example: Test composite key functionality
+./venv/Scripts/python test_composite_key.py
 ```
 
 ## Architecture

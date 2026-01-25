@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Optional
 import logging
 import json
 
@@ -20,6 +21,8 @@ class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
     session_id: str
     message: str
+    truncate_after_index: Optional[int] = None  # 截断索引，删除此索引之后的消息
+    skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
 
 
 class ChatResponse(BaseModel):
@@ -126,8 +129,21 @@ async def chat_stream(
             print("🤖 开始流式处理消息...")
             logger.info("🤖 开始流式处理消息...")
 
+            # 如果指定了截断索引，先截断消息
+            if request.truncate_after_index is not None:
+                print(f"✂️ 截断消息到索引 {request.truncate_after_index}")
+                logger.info(f"✂️ 截断消息到索引 {request.truncate_after_index}")
+                await agent.storage.truncate_messages_after(
+                    request.session_id,
+                    request.truncate_after_index
+                )
+
             # 流式处理消息
-            async for chunk in agent.process_message_stream(request.session_id, request.message):
+            async for chunk in agent.process_message_stream(
+                request.session_id,
+                request.message,
+                skip_user_append=request.skip_user_message
+            ):
                 # SSE 格式: data: {json}\n\n
                 data = json.dumps({"chunk": chunk}, ensure_ascii=False)
                 yield f"data: {data}\n\n"

@@ -2,6 +2,7 @@
 
 from typing import Dict, AsyncIterator
 import logging
+import asyncio
 
 from src.agents.simple_llm import call_llm, call_llm_stream
 from .conversation_storage import ConversationStorage
@@ -51,13 +52,14 @@ class AgentService:
         logger.info(f"📂 [步骤 2] 加载会话状态")
         session = await self.storage.get_session(session_id)
         messages = session["state"]["messages"]
-        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息")
+        model_id = session.get("model_id")  # 获取会话的模型 ID
+        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息，模型: {model_id}")
 
         print(f"🧠 [步骤 3] 调用 LLM...")
         logger.info(f"🧠 [步骤 3] 调用 LLM")
 
-        # 直接调用 LLM（只调用一次！）
-        assistant_message = call_llm(messages, session_id=session_id)
+        # 直接调用 LLM（只调用一次！），传递 model_id
+        assistant_message = call_llm(messages, session_id=session_id, model_id=model_id)
 
         print(f"✅ LLM 处理完成")
         logger.info(f"✅ LLM 处理完成")
@@ -73,13 +75,15 @@ class AgentService:
     async def process_message_stream(
         self,
         session_id: str,
-        user_message: str
+        user_message: str,
+        skip_user_append: bool = False
     ) -> AsyncIterator[str]:
         """流式处理用户消息并返回 AI 响应流.
 
         Args:
             session_id: Session UUID
             user_message: User's input text
+            skip_user_append: 是否跳过追加用户消息（重新生成时使用）
 
         Yields:
             AI assistant's response tokens
@@ -87,16 +91,22 @@ class AgentService:
         Raises:
             FileNotFoundError: If session doesn't exist
         """
-        print(f"📝 [步骤 1] 保存用户消息到文件...")
-        logger.info(f"📝 [步骤 1] 保存用户消息")
-        await self.storage.append_message(session_id, "user", user_message)
-        print(f"✅ 用户消息已保存")
+        # 仅当 skip_user_append=False 时追加用户消息
+        if not skip_user_append:
+            print(f"📝 [步骤 1] 保存用户消息到文件...")
+            logger.info(f"📝 [步骤 1] 保存用户消息")
+            await self.storage.append_message(session_id, "user", user_message)
+            print(f"✅ 用户消息已保存")
+        else:
+            print(f"⏭️ [步骤 1] 跳过保存用户消息（重新生成模式）")
+            logger.info(f"⏭️ [步骤 1] 跳过保存用户消息")
 
         print(f"📂 [步骤 2] 加载会话状态...")
         logger.info(f"📂 [步骤 2] 加载会话状态")
         session = await self.storage.get_session(session_id)
         messages = session["state"]["messages"]
-        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息")
+        model_id = session.get("model_id")  # 获取会话的模型 ID
+        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息，模型: {model_id}")
 
         print(f"🧠 [步骤 3] 流式调用 LLM...")
         logger.info(f"🧠 [步骤 3] 流式调用 LLM")
@@ -104,14 +114,24 @@ class AgentService:
         # 收集完整回复用于保存
         full_response = ""
 
-        # 流式调用 LLM
-        async for chunk in call_llm_stream(messages, session_id=session_id):
-            full_response += chunk
-            yield chunk
+        try:
+            # 流式调用 LLM，传递 model_id
+            async for chunk in call_llm_stream(messages, session_id=session_id, model_id=model_id):
+                full_response += chunk
+                yield chunk
 
-        print(f"✅ LLM 流式处理完成")
-        logger.info(f"✅ LLM 流式处理完成")
-        print(f"💬 AI 回复总长度: {len(full_response)} 字符")
+            print(f"✅ LLM 流式处理完成")
+            logger.info(f"✅ LLM 流式处理完成")
+            print(f"💬 AI 回复总长度: {len(full_response)} 字符")
+
+        except asyncio.CancelledError:
+            # 流式中止，保存部分内容
+            print(f"⚠️ 流式生成被中止，保存部分内容...")
+            logger.warning(f"⚠️ 流式生成被中止，保存部分内容（{len(full_response)} 字符）")
+            if full_response:
+                await self.storage.append_message(session_id, "assistant", full_response)
+                print(f"✅ 部分 AI 回复已保存")
+            raise
 
         print(f"📝 [步骤 4] 保存完整 AI 回复到文件...")
         logger.info(f"📝 [步骤 4] 保存完整 AI 回复")

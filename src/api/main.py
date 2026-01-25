@@ -14,7 +14,7 @@ setup_logging()
 
 import logging
 
-from .routers import sessions, chat
+from .routers import sessions, chat, models
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,12 +37,26 @@ app.add_middleware(
 # Register routers
 app.include_router(sessions.router)
 app.include_router(chat.router)
+app.include_router(models.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")
 logger.info(f"CORS Origins: {settings.cors_origins}")
 logger.info(f"Conversations Dir: {settings.conversations_dir}")
 logger.info("=" * 80)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时的初始化"""
+    logger.info("=== 应用启动初始化 ===")
+
+    # 初始化模型配置（如果不存在则创建默认配置）
+    from .services.model_config_service import ModelConfigService
+    model_service = ModelConfigService()
+    # 构造函数中已经调用 _ensure_config_exists()
+
+    logger.info("✅ 模型配置初始化完成")
 
 
 @app.get("/api/health")

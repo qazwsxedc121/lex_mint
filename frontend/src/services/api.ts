@@ -4,6 +4,8 @@
 
 import axios from 'axios';
 import type { Session, SessionDetail, ChatRequest, ChatResponse } from '../types/message';
+import type { Provider, Model, DefaultConfig } from '../types/model';
+import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -17,8 +19,10 @@ const api = axios.create({
 /**
  * Create a new conversation session.
  */
-export async function createSession(): Promise<string> {
-  const response = await api.post<{ session_id: string }>('/api/sessions');
+export async function createSession(modelId?: string): Promise<string> {
+  const response = await api.post<{ session_id: string }>('/api/sessions',
+    modelId ? { model_id: modelId } : undefined
+  );
   return response.data.session_id;
 }
 
@@ -61,79 +65,111 @@ export async function sendMessage(
 
 /**
  * Send a message and receive streaming AI response.
+ * @param sessionId - Session ID
+ * @param message - User message
+ * @param truncateAfterIndex - Optional index to truncate messages after
+ * @param skipUserMessage - Whether to skip appending user message (for regeneration)
  * @param onChunk - Callback for each token received
  * @param onDone - Callback when stream completes
  * @param onError - Callback for errors
+ * @param abortControllerRef - Optional ref to store AbortController for cancellation
  */
 export async function sendMessageStream(
   sessionId: string,
   message: string,
+  truncateAfterIndex: number | null,
+  skipUserMessage: boolean,
   onChunk: (chunk: string) => void,
   onDone: () => void,
-  onError: (error: string) => void
+  onError: (error: string) => void,
+  abortControllerRef?: MutableRefObject<AbortController | null>
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/chat/stream`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      session_id: sessionId,
-      message,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-
-  if (!reader) {
-    throw new Error('Response body is not readable');
+  // Create AbortController for cancellation support
+  const controller = new AbortController();
+  if (abortControllerRef) {
+    abortControllerRef.current = controller;
   }
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
+    const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        message,
+        truncate_after_index: truncateAfterIndex,
+        skip_user_message: skipUserMessage,
+      }),
+      signal: controller.signal,
+    });
 
-      if (done) break;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-      // 解码数据
-      const chunk = decoder.decode(value, { stream: true });
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
 
-      // SSE 格式：每行 "data: {json}\n\n"
-      const lines = chunk.split('\n');
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6); // 移除 "data: " 前缀
-          try {
-            const data = JSON.parse(dataStr);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
 
-            if (data.error) {
-              onError(data.error);
-              return;
+        if (done) break;
+
+        // 解码数据
+        const chunk = decoder.decode(value, { stream: true });
+
+        // SSE 格式：每行 "data: {json}\n\n"
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6); // 移除 "data: " 前缀
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.error) {
+                onError(data.error);
+                return;
+              }
+
+              if (data.done) {
+                onDone();
+                return;
+              }
+
+              if (data.chunk) {
+                onChunk(data.chunk);
+              }
+            } catch (e) {
+              // 忽略解析错误（可能是不完整的 JSON）
+              console.warn('Failed to parse SSE data:', dataStr);
             }
-
-            if (data.done) {
-              onDone();
-              return;
-            }
-
-            if (data.chunk) {
-              onChunk(data.chunk);
-            }
-          } catch (e) {
-            // 忽略解析错误（可能是不完整的 JSON）
-            console.warn('Failed to parse SSE data:', dataStr);
           }
         }
       }
+    } finally {
+      reader.releaseLock();
     }
+  } catch (error: unknown) {
+    // Handle abort as normal completion (keep partial content)
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log('Stream aborted by user');
+      onDone();
+      return;
+    }
+    throw error;
   } finally {
-    reader.releaseLock();
+    // Clear the controller reference
+    if (abortControllerRef) {
+      abortControllerRef.current = null;
+    }
   }
 }
 
@@ -147,6 +183,108 @@ export async function checkHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ==================== 模型管理 API ====================
+
+/**
+ * 获取所有提供商列表
+ */
+export async function listProviders(): Promise<Provider[]> {
+  const response = await api.get<Provider[]>('/api/models/providers');
+  return response.data;
+}
+
+/**
+ * 获取指定提供商
+ */
+export async function getProvider(providerId: string): Promise<Provider> {
+  const response = await api.get<Provider>(`/api/models/providers/${providerId}`);
+  return response.data;
+}
+
+/**
+ * 创建提供商
+ */
+export async function createProvider(provider: Provider): Promise<void> {
+  await api.post('/api/models/providers', provider);
+}
+
+/**
+ * 更新提供商
+ */
+export async function updateProvider(providerId: string, provider: Provider): Promise<void> {
+  await api.put(`/api/models/providers/${providerId}`, provider);
+}
+
+/**
+ * 删除提供商（级联删除关联模型）
+ */
+export async function deleteProvider(providerId: string): Promise<void> {
+  await api.delete(`/api/models/providers/${providerId}`);
+}
+
+/**
+ * 获取模型列表
+ * @param providerId - 可选的提供商ID，用于筛选
+ */
+export async function listModels(providerId?: string): Promise<Model[]> {
+  const url = providerId
+    ? `/api/models/list?provider_id=${providerId}`
+    : '/api/models/list';
+  const response = await api.get<Model[]>(url);
+  return response.data;
+}
+
+/**
+ * 获取指定模型
+ */
+export async function getModel(modelId: string): Promise<Model> {
+  const response = await api.get<Model>(`/api/models/list/${modelId}`);
+  return response.data;
+}
+
+/**
+ * 创建模型
+ */
+export async function createModel(model: Model): Promise<void> {
+  await api.post('/api/models/list', model);
+}
+
+/**
+ * 更新模型
+ */
+export async function updateModel(modelId: string, model: Model): Promise<void> {
+  await api.put(`/api/models/list/${modelId}`, model);
+}
+
+/**
+ * 删除模型
+ */
+export async function deleteModel(modelId: string): Promise<void> {
+  await api.delete(`/api/models/list/${modelId}`);
+}
+
+/**
+ * 获取默认模型配置
+ */
+export async function getDefaultConfig(): Promise<DefaultConfig> {
+  const response = await api.get<DefaultConfig>('/api/models/default');
+  return response.data;
+}
+
+/**
+ * 设置默认模型
+ */
+export async function setDefaultConfig(providerId: string, modelId: string): Promise<void> {
+  await api.put(`/api/models/default?provider_id=${providerId}&model_id=${modelId}`);
+}
+
+/**
+ * 更新会话使用的模型
+ */
+export async function updateSessionModel(sessionId: string, modelId: string): Promise<void> {
+  await api.put(`/api/sessions/${sessionId}/model`, { model_id: modelId });
 }
 
 export default api;

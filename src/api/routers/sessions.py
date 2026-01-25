@@ -1,7 +1,8 @@
 """Session management API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, List
+from fastapi import APIRouter, HTTPException, Depends, Body
+from typing import Dict, List, Optional
+from pydantic import BaseModel
 import logging
 
 from ..services.conversation_storage import ConversationStorage
@@ -12,20 +13,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
+class CreateSessionRequest(BaseModel):
+    """创建会话请求"""
+    model_id: Optional[str] = None
+
+
+class UpdateModelRequest(BaseModel):
+    """更新模型请求"""
+    model_id: str
+
+
 def get_storage() -> ConversationStorage:
     """Dependency injection for ConversationStorage."""
     return ConversationStorage(settings.conversations_dir)
 
 
 @router.post("", response_model=Dict[str, str])
-async def create_session(storage: ConversationStorage = Depends(get_storage)):
+async def create_session(
+    request: Optional[CreateSessionRequest] = None,
+    storage: ConversationStorage = Depends(get_storage)
+):
     """Create a new conversation session.
+
+    Args:
+        request: 可选的创建会话请求（包含 model_id）
 
     Returns:
         {"session_id": "uuid-string"}
     """
-    logger.info("📝 创建新会话...")
-    session_id = await storage.create_session()
+    model_id = request.model_id if request else None
+    logger.info(f"📝 创建新会话（模型: {model_id or '默认'}）...")
+    session_id = await storage.create_session(model_id=model_id)
     logger.info(f"✅ 新会话已创建: {session_id}")
     return {"session_id": session_id}
 
@@ -109,6 +127,34 @@ async def delete_session(
         await storage.delete_session(session_id)
         logger.info(f"✅ 会话已删除")
         return {"message": "Session deleted"}
+    except FileNotFoundError:
+        logger.error(f"❌ 会话未找到: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.put("/{session_id}/model", response_model=Dict[str, str])
+async def update_session_model(
+    session_id: str,
+    request: UpdateModelRequest,
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """更新会话使用的模型.
+
+    Args:
+        session_id: 会话 UUID
+        request: 包含新模型 ID 的请求体
+
+    Returns:
+        {"message": "Model updated successfully"}
+
+    Raises:
+        404: Session not found
+    """
+    logger.info(f"🔄 更新会话模型: {session_id[:16]} -> {request.model_id}")
+    try:
+        await storage.update_session_model(session_id, request.model_id)
+        logger.info(f"✅ 模型更新成功")
+        return {"message": "Model updated successfully"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")

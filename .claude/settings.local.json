@@ -18,7 +18,17 @@
       "Bash(python:*)",
       "Bash(venv\\\\Scripts\\\\python.exe:*)",
       "Bash(./venv/Scripts/python.exe:*)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(git add:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ruff check:*)",
+      "Bash(venvScriptspython.exe -c \"from src.api.services.conversation_storage import ConversationStorage; print\\(''✓ 后端导入成功''\\)\")",
+      "Bash(if not exist \"src\\\\api\\\\models\" mkdir \"src\\\\api\\\\models\")",
+      "Bash(venvScriptsactivate)",
+      "Bash(./venv/Scripts/python:*)",
+      "Bash(bash test_claude_md_commands.sh:*)"
     ]
   }
 }

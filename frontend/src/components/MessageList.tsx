@@ -9,9 +9,18 @@ import { MessageBubble } from './MessageBubble';
 interface MessageListProps {
   messages: Message[];
   loading?: boolean;
+  isStreaming?: boolean;
+  onEditMessage?: (index: number, content: string) => void;
+  onRegenerateMessage?: (index: number) => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, loading = false }) => {
+export const MessageList: React.FC<MessageListProps> = ({
+  messages,
+  loading = false,
+  isStreaming = false,
+  onEditMessage,
+  onRegenerateMessage,
+}) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -28,7 +37,14 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, loading = fa
       ) : (
         <>
           {messages.map((message, index) => (
-            <MessageBubble key={index} message={message} />
+            <MessageBubble
+              key={index}
+              message={message}
+              messageIndex={index}
+              isStreaming={isStreaming}
+              onEdit={onEditMessage}
+              onRegenerate={onRegenerateMessage}
+            />
           ))}
           {loading && (
             <div className="flex justify-start mb-4">
