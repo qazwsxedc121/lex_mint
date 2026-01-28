@@ -26,7 +26,7 @@ class AssistantConfigService:
         """
         if config_path is None:
             # Default config file in project root
-            config_path = Path(__file__).parent.parent.parent.parent / "assistants_config.yaml"
+            config_path = Path(__file__).parent.parent.parent.parent / "config" / "assistants_config.yaml"
         self.config_path = config_path
         self.model_service = model_service or ModelConfigService()
         self._ensure_config_exists()

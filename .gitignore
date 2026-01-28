@@ -22,7 +22,7 @@ venv.bak/
 .env.local
 
 # API Keys Configuration
-keys_config.yaml
+config/keys_config.yaml
 
 # Testing
 .pytest_cache/

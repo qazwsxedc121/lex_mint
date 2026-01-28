@@ -26,10 +26,10 @@ class ModelConfigService:
         """
         if config_path is None:
             # 默认配置文件在项目根目录
-            config_path = Path(__file__).parent.parent.parent.parent / "models_config.yaml"
+            config_path = Path(__file__).parent.parent.parent.parent / "config" / "models_config.yaml"
         if keys_path is None:
             # 默认密钥文件在项目根目录
-            keys_path = Path(__file__).parent.parent.parent.parent / "keys_config.yaml"
+            keys_path = Path(__file__).parent.parent.parent.parent / "config" / "keys_config.yaml"
         self.config_path = config_path
         self.keys_path = keys_path
         self._ensure_config_exists()
