@@ -3,7 +3,7 @@ assistants:
 - id: general-assistant
   name: General Assistant
   description: General purpose conversational AI for everyday tasks
-  model_id: openrouter:openai/gpt-5-nano
+  model_id: deepseek:deepseek-chat
   system_prompt: 'You are a helpful AI assistant. Provide clear, accurate, and friendly
     responses.
 
