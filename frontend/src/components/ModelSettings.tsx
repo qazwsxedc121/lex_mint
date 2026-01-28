@@ -8,18 +8,21 @@ import React, { useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { ProviderList } from './ProviderList';
 import { ModelList } from './ModelList';
+import { AssistantList } from './AssistantList';
 import { useModels } from '../hooks/useModels';
+import { useAssistants } from '../hooks/useAssistants';
 
 interface ModelSettingsProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type TabType = 'models' | 'providers';
+type TabType = 'assistants' | 'models' | 'providers';
 
 export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('models');
+  const [activeTab, setActiveTab] = useState<TabType>('assistants');
   const modelsHook = useModels();
+  const assistantsHook = useAssistants();
 
   if (!isOpen) return null;
 
@@ -37,7 +40,7 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose })
           {/* 头部 */}
           <div className="flex items-center justify-between p-6 border-b dark:border-gray-700">
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
-              模型配置管理
+              Configuration
             </h2>
             <button
               onClick={onClose}
@@ -51,6 +54,16 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose })
           <div className="border-b dark:border-gray-700">
             <nav className="flex px-6 -mb-px space-x-8">
               <button
+                onClick={() => setActiveTab('assistants')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'assistants'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Assistants
+              </button>
+              <button
                 onClick={() => setActiveTab('models')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'models'
@@ -58,7 +71,7 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose })
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
               >
-                模型管理
+                Models
               </button>
               <button
                 onClick={() => setActiveTab('providers')}
@@ -68,23 +81,34 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose })
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
               >
-                提供商管理
+                Providers
               </button>
             </nav>
           </div>
 
           {/* 内容区域 */}
           <div className="flex-1 overflow-y-auto p-6">
-            {modelsHook.loading ? (
+            {(modelsHook.loading || assistantsHook.loading) ? (
               <div className="flex items-center justify-center h-64">
-                <div className="text-gray-500 dark:text-gray-400">加载中...</div>
+                <div className="text-gray-500 dark:text-gray-400">Loading...</div>
               </div>
-            ) : modelsHook.error ? (
+            ) : (modelsHook.error || assistantsHook.error) ? (
               <div className="flex items-center justify-center h-64">
-                <div className="text-red-500">{modelsHook.error}</div>
+                <div className="text-red-500">{modelsHook.error || assistantsHook.error}</div>
               </div>
             ) : (
               <>
+                {activeTab === 'assistants' && (
+                  <AssistantList
+                    assistants={assistantsHook.assistants}
+                    defaultAssistantId={assistantsHook.defaultAssistantId}
+                    models={modelsHook.models}
+                    onCreateAssistant={assistantsHook.createAssistant}
+                    onUpdateAssistant={assistantsHook.updateAssistant}
+                    onDeleteAssistant={assistantsHook.deleteAssistant}
+                    onSetDefault={assistantsHook.setDefaultAssistant}
+                  />
+                )}
                 {activeTab === 'models' && <ModelList {...modelsHook} />}
                 {activeTab === 'providers' && <ProviderList {...modelsHook} />}
               </>
@@ -97,7 +121,7 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose })
               onClick={onClose}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
             >
-              关闭
+              Close
             </button>
           </div>
         </div>

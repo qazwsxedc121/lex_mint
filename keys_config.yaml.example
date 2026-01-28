@@ -1,0 +1,11 @@
+# API Keys Configuration Template
+# Copy this file to keys_config.yaml and add your actual API keys
+# The keys_config.yaml file is gitignored for security
+
+providers:
+  deepseek:
+    api_key: "your-deepseek-api-key-here"
+  openai:
+    api_key: "your-openai-api-key-here"
+  openrouter:
+    api_key: "your-openrouter-api-key-here"

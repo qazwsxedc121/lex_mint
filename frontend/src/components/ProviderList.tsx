@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import type { Provider } from '../types/model';
+import { getProvider, testProviderConnection, testProviderStoredConnection } from '../services/api';
 
 interface ProviderListProps {
   providers: Provider[];
@@ -26,8 +27,15 @@ export const ProviderList: React.FC<ProviderListProps> = ({
     name: '',
     base_url: '',
     api_key_env: '',
+    api_key: '',
     enabled: true,
   });
+  const [testStatus, setTestStatus] = useState<{
+    loading: boolean;
+    success?: boolean;
+    message?: string;
+  }>({ loading: false });
+  const [testModelId, setTestModelId] = useState<string>('gpt-3.5-turbo');
 
   const handleCreate = () => {
     setEditingProvider(null);
@@ -36,28 +44,131 @@ export const ProviderList: React.FC<ProviderListProps> = ({
       name: '',
       base_url: '',
       api_key_env: '',
+      api_key: '',
       enabled: true,
     });
+    setTestStatus({ loading: false });
+    setTestModelId('gpt-3.5-turbo');
     setShowForm(true);
   };
 
-  const handleEdit = (provider: Provider) => {
+  const handleEdit = async (provider: Provider) => {
     setEditingProvider(provider);
-    setFormData(provider);
-    setShowForm(true);
+    try {
+      // Get provider with masked key
+      const providerWithMaskedKey = await getProvider(provider.id, true);
+      setFormData({
+        ...providerWithMaskedKey,
+        api_key: providerWithMaskedKey.api_key || '',
+      });
+      setTestStatus({ loading: false });
+      // Set reasonable default based on provider
+      const defaultModel = getDefaultModelForProvider(provider.id);
+      setTestModelId(defaultModel);
+      setShowForm(true);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to load provider details');
+    }
+  };
+
+  // Helper function to suggest default model based on provider
+  const getDefaultModelForProvider = (providerId: string): string => {
+    const lowerProviderId = providerId.toLowerCase();
+    if (lowerProviderId.includes('deepseek')) {
+      return 'deepseek-chat';
+    } else if (lowerProviderId.includes('openai')) {
+      return 'gpt-3.5-turbo';
+    } else if (lowerProviderId.includes('anthropic') || lowerProviderId.includes('claude')) {
+      return 'claude-3-haiku-20240307';
+    } else if (lowerProviderId.includes('gemini') || lowerProviderId.includes('google')) {
+      return 'gemini-pro';
+    } else {
+      return 'gpt-3.5-turbo';
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingProvider) {
-        await updateProvider(editingProvider.id, formData);
+        // Edit: if api_key is masked or empty, don't send it
+        const updateData = { ...formData };
+        if (!updateData.api_key || updateData.api_key.includes('****')) {
+          delete updateData.api_key;
+        }
+        await updateProvider(editingProvider.id, updateData);
       } else {
         await createProvider(formData);
       }
       setShowForm(false);
+      setTestStatus({ loading: false });
     } catch (error) {
-      alert(error instanceof Error ? error.message : '操作失败');
+      alert(error instanceof Error ? error.message : 'Operation failed');
+    }
+  };
+
+  const handleTestConnection = async () => {
+    // Validate required fields
+    if (!formData.base_url) {
+      setTestStatus({
+        loading: false,
+        success: false,
+        message: 'Please fill in API URL first',
+      });
+      return;
+    }
+
+    if (!testModelId.trim()) {
+      setTestStatus({
+        loading: false,
+        success: false,
+        message: 'Please fill in Test Model ID',
+      });
+      return;
+    }
+
+    setTestStatus({ loading: true });
+
+    try {
+      let result;
+
+      // Check if using masked key (editing mode with unchanged key)
+      if (editingProvider && formData.api_key && formData.api_key.includes('****')) {
+        // Use stored API key
+        result = await testProviderStoredConnection(
+          editingProvider.id,
+          formData.base_url,
+          testModelId
+        );
+      } else {
+        // Use provided API key
+        if (!formData.api_key) {
+          setTestStatus({
+            loading: false,
+            success: false,
+            message: 'Please fill in API Key first',
+          });
+          return;
+        }
+
+        result = await testProviderConnection(
+          formData.base_url,
+          formData.api_key,
+          testModelId
+        );
+      }
+
+      setTestStatus({
+        loading: false,
+        success: result.success,
+        message: result.message,
+      });
+    } catch (error) {
+      setTestStatus({
+        loading: false,
+        success: false,
+        message: error instanceof Error ? error.message : 'Test failed',
+      });
     }
   };
 
@@ -101,9 +212,6 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                 API 地址
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                环境变量
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 状态
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -122,9 +230,6 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {provider.base_url}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                  {provider.api_key_env}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
@@ -212,18 +317,69 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    API 密钥环境变量 *
+                    API Key {!editingProvider && '*'}
+                  </label>
+                  <input
+                    type="password"
+                    required={!editingProvider}
+                    value={formData.api_key || ''}
+                    onChange={(e) => {
+                      setFormData({ ...formData, api_key: e.target.value });
+                      setTestStatus({ loading: false });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    placeholder={editingProvider ? "Enter new key to update (leave blank to keep current)" : "sk-..."}
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {editingProvider
+                      ? "Leave blank to keep current key"
+                      : "Key will be stored securely"}
+                  </p>
+                </div>
+
+                {/* Test Model ID */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Test Model ID
                   </label>
                   <input
                     type="text"
-                    required
-                    value={formData.api_key_env}
-                    onChange={(e) =>
-                      setFormData({ ...formData, api_key_env: e.target.value })
-                    }
+                    value={testModelId}
+                    onChange={(e) => setTestModelId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="OPENAI_API_KEY"
+                    placeholder="e.g., gpt-3.5-turbo, deepseek-chat"
                   />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Model ID to use for testing (e.g., gpt-3.5-turbo for OpenAI, deepseek-chat for DeepSeek)
+                  </p>
+
+                  {/* Test button */}
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={
+                      testStatus.loading ||
+                      !formData.base_url ||
+                      !testModelId.trim() ||
+                      (!formData.api_key && !editingProvider)
+                    }
+                    className="mt-2 w-full px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {testStatus.loading ? 'Testing...' : 'Test Connection'}
+                  </button>
+
+                  {/* Test result */}
+                  {testStatus.message && (
+                    <div
+                      className={`mt-2 px-3 py-2 text-sm rounded-md ${
+                        testStatus.success
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                      }`}
+                    >
+                      {testStatus.message}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center">
                   <input
@@ -246,13 +402,13 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                     onClick={() => setShowForm(false)}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600"
                   >
-                    取消
+                    Cancel
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
                   >
-                    {editingProvider ? '保存' : '创建'}
+                    {editingProvider ? 'Save' : 'Create'}
                   </button>
                 </div>
               </form>

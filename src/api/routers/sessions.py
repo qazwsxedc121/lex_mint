@@ -15,12 +15,18 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 class CreateSessionRequest(BaseModel):
     """创建会话请求"""
-    model_id: Optional[str] = None
+    model_id: Optional[str] = None  # 向后兼容
+    assistant_id: Optional[str] = None  # 新方式：使用助手
 
 
 class UpdateModelRequest(BaseModel):
     """更新模型请求"""
     model_id: str
+
+
+class UpdateAssistantRequest(BaseModel):
+    """更新助手请求"""
+    assistant_id: str
 
 
 def get_storage() -> ConversationStorage:
@@ -36,14 +42,15 @@ async def create_session(
     """Create a new conversation session.
 
     Args:
-        request: 可选的创建会话请求（包含 model_id）
+        request: 可选的创建会话请求（包含 assistant_id 或 model_id）
 
     Returns:
         {"session_id": "uuid-string"}
     """
+    assistant_id = request.assistant_id if request else None
     model_id = request.model_id if request else None
-    logger.info(f"📝 创建新会话（模型: {model_id or '默认'}）...")
-    session_id = await storage.create_session(model_id=model_id)
+    logger.info(f"📝 创建新会话（助手: {assistant_id or '默认'}, 模型: {model_id or '默认'}）...")
+    session_id = await storage.create_session(model_id=model_id, assistant_id=assistant_id)
     logger.info(f"✅ 新会话已创建: {session_id}")
     return {"session_id": session_id}
 
@@ -158,3 +165,35 @@ async def update_session_model(
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.put("/{session_id}/assistant", response_model=Dict[str, str])
+async def update_session_assistant(
+    session_id: str,
+    request: UpdateAssistantRequest,
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """更新会话使用的助手.
+
+    Args:
+        session_id: 会话 UUID
+        request: 包含新助手 ID 的请求体
+
+    Returns:
+        {"message": "Assistant updated successfully"}
+
+    Raises:
+        404: Session not found
+        400: Assistant not found
+    """
+    logger.info(f"🔄 更新会话助手: {session_id[:16]} -> {request.assistant_id}")
+    try:
+        await storage.update_session_assistant(session_id, request.assistant_id)
+        logger.info(f"✅ 助手更新成功")
+        return {"message": "Assistant updated successfully"}
+    except FileNotFoundError:
+        logger.error(f"❌ 会话未找到: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        logger.error(f"❌ 助手错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))

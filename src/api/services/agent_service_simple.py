@@ -105,8 +105,38 @@ class AgentService:
         logger.info(f"📂 [步骤 2] 加载会话状态")
         session = await self.storage.get_session(session_id)
         messages = session["state"]["messages"]
-        model_id = session.get("model_id")  # 获取会话的模型 ID
-        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息，模型: {model_id}")
+        assistant_id = session.get("assistant_id")
+        model_id = session.get("model_id")
+        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息")
+        print(f"   助手ID: {assistant_id}, 模型: {model_id}")
+
+        # 获取助手配置（包括系统提示词和最大对话轮数）
+        system_prompt = None
+        max_rounds = None
+
+        # 检查是否是 legacy 会话标识
+        if assistant_id and assistant_id.startswith("__legacy_model_"):
+            # 旧会话：只使用 model_id，不使用助手配置
+            print(f"   使用旧会话模式（仅模型）")
+        elif assistant_id:
+            # 新会话：从助手配置加载系统提示词和对话轮数限制
+            from .assistant_config_service import AssistantConfigService
+            assistant_service = AssistantConfigService()
+            try:
+                assistant = await assistant_service.get_assistant(assistant_id)
+                if assistant:
+                    system_prompt = assistant.system_prompt
+                    max_rounds = assistant.max_rounds
+                    print(f"   使用助手配置:")
+                    if system_prompt:
+                        print(f"     - 系统提示词: {system_prompt[:50]}...")
+                    if max_rounds:
+                        if max_rounds == -1:
+                            print(f"     - 对话轮数: 无限制")
+                        else:
+                            print(f"     - 最大轮数: {max_rounds}")
+            except Exception as e:
+                logger.warning(f"   加载助手配置失败: {e}，使用默认配置")
 
         print(f"🧠 [步骤 3] 流式调用 LLM...")
         logger.info(f"🧠 [步骤 3] 流式调用 LLM")
@@ -115,8 +145,14 @@ class AgentService:
         full_response = ""
 
         try:
-            # 流式调用 LLM，传递 model_id
-            async for chunk in call_llm_stream(messages, session_id=session_id, model_id=model_id):
+            # 流式调用 LLM，传递 model_id、system_prompt 和 max_rounds
+            async for chunk in call_llm_stream(
+                messages,
+                session_id=session_id,
+                model_id=model_id,
+                system_prompt=system_prompt,
+                max_rounds=max_rounds
+            ):
                 full_response += chunk
                 yield chunk
 

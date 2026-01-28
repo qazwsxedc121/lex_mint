@@ -5,6 +5,7 @@
 import axios from 'axios';
 import type { Session, SessionDetail, ChatRequest, ChatResponse } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
+import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -19,9 +20,17 @@ const api = axios.create({
 /**
  * Create a new conversation session.
  */
-export async function createSession(modelId?: string): Promise<string> {
-  const response = await api.post<{ session_id: string }>('/api/sessions',
-    modelId ? { model_id: modelId } : undefined
+export async function createSession(modelId?: string, assistantId?: string): Promise<string> {
+  const body: { model_id?: string; assistant_id?: string } = {};
+  if (assistantId) {
+    body.assistant_id = assistantId;
+  } else if (modelId) {
+    body.model_id = modelId;
+  }
+
+  const response = await api.post<{ session_id: string }>(
+    '/api/sessions',
+    Object.keys(body).length > 0 ? body : undefined
   );
   return response.data.session_id;
 }
@@ -198,8 +207,11 @@ export async function listProviders(): Promise<Provider[]> {
 /**
  * 获取指定提供商
  */
-export async function getProvider(providerId: string): Promise<Provider> {
-  const response = await api.get<Provider>(`/api/models/providers/${providerId}`);
+export async function getProvider(providerId: string, includeMaskedKey: boolean = false): Promise<Provider> {
+  const url = includeMaskedKey
+    ? `/api/models/providers/${providerId}?include_masked_key=true`
+    : `/api/models/providers/${providerId}`;
+  const response = await api.get<Provider>(url);
   return response.data;
 }
 
@@ -285,6 +297,115 @@ export async function setDefaultConfig(providerId: string, modelId: string): Pro
  */
 export async function updateSessionModel(sessionId: string, modelId: string): Promise<void> {
   await api.put(`/api/sessions/${sessionId}/model`, { model_id: modelId });
+}
+
+/**
+ * 更新会话使用的助手
+ */
+export async function updateSessionAssistant(sessionId: string, assistantId: string): Promise<void> {
+  await api.put(`/api/sessions/${sessionId}/assistant`, { assistant_id: assistantId });
+}
+
+// ==================== 助手管理 API ====================
+
+/**
+ * 获取所有助手列表
+ */
+export async function listAssistants(): Promise<Assistant[]> {
+  const response = await api.get<Assistant[]>('/api/assistants');
+  return response.data;
+}
+
+/**
+ * 获取指定助手
+ */
+export async function getAssistant(assistantId: string): Promise<Assistant> {
+  const response = await api.get<Assistant>(`/api/assistants/${assistantId}`);
+  return response.data;
+}
+
+/**
+ * 创建助手
+ */
+export async function createAssistant(assistant: AssistantCreate): Promise<void> {
+  await api.post('/api/assistants', assistant);
+}
+
+/**
+ * 更新助手
+ */
+export async function updateAssistant(assistantId: string, assistant: AssistantUpdate): Promise<void> {
+  await api.put(`/api/assistants/${assistantId}`, assistant);
+}
+
+/**
+ * 删除助手（不能删除默认助手）
+ */
+export async function deleteAssistant(assistantId: string): Promise<void> {
+  await api.delete(`/api/assistants/${assistantId}`);
+}
+
+/**
+ * 获取默认助手ID
+ */
+export async function getDefaultAssistantId(): Promise<string> {
+  const response = await api.get<{ default_assistant_id: string }>('/api/assistants/default/id');
+  return response.data.default_assistant_id;
+}
+
+/**
+ * 获取默认助手
+ */
+export async function getDefaultAssistant(): Promise<Assistant> {
+  const response = await api.get<Assistant>('/api/assistants/default/assistant');
+  return response.data;
+}
+
+/**
+ * 设置默认助手
+ */
+export async function setDefaultAssistant(assistantId: string): Promise<void> {
+  await api.put(`/api/assistants/default/${assistantId}`);
+}
+
+// ==================== 测试连接 ====================
+
+/**
+ * 测试提供商连接（使用提供的API Key）
+ */
+export async function testProviderConnection(
+  baseUrl: string,
+  apiKey: string,
+  modelId: string = 'gpt-3.5-turbo'
+): Promise<{ success: boolean; message: string }> {
+  const response = await api.post<{ success: boolean; message: string }>(
+    '/api/models/providers/test',
+    {
+      base_url: baseUrl,
+      api_key: apiKey,
+      model_id: modelId,
+    }
+  );
+  return response.data;
+}
+
+/**
+ * 测试提供商连接（使用已存储的API Key）
+ */
+export async function testProviderStoredConnection(
+  providerId: string,
+  baseUrl: string,
+  modelId: string = 'gpt-3.5-turbo'
+): Promise<{ success: boolean; message: string }> {
+  const response = await api.post<{ success: boolean; message: string }>(
+    '/api/models/providers/test-stored',
+    {
+      provider_id: providerId,
+      base_url: baseUrl,
+      model_id: modelId,
+    }
+  );
+  return response.data;
 }
 
 export default api;

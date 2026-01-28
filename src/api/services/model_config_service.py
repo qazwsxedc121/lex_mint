@@ -16,18 +16,24 @@ from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
 class ModelConfigService:
     """模型配置管理服务"""
 
-    def __init__(self, config_path: Path = None):
+    def __init__(self, config_path: Path = None, keys_path: Path = None):
         """
         初始化配置服务
 
         Args:
             config_path: 配置文件路径，默认为项目根目录的 models_config.yaml
+            keys_path: 密钥文件路径，默认为项目根目录的 keys_config.yaml
         """
         if config_path is None:
             # 默认配置文件在项目根目录
             config_path = Path(__file__).parent.parent.parent.parent / "models_config.yaml"
+        if keys_path is None:
+            # 默认密钥文件在项目根目录
+            keys_path = Path(__file__).parent.parent.parent.parent / "keys_config.yaml"
         self.config_path = config_path
+        self.keys_path = keys_path
         self._ensure_config_exists()
+        self._ensure_keys_config_exists()
 
     def _ensure_config_exists(self):
         """确保配置文件存在，如果不存在则创建默认配置"""
@@ -122,20 +128,143 @@ class ModelConfigService:
         # 原子性替换
         temp_path.replace(self.config_path)
 
+    def _ensure_keys_config_exists(self):
+        """确保密钥配置文件存在，如果不存在则创建空配置"""
+        if not self.keys_path.exists():
+            default_keys = {"providers": {}}
+            with open(self.keys_path, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(default_keys, f, allow_unicode=True, sort_keys=False)
+
+    async def load_keys_config(self) -> dict:
+        """加载密钥配置文件"""
+        async with aiofiles.open(self.keys_path, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            data = yaml.safe_load(content)
+            return data if data else {"providers": {}}
+
+    async def save_keys_config(self, keys_data: dict):
+        """
+        保存密钥配置文件（原子性写入）
+
+        使用临时文件 + 替换的方式确保原子性
+        """
+        # 先写入临时文件
+        temp_path = self.keys_path.with_suffix('.yaml.tmp')
+        async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+            content = yaml.safe_dump(
+                keys_data,
+                allow_unicode=True,
+                sort_keys=False
+            )
+            await f.write(content)
+
+        # 原子性替换
+        temp_path.replace(self.keys_path)
+
+    async def get_api_key(self, provider_id: str) -> Optional[str]:
+        """
+        获取指定提供商的 API 密钥
+
+        Args:
+            provider_id: 提供商ID
+
+        Returns:
+            API 密钥，如果不存在则返回 None
+        """
+        keys_data = await self.load_keys_config()
+        return keys_data.get("providers", {}).get(provider_id, {}).get("api_key")
+
+    async def set_api_key(self, provider_id: str, api_key: str):
+        """
+        设置/更新指定提供商的 API 密钥
+
+        Args:
+            provider_id: 提供商ID
+            api_key: API 密钥
+        """
+        keys_data = await self.load_keys_config()
+        if "providers" not in keys_data:
+            keys_data["providers"] = {}
+        if provider_id not in keys_data["providers"]:
+            keys_data["providers"][provider_id] = {}
+        keys_data["providers"][provider_id]["api_key"] = api_key
+        await self.save_keys_config(keys_data)
+
+    async def delete_api_key(self, provider_id: str):
+        """
+        删除指定提供商的 API 密钥
+
+        Args:
+            provider_id: 提供商ID
+        """
+        keys_data = await self.load_keys_config()
+        if "providers" in keys_data and provider_id in keys_data["providers"]:
+            del keys_data["providers"][provider_id]
+            await self.save_keys_config(keys_data)
+
+    async def has_api_key(self, provider_id: str) -> bool:
+        """
+        检查指定提供商是否已配置 API 密钥
+
+        Args:
+            provider_id: 提供商ID
+
+        Returns:
+            如果已配置密钥返回 True，否则返回 False
+        """
+        api_key = await self.get_api_key(provider_id)
+        return api_key is not None and api_key.strip() != ""
+
     # ==================== 提供商管理 ====================
 
     async def get_providers(self) -> List[Provider]:
-        """获取所有提供商"""
+        """获取所有提供商（包含 has_api_key 标记）"""
         config = await self.load_config()
-        return config.providers
+        providers_with_keys = []
+        for provider in config.providers:
+            # 检查是否有 API 密钥
+            has_key = await self.has_api_key(provider.id)
+            # 创建新的 Provider 对象，添加 has_api_key 字段
+            provider_dict = provider.model_dump()
+            provider_dict['has_api_key'] = has_key
+            providers_with_keys.append(Provider(**provider_dict))
+        return providers_with_keys
 
-    async def get_provider(self, provider_id: str) -> Optional[Provider]:
-        """获取指定提供商"""
+    async def get_provider(self, provider_id: str, include_masked_key: bool = False) -> Optional[Provider]:
+        """
+        获取指定提供商
+
+        Args:
+            provider_id: 提供商ID
+            include_masked_key: 是否包含遮罩后的API密钥（用于编辑界面显示）
+        """
         config = await self.load_config()
         for provider in config.providers:
             if provider.id == provider_id:
-                return provider
+                provider_dict = provider.model_dump()
+
+                # 添加 has_api_key 标记
+                has_key = await self.has_api_key(provider_id)
+                provider_dict['has_api_key'] = has_key
+
+                # 如果需要，添加遮罩后的API密钥
+                if include_masked_key and has_key:
+                    api_key = await self.get_api_key(provider_id)
+                    if api_key:
+                        provider_dict['api_key'] = self._mask_api_key(api_key)
+
+                return Provider(**provider_dict)
         return None
+
+    def _mask_api_key(self, api_key: str) -> str:
+        """
+        遮罩API密钥，只显示前缀和后4位
+
+        例如: sk-ba6c70ee741c45beb53f89da4280087c -> sk-****...087c
+        """
+        if len(api_key) <= 8:
+            return "****"
+        return f"{api_key[:3]}****...{api_key[-4:]}"
 
     async def add_provider(self, provider: Provider):
         """
@@ -150,7 +279,9 @@ class ModelConfigService:
         if any(p.id == provider.id for p in config.providers):
             raise ValueError(f"Provider with id '{provider.id}' already exists")
 
-        config.providers.append(provider)
+        # 移除临时字段，避免保存到配置文件
+        provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key'})
+        config.providers.append(Provider(**provider_dict))
         await self.save_config(config)
 
     async def update_provider(self, provider_id: str, updated: Provider):
@@ -164,7 +295,9 @@ class ModelConfigService:
 
         for i, provider in enumerate(config.providers):
             if provider.id == provider_id:
-                config.providers[i] = updated
+                # 移除临时字段，避免保存到配置文件
+                updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key'})
+                config.providers[i] = Provider(**updated_dict)
                 await self.save_config(config)
                 return
 
@@ -342,6 +475,61 @@ class ModelConfigService:
         config.default.model = model_id
         await self.save_config(config)
 
+    # ==================== 测试连接 ====================
+
+    async def test_provider_connection(
+        self,
+        base_url: str,
+        api_key: str,
+        model_id: str = "gpt-3.5-turbo"
+    ) -> tuple[bool, str]:
+        """
+        测试提供商连接是否有效
+
+        Args:
+            base_url: API基础URL
+            api_key: API密钥
+            model_id: 用于测试的模型ID（默认使用通用的模型名）
+
+        Returns:
+            (是否成功, 消息)
+        """
+        try:
+            # 创建临时 LLM 实例
+            test_llm = ChatOpenAI(
+                model=model_id,
+                temperature=0.0,
+                base_url=base_url,
+                api_key=api_key,
+                timeout=10.0,  # 10秒超时
+                max_retries=0  # 不重试
+            )
+
+            # 发送简单的测试消息
+            from langchain_core.messages import HumanMessage
+            response = await test_llm.ainvoke([
+                HumanMessage(content="test")
+            ])
+
+            if response and response.content:
+                return True, "Connection successful"
+            else:
+                return False, "No response from API"
+
+        except Exception as e:
+            error_msg = str(e)
+            # 简化错误信息
+            if "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+                return False, "Authentication failed: Invalid API key"
+            elif "not found" in error_msg.lower() or "404" in error_msg:
+                return False, "API endpoint not found: Check base URL"
+            elif "timeout" in error_msg.lower():
+                return False, "Connection timeout: API not responding"
+            elif "connection" in error_msg.lower():
+                return False, f"Connection error: {error_msg}"
+            else:
+                return False, f"Test failed: {error_msg}"
+
     # ==================== LLM 实例化 ====================
 
     def get_llm_instance(self, model_id: Optional[str] = None) -> ChatOpenAI:
@@ -390,11 +578,27 @@ class ModelConfigService:
         if not provider:
             raise ValueError(f"Provider with id '{model.provider_id}' not found")
 
-        # 获取 API 密钥
-        api_key = os.getenv(provider.api_key_env)
+        # 获取 API 密钥（先尝试从 YAML 加载，然后回退到环境变量）
+        # 同步读取 keys_config.yaml
+        api_key = None
+        if self.keys_path.exists():
+            try:
+                with open(self.keys_path, 'r', encoding='utf-8') as f:
+                    keys_data = yaml.safe_load(f)
+                    if keys_data and "providers" in keys_data:
+                        provider_keys = keys_data["providers"].get(provider.id, {})
+                        api_key = provider_keys.get("api_key")
+            except Exception:
+                pass  # 如果读取失败，继续尝试环境变量
+
+        # 回退到环境变量（向后兼容）
+        if not api_key:
+            api_key = os.getenv(provider.api_key_env)
+
         if not api_key:
             raise RuntimeError(
-                f"API key not found. Please set environment variable: {provider.api_key_env}"
+                f"API key not found for provider '{provider.id}'. "
+                f"Please set it via the UI or environment variable: {provider.api_key_env}"
             )
 
         # 创建 LLM 实例

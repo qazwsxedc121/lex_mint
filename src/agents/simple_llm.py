@@ -4,7 +4,7 @@ import os
 import logging
 from typing import List, Dict, Any, AsyncIterator, Optional
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
@@ -81,7 +81,9 @@ def call_llm(
 async def call_llm_stream(
     messages: List[Dict[str, str]],
     session_id: str = "unknown",
-    model_id: Optional[str] = None
+    model_id: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    max_rounds: Optional[int] = None
 ) -> AsyncIterator[str]:
     """流式调用 LLM，逐token返回.
 
@@ -89,6 +91,8 @@ async def call_llm_stream(
         messages: 消息列表 [{"role": "user/assistant", "content": "..."}]
         session_id: 会话 ID（用于日志）
         model_id: 模型 ID，如果为 None 则使用默认模型
+        system_prompt: 系统提示词（可选）
+        max_rounds: 最大对话轮数（可选），-1 或 None 表示不限制
 
     Yields:
         AI 回复的每个 token
@@ -106,10 +110,22 @@ async def call_llm_stream(
 
     print(f"🔧 准备流式调用 LLM (模型: {actual_model_id})")
     print(f"   会话历史消息数: {len(messages)}")
+    if system_prompt:
+        print(f"   使用系统提示词: {system_prompt[:50]}...")
+    if max_rounds:
+        if max_rounds == -1:
+            print(f"   对话轮数限制: 无限制")
+        else:
+            print(f"   最大对话轮数: {max_rounds}")
     logger.info(f"🔧 准备流式调用 LLM (模型: {actual_model_id})，消息数: {len(messages)}")
 
     # 转换消息格式
     langchain_messages = []
+
+    # 注入系统提示词（如果提供）
+    if system_prompt:
+        langchain_messages.append(SystemMessage(content=system_prompt))
+
     for i, msg in enumerate(messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
@@ -117,6 +133,11 @@ async def call_llm_stream(
         elif msg.get("role") == "assistant":
             langchain_messages.append(AIMessage(content=msg["content"]))
             print(f"   消息 {i+1}: 助手 - {msg['content'][:50]}...")
+
+    # 对话轮数截断（如果指定了 max_rounds）
+    if max_rounds and max_rounds > 0:
+        langchain_messages = _truncate_by_rounds(langchain_messages, max_rounds, system_prompt)
+        print(f"   截断后消息数: {len(langchain_messages)}")
 
     try:
         print(f"🚀 正在流式发送 {len(langchain_messages)} 条消息到 LLM API...")
@@ -150,3 +171,54 @@ async def call_llm_stream(
         logger.error(f"❌ 流式 API 调用失败: {str(e)}", exc_info=True)
         llm_logger.log_error(session_id, e, context="LLM Stream API call")
         raise
+
+
+def _truncate_by_rounds(
+    messages: List[Any],
+    max_rounds: int,
+    system_prompt: Optional[str] = None
+) -> List[Any]:
+    """
+    按对话轮数截断消息列表.
+
+    策略：保留系统提示词和最近的 N 轮对话（1轮 = 1个用户消息 + 1个助手回复）
+
+    Args:
+        messages: LangChain 消息列表
+        max_rounds: 最大轮数
+        system_prompt: 系统提示词（如果有）
+
+    Returns:
+        截断后的消息列表
+    """
+    # 分离系统消息和对话消息
+    system_msg = None
+    conversation_messages = messages
+
+    if system_prompt and len(messages) > 0 and isinstance(messages[0], SystemMessage):
+        system_msg = messages[0]
+        conversation_messages = messages[1:]
+
+    # 计算当前轮数（一轮 = user + assistant）
+    # 注意：可能存在不完整的轮次（只有 user 消息还没有 assistant 回复）
+    current_rounds = len(conversation_messages) // 2
+
+    # 如果当前轮数不超过限制，直接返回
+    if current_rounds <= max_rounds:
+        return messages
+
+    print(f"⚠️  对话轮数超限 ({current_rounds} > {max_rounds})，截断到最近 {max_rounds} 轮...")
+
+    # 保留最近的 max_rounds 轮对话
+    # 每轮包括 user + assistant 两条消息，共 max_rounds * 2 条
+    keep_count = max_rounds * 2
+    kept_conversation = conversation_messages[-keep_count:]
+
+    # 重新组装
+    result = []
+    if system_msg:
+        result.append(system_msg)
+    result.extend(kept_conversation)
+
+    print(f"   截断完成：保留 {len(kept_conversation)} 条消息（{len(kept_conversation) // 2} 轮对话）")
+    return result

@@ -1,17 +1,21 @@
 default:
-  provider: deepseek
-  model: deepseek-chat
+  provider: openrouter
+  model: openai/gpt-5-nano
 providers:
 - id: deepseek
   name: DeepSeek
   base_url: https://api.deepseek.com
   api_key_env: DEEPSEEK_API_KEY
   enabled: true
+  has_api_key: null
+  api_key: null
 - id: openrouter
   name: OpenRouter
   base_url: https://openrouter.ai/api/v1
   api_key_env: OPENROUTER_API_KEY
   enabled: true
+  has_api_key: null
+  api_key: null
 models:
 - id: deepseek-chat
   name: DeepSeek Chat
@@ -29,5 +33,11 @@ models:
   name: DeepSeek Chat (via OpenRouter)
   provider_id: openrouter
   group: chat
+  temperature: 0.7
+  enabled: true
+- id: openai/gpt-5-nano
+  name: openai/gpt-5-nano
+  provider_id: openrouter
+  group: 通用
   temperature: 0.7
   enabled: true

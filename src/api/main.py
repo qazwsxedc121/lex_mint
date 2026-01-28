@@ -14,7 +14,7 @@ setup_logging()
 
 import logging
 
-from .routers import sessions, chat, models
+from .routers import sessions, chat, models, assistants
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ app.add_middleware(
 app.include_router(sessions.router)
 app.include_router(chat.router)
 app.include_router(models.router)
+app.include_router(assistants.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")
@@ -57,6 +58,13 @@ async def startup_event():
     # 构造函数中已经调用 _ensure_config_exists()
 
     logger.info("✅ 模型配置初始化完成")
+
+    # 初始化助手配置（如果不存在则创建默认配置）
+    from .services.assistant_config_service import AssistantConfigService
+    assistant_service = AssistantConfigService()
+    # 构造函数中已经调用 _ensure_config_exists()
+
+    logger.info("✅ 助手配置初始化完成")
 
 
 @app.get("/api/health")

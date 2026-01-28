@@ -12,6 +12,7 @@ export function useChat(sessionId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
+  const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false); // Prevent concurrent operations
 
@@ -20,6 +21,7 @@ export function useChat(sessionId: string | null) {
     if (!sessionId) {
       setMessages([]);
       setCurrentModelId(null);
+      setCurrentAssistantId(null);
       return;
     }
 
@@ -30,10 +32,12 @@ export function useChat(sessionId: string | null) {
         const session = await getSession(sessionId);
         setMessages(session.state.messages);
         setCurrentModelId(session.model_id || null);
+        setCurrentAssistantId(session.assistant_id || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load session');
         setMessages([]);
         setCurrentModelId(null);
+        setCurrentAssistantId(null);
       } finally {
         setLoading(false);
       }
@@ -288,16 +292,22 @@ export function useChat(sessionId: string | null) {
     setCurrentModelId(modelId);
   };
 
+  const updateAssistantId = (assistantId: string) => {
+    setCurrentAssistantId(assistantId);
+  };
+
   return {
     messages,
     loading,
     error,
     isStreaming,
     currentModelId,
+    currentAssistantId,
     sendMessage,
     editMessage,
     regenerateMessage,
     stopGeneration,
     updateModelId,
+    updateAssistantId,
   };
 }

@@ -14,6 +14,8 @@ class Provider(BaseModel):
     base_url: str = Field(..., description="API 基础 URL")
     api_key_env: str = Field(..., description="API 密钥环境变量名")
     enabled: bool = Field(default=True, description="是否启用")
+    has_api_key: Optional[bool] = Field(default=None, description="是否已配置 API 密钥")
+    api_key: Optional[str] = Field(default=None, description="API 密钥（仅用于传输，不持久化到配置文件）")
 
 
 class Model(BaseModel):
@@ -37,3 +39,45 @@ class ModelsConfig(BaseModel):
     default: DefaultConfig
     providers: List[Provider]
     models: List[Model]
+
+
+class ProviderCreate(BaseModel):
+    """创建提供商请求"""
+    id: str = Field(..., description="提供商唯一标识")
+    name: str = Field(..., description="提供商显示名称")
+    base_url: str = Field(..., description="API 基础 URL")
+    api_key: str = Field(..., min_length=1, description="API 密钥")
+    enabled: bool = Field(default=True, description="是否启用")
+
+
+class ProviderUpdate(BaseModel):
+    """更新提供商请求"""
+    name: Optional[str] = Field(None, description="提供商显示名称")
+    base_url: Optional[str] = Field(None, description="API 基础 URL")
+    enabled: Optional[bool] = Field(None, description="是否启用")
+    api_key: Optional[str] = Field(None, min_length=1, description="API 密钥（可选，不提供则保持不变）")
+
+
+class ProviderApiKeyUpdate(BaseModel):
+    """更新 API 密钥请求"""
+    api_key: str = Field(..., min_length=1, description="API 密钥")
+
+
+class ProviderTestRequest(BaseModel):
+    """测试提供商连接请求"""
+    base_url: str = Field(..., description="API 基础 URL")
+    api_key: str = Field(..., min_length=1, description="API 密钥")
+    model_id: str = Field(default="gpt-3.5-turbo", description="用于测试的模型ID")
+
+
+class ProviderTestStoredRequest(BaseModel):
+    """使用已存储的API Key测试提供商连接请求"""
+    provider_id: str = Field(..., description="提供商ID")
+    base_url: str = Field(..., description="API 基础 URL")
+    model_id: str = Field(default="gpt-3.5-turbo", description="用于测试的模型ID")
+
+
+class ProviderTestResponse(BaseModel):
+    """测试提供商连接响应"""
+    success: bool = Field(..., description="测试是否成功")
+    message: str = Field(..., description="测试结果消息")

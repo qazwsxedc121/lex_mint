@@ -18,7 +18,8 @@ export interface SessionDetail {
   session_id: string;
   title: string;
   created_at: string;
-  model_id: string;  // 新增：会话使用的模型 ID
+  model_id: string;  // 会话使用的模型 ID（复合格式）
+  assistant_id?: string;  // 新增：会话使用的助手 ID
   state: {
     messages: Message[];
     current_step: number;
