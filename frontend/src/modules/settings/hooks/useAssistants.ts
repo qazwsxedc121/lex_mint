@@ -5,8 +5,8 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
-import * as api from '../services/api';
+import type { Assistant, AssistantCreate, AssistantUpdate } from '../../../types/assistant';
+import * as api from '../../../services/api';
 
 export function useAssistants() {
   const [assistants, setAssistants] = useState<Assistant[]>([]);
@@ -44,7 +44,7 @@ export function useAssistants() {
   const createAssistant = useCallback(async (assistant: AssistantCreate) => {
     try {
       await api.createAssistant(assistant);
-      await loadData(); // Reload data
+      await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create assistant';
       setError(message);

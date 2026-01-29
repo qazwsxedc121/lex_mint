@@ -1,34 +1,65 @@
 /**
- * Sidebar component - displays session list.
+ * ChatSidebar - Session list sidebar (Level 2)
+ *
+ * Displays session list with create/delete functionality
  */
 
 import React from 'react';
-import type { Session } from '../types/message';
+import { useNavigate } from 'react-router-dom';
+import type { Session } from '../../types/message';
 
-interface SidebarProps {
+interface ChatSidebarProps {
   sessions: Session[];
   currentSessionId: string | null;
-  onSelectSession: (sessionId: string) => void;
-  onNewSession: () => void;
-  onDeleteSession: (sessionId: string) => void;
+  onNewSession: () => Promise<string>;
+  onDeleteSession: (sessionId: string) => Promise<void>;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   sessions,
   currentSessionId,
-  onSelectSession,
   onNewSession,
   onDeleteSession,
 }) => {
+  const navigate = useNavigate();
+
+  const handleNewSession = async () => {
+    try {
+      const sessionId = await onNewSession();
+      navigate(`/chat/${sessionId}`);
+    } catch (err) {
+      console.error('Failed to create session:', err);
+    }
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    navigate(`/chat/${sessionId}`);
+  };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('Are you sure you want to delete this conversation?')) {
+      try {
+        await onDeleteSession(sessionId);
+        // If deleted session was active, navigate to chat root
+        if (currentSessionId === sessionId) {
+          navigate('/chat');
+        }
+      } catch (err) {
+        console.error('Failed to delete session:', err);
+      }
+    }
+  };
+
   return (
     <div className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-300 dark:border-gray-700">
         <button
-          onClick={onNewSession}
+          onClick={handleNewSession}
           className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
         >
-          + 新建对话
+          + New Chat
         </button>
       </div>
 
@@ -36,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 overflow-y-auto">
         {sessions.length === 0 ? (
           <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-            暂无对话
+            No conversations
           </div>
         ) : (
           sessions.map((session) => (
@@ -47,7 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   ? 'bg-gray-200 dark:bg-gray-700'
                   : ''
               }`}
-              onClick={() => onSelectSession(session.session_id)}
+              onClick={() => handleSelectSession(session.session_id)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
@@ -55,18 +86,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {session.title}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {session.message_count || 0} 条消息
+                    {session.message_count || 0} messages
                   </p>
                 </div>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm('确定删除此对话？')) {
-                      onDeleteSession(session.session_id);
-                    }
-                  }}
+                  onClick={(e) => handleDeleteSession(session.session_id, e)}
                   className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-red-500 hover:text-red-700 transition-opacity"
-                  title="删除对话"
+                  title="Delete conversation"
                 >
                   ×
                 </button>

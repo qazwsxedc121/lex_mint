@@ -76,7 +76,8 @@ class AgentService:
         self,
         session_id: str,
         user_message: str,
-        skip_user_append: bool = False
+        skip_user_append: bool = False,
+        reasoning_effort: str = None
     ) -> AsyncIterator[str]:
         """流式处理用户消息并返回 AI 响应流.
 
@@ -84,6 +85,7 @@ class AgentService:
             session_id: Session UUID
             user_message: User's input text
             skip_user_append: 是否跳过追加用户消息（重新生成时使用）
+            reasoning_effort: Reasoning effort level: "low", "medium", "high"
 
         Yields:
             AI assistant's response tokens
@@ -145,13 +147,14 @@ class AgentService:
         full_response = ""
 
         try:
-            # 流式调用 LLM，传递 model_id、system_prompt 和 max_rounds
+            # 流式调用 LLM，传递 model_id、system_prompt、max_rounds 和 reasoning_effort
             async for chunk in call_llm_stream(
                 messages,
                 session_id=session_id,
                 model_id=model_id,
                 system_prompt=system_prompt,
-                max_rounds=max_rounds
+                max_rounds=max_rounds,
+                reasoning_effort=reasoning_effort
             ):
                 full_response += chunk
                 yield chunk

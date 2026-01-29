@@ -49,7 +49,8 @@ class LLMLogger:
         session_id: str,
         messages_sent: List[Any],
         response_received: Any,
-        model: str = "deepseek-chat"
+        model: str = "deepseek-chat",
+        extra_params: Dict[str, Any] = None
     ) -> None:
         """Log a complete LLM interaction.
 
@@ -58,6 +59,7 @@ class LLMLogger:
             messages_sent: List of messages sent to the LLM
             response_received: Response object from the LLM
             model: Model name used
+            extra_params: Additional parameters (reasoning, extra_body, etc.)
         """
         timestamp = datetime.now().isoformat()
 
@@ -85,6 +87,10 @@ class LLMLogger:
                 "role": getattr(response_received, 'role', getattr(response_received, 'type', 'unknown'))
             }
         }
+
+        # Add extra params if provided
+        if extra_params:
+            log_entry["extra_params"] = extra_params
 
         # Log as formatted JSON
         log_json = json.dumps(log_entry, ensure_ascii=False, indent=2)

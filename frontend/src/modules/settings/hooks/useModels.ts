@@ -1,12 +1,12 @@
 /**
- * 模型管理 Hook
+ * Model management Hook
  *
- * 封装模型配置管理逻辑
+ * Manages model configuration state and operations
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import type { Provider, Model, DefaultConfig } from '../types/model';
-import * as api from '../services/api';
+import type { Provider, Model, DefaultConfig } from '../../../types/model';
+import * as api from '../../../services/api';
 
 export function useModels() {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -15,7 +15,7 @@ export function useModels() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 加载所有数据
+  // Load all data
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -37,17 +37,17 @@ export function useModels() {
     }
   }, []);
 
-  // 初始加载
+  // Initial load
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // ==================== 提供商操作 ====================
+  // ==================== Provider Operations ====================
 
   const createProvider = useCallback(async (provider: Provider) => {
     try {
       await api.createProvider(provider);
-      await loadData(); // 重新加载数据
+      await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create provider';
       setError(message);
@@ -77,7 +77,7 @@ export function useModels() {
     }
   }, [loadData]);
 
-  // ==================== 模型操作 ====================
+  // ==================== Model Operations ====================
 
   const createModel = useCallback(async (model: Model) => {
     try {
@@ -112,7 +112,7 @@ export function useModels() {
     }
   }, [loadData]);
 
-  // ==================== 默认配置 ====================
+  // ==================== Default Config ====================
 
   const setDefault = useCallback(async (providerId: string, modelId: string) => {
     try {

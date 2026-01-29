@@ -475,6 +475,11 @@ class ModelConfigService:
         config.default.model = model_id
         await self.save_config(config)
 
+    async def get_reasoning_supported_patterns(self) -> list[str]:
+        """获取支持 reasoning effort 参数的模型名称模式列表"""
+        config = await self.load_config()
+        return config.reasoning_supported_patterns
+
     # ==================== 测试连接 ====================
 
     async def test_provider_connection(

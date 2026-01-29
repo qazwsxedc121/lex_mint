@@ -3,12 +3,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Session } from '../types/message';
+import type { Session } from '../../../types/message';
 import {
   createSession as apiCreateSession,
   listSessions as apiListSessions,
   deleteSession as apiDeleteSession,
-} from '../services/api';
+} from '../../../services/api';
 
 export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);

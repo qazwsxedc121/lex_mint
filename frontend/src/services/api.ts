@@ -59,6 +59,18 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 /**
+ * Delete a single message from a conversation.
+ */
+export async function deleteMessage(sessionId: string, messageIndex: number): Promise<void> {
+  await api.delete('/api/chat/message', {
+    data: {
+      session_id: sessionId,
+      message_index: messageIndex,
+    },
+  });
+}
+
+/**
  * Send a message and receive AI response.
  */
 export async function sendMessage(
@@ -82,6 +94,7 @@ export async function sendMessage(
  * @param onDone - Callback when stream completes
  * @param onError - Callback for errors
  * @param abortControllerRef - Optional ref to store AbortController for cancellation
+ * @param reasoningEffort - Optional reasoning effort level: "low", "medium", "high"
  */
 export async function sendMessageStream(
   sessionId: string,
@@ -91,7 +104,8 @@ export async function sendMessageStream(
   onChunk: (chunk: string) => void,
   onDone: () => void,
   onError: (error: string) => void,
-  abortControllerRef?: MutableRefObject<AbortController | null>
+  abortControllerRef?: MutableRefObject<AbortController | null>,
+  reasoningEffort?: string
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -110,6 +124,7 @@ export async function sendMessageStream(
         message,
         truncate_after_index: truncateAfterIndex,
         skip_user_message: skipUserMessage,
+        reasoning_effort: reasoningEffort || null,
       }),
       signal: controller.signal,
     });
@@ -290,6 +305,14 @@ export async function getDefaultConfig(): Promise<DefaultConfig> {
  */
 export async function setDefaultConfig(providerId: string, modelId: string): Promise<void> {
   await api.put(`/api/models/default?provider_id=${providerId}&model_id=${modelId}`);
+}
+
+/**
+ * 获取支持 reasoning effort 的模型模式列表
+ */
+export async function getReasoningSupportedPatterns(): Promise<string[]> {
+  const response = await api.get<string[]>('/api/models/reasoning-patterns');
+  return response.data;
 }
 
 /**

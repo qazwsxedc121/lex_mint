@@ -258,3 +258,13 @@ async def set_default_config(
         return {"message": "Default model updated successfully"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== Reasoning 配置 ====================
+
+@router.get("/reasoning-patterns", response_model=List[str])
+async def get_reasoning_supported_patterns(
+    service: ModelConfigService = Depends(get_model_service)
+):
+    """获取支持 reasoning effort 参数的模型名称模式列表"""
+    return await service.get_reasoning_supported_patterns()

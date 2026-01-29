@@ -1,11 +1,11 @@
 /**
- * 模型列表管理组件
+ * Model list management component
  */
 
 import React, { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
-import type { Model, Provider, DefaultConfig } from '../types/model';
+import type { Model, Provider, DefaultConfig } from '../../../types/model';
 
 interface ModelListProps {
   models: Model[];
@@ -33,12 +33,11 @@ export const ModelList: React.FC<ModelListProps> = ({
     id: '',
     name: '',
     provider_id: '',
-    group: '通用',
+    group: 'General',
     temperature: 0.7,
     enabled: true,
   });
 
-  // 筛选模型
   const filteredModels = filterProvider
     ? models.filter((m) => m.provider_id === filterProvider)
     : models;
@@ -49,7 +48,7 @@ export const ModelList: React.FC<ModelListProps> = ({
       id: '',
       name: '',
       provider_id: providers[0]?.id || '',
-      group: '通用',
+      group: 'General',
       temperature: 0.7,
       enabled: true,
     });
@@ -72,16 +71,16 @@ export const ModelList: React.FC<ModelListProps> = ({
       }
       setShowForm(false);
     } catch (error) {
-      alert(error instanceof Error ? error.message : '操作失败');
+      alert(error instanceof Error ? error.message : 'Operation failed');
     }
   };
 
   const handleDelete = async (modelId: string) => {
-    if (!confirm('确定要删除此模型吗？')) return;
+    if (!confirm('Are you sure you want to delete this model?')) return;
     try {
       await deleteModel(modelId);
     } catch (error) {
-      alert(error instanceof Error ? error.message : '删除失败');
+      alert(error instanceof Error ? error.message : 'Delete failed');
     }
   };
 
@@ -89,7 +88,7 @@ export const ModelList: React.FC<ModelListProps> = ({
     try {
       await setDefault(model.provider_id, model.id);
     } catch (error) {
-      alert(error instanceof Error ? error.message : '设置失败');
+      alert(error instanceof Error ? error.message : 'Set default failed');
     }
   };
 
@@ -97,18 +96,18 @@ export const ModelList: React.FC<ModelListProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* 头部操作栏 */}
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-            模型列表
+            Model List
           </h3>
           <select
             value={filterProvider}
             onChange={(e) => setFilterProvider(e.target.value)}
             className="px-3 py-1 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           >
-            <option value="">全部提供商</option>
+            <option value="">All Providers</option>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -121,35 +120,35 @@ export const ModelList: React.FC<ModelListProps> = ({
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
         >
           <PlusIcon className="h-4 w-4" />
-          添加模型
+          Add Model
         </button>
       </div>
 
-      {/* 模型表格 */}
+      {/* Model Table */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-900">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                模型 ID
+                Model ID
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                名称
+                Name
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                提供商
+                Provider
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                分组
+                Group
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                温度
+                Temperature
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                状态
+                Status
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                操作
+                Actions
               </th>
             </tr>
           </thead>
@@ -164,7 +163,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                         {model.id}
                       </span>
                       {isDefaultModel(model.id) && (
-                        <StarIconSolid className="h-4 w-4 text-yellow-400" title="默认模型" />
+                        <StarIconSolid className="h-4 w-4 text-yellow-400" title="Default Model" />
                       )}
                     </div>
                   </td>
@@ -188,7 +187,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                           : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                       }`}
                     >
-                      {model.enabled ? '启用' : '禁用'}
+                      {model.enabled ? 'Enabled' : 'Disabled'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -196,7 +195,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                       onClick={() => handleSetDefault(model)}
                       disabled={isDefaultModel(model.id)}
                       className="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 mr-3 disabled:opacity-50"
-                      title="设为默认"
+                      title="Set as default"
                     >
                       <StarIcon className="h-4 w-4" />
                     </button>
@@ -210,7 +209,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                       onClick={() => handleDelete(model.id)}
                       disabled={isDefaultModel(model.id)}
                       className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
-                      title={isDefaultModel(model.id) ? '不能删除默认模型' : '删除'}
+                      title={isDefaultModel(model.id) ? 'Cannot delete default model' : 'Delete'}
                     >
                       <TrashIcon className="h-4 w-4" />
                     </button>
@@ -222,7 +221,7 @@ export const ModelList: React.FC<ModelListProps> = ({
         </table>
       </div>
 
-      {/* 创建/编辑表单模态框 */}
+      {/* Create/Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div
@@ -232,12 +231,12 @@ export const ModelList: React.FC<ModelListProps> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                {editingModel ? '编辑模型' : '添加模型'}
+                {editingModel ? 'Edit Model' : 'Add Model'}
               </h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    模型 ID *
+                    Model ID *
                   </label>
                   <input
                     type="text"
@@ -246,12 +245,12 @@ export const ModelList: React.FC<ModelListProps> = ({
                     value={formData.id}
                     onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                    placeholder="例如: gpt-4-turbo"
+                    placeholder="e.g., gpt-4-turbo"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    模型名称 *
+                    Model Name *
                   </label>
                   <input
                     type="text"
@@ -264,7 +263,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    所属提供商 *
+                    Provider *
                   </label>
                   <select
                     required
@@ -272,7 +271,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                     onChange={(e) => setFormData({ ...formData, provider_id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   >
-                    <option value="">选择提供商</option>
+                    <option value="">Select provider</option>
                     {providers.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -282,7 +281,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    分组名称 *
+                    Group Name *
                   </label>
                   <input
                     type="text"
@@ -290,12 +289,12 @@ export const ModelList: React.FC<ModelListProps> = ({
                     value={formData.group}
                     onChange={(e) => setFormData({ ...formData, group: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="对话模型"
+                    placeholder="Chat Model"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    温度参数: {formData.temperature}
+                    Temperature: {formData.temperature}
                   </label>
                   <input
                     type="range"
@@ -309,9 +308,9 @@ export const ModelList: React.FC<ModelListProps> = ({
                     className="w-full"
                   />
                   <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    <span>0.0 (精确)</span>
-                    <span>1.0 (平衡)</span>
-                    <span>2.0 (创造)</span>
+                    <span>0.0 (Precise)</span>
+                    <span>1.0 (Balanced)</span>
+                    <span>2.0 (Creative)</span>
                   </div>
                 </div>
                 <div className="flex items-center">
@@ -326,7 +325,7 @@ export const ModelList: React.FC<ModelListProps> = ({
                     htmlFor="model-enabled"
                     className="ml-2 block text-sm text-gray-700 dark:text-gray-300"
                   >
-                    启用此模型
+                    Enable this model
                   </label>
                 </div>
                 <div className="flex justify-end gap-3 mt-6">
@@ -335,13 +334,13 @@ export const ModelList: React.FC<ModelListProps> = ({
                     onClick={() => setShowForm(false)}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600"
                   >
-                    取消
+                    Cancel
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
                   >
-                    {editingModel ? '保存' : '创建'}
+                    {editingModel ? 'Save' : 'Create'}
                   </button>
                 </div>
               </form>

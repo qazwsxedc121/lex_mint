@@ -29,7 +29,10 @@
       "Bash(venvScriptsactivate)",
       "Bash(./venv/Scripts/python:*)",
       "Bash(bash test_claude_md_commands.sh:*)",
-      "Bash(del test_provider_api.py)"
+      "Bash(del test_provider_api.py)",
+      "WebSearch",
+      "WebFetch(domain:python.langchain.com)",
+      "Bash(xargs cat:*)"
     ]
   }
 }

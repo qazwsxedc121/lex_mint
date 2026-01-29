@@ -1,11 +1,11 @@
 /**
- * 提供商列表管理组件
+ * Provider list management component
  */
 
 import React, { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import type { Provider } from '../types/model';
-import { getProvider, testProviderConnection, testProviderStoredConnection } from '../services/api';
+import type { Provider } from '../../../types/model';
+import { getProvider, testProviderConnection, testProviderStoredConnection } from '../../../services/api';
 
 interface ProviderListProps {
   providers: Provider[];
@@ -55,14 +55,12 @@ export const ProviderList: React.FC<ProviderListProps> = ({
   const handleEdit = async (provider: Provider) => {
     setEditingProvider(provider);
     try {
-      // Get provider with masked key
       const providerWithMaskedKey = await getProvider(provider.id, true);
       setFormData({
         ...providerWithMaskedKey,
         api_key: providerWithMaskedKey.api_key || '',
       });
       setTestStatus({ loading: false });
-      // Set reasonable default based on provider
       const defaultModel = getDefaultModelForProvider(provider.id);
       setTestModelId(defaultModel);
       setShowForm(true);
@@ -71,7 +69,6 @@ export const ProviderList: React.FC<ProviderListProps> = ({
     }
   };
 
-  // Helper function to suggest default model based on provider
   const getDefaultModelForProvider = (providerId: string): string => {
     const lowerProviderId = providerId.toLowerCase();
     if (lowerProviderId.includes('deepseek')) {
@@ -91,7 +88,6 @@ export const ProviderList: React.FC<ProviderListProps> = ({
     e.preventDefault();
     try {
       if (editingProvider) {
-        // Edit: if api_key is masked or empty, don't send it
         const updateData = { ...formData };
         if (!updateData.api_key || updateData.api_key.includes('****')) {
           delete updateData.api_key;
@@ -108,7 +104,6 @@ export const ProviderList: React.FC<ProviderListProps> = ({
   };
 
   const handleTestConnection = async () => {
-    // Validate required fields
     if (!formData.base_url) {
       setTestStatus({
         loading: false,
@@ -132,16 +127,13 @@ export const ProviderList: React.FC<ProviderListProps> = ({
     try {
       let result;
 
-      // Check if using masked key (editing mode with unchanged key)
       if (editingProvider && formData.api_key && formData.api_key.includes('****')) {
-        // Use stored API key
         result = await testProviderStoredConnection(
           editingProvider.id,
           formData.base_url,
           testModelId
         );
       } else {
-        // Use provided API key
         if (!formData.api_key) {
           setTestStatus({
             loading: false,
@@ -173,31 +165,31 @@ export const ProviderList: React.FC<ProviderListProps> = ({
   };
 
   const handleDelete = async (providerId: string) => {
-    if (!confirm('确定要删除此提供商吗？关联的模型也将被删除。')) return;
+    if (!confirm('Are you sure you want to delete this provider? Associated models will also be deleted.')) return;
     try {
       await deleteProvider(providerId);
     } catch (error) {
-      alert(error instanceof Error ? error.message : '删除失败');
+      alert(error instanceof Error ? error.message : 'Delete failed');
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* 头部操作栏 */}
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-          LLM 提供商列表
+          LLM Provider List
         </h3>
         <button
           onClick={handleCreate}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
         >
           <PlusIcon className="h-4 w-4" />
-          添加提供商
+          Add Provider
         </button>
       </div>
 
-      {/* 提供商表格 */}
+      {/* Provider Table */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-900">
@@ -206,16 +198,16 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                 ID
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                名称
+                Name
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                API 地址
+                API URL
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                状态
+                Status
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                操作
+                Actions
               </th>
             </tr>
           </thead>
@@ -239,7 +231,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                         : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                     }`}
                   >
-                    {provider.enabled ? '启用' : '禁用'}
+                    {provider.enabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -262,7 +254,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({
         </table>
       </div>
 
-      {/* 创建/编辑表单模态框 */}
+      {/* Create/Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div
@@ -272,12 +264,12 @@ export const ProviderList: React.FC<ProviderListProps> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                {editingProvider ? '编辑提供商' : '添加提供商'}
+                {editingProvider ? 'Edit Provider' : 'Add Provider'}
               </h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    提供商 ID *
+                    Provider ID *
                   </label>
                   <input
                     type="text"
@@ -286,12 +278,12 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                     value={formData.id}
                     onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                    placeholder="例如: openai"
+                    placeholder="e.g., openai"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    显示名称 *
+                    Display Name *
                   </label>
                   <input
                     type="text"
@@ -299,12 +291,12 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="例如: OpenAI"
+                    placeholder="e.g., OpenAI"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    API 基础 URL *
+                    API Base URL *
                   </label>
                   <input
                     type="url"
@@ -393,7 +385,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                     htmlFor="enabled"
                     className="ml-2 block text-sm text-gray-700 dark:text-gray-300"
                   >
-                    启用此提供商
+                    Enable this provider
                   </label>
                 </div>
                 <div className="flex justify-end gap-3 mt-6">

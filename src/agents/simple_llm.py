@@ -83,7 +83,8 @@ async def call_llm_stream(
     session_id: str = "unknown",
     model_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
-    max_rounds: Optional[int] = None
+    max_rounds: Optional[int] = None,
+    reasoning_effort: Optional[str] = None
 ) -> AsyncIterator[str]:
     """流式调用 LLM，逐token返回.
 
@@ -93,6 +94,7 @@ async def call_llm_stream(
         model_id: 模型 ID，如果为 None 则使用默认模型
         system_prompt: 系统提示词（可选）
         max_rounds: 最大对话轮数（可选），-1 或 None 表示不限制
+        reasoning_effort: Reasoning effort level: "low", "medium", "high"
 
     Yields:
         AI 回复的每个 token
@@ -104,6 +106,35 @@ async def call_llm_stream(
     llm = model_service.get_llm_instance(model_id)
     # 启用流式输出
     llm.streaming = True
+
+    # 如果提供了 reasoning_effort，根据提供商设置不同的参数
+    extra_params = {}
+    if reasoning_effort:
+        # 检查是否是 DeepSeek 提供商（通过 base_url 判断）
+        base_url = str(llm.openai_api_base or "")
+        is_deepseek = "deepseek" in base_url.lower()
+
+        if is_deepseek:
+            # DeepSeek: use ChatDeepSeek which properly handles reasoning_content
+            from langchain_deepseek import ChatDeepSeek
+            api_key = llm.openai_api_key.get_secret_value() if hasattr(llm.openai_api_key, 'get_secret_value') else str(llm.openai_api_key)
+            llm = ChatDeepSeek(
+                model=llm.model_name,
+                api_key=api_key,
+                api_base=base_url,
+                streaming=True,
+                model_kwargs={"extra_body": {"thinking": {"type": "enabled"}}},
+            )
+            extra_params = {"thinking": {"type": "enabled"}, "provider": "deepseek"}
+            logger.info("DeepSeek Thinking Mode enabled via ChatDeepSeek")
+        else:
+            # 其他提供商使用 LangChain 的 reasoning 参数 (OpenAI Responses API)
+            llm.reasoning = {
+                "effort": reasoning_effort,
+                "summary": "auto"
+            }
+            extra_params = {"reasoning": {"effort": reasoning_effort, "summary": "auto"}}
+            logger.info(f"Reasoning enabled: effort={reasoning_effort}")
 
     # 获取实际使用的模型 ID
     actual_model_id = model_id or model_service.get_llm_instance().model_name
@@ -145,24 +176,54 @@ async def call_llm_stream(
 
         # 收集完整回复用于日志记录
         full_response = ""
+        full_reasoning = ""
+        in_thinking_phase = False  # Track if we're outputting thinking content
+        thinking_ended = False  # Track if thinking phase has ended
 
         # 流式调用 LLM
         async for chunk in llm.astream(langchain_messages):
+            # 提取 reasoning_content (DeepSeek thinking mode)
+            if hasattr(chunk, 'additional_kwargs'):
+                reasoning = chunk.additional_kwargs.get('reasoning_content', '')
+                if reasoning:
+                    full_reasoning += reasoning
+                    # Start thinking block if not already started
+                    if not in_thinking_phase:
+                        in_thinking_phase = True
+                        yield "<think>"
+                    # Yield raw thinking content (without wrapping each chunk)
+                    yield reasoning
+
             if chunk.content:
+                # End thinking block when content starts
+                if in_thinking_phase and not thinking_ended:
+                    thinking_ended = True
+                    yield "</think>"
                 full_response += chunk.content
                 yield chunk.content
 
+        # Close thinking tag if it was opened but no content followed
+        if in_thinking_phase and not thinking_ended:
+            yield "</think>"
+
         print(f"✅ LLM 流式回复完成，总长度: {len(full_response)} 字符")
+        if full_reasoning:
+            print(f"💭 思考内容长度: {len(full_reasoning)} 字符")
         logger.info(f"✅ 流式回复完成: {len(full_response)} 字符")
 
         # 记录完整交互到日志
         from langchain_core.messages import AIMessage as AIMsg
         response_msg = AIMsg(content=full_response)
+        # 添加 reasoning_content 到 extra_params 以便记录
+        log_extra_params = dict(extra_params) if extra_params else {}
+        if full_reasoning:
+            log_extra_params["reasoning_content"] = full_reasoning
         llm_logger.log_interaction(
             session_id=session_id,
             messages_sent=langchain_messages,
             response_received=response_msg,
-            model=actual_model_id
+            model=actual_model_id,
+            extra_params=log_extra_params if log_extra_params else None
         )
         print(f"📝 流式 LLM 交互已记录到日志文件")
 

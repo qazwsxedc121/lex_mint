@@ -5,8 +5,8 @@
 import React, { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
-import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
-import type { Model } from '../types/model';
+import type { Assistant, AssistantCreate, AssistantUpdate } from '../../../types/assistant';
+import type { Model } from '../../../types/model';
 
 interface AssistantListProps {
   assistants: Assistant[];
@@ -47,11 +47,9 @@ export const AssistantList: React.FC<AssistantListProps> = ({
   const handleSave = async () => {
     try {
       if (editingId) {
-        // Update existing
         await onUpdateAssistant(editingId, formData as AssistantUpdate);
         setEditingId(null);
       } else {
-        // Create new
         if (!formData.id || !formData.name || !formData.model_id) {
           alert('Please fill in required fields: ID, Name, and Model');
           return;

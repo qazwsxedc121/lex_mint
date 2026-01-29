@@ -16,7 +16,7 @@ assistants:
 - id: code-assistant
   name: Code Assistant
   description: Specialized in programming, debugging, and code analysis
-  model_id: deepseek:deepseek-coder
+  model_id: deepseek:deepseek-chat
   system_prompt: 'You are an expert programming assistant with deep knowledge of software
     development.
 

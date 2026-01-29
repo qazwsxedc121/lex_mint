@@ -23,12 +23,19 @@ class ChatRequest(BaseModel):
     message: str
     truncate_after_index: Optional[int] = None  # 截断索引，删除此索引之后的消息
     skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
+    reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
 
 
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
     session_id: str
     response: str
+
+
+class DeleteMessageRequest(BaseModel):
+    """Request model for delete message endpoint."""
+    session_id: str
+    message_index: int
 
 
 def get_agent_service() -> AgentService:
@@ -142,7 +149,8 @@ async def chat_stream(
             async for chunk in agent.process_message_stream(
                 request.session_id,
                 request.message,
-                skip_user_append=request.skip_user_message
+                skip_user_append=request.skip_user_message,
+                reasoning_effort=request.reasoning_effort
             ):
                 # SSE 格式: data: {json}\n\n
                 data = json.dumps({"chunk": chunk}, ensure_ascii=False)
@@ -179,3 +187,35 @@ async def chat_stream(
             "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲
         }
     )
+
+
+@router.delete("/chat/message")
+async def delete_message(
+    request: DeleteMessageRequest,
+    agent: AgentService = Depends(get_agent_service)
+):
+    """Delete a single message from conversation.
+
+    Args:
+        request: DeleteMessageRequest with session_id and message_index
+
+    Returns:
+        Success message
+
+    Raises:
+        404: Session not found
+        400: Invalid message index
+        500: Internal server error
+    """
+    logger.info(f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}")
+
+    try:
+        await agent.storage.delete_message(request.session_id, request.message_index)
+        return {"success": True, "message": "Message deleted"}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Delete message error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")

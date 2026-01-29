@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import type { Message } from '../types/message';
+import type { Message } from '../../../types/message';
 import { MessageBubble } from './MessageBubble';
 
 interface MessageListProps {
@@ -12,6 +12,7 @@ interface MessageListProps {
   isStreaming?: boolean;
   onEditMessage?: (index: number, content: string) => void;
   onRegenerateMessage?: (index: number) => void;
+  onDeleteMessage?: (index: number) => void;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -20,6 +21,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   isStreaming = false,
   onEditMessage,
   onRegenerateMessage,
+  onDeleteMessage,
 }) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
@@ -32,7 +34,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     <div className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
       {messages.length === 0 ? (
         <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-          <p>开始新对话...</p>
+          <p>Start a new conversation...</p>
         </div>
       ) : (
         <>
@@ -44,6 +46,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               isStreaming={isStreaming}
               onEdit={onEditMessage}
               onRegenerate={onRegenerateMessage}
+              onDelete={onDeleteMessage}
             />
           ))}
           {loading && (

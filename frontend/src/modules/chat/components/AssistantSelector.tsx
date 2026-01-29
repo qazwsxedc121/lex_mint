@@ -6,8 +6,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
-import { listAssistants, updateSessionAssistant } from '../services/api';
-import type { Assistant } from '../types/assistant';
+import { listAssistants, updateSessionAssistant } from '../../../services/api';
+import type { Assistant } from '../../../types/assistant';
 
 interface AssistantSelectorProps {
   sessionId: string;
@@ -98,8 +98,8 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
             onClick={() => setIsOpen(false)}
           />
 
-          {/* Menu content */}
-          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto">
+          {/* Menu content - opens upward */}
+          <div className="absolute right-0 bottom-full mb-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto">
             <div className="py-2">
               {assistants.map((assistant) => {
                 const isSelected = assistant.id === currentAssistantId;

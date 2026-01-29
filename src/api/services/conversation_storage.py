@@ -307,6 +307,56 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
+    async def delete_message(self, session_id: str, message_index: int):
+        """Delete a single message at specified index.
+
+        Args:
+            session_id: Session UUID
+            message_index: Index of the message to delete
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            IndexError: If message index is out of range
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Read and parse existing file
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+        messages = self._parse_messages(post.content)
+
+        # Validate index
+        if message_index < 0 or message_index >= len(messages):
+            raise IndexError(f"Message index {message_index} out of range (0-{len(messages)-1})")
+
+        # Remove the message at specified index
+        del messages[message_index]
+
+        # Rebuild markdown content
+        new_content = ""
+        for msg in messages:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            role_display = "User" if msg["role"] == "user" else "Assistant"
+            new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
+
+        post.content = new_content
+
+        # Update current_step (count assistant messages)
+        assistant_count = sum(1 for msg in messages if msg["role"] == "assistant")
+        post.metadata["current_step"] = assistant_count
+
+        # Update title if all messages are deleted
+        if not messages:
+            post.metadata["title"] = "New Chat"
+
+        # Write back to file
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
     async def delete_session(self, session_id: str):
         """Delete a conversation session.
 

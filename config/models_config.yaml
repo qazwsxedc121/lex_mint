@@ -20,13 +20,7 @@ models:
 - id: deepseek-chat
   name: DeepSeek Chat
   provider_id: deepseek
-  group: 对话模型
-  temperature: 0.7
-  enabled: true
-- id: deepseek-coder
-  name: DeepSeek Coder
-  provider_id: deepseek
-  group: 代码模型
+  group: chat
   temperature: 0.7
   enabled: true
 - id: deepseek-chat
@@ -41,3 +35,5 @@ models:
   group: 通用
   temperature: 0.7
   enabled: true
+reasoning_supported_patterns:
+- deepseek-chat

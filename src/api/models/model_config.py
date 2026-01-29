@@ -39,6 +39,10 @@ class ModelsConfig(BaseModel):
     default: DefaultConfig
     providers: List[Provider]
     models: List[Model]
+    reasoning_supported_patterns: List[str] = Field(
+        default=[],
+        description="支持 reasoning effort 参数的模型名称模式列表"
+    )
 
 
 class ProviderCreate(BaseModel):

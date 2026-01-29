@@ -19,7 +19,6 @@ print("=" * 80)
 print("使用内置服务器运行 (调试模式)")
 print("=" * 80)
 
-from src.api.main import app
 import socket
 
 def is_port_in_use(port):
@@ -44,17 +43,22 @@ if __name__ == "__main__":
 
     # 使用 uvicorn 但带所有可能的日志选项
     import uvicorn
+    import os
+
+    # 获取项目根目录的绝对路径
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.join(project_root, "src")
 
     # 配置
     config = uvicorn.Config(
-        app=app,
+        app="src.api.main:app",  # 必须用字符串形式，reload 才能生效
         host="0.0.0.0",
         port=port,
         log_level="trace",  # 最详细的日志级别
         access_log=True,
         use_colors=True,
         reload=True,
-        reload_dirs=["src"],
+        reload_dirs=[src_dir],  # 使用绝对路径
     )
 
     server = uvicorn.Server(config)
