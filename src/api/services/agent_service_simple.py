@@ -148,14 +148,21 @@ class AgentService:
                 logger.info(f"Moved {filename} to permanent storage")
 
         # Only append user message when skip_user_append=False
+        user_message_id = None
         if not skip_user_append:
             print(f"[Step 1] Saving user message to file...")
             logger.info(f"[Step 1] Saving user message")
-            await self.storage.append_message(
+            user_message_id = await self.storage.append_message(
                 session_id, "user", full_message_content,
                 attachments=attachment_metadata if attachment_metadata else None
             )
-            print(f"[OK] User message saved")
+            print(f"[OK] User message saved with ID: {user_message_id}")
+
+            # Immediately yield user message ID so frontend can update UI
+            yield {
+                "type": "user_message_id",
+                "message_id": user_message_id
+            }
         else:
             print(f"[Step 1] Skipping user message save (regeneration mode)")
             logger.info(f"[Step 1] Skipping user message save")
@@ -244,11 +251,11 @@ class AgentService:
 
         print(f"[Step 4] Saving complete AI response to file...")
         logger.info(f"[Step 4] Saving complete AI response")
-        await self.storage.append_message(
+        assistant_message_id = await self.storage.append_message(
             session_id, "assistant", full_response,
             usage=usage_data, cost=cost_data
         )
-        print(f"[OK] AI response saved")
+        print(f"[OK] AI response saved with ID: {assistant_message_id}")
 
         # Trigger title generation in background (do not await)
         try:
@@ -281,3 +288,10 @@ class AgentService:
             if cost_data:
                 usage_event["cost"] = cost_data.model_dump()
             yield usage_event
+
+        # Yield assistant message ID so frontend can update UI
+        assistant_message_id_event = {
+            "type": "assistant_message_id",
+            "message_id": assistant_message_id
+        }
+        yield assistant_message_id_event

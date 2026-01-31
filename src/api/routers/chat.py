@@ -44,7 +44,8 @@ class ChatResponse(BaseModel):
 class DeleteMessageRequest(BaseModel):
     """Request model for delete message endpoint."""
     session_id: str
-    message_index: int
+    message_index: Optional[int] = None
+    message_id: Optional[str] = None
 
 
 def get_agent_service() -> AgentService:
@@ -167,9 +168,9 @@ async def chat_stream(
                 reasoning_effort=request.reasoning_effort,
                 attachments=request.attachments
             ):
-                # Check if chunk is a usage/cost event (dict)
-                if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                    # Send usage event separately
+                # Check if chunk is a dict event (usage, user_message_id, assistant_message_id)
+                if isinstance(chunk, dict):
+                    # Forward dict events as-is
                     data = json.dumps(chunk, ensure_ascii=False)
                     yield f"data: {data}\n\n"
                     continue
@@ -301,25 +302,41 @@ async def delete_message(
     """Delete a single message from conversation.
 
     Args:
-        request: DeleteMessageRequest with session_id and message_index
+        request: DeleteMessageRequest with session_id and either message_id or message_index
 
     Returns:
         Success message
 
     Raises:
         404: Session not found
-        400: Invalid message index
+        400: Invalid message index or ID
         500: Internal server error
     """
-    logger.info(f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}")
+    # Prefer message_id if provided, fallback to message_index
+    if request.message_id:
+        logger.info(f"Delete message request: session={request.session_id[:16]}..., message_id={request.message_id}")
+        try:
+            await agent.storage.delete_message_by_id(request.session_id, request.message_id)
+            return {"success": True, "message": "Message deleted"}
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Session not found")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Delete message error: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
+    elif request.message_index is not None:
+        logger.info(f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}")
+        try:
+            await agent.storage.delete_message(request.session_id, request.message_index)
+            return {"success": True, "message": "Message deleted"}
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Session not found")
+        except IndexError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Delete message error: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
+    else:
+        raise HTTPException(status_code=400, detail="Either message_id or message_index must be provided")
 
-    try:
-        await agent.storage.delete_message(request.session_id, request.message_index)
-        return {"success": True, "message": "Message deleted"}
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Session not found")
-    except IndexError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Delete message error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")

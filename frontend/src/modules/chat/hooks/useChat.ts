@@ -18,8 +18,8 @@ export function useChat(sessionId: string | null) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
-  // Load session messages when sessionId changes
-  useEffect(() => {
+  // Extract loadSession as a standalone function so it can be called after sending messages
+  const loadSession = async () => {
     if (!sessionId) {
       setMessages([]);
       setCurrentModelId(null);
@@ -29,28 +29,29 @@ export function useChat(sessionId: string | null) {
       return;
     }
 
-    const loadSession = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const session = await getSession(sessionId);
-        setMessages(session.state.messages);
-        setCurrentModelId(session.model_id || null);
-        setCurrentAssistantId(session.assistant_id || null);
-        setTotalUsage(session.total_usage || null);
-        setTotalCost(session.total_cost || null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load session');
-        setMessages([]);
-        setCurrentModelId(null);
-        setCurrentAssistantId(null);
-        setTotalUsage(null);
-        setTotalCost(null);
-      } finally {
-        setLoading(false);
-      }
-    };
+    try {
+      setLoading(true);
+      setError(null);
+      const session = await getSession(sessionId);
+      setMessages(session.state.messages);
+      setCurrentModelId(session.model_id || null);
+      setCurrentAssistantId(session.assistant_id || null);
+      setTotalUsage(session.total_usage || null);
+      setTotalCost(session.total_cost || null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load session');
+      setMessages([]);
+      setCurrentModelId(null);
+      setCurrentAssistantId(null);
+      setTotalUsage(null);
+      setTotalCost(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Load session messages when sessionId changes
+  useEffect(() => {
     loadSession();
   }, [sessionId]);
 
@@ -59,7 +60,7 @@ export function useChat(sessionId: string | null) {
 
     isProcessingRef.current = true;
 
-    // Optimistically add user message to UI (with attachments if any)
+    // Optimistically add user message to UI (without message_id, wait for backend)
     const userMessage: Message = {
       role: 'user',
       content,
@@ -71,8 +72,11 @@ export function useChat(sessionId: string | null) {
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Add placeholder for assistant message
-    const assistantMessage: Message = { role: 'assistant', content: '' };
+    // Add placeholder for assistant message (without message_id, wait for backend)
+    const assistantMessage: Message = {
+      role: 'assistant',
+      content: ''
+    };
     setMessages(prev => [...prev, assistantMessage]);
 
     setLoading(true);
@@ -136,6 +140,32 @@ export function useChat(sessionId: string | null) {
           }
         },
         options?.attachments,
+        (userMessageId: string) => {
+          // Backend returned user message ID, update the user message
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length >= 2) {
+              newMessages[newMessages.length - 2] = {
+                ...newMessages[newMessages.length - 2],
+                message_id: userMessageId
+              };
+            }
+            return newMessages;
+          });
+        },
+        (assistantMessageId: string) => {
+          // Backend returned assistant message ID, update the assistant message
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length >= 1) {
+              newMessages[newMessages.length - 1] = {
+                ...newMessages[newMessages.length - 1],
+                message_id: assistantMessageId
+              };
+            }
+            return newMessages;
+          });
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
@@ -146,8 +176,15 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const editMessage = async (messageIndex: number, newContent: string) => {
+  const editMessage = async (messageId: string, newContent: string) => {
     if (!sessionId || isProcessingRef.current) return;
+
+    // Find message index by ID
+    const messageIndex = messages.findIndex(m => m.message_id === messageId);
+    if (messageIndex === -1) {
+      console.error('Message not found');
+      return;
+    }
 
     if (messages[messageIndex]?.role !== 'user') {
       console.error('Can only edit user messages');
@@ -163,10 +200,17 @@ export function useChat(sessionId: string | null) {
 
     const originalMessages = [...messages];
     const truncatedMessages = messages.slice(0, messageIndex);
-    const updatedUserMessage: Message = { role: 'user', content: newContent };
+    const updatedUserMessage: Message = {
+      message_id: messageId,  // Preserve message_id
+      role: 'user',
+      content: newContent
+    };
     setMessages([...truncatedMessages, updatedUserMessage]);
 
-    const assistantMessage: Message = { role: 'assistant', content: '' };
+    const assistantMessage: Message = {
+      role: 'assistant',  // No UUID, wait for backend
+      content: ''
+    };
     setMessages(prev => [...prev, assistantMessage]);
 
     setLoading(true);
@@ -216,6 +260,33 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
+        undefined,
+        (userMessageId: string) => {
+          // Backend returned user message ID
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length >= 2) {
+              newMessages[newMessages.length - 2] = {
+                ...newMessages[newMessages.length - 2],
+                message_id: userMessageId
+              };
+            }
+            return newMessages;
+          });
+        },
+        (assistantMessageId: string) => {
+          // Backend returned assistant message ID
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length >= 1) {
+              newMessages[newMessages.length - 1] = {
+                ...newMessages[newMessages.length - 1],
+                message_id: assistantMessageId
+              };
+            }
+            return newMessages;
+          });
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to edit message');
@@ -226,8 +297,15 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const regenerateMessage = async (messageIndex: number) => {
+  const regenerateMessage = async (messageId: string) => {
     if (!sessionId || isProcessingRef.current) return;
+
+    // Find message index by ID
+    const messageIndex = messages.findIndex(m => m.message_id === messageId);
+    if (messageIndex === -1) {
+      console.error('Message not found');
+      return;
+    }
 
     const targetMessage = messages[messageIndex];
     if (!targetMessage) return;
@@ -265,7 +343,10 @@ export function useChat(sessionId: string | null) {
     const truncatedMessages = messages.slice(0, truncateIndex + 1);
     setMessages(truncatedMessages);
 
-    const assistantMessage: Message = { role: 'assistant', content: '' };
+    const assistantMessage: Message = {
+      role: 'assistant',  // No UUID, wait for backend
+      content: ''
+    };
     setMessages(prev => [...prev, assistantMessage]);
 
     setLoading(true);
@@ -315,6 +396,33 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
+        undefined,
+        (userMessageId: string) => {
+          // Backend returned user message ID
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length >= 2) {
+              newMessages[newMessages.length - 2] = {
+                ...newMessages[newMessages.length - 2],
+                message_id: userMessageId
+              };
+            }
+            return newMessages;
+          });
+        },
+        (assistantMessageId: string) => {
+          // Backend returned assistant message ID
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length >= 1) {
+              newMessages[newMessages.length - 1] = {
+                ...newMessages[newMessages.length - 1],
+                message_id: assistantMessageId
+              };
+            }
+            return newMessages;
+          });
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate message');
@@ -332,17 +440,17 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const deleteMessage = async (messageIndex: number) => {
+  const deleteMessage = async (messageId: string) => {
     if (!sessionId || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
     const originalMessages = [...messages];
 
     // Optimistically remove the message from UI
-    setMessages(prev => prev.filter((_, index) => index !== messageIndex));
+    setMessages(prev => prev.filter(m => m.message_id !== messageId));
 
     try {
-      await apiDeleteMessage(sessionId, messageIndex);
+      await apiDeleteMessage(sessionId, messageId);
     } catch (err) {
       // Revert on error
       setError(err instanceof Error ? err.message : 'Failed to delete message');

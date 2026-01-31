@@ -40,7 +40,8 @@
       "Bash(./venv/Scripts/pytest tests/unit/test_services/test_conversation_storage.py -v)",
       "Bash(./venv/Scripts/pytest:*)",
       "Bash(find:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(cat:*)"
     ]
   }
 }

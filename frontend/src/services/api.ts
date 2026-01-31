@@ -78,11 +78,11 @@ export async function duplicateSession(sessionId: string): Promise<string> {
 /**
  * Delete a single message from a conversation.
  */
-export async function deleteMessage(sessionId: string, messageIndex: number): Promise<void> {
+export async function deleteMessage(sessionId: string, messageId: string): Promise<void> {
   await api.delete('/api/chat/message', {
     data: {
       session_id: sessionId,
-      message_index: messageIndex,
+      message_id: messageId,
     },
   });
 }
@@ -114,6 +114,8 @@ export async function sendMessage(
  * @param reasoningEffort - Optional reasoning effort level: "low", "medium", "high"
  * @param onUsage - Optional callback for usage/cost data
  * @param attachments - Optional file attachments
+ * @param onUserMessageId - Optional callback for user message ID from backend
+ * @param onAssistantMessageId - Optional callback for assistant message ID from backend
  */
 export async function sendMessageStream(
   sessionId: string,
@@ -127,6 +129,8 @@ export async function sendMessageStream(
   reasoningEffort?: string,
   onUsage?: (usage: TokenUsage, cost?: CostInfo) => void,
   attachments?: UploadedFile[],
+  onUserMessageId?: (messageId: string) => void,
+  onAssistantMessageId?: (messageId: string) => void,
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -203,6 +207,18 @@ export async function sendMessageStream(
               // Handle usage/cost event
               if (data.type === 'usage' && data.usage && onUsage) {
                 onUsage(data.usage, data.cost);
+                continue;
+              }
+
+              // Handle user_message_id event
+              if (data.type === 'user_message_id' && data.message_id && onUserMessageId) {
+                onUserMessageId(data.message_id);
+                continue;
+              }
+
+              // Handle assistant_message_id event
+              if (data.type === 'assistant_message_id' && data.message_id && onAssistantMessageId) {
+                onAssistantMessageId(data.message_id);
                 continue;
               }
 

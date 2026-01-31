@@ -130,7 +130,7 @@ class ConversationStorage:
         post = frontmatter.loads(content)
 
         # Parse messages from markdown content
-        messages = self._parse_messages(post.content)
+        messages = self._parse_messages(post.content, session_id)
 
         # 向后兼容逻辑：确定使用的助手和模型
         assistant_id = post.metadata.get("assistant_id")
@@ -191,7 +191,7 @@ class ConversationStorage:
         attachments: Optional[List[Dict]] = None,
         usage: Optional[TokenUsage] = None,
         cost: Optional[CostInfo] = None,
-    ):
+    ) -> str:
         """Append a message to conversation file.
 
         Args:
@@ -202,12 +202,18 @@ class ConversationStorage:
             usage: Token usage data (for assistant messages)
             cost: Cost information (for assistant messages)
 
+        Returns:
+            message_id: The generated UUID for the new message
+
         Raises:
             FileNotFoundError: If session doesn't exist
         """
         filepath = await self._find_session_file(session_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Generate message ID
+        message_id = str(uuid.uuid4())
 
         # Read existing content
         async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
@@ -220,10 +226,13 @@ class ConversationStorage:
         role_display = "User" if role == "user" else "Assistant"
         new_message = f"\n## {role_display} ({timestamp})\n{content}\n"
 
+        # Add message_id as HTML comment
+        new_message += f"\n<!-- message_id: \"{message_id}\" -->\n"
+
         # Add attachment metadata as HTML comments (for user messages)
         if role == "user" and attachments:
             for att in attachments:
-                new_message += f"\n<!-- attachment: {json.dumps(att)} -->\n"
+                new_message += f"<!-- attachment: {json.dumps(att)} -->\n"
 
         # Add usage/cost as HTML comments for assistant messages
         if role == "assistant" and usage:
@@ -268,6 +277,8 @@ class ConversationStorage:
         # Write back to file
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
+
+        return message_id
 
     async def list_sessions(self) -> List[Dict]:
         """List all conversation sessions.
@@ -331,7 +342,7 @@ class ConversationStorage:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
-        messages = self._parse_messages(post.content)
+        messages = self._parse_messages(post.content, session_id)
 
         # Truncate messages list
         if keep_until_index == -1:
@@ -345,6 +356,21 @@ class ConversationStorage:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             role_display = "User" if msg["role"] == "user" else "Assistant"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
+
+            # Preserve message_id
+            if "message_id" in msg:
+                new_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+
+            # Preserve attachments (for user messages)
+            if "attachments" in msg:
+                for att in msg["attachments"]:
+                    new_content += f"<!-- attachment: {json.dumps(att)} -->\n"
+
+            # Preserve usage and cost (for assistant messages)
+            if "usage" in msg:
+                new_content += f"<!-- usage: {json.dumps(msg['usage'])} -->\n"
+            if "cost" in msg:
+                new_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
 
         post.content = new_content
 
@@ -376,7 +402,7 @@ class ConversationStorage:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
-        messages = self._parse_messages(post.content)
+        messages = self._parse_messages(post.content, session_id)
 
         # Validate index
         if message_index < 0 or message_index >= len(messages):
@@ -392,6 +418,21 @@ class ConversationStorage:
             role_display = "User" if msg["role"] == "user" else "Assistant"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
 
+            # Preserve message_id
+            if "message_id" in msg:
+                new_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+
+            # Preserve attachments (for user messages)
+            if "attachments" in msg:
+                for att in msg["attachments"]:
+                    new_content += f"<!-- attachment: {json.dumps(att)} -->\n"
+
+            # Preserve usage and cost (for assistant messages)
+            if "usage" in msg:
+                new_content += f"<!-- usage: {json.dumps(msg['usage'])} -->\n"
+            if "cost" in msg:
+                new_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
+
         post.content = new_content
 
         # Update current_step (count assistant messages)
@@ -405,6 +446,41 @@ class ConversationStorage:
         # Write back to file
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
+
+    async def delete_message_by_id(self, session_id: str, message_id: str):
+        """Delete a single message by its ID.
+
+        Args:
+            session_id: Session UUID
+            message_id: UUID of the message to delete
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If message_id is not found
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Read and parse existing file
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+        messages = self._parse_messages(post.content, session_id)
+
+        # Find the message with the given ID
+        message_index = None
+        for index, msg in enumerate(messages):
+            if msg.get("message_id") == message_id:
+                message_index = index
+                break
+
+        if message_index is None:
+            raise ValueError(f"Message with ID {message_id} not found")
+
+        # Use the existing delete_message method
+        await self.delete_message(session_id, message_index)
 
     async def set_messages(self, session_id: str, messages: List[Dict]):
         """Set the complete message list for a session (replaces all existing messages).
@@ -432,6 +508,21 @@ class ConversationStorage:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             role_display = "User" if msg["role"] == "user" else "Assistant"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
+
+            # Preserve message_id if present
+            if "message_id" in msg:
+                new_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+
+            # Preserve attachments (for user messages)
+            if "attachments" in msg:
+                for att in msg["attachments"]:
+                    new_content += f"<!-- attachment: {json.dumps(att)} -->\n"
+
+            # Preserve usage and cost (for assistant messages)
+            if "usage" in msg:
+                new_content += f"<!-- usage: {json.dumps(msg['usage'])} -->\n"
+            if "cost" in msg:
+                new_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
 
         post.content = new_content
 
@@ -581,15 +672,16 @@ class ConversationStorage:
 
         return None
 
-    def _parse_messages(self, content: str) -> List[Dict]:
+    def _parse_messages(self, content: str, session_id: str) -> List[Dict]:
         """Parse messages from markdown content.
 
         Args:
             content: Markdown body content (without frontmatter)
+            session_id: Session ID for generating fallback message IDs
 
         Returns:
             List of message dicts:
-            [{"role": "user/assistant", "content": "...", "attachments": [...], "usage": {...}, "cost": {...}}, ...]
+            [{"role": "user/assistant", "content": "...", "message_id": "...", "attachments": [...], "usage": {...}, "cost": {...}}, ...]
         """
         messages = []
         lines = content.split('\n')
@@ -606,10 +698,11 @@ class ConversationStorage:
                 role = "user" if line.startswith("## User") else "assistant"
                 current_message = {"role": role, "content": ""}
             elif current_message is not None:
-                # Parse usage/cost/attachment HTML comments
+                # Parse usage/cost/attachment/message_id HTML comments
                 usage_match = re.match(r'^<!-- usage: (.+) -->$', line.strip())
                 cost_match = re.match(r'^<!-- cost: (.+) -->$', line.strip())
                 attachment_match = re.match(r'^<!-- attachment: (.+) -->$', line.strip())
+                message_id_match = re.match(r'^<!-- message_id: "(.+)" -->$', line.strip())
 
                 if usage_match:
                     try:
@@ -630,6 +723,8 @@ class ConversationStorage:
                         )
                     except json.JSONDecodeError:
                         pass
+                elif message_id_match:
+                    current_message["message_id"] = message_id_match.group(1)
                 else:
                     # Append line to current message content
                     # Skip empty lines at the start
@@ -640,8 +735,11 @@ class ConversationStorage:
         if current_message:
             messages.append(current_message)
 
-        # Clean up: strip trailing whitespace
-        for msg in messages:
+        # Clean up: strip trailing whitespace and generate fallback message IDs
+        for index, msg in enumerate(messages):
             msg["content"] = msg["content"].strip()
+            # Generate fallback UUID if message_id not found (backward compatibility)
+            if "message_id" not in msg:
+                msg["message_id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{index}"))
 
         return messages

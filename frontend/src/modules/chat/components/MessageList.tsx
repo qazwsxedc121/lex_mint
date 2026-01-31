@@ -11,9 +11,9 @@ interface MessageListProps {
   loading?: boolean;
   isStreaming?: boolean;
   sessionId?: string;
-  onEditMessage?: (index: number, content: string) => void;
-  onRegenerateMessage?: (index: number) => void;
-  onDeleteMessage?: (index: number) => void;
+  onEditMessage?: (messageId: string, content: string) => void;
+  onRegenerateMessage?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -42,8 +42,9 @@ export const MessageList: React.FC<MessageListProps> = ({
         <>
           {messages.map((message, index) => (
             <MessageBubble
-              key={index}
+              key={message.message_id || `fallback-${index}`}
               message={message}
+              messageId={message.message_id || `fallback-${index}`}
               messageIndex={index}
               isStreaming={isStreaming}
               sessionId={sessionId}

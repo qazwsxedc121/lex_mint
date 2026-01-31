@@ -12,12 +12,13 @@ import { downloadFile } from '../../../services/api';
 
 interface MessageBubbleProps {
   message: Message;
-  messageIndex: number;
+  messageId: string;
+  messageIndex: number;  // Still needed for file attachment URLs (backward compatibility)
   isStreaming: boolean;
   sessionId?: string;
-  onEdit?: (index: number, content: string) => void;
-  onRegenerate?: (index: number) => void;
-  onDelete?: (index: number) => void;
+  onEdit?: (messageId: string, content: string) => void;
+  onRegenerate?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
 }
 
 /**
@@ -67,6 +68,7 @@ function formatCost(cost: number): string {
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
+  messageId,
   messageIndex,
   isStreaming,
   sessionId,
@@ -109,7 +111,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const handleSaveEdit = () => {
     if (editContent.trim() && onEdit) {
-      onEdit(messageIndex, editContent.trim());
+      onEdit(messageId, editContent.trim());
       setIsEditing(false);
     }
   };
@@ -148,7 +150,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const handleDeleteConfirm = () => {
     if (onDelete) {
-      onDelete(messageIndex);
+      onDelete(messageId);
     }
     setShowDeleteConfirm(false);
   };
@@ -385,7 +387,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
             {canRegenerate && (
               <button
-                onClick={() => onRegenerate?.(messageIndex)}
+                onClick={() => onRegenerate?.(messageId)}
                 className="group relative p-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 transition-colors"
                 title="Regenerate"
               >
