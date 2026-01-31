@@ -10,6 +10,7 @@ interface MessageListProps {
   messages: Message[];
   loading?: boolean;
   isStreaming?: boolean;
+  sessionId?: string;
   onEditMessage?: (index: number, content: string) => void;
   onRegenerateMessage?: (index: number) => void;
   onDeleteMessage?: (index: number) => void;
@@ -19,6 +20,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   messages,
   loading = false,
   isStreaming = false,
+  sessionId,
   onEditMessage,
   onRegenerateMessage,
   onDeleteMessage,
@@ -44,6 +46,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               message={message}
               messageIndex={index}
               isStreaming={isStreaming}
+              sessionId={sessionId}
               onEdit={onEditMessage}
               onRegenerate={onRegenerateMessage}
               onDelete={onDeleteMessage}

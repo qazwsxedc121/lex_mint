@@ -82,8 +82,10 @@ ACCESS URLs
 ====================================
 
 Web Interface:  http://localhost:5173
-API Backend:    http://localhost:8000
-API Docs:       http://localhost:8000/docs
+API Backend:    http://localhost:8888  (configurable in .env)
+API Docs:       http://localhost:8888/docs
+
+Note: To change backend port, edit API_PORT in .env file
 
 ====================================
 TECHNICAL SUPPORT

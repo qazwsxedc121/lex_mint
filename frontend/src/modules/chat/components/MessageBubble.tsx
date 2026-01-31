@@ -5,14 +5,16 @@
 import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
+import { downloadFile } from '../../../services/api';
 
 interface MessageBubbleProps {
   message: Message;
   messageIndex: number;
   isStreaming: boolean;
+  sessionId?: string;
   onEdit?: (index: number, content: string) => void;
   onRegenerate?: (index: number) => void;
   onDelete?: (index: number) => void;
@@ -51,10 +53,23 @@ function parseThinkingContent(content: string, isStreaming: boolean): { thinking
   return { thinking: thinking.trim(), mainContent: mainContent.trim(), isThinkingInProgress };
 }
 
+/**
+ * Format cost value for display.
+ * Shows enough precision to be meaningful.
+ */
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0';
+  if (cost < 0.000001) return `<$0.000001`;
+  if (cost < 0.01) return `$${cost.toFixed(6)}`;
+  if (cost < 1) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   messageIndex,
   isStreaming,
+  sessionId,
   onEdit,
   onRegenerate,
   onDelete,
@@ -75,6 +90,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const canEdit = isUser && !isStreaming && onEdit;
   const canRegenerate = !isStreaming && onRegenerate && message.content.trim() !== '';
   const canDelete = !isStreaming && onDelete;
+
+  const handleDownloadAttachment = async (filename: string) => {
+    if (!sessionId) return;
+
+    try {
+      const blob = await downloadFile(sessionId, messageIndex, filename);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Download failed: ${err.message}`);
+    }
+  };
 
   const handleSaveEdit = () => {
     if (editContent.trim() && onEdit) {
@@ -166,6 +197,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           ) : (
             <div className="text-sm prose prose-sm max-w-none dark:prose-invert">
+              {/* Attachments display (for user messages) */}
+              {isUser && message.attachments && message.attachments.length > 0 && (
+                <div className="mb-3 space-y-1">
+                  {message.attachments.map((att, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 dark:bg-blue-400/20 rounded border border-blue-400 dark:border-blue-600"
+                    >
+                      <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
+                      <span className="flex-1 text-sm truncate">{att.filename}</span>
+                      <span className="text-xs opacity-80">
+                        ({(att.size / 1024).toFixed(1)} KB)
+                      </span>
+                      <button
+                        onClick={() => handleDownloadAttachment(att.filename)}
+                        className="flex-shrink-0 hover:opacity-80"
+                        title="Download"
+                      >
+                        <ArrowDownTrayIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {isUser ? (
                 <p className="whitespace-pre-wrap m-0">{message.content}</p>
               ) : (
@@ -259,6 +314,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           )}
         </div>
+
+        {/* Token usage info for assistant messages */}
+        {!isUser && !isEditing && message.usage && !isStreaming && (
+          <div className="flex items-center gap-2 mt-1 px-1 text-xs text-gray-400 dark:text-gray-500">
+            <span>{message.usage.prompt_tokens} in</span>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span>{message.usage.completion_tokens} out</span>
+            {message.cost && message.cost.total_cost > 0 && (
+              <>
+                <span className="text-gray-300 dark:text-gray-600">|</span>
+                <span>{formatCost(message.cost.total_cost)}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Action buttons */}
         {!isEditing && (

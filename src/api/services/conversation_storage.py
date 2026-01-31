@@ -1,12 +1,15 @@
 """Conversation storage service using Markdown files with YAML frontmatter."""
 
 import frontmatter
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 import aiofiles
 import uuid
 import re
+
+from src.providers.types import TokenUsage, CostInfo
 
 
 class ConversationStorage:
@@ -172,19 +175,32 @@ class ConversationStorage:
             "created_at": post.metadata["created_at"],
             "assistant_id": assistant_id,  # 返回助手ID
             "model_id": model_id,           # 返回复合ID格式（向后兼容）
+            "total_usage": post.metadata.get("total_usage"),
+            "total_cost": post.metadata.get("total_cost"),
             "state": {
                 "messages": messages,
                 "current_step": post.metadata.get("current_step", 0)
             }
         }
 
-    async def append_message(self, session_id: str, role: str, content: str):
+    async def append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        attachments: Optional[List[Dict]] = None,
+        usage: Optional[TokenUsage] = None,
+        cost: Optional[CostInfo] = None,
+    ):
         """Append a message to conversation file.
 
         Args:
             session_id: Session UUID
             role: Message role ("user" or "assistant")
             content: Message text content
+            attachments: List of file attachment metadata (for user messages)
+            usage: Token usage data (for assistant messages)
+            cost: Cost information (for assistant messages)
 
         Raises:
             FileNotFoundError: If session doesn't exist
@@ -204,14 +220,47 @@ class ConversationStorage:
         role_display = "User" if role == "user" else "Assistant"
         new_message = f"\n## {role_display} ({timestamp})\n{content}\n"
 
+        # Add attachment metadata as HTML comments (for user messages)
+        if role == "user" and attachments:
+            for att in attachments:
+                new_message += f"\n<!-- attachment: {json.dumps(att)} -->\n"
+
+        # Add usage/cost as HTML comments for assistant messages
+        if role == "assistant" and usage:
+            new_message += f"\n<!-- usage: {json.dumps(usage.model_dump())} -->\n"
+            if cost:
+                new_message += f"<!-- cost: {json.dumps(cost.model_dump())} -->\n"
+
         post.content += new_message
 
         # Update current_step for assistant messages
         if role == "assistant":
             post.metadata["current_step"] = post.metadata.get("current_step", 0) + 1
 
+            # Update session-level usage totals in frontmatter
+            if usage:
+                total_usage = post.metadata.get("total_usage", {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                })
+                total_usage["prompt_tokens"] = total_usage.get("prompt_tokens", 0) + usage.prompt_tokens
+                total_usage["completion_tokens"] = total_usage.get("completion_tokens", 0) + usage.completion_tokens
+                total_usage["total_tokens"] = total_usage.get("total_tokens", 0) + usage.total_tokens
+                post.metadata["total_usage"] = total_usage
+
+            if cost:
+                total_cost = post.metadata.get("total_cost", {
+                    "total_cost": 0.0,
+                    "currency": "USD",
+                })
+                total_cost["total_cost"] = round(
+                    total_cost.get("total_cost", 0.0) + cost.total_cost, 8
+                )
+                post.metadata["total_cost"] = total_cost
+
         # Auto-generate title from first user message
-        if post.metadata.get("title") == "新对话" and role == "user":
+        if post.metadata.get("title") == "\u65B0\u5BF9\u8BDD" and role == "user":
             # Clean title: remove special chars, limit length
             clean_title = content.strip().replace('\n', ' ')[:30]
             post.metadata["title"] = clean_title + ("..." if len(content) > 30 else "")
@@ -470,7 +519,8 @@ class ConversationStorage:
             content: Markdown body content (without frontmatter)
 
         Returns:
-            List of message dicts: [{"role": "user/assistant", "content": "..."}, ...]
+            List of message dicts:
+            [{"role": "user/assistant", "content": "...", "attachments": [...], "usage": {...}, "cost": {...}}, ...]
         """
         messages = []
         lines = content.split('\n')
@@ -487,10 +537,35 @@ class ConversationStorage:
                 role = "user" if line.startswith("## User") else "assistant"
                 current_message = {"role": role, "content": ""}
             elif current_message is not None:
-                # Append line to current message content
-                # Skip empty lines at the start
-                if current_message["content"] or line.strip():
-                    current_message["content"] += line + "\n"
+                # Parse usage/cost/attachment HTML comments
+                usage_match = re.match(r'^<!-- usage: (.+) -->$', line.strip())
+                cost_match = re.match(r'^<!-- cost: (.+) -->$', line.strip())
+                attachment_match = re.match(r'^<!-- attachment: (.+) -->$', line.strip())
+
+                if usage_match:
+                    try:
+                        current_message["usage"] = json.loads(usage_match.group(1))
+                    except json.JSONDecodeError:
+                        pass
+                elif cost_match:
+                    try:
+                        current_message["cost"] = json.loads(cost_match.group(1))
+                    except json.JSONDecodeError:
+                        pass
+                elif attachment_match:
+                    try:
+                        if "attachments" not in current_message:
+                            current_message["attachments"] = []
+                        current_message["attachments"].append(
+                            json.loads(attachment_match.group(1))
+                        )
+                    except json.JSONDecodeError:
+                        pass
+                else:
+                    # Append line to current message content
+                    # Skip empty lines at the start
+                    if current_message["content"] or line.strip():
+                        current_message["content"] += line + "\n"
 
         # Save last message
         if current_message:

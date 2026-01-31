@@ -13,10 +13,12 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    api_port: int = 8888
 
     # Storage Configuration
     conversations_dir: Path = Path("conversations")
+    attachments_dir: Path = Path("attachments")
+    max_file_size_mb: int = 10
 
     # CORS Configuration
     cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000"]

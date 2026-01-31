@@ -26,9 +26,16 @@ if not exist ".env" (
     pause
 )
 
+REM Read port from .env (default 8888)
+set DEFAULT_PORT=8888
+set API_PORT=%DEFAULT_PORT%
+if exist .env (
+    for /f "tokens=1,2 delims==" %%a in ('findstr /r "^API_PORT=" .env 2^>nul') do set API_PORT=%%b
+)
+
 echo [1/3] Starting backend service...
-start "LangGraph Backend" cmd /k "venv\Scripts\activate && uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
-echo     Backend starting at http://localhost:8000
+start "LangGraph Backend" cmd /k "venv\Scripts\activate && uvicorn src.api.main:app --host 0.0.0.0 --port %API_PORT%"
+echo     Backend starting at http://localhost:%API_PORT%
 timeout /t 3 >nul
 
 echo.
@@ -47,11 +54,12 @@ echo    Services Started Successfully!
 echo ========================================
 echo.
 echo Frontend:  http://localhost:5173
-echo Backend:   http://localhost:8000
-echo API Docs:  http://localhost:8000/docs
+echo Backend:   http://localhost:%API_PORT%
+echo API Docs:  http://localhost:%API_PORT%/docs
 echo.
 echo TIP: Closing this window will NOT stop services
 echo      Use stop.bat to stop all services
+echo      To change port, edit API_PORT in .env file
 echo ========================================
 echo.
 

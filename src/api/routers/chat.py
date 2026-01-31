@@ -1,15 +1,16 @@
 """Chat API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import logging
 import json
 
 # 使用简化版 AgentService（不使用 LangGraph）
 from ..services.agent_service_simple import AgentService
 from ..services.conversation_storage import ConversationStorage
+from ..services.file_service import FileService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,10 +18,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
+class FileAttachment(BaseModel):
+    """File attachment metadata."""
+    filename: str
+    size: int
+    mime_type: str
+
+
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
     session_id: str
     message: str
+    attachments: Optional[List[Dict[str, Any]]] = None  # List of {filename, size, mime_type, temp_path}
     truncate_after_index: Optional[int] = None  # 截断索引，删除此索引之后的消息
     skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
     reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
@@ -42,6 +51,11 @@ def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
     storage = ConversationStorage(settings.conversations_dir)
     return AgentService(storage)
+
+
+def get_file_service() -> FileService:
+    """Dependency injection for FileService."""
+    return FileService(settings.attachments_dir, settings.max_file_size_mb)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -131,40 +145,48 @@ async def chat_stream(
     logger.info("=" * 80)
 
     async def event_generator():
-        """生成 SSE (Server-Sent Events) 格式的数据流"""
+        """Generate SSE (Server-Sent Events) formatted data stream"""
         try:
-            print("🤖 开始流式处理消息...")
-            logger.info("🤖 开始流式处理消息...")
+            print("[SSE] Starting stream processing...")
+            logger.info("[SSE] Starting stream processing...")
 
-            # 如果指定了截断索引，先截断消息
+            # Truncate messages if specified
             if request.truncate_after_index is not None:
-                print(f"✂️ 截断消息到索引 {request.truncate_after_index}")
-                logger.info(f"✂️ 截断消息到索引 {request.truncate_after_index}")
+                print(f"[SSE] Truncating messages to index {request.truncate_after_index}")
+                logger.info(f"[SSE] Truncating messages to index {request.truncate_after_index}")
                 await agent.storage.truncate_messages_after(
                     request.session_id,
                     request.truncate_after_index
                 )
 
-            # 流式处理消息
+            # Stream process messages
             async for chunk in agent.process_message_stream(
                 request.session_id,
                 request.message,
                 skip_user_append=request.skip_user_message,
-                reasoning_effort=request.reasoning_effort
+                reasoning_effort=request.reasoning_effort,
+                attachments=request.attachments
             ):
-                # SSE 格式: data: {json}\n\n
+                # Check if chunk is a usage/cost event (dict)
+                if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                    # Send usage event separately
+                    data = json.dumps(chunk, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                    continue
+
+                # Regular content chunk (string)
                 data = json.dumps({"chunk": chunk}, ensure_ascii=False)
                 yield f"data: {data}\n\n"
 
-            # 发送结束标记
+            # Send completion marker
             yield f"data: {json.dumps({'done': True})}\n\n"
 
             print("=" * 80)
-            print("✅ 流式消息处理完成")
+            print("[OK] Stream processing complete")
             print("=" * 80)
 
             logger.info("=" * 80)
-            logger.info("✅ 流式消息处理完成")
+            logger.info("[OK] Stream processing complete")
             logger.info("=" * 80)
 
         except FileNotFoundError as e:
@@ -186,6 +208,88 @@ async def chat_stream(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲
         }
+    )
+
+
+@router.post("/chat/upload")
+async def upload_file(
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+    file_service: FileService = Depends(get_file_service)
+):
+    """Upload a text file attachment.
+
+    Args:
+        session_id: Session identifier
+        file: Uploaded file
+
+    Returns:
+        File metadata including temp_path for later message send
+
+    Raises:
+        400: File validation failed (too large, wrong type)
+        500: Upload failed
+    """
+    logger.info(f"File upload request: session={session_id[:16]}..., file={file.filename}")
+
+    try:
+        # Validate file
+        await file_service.validate_file(file)
+
+        # Save to temp location
+        metadata = await file_service.save_temp_file(session_id, file)
+
+        logger.info(f"File uploaded successfully: {metadata['filename']}")
+        return metadata
+
+    except ValueError as e:
+        logger.error(f"File validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"File upload error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@router.get("/chat/attachment/{session_id}/{message_index}/{filename}")
+async def download_attachment(
+    session_id: str,
+    message_index: int,
+    filename: str,
+    file_service: FileService = Depends(get_file_service)
+):
+    """Download a file attachment.
+
+    Args:
+        session_id: Session identifier
+        message_index: Message index
+        filename: Filename
+
+    Returns:
+        File response
+
+    Raises:
+        404: File not found
+        403: Access denied (path traversal attempt)
+    """
+    logger.info(f"File download request: session={session_id[:16]}..., index={message_index}, file={filename}")
+
+    # Get file path
+    filepath = file_service.get_file_path(session_id, message_index, filename)
+
+    if not filepath:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Security: ensure path is within attachments directory
+    try:
+        filepath.resolve().relative_to(file_service.attachments_dir.resolve())
+    except ValueError:
+        logger.error(f"Path traversal attempt detected: {filepath}")
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return FileResponse(
+        filepath,
+        media_type="application/octet-stream",
+        filename=filename
     )
 
 

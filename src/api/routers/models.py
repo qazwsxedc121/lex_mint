@@ -4,6 +4,7 @@
 提供商和模型配置的 CRUD 操作
 """
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 from ..models.model_config import (
@@ -18,6 +19,13 @@ from ..models.model_config import (
     ProviderTestResponse,
 )
 from ..services.model_config_service import ModelConfigService
+from src.providers import (
+    BUILTIN_PROVIDERS,
+    ModelCapabilities,
+    AdapterRegistry,
+    get_builtin_provider,
+)
+from src.providers.types import ProviderDefinition, ApiProtocol, ProviderType
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -28,6 +36,88 @@ def get_model_service() -> ModelConfigService:
 
 
 # ==================== 提供商管理 ====================
+
+# NOTE: Static routes must be defined BEFORE parameterized routes
+# Otherwise /providers/builtin would match /providers/{provider_id}
+
+class BuiltinProviderInfo(BaseModel):
+    """内置 Provider 信息响应"""
+    id: str
+    name: str
+    protocol: str
+    base_url: str
+    api_key_env: str
+    sdk_class: str
+    supports_model_list: bool
+    default_capabilities: ModelCapabilities
+    builtin_models: List[dict] = []
+
+
+class ModelInfo(BaseModel):
+    """模型信息"""
+    id: str
+    name: str
+
+
+@router.get("/providers/builtin", response_model=List[BuiltinProviderInfo])
+async def get_builtin_providers():
+    """
+    获取所有内置 Provider 定义
+
+    Returns pre-configured provider definitions with default settings and models.
+    """
+    result = []
+    for provider_id, definition in BUILTIN_PROVIDERS.items():
+        builtin_models = [
+            {"id": m.id, "name": m.name}
+            for m in definition.builtin_models
+        ]
+        result.append(BuiltinProviderInfo(
+            id=definition.id,
+            name=definition.name,
+            protocol=definition.protocol.value,
+            base_url=definition.base_url,
+            api_key_env=definition.api_key_env,
+            sdk_class=definition.sdk_class,
+            supports_model_list=definition.supports_model_list,
+            default_capabilities=definition.default_capabilities,
+            builtin_models=builtin_models,
+        ))
+    return result
+
+
+@router.get("/providers/builtin/{provider_id}", response_model=BuiltinProviderInfo)
+async def get_builtin_provider_info(provider_id: str):
+    """
+    获取指定内置 Provider 的定义
+
+    Args:
+        provider_id: Provider ID (e.g., "deepseek", "openai", "openrouter")
+    """
+    definition = get_builtin_provider(provider_id)
+    if not definition:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Builtin provider '{provider_id}' not found"
+        )
+
+    builtin_models = [
+        {"id": m.id, "name": m.name}
+        for m in definition.builtin_models
+    ]
+
+    return BuiltinProviderInfo(
+        id=definition.id,
+        name=definition.name,
+        protocol=definition.protocol.value,
+        base_url=definition.base_url,
+        api_key_env=definition.api_key_env,
+        sdk_class=definition.sdk_class,
+        supports_model_list=definition.supports_model_list,
+        default_capabilities=definition.default_capabilities,
+        builtin_models=builtin_models,
+    )
+
 
 @router.get("/providers", response_model=List[Provider])
 async def list_providers(service: ModelConfigService = Depends(get_model_service)):
@@ -268,3 +358,112 @@ async def get_reasoning_supported_patterns(
 ):
     """获取支持 reasoning effort 参数的模型名称模式列表"""
     return await service.get_reasoning_supported_patterns()
+
+
+# ==================== Provider 抽象层 API (其他端点) ====================
+
+class CapabilitiesResponse(BaseModel):
+    """模型能力响应"""
+    model_id: str
+    provider_id: str
+    capabilities: ModelCapabilities
+
+
+@router.post("/providers/{provider_id}/fetch-models", response_model=List[ModelInfo])
+async def fetch_provider_models(
+    provider_id: str,
+    service: ModelConfigService = Depends(get_model_service)
+):
+    """
+    从 Provider API 获取可用模型列表
+
+    Calls the provider's /models endpoint to get available models.
+    Only works for providers that support model listing.
+
+    Args:
+        provider_id: Provider ID
+    """
+    # Get provider config
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    # Check if provider supports model listing
+    builtin = get_builtin_provider(provider_id)
+    supports_list = (
+        builtin.supports_model_list if builtin
+        else getattr(provider, 'supports_model_list', False)
+    )
+
+    if not supports_list:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider '{provider_id}' does not support model listing"
+        )
+
+    # Get API key
+    api_key = await service.get_api_key(provider_id)
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No API key configured for provider '{provider_id}'"
+        )
+
+    # Get adapter and fetch models
+    adapter = service.get_adapter_for_provider(provider)
+    try:
+        models = await adapter.fetch_models(provider.base_url, api_key)
+        return [ModelInfo(id=m["id"], name=m.get("name", m["id"])) for m in models]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch models: {str(e)}"
+        )
+
+
+@router.get("/capabilities/{model_id}", response_model=CapabilitiesResponse)
+async def get_model_capabilities(
+    model_id: str,
+    service: ModelConfigService = Depends(get_model_service)
+):
+    """
+    获取模型的能力配置
+
+    Returns merged capabilities (provider defaults + model overrides).
+
+    Args:
+        model_id: Model ID (can be composite: provider_id:model_id)
+    """
+    model = await service.get_model(model_id)
+    if not model:
+        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
+
+    provider = await service.get_provider(model.provider_id)
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Provider '{model.provider_id}' not found"
+        )
+
+    capabilities = service.get_merged_capabilities(model, provider)
+
+    return CapabilitiesResponse(
+        model_id=model.id,
+        provider_id=model.provider_id,
+        capabilities=capabilities,
+    )
+
+
+@router.get("/protocols", response_model=List[dict])
+async def get_available_protocols():
+    """
+    获取可用的 API 协议类型
+
+    Returns list of supported API protocols for custom providers.
+    """
+    return [
+        {"id": ApiProtocol.OPENAI.value, "name": "OpenAI Compatible", "description": "OpenAI and compatible APIs"},
+        {"id": ApiProtocol.ANTHROPIC.value, "name": "Anthropic", "description": "Anthropic Claude API"},
+        {"id": ApiProtocol.GEMINI.value, "name": "Google Gemini", "description": "Google Gemini API"},
+        {"id": ApiProtocol.OLLAMA.value, "name": "Ollama", "description": "Ollama local models"},
+    ]

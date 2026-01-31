@@ -1,11 +1,16 @@
-"""Agent service for processing chat messages - 简化版（不使用 LangGraph）"""
+"""Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
-from typing import Dict, AsyncIterator
+from typing import Dict, AsyncIterator, Optional, Any, List
+from pathlib import Path
 import logging
 import asyncio
 
 from src.agents.simple_llm import call_llm, call_llm_stream
+from src.providers.types import TokenUsage, CostInfo
 from .conversation_storage import ConversationStorage
+from .pricing_service import PricingService
+from .file_service import FileService
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +21,7 @@ class AgentService:
     Coordinates the flow:
     1. Append user message to storage
     2. Load current conversation state
-    3. Call LLM to generate response (直接调用，不用 LangGraph)
+    3. Call LLM to generate response (direct call, without LangGraph)
     4. Append assistant response to storage
     5. Return response to caller
     """
@@ -28,7 +33,9 @@ class AgentService:
             storage: ConversationStorage instance for persistence
         """
         self.storage = storage
-        logger.info("🤖 AgentService 初始化完成（简化版）")
+        self.pricing_service = PricingService()
+        self.file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
+        logger.info("AgentService initialized (simplified version)")
 
     async def process_message(self, session_id: str, user_message: str) -> str:
         """Process a user message and return AI response.
@@ -77,51 +84,92 @@ class AgentService:
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
-        reasoning_effort: str = None
-    ) -> AsyncIterator[str]:
-        """流式处理用户消息并返回 AI 响应流.
+        reasoning_effort: str = None,
+        attachments: Optional[List[Dict[str, Any]]] = None
+    ) -> AsyncIterator[Any]:
+        """Stream process user message and return AI response stream.
 
         Args:
             session_id: Session UUID
             user_message: User's input text
-            skip_user_append: 是否跳过追加用户消息（重新生成时使用）
+            skip_user_append: Whether to skip appending user message (for regeneration)
             reasoning_effort: Reasoning effort level: "low", "medium", "high"
+            attachments: List of file attachments with {filename, size, mime_type, temp_path}
 
         Yields:
-            AI assistant's response tokens
+            String tokens during streaming, or dict events:
+            - {"type": "usage", "usage": {...}, "cost": {...}} at the end
 
         Raises:
             FileNotFoundError: If session doesn't exist
         """
-        # 仅当 skip_user_append=False 时追加用户消息
-        if not skip_user_append:
-            print(f"📝 [步骤 1] 保存用户消息到文件...")
-            logger.info(f"📝 [步骤 1] 保存用户消息")
-            await self.storage.append_message(session_id, "user", user_message)
-            print(f"✅ 用户消息已保存")
-        else:
-            print(f"⏭️ [步骤 1] 跳过保存用户消息（重新生成模式）")
-            logger.info(f"⏭️ [步骤 1] 跳过保存用户消息")
+        # Process attachments
+        attachment_metadata = []
+        full_message_content = user_message
 
-        print(f"📂 [步骤 2] 加载会话状态...")
-        logger.info(f"📂 [步骤 2] 加载会话状态")
+        if attachments:
+            print(f"[Attachments] Processing {len(attachments)} file(s)...")
+            logger.info(f"Processing {len(attachments)} file attachments")
+
+            # Get current message count for indexing
+            session = await self.storage.get_session(session_id)
+            message_index = len(session["state"]["messages"])
+
+            for idx, att in enumerate(attachments):
+                filename = att["filename"]
+                temp_path = att["temp_path"]
+
+                # Read file content
+                temp_file_path = self.file_service.attachments_dir / temp_path
+                content = await self.file_service.get_file_content(temp_file_path)
+
+                # Add metadata for storage
+                attachment_metadata.append({
+                    "filename": filename,
+                    "size": att["size"],
+                    "mime_type": att["mime_type"]
+                })
+
+                # Append file content to message for LLM
+                full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
+                print(f"   File {idx + 1}: {filename} ({att['size']} bytes)")
+
+                # Move to permanent location
+                await self.file_service.move_to_permanent(
+                    session_id, message_index, temp_path, filename
+                )
+                logger.info(f"Moved {filename} to permanent storage")
+
+        # Only append user message when skip_user_append=False
+        if not skip_user_append:
+            print(f"[Step 1] Saving user message to file...")
+            logger.info(f"[Step 1] Saving user message")
+            await self.storage.append_message(
+                session_id, "user", full_message_content,
+                attachments=attachment_metadata if attachment_metadata else None
+            )
+            print(f"[OK] User message saved")
+        else:
+            print(f"[Step 1] Skipping user message save (regeneration mode)")
+            logger.info(f"[Step 1] Skipping user message save")
+
+        print(f"[Step 2] Loading session state...")
+        logger.info(f"[Step 2] Loading session state")
         session = await self.storage.get_session(session_id)
         messages = session["state"]["messages"]
         assistant_id = session.get("assistant_id")
         model_id = session.get("model_id")
-        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息")
-        print(f"   助手ID: {assistant_id}, 模型: {model_id}")
+        print(f"[OK] Session loaded, {len(messages)} messages")
+        print(f"   Assistant: {assistant_id}, Model: {model_id}")
 
-        # 获取助手配置（包括系统提示词和最大对话轮数）
+        # Get assistant config (system prompt and max rounds)
         system_prompt = None
         max_rounds = None
 
-        # 检查是否是 legacy 会话标识
+        # Check for legacy session identifier
         if assistant_id and assistant_id.startswith("__legacy_model_"):
-            # 旧会话：只使用 model_id，不使用助手配置
-            print(f"   使用旧会话模式（仅模型）")
+            print(f"   Using legacy session mode (model only)")
         elif assistant_id:
-            # 新会话：从助手配置加载系统提示词和对话轮数限制
             from .assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             try:
@@ -129,25 +177,27 @@ class AgentService:
                 if assistant:
                     system_prompt = assistant.system_prompt
                     max_rounds = assistant.max_rounds
-                    print(f"   使用助手配置:")
+                    print(f"   Using assistant config:")
                     if system_prompt:
-                        print(f"     - 系统提示词: {system_prompt[:50]}...")
+                        print(f"     - System prompt: {system_prompt[:50]}...")
                     if max_rounds:
                         if max_rounds == -1:
-                            print(f"     - 对话轮数: 无限制")
+                            print(f"     - Round limit: unlimited")
                         else:
-                            print(f"     - 最大轮数: {max_rounds}")
+                            print(f"     - Max rounds: {max_rounds}")
             except Exception as e:
-                logger.warning(f"   加载助手配置失败: {e}，使用默认配置")
+                logger.warning(f"   Failed to load assistant config: {e}, using defaults")
 
-        print(f"🧠 [步骤 3] 流式调用 LLM...")
-        logger.info(f"🧠 [步骤 3] 流式调用 LLM")
+        print(f"[Step 3] Streaming LLM call...")
+        logger.info(f"[Step 3] Streaming LLM call")
 
-        # 收集完整回复用于保存
+        # Collect full response for saving
         full_response = ""
+        usage_data: Optional[TokenUsage] = None
+        cost_data: Optional[CostInfo] = None
 
         try:
-            # 流式调用 LLM，传递 model_id、system_prompt、max_rounds 和 reasoning_effort
+            # Stream LLM, pass model_id, system_prompt, max_rounds and reasoning_effort
             async for chunk in call_llm_stream(
                 messages,
                 session_id=session_id,
@@ -156,23 +206,48 @@ class AgentService:
                 max_rounds=max_rounds,
                 reasoning_effort=reasoning_effort
             ):
+                # Check if this is a usage data dict
+                if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                    usage_data = chunk["usage"]
+                    # Calculate cost
+                    if model_id and usage_data:
+                        parts = model_id.split(":", 1)
+                        provider_id = parts[0] if len(parts) > 1 else ""
+                        simple_model_id = parts[1] if len(parts) > 1 else model_id
+                        cost_data = self.pricing_service.calculate_cost(
+                            provider_id, simple_model_id, usage_data
+                        )
+                    continue
+
                 full_response += chunk
                 yield chunk
 
-            print(f"✅ LLM 流式处理完成")
-            logger.info(f"✅ LLM 流式处理完成")
-            print(f"💬 AI 回复总长度: {len(full_response)} 字符")
+            print(f"[OK] LLM streaming complete")
+            logger.info(f"[OK] LLM streaming complete")
+            print(f"[MSG] AI response length: {len(full_response)} chars")
 
         except asyncio.CancelledError:
-            # 流式中止，保存部分内容
-            print(f"⚠️ 流式生成被中止，保存部分内容...")
-            logger.warning(f"⚠️ 流式生成被中止，保存部分内容（{len(full_response)} 字符）")
+            print(f"[WARN] Stream generation cancelled, saving partial content...")
+            logger.warning(f"Stream generation cancelled, saving partial content ({len(full_response)} chars)")
             if full_response:
                 await self.storage.append_message(session_id, "assistant", full_response)
-                print(f"✅ 部分 AI 回复已保存")
+                print(f"[OK] Partial AI response saved")
             raise
 
-        print(f"📝 [步骤 4] 保存完整 AI 回复到文件...")
-        logger.info(f"📝 [步骤 4] 保存完整 AI 回复")
-        await self.storage.append_message(session_id, "assistant", full_response)
-        print(f"✅ AI 回复已保存")
+        print(f"[Step 4] Saving complete AI response to file...")
+        logger.info(f"[Step 4] Saving complete AI response")
+        await self.storage.append_message(
+            session_id, "assistant", full_response,
+            usage=usage_data, cost=cost_data
+        )
+        print(f"[OK] AI response saved")
+
+        # Yield usage and cost data as a special event at the end
+        if usage_data:
+            usage_event = {
+                "type": "usage",
+                "usage": usage_data.model_dump(),
+            }
+            if cost_data:
+                usage_event["cost"] = cost_data.model_dump()
+            yield usage_event

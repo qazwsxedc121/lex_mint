@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import type { Message } from '../../../types/message';
+import type { Message, TokenUsage, CostInfo, UploadedFile } from '../../../types/message';
 import { getSession, sendMessageStream, deleteMessage as apiDeleteMessage } from '../../../services/api';
 
 export function useChat(sessionId: string | null) {
@@ -13,6 +13,8 @@ export function useChat(sessionId: string | null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
+  const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
+  const [totalCost, setTotalCost] = useState<CostInfo | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -22,6 +24,8 @@ export function useChat(sessionId: string | null) {
       setMessages([]);
       setCurrentModelId(null);
       setCurrentAssistantId(null);
+      setTotalUsage(null);
+      setTotalCost(null);
       return;
     }
 
@@ -33,11 +37,15 @@ export function useChat(sessionId: string | null) {
         setMessages(session.state.messages);
         setCurrentModelId(session.model_id || null);
         setCurrentAssistantId(session.assistant_id || null);
+        setTotalUsage(session.total_usage || null);
+        setTotalCost(session.total_cost || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load session');
         setMessages([]);
         setCurrentModelId(null);
         setCurrentAssistantId(null);
+        setTotalUsage(null);
+        setTotalCost(null);
       } finally {
         setLoading(false);
       }
@@ -46,13 +54,21 @@ export function useChat(sessionId: string | null) {
     loadSession();
   }, [sessionId]);
 
-  const sendMessage = async (content: string, options?: { reasoningEffort?: string }) => {
-    if (!sessionId || !content.trim() || isProcessingRef.current) return;
+  const sendMessage = async (content: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => {
+    if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
 
-    // Optimistically add user message to UI
-    const userMessage: Message = { role: 'user', content };
+    // Optimistically add user message to UI (with attachments if any)
+    const userMessage: Message = {
+      role: 'user',
+      content,
+      attachments: options?.attachments?.map(a => ({
+        filename: a.filename,
+        size: a.size,
+        mime_type: a.mime_type,
+      })),
+    };
     setMessages(prev => [...prev, userMessage]);
 
     // Add placeholder for assistant message
@@ -77,7 +93,7 @@ export function useChat(sessionId: string | null) {
             const newMessages = [...prev];
             const lastIndex = newMessages.length - 1;
             if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { role: 'assistant', content: streamedContent };
+              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
             }
             return newMessages;
           });
@@ -95,7 +111,31 @@ export function useChat(sessionId: string | null) {
           setMessages(prev => prev.slice(0, -2));
         },
         abortControllerRef,
-        options?.reasoningEffort
+        options?.reasoningEffort,
+        (usage: TokenUsage, cost?: CostInfo) => {
+          // Update the last assistant message with usage/cost data
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
+            }
+            return newMessages;
+          });
+          // Update session totals
+          setTotalUsage(prev => prev ? {
+            prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
+            completion_tokens: prev.completion_tokens + usage.completion_tokens,
+            total_tokens: prev.total_tokens + usage.total_tokens,
+          } : usage);
+          if (cost) {
+            setTotalCost(prev => prev ? {
+              ...prev,
+              total_cost: prev.total_cost + cost.total_cost,
+            } : cost);
+          }
+        },
+        options?.attachments,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
@@ -147,7 +187,7 @@ export function useChat(sessionId: string | null) {
             const newMessages = [...prev];
             const lastIndex = newMessages.length - 1;
             if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { role: 'assistant', content: streamedContent };
+              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
             }
             return newMessages;
           });
@@ -164,7 +204,18 @@ export function useChat(sessionId: string | null) {
           isProcessingRef.current = false;
           setMessages(originalMessages);
         },
-        abortControllerRef
+        abortControllerRef,
+        undefined,
+        (usage: TokenUsage, cost?: CostInfo) => {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
+            }
+            return newMessages;
+          });
+        },
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to edit message');
@@ -235,7 +286,7 @@ export function useChat(sessionId: string | null) {
             const newMessages = [...prev];
             const lastIndex = newMessages.length - 1;
             if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { role: 'assistant', content: streamedContent };
+              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
             }
             return newMessages;
           });
@@ -252,7 +303,18 @@ export function useChat(sessionId: string | null) {
           isProcessingRef.current = false;
           setMessages(originalMessages);
         },
-        abortControllerRef
+        abortControllerRef,
+        undefined,
+        (usage: TokenUsage, cost?: CostInfo) => {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
+            }
+            return newMessages;
+          });
+        },
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate message');
@@ -305,6 +367,8 @@ export function useChat(sessionId: string | null) {
     isStreaming,
     currentModelId,
     currentAssistantId,
+    totalUsage,
+    totalCost,
     sendMessage,
     editMessage,
     regenerateMessage,

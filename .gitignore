@@ -44,3 +44,7 @@ build/
 # Logs
 *.log
 nul
+
+# User data
+conversations/
+attachments/

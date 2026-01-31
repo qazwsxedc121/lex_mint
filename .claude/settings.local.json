@@ -32,7 +32,15 @@
       "Bash(del test_provider_api.py)",
       "WebSearch",
       "WebFetch(domain:python.langchain.com)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:docs.x.ai)",
+      "Bash(./venv/Scripts/pip:*)",
+      "Bash(./venv/Scripts/pytest tests/unit/test_services/test_conversation_storage.py -v)",
+      "Bash(./venv/Scripts/pytest:*)",
+      "Bash(find:*)",
+      "Bash(findstr:*)"
     ]
   }
 }

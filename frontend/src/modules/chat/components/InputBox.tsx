@@ -2,8 +2,10 @@
  * InputBox component - message input field with send button and toolbar.
  */
 
-import React, { useState, type KeyboardEvent } from 'react';
-import { ChevronDownIcon, LightBulbIcon } from '@heroicons/react/24/outline';
+import React, { useState, useRef, type KeyboardEvent } from 'react';
+import { ChevronDownIcon, LightBulbIcon, PaperClipIcon, XMarkIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { uploadFile } from '../../../services/api';
+import type { UploadedFile } from '../../../types/message';
 
 // Reasoning effort options for supported models
 const REASONING_EFFORT_OPTIONS = [
@@ -14,13 +16,14 @@ const REASONING_EFFORT_OPTIONS = [
 ];
 
 interface InputBoxProps {
-  onSend: (message: string, options?: { reasoningEffort?: string }) => void;
+  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => void;
   onStop?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
   // Toolbar props
   assistantSelector?: React.ReactNode;
   supportsReasoning?: boolean;
+  sessionId?: string;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -30,16 +33,54 @@ export const InputBox: React.FC<InputBoxProps> = ({
   isStreaming = false,
   assistantSelector,
   supportsReasoning = false,
+  sessionId,
 }) => {
   const [input, setInput] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState('');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
+  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || !sessionId) return;
+
+    setUploading(true);
+    try {
+      const uploaded: UploadedFile[] = [];
+      for (const file of Array.from(files)) {
+        // Validate size on client side (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File ${file.name} exceeds 10MB limit`);
+          continue;
+        }
+
+        const result = await uploadFile(sessionId, file);
+        uploaded.push(result);
+      }
+      setAttachments(prev => [...prev, ...uploaded]);
+    } catch (err: any) {
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleSend = () => {
     const message = input.trim();
-    if (message) {
-      onSend(message, reasoningEffort ? { reasoningEffort } : undefined);
+    if (message || attachments.length > 0) {
+      onSend(message, {
+        reasoningEffort: reasoningEffort || undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
       setInput('');
+      setAttachments([]);
     }
   };
 
@@ -107,7 +148,51 @@ export const InputBox: React.FC<InputBoxProps> = ({
             )}
           </div>
         )}
+
+        {/* File upload button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading || isStreaming || !sessionId}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Attach file (text files only, max 10MB)"
+        >
+          <PaperClipIcon className="h-4 w-4" />
+          {uploading && <span className="text-xs">Uploading...</span>}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="text/*,.txt,.md,.json,.csv,.log,.xml,.yaml,.yml,.py,.js,.ts,.java,.cpp,.go,.rs,.html,.css"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
       </div>
+
+      {/* Attachment preview */}
+      {attachments.length > 0 && (
+        <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
+          {attachments.map((att, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800"
+            >
+              <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1 text-sm truncate">{att.filename}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                ({(att.size / 1024).toFixed(1)} KB)
+              </span>
+              <button
+                onClick={() => handleRemoveAttachment(idx)}
+                className="flex-shrink-0 hover:text-red-600 dark:hover:text-red-400"
+                title="Remove file"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Input area */}
       <div className="p-4">
@@ -131,7 +216,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           ) : (
             <button
               onClick={handleSend}
-              disabled={disabled || !input.trim()}
+              disabled={disabled || (!input.trim() && attachments.length === 0)}
               className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Send

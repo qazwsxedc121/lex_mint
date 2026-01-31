@@ -6,11 +6,23 @@
 import os
 import yaml
 import aiofiles
+import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple, Any
 from langchain_openai import ChatOpenAI
 
 from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
+from src.providers import (
+    AdapterRegistry,
+    ModelCapabilities,
+    ProviderType,
+    ApiProtocol,
+    get_builtin_provider,
+    BUILTIN_PROVIDERS,
+)
+from src.providers.types import ProviderConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ModelConfigService:
@@ -54,16 +66,51 @@ class ModelConfigService:
                 {
                     "id": "deepseek",
                     "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
                     "base_url": "https://api.deepseek.com",
                     "api_key_env": "DEEPSEEK_API_KEY",
-                    "enabled": True
+                    "enabled": True,
+                    "sdk_class": "deepseek",
+                    "default_capabilities": {
+                        "context_length": 64000,
+                        "reasoning": True,
+                        "function_calling": True,
+                        "streaming": True,
+                    }
                 },
                 {
                     "id": "openai",
                     "name": "OpenAI",
+                    "type": "builtin",
+                    "protocol": "openai",
                     "base_url": "https://api.openai.com/v1",
                     "api_key_env": "OPENAI_API_KEY",
-                    "enabled": False
+                    "enabled": False,
+                    "sdk_class": "openai",
+                    "default_capabilities": {
+                        "context_length": 128000,
+                        "vision": True,
+                        "function_calling": True,
+                        "reasoning": True,
+                        "streaming": True,
+                    }
+                },
+                {
+                    "id": "openrouter",
+                    "name": "OpenRouter",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "api_key_env": "OPENROUTER_API_KEY",
+                    "enabled": True,
+                    "sdk_class": "openai",
+                    "supports_model_list": True,
+                    "default_capabilities": {
+                        "context_length": 128000,
+                        "function_calling": True,
+                        "streaming": True,
+                    }
                 }
             ],
             "models": [
@@ -71,31 +118,45 @@ class ModelConfigService:
                     "id": "deepseek-chat",
                     "name": "DeepSeek Chat",
                     "provider_id": "deepseek",
-                    "group": "对话模型",
+                    "group": "chat",
                     "temperature": 0.7,
-                    "enabled": True
+                    "enabled": True,
+                    "capabilities": {
+                        "context_length": 64000,
+                        "reasoning": True,
+                        "function_calling": True,
+                    }
                 },
                 {
-                    "id": "deepseek-coder",
-                    "name": "DeepSeek Coder",
+                    "id": "deepseek-reasoner",
+                    "name": "DeepSeek Reasoner",
                     "provider_id": "deepseek",
-                    "group": "代码模型",
+                    "group": "reasoning",
                     "temperature": 0.7,
-                    "enabled": True
+                    "enabled": True,
+                    "capabilities": {
+                        "context_length": 64000,
+                        "reasoning": True,
+                    }
                 },
                 {
                     "id": "gpt-4-turbo",
                     "name": "GPT-4 Turbo",
                     "provider_id": "openai",
-                    "group": "对话模型",
+                    "group": "chat",
                     "temperature": 0.7,
-                    "enabled": False
+                    "enabled": False,
+                    "capabilities": {
+                        "context_length": 128000,
+                        "vision": True,
+                        "function_calling": True,
+                    }
                 },
                 {
                     "id": "gpt-3.5-turbo",
                     "name": "GPT-3.5 Turbo",
                     "provider_id": "openai",
-                    "group": "对话模型",
+                    "group": "chat",
                     "temperature": 0.7,
                     "enabled": False
                 }
@@ -534,6 +595,147 @@ class ModelConfigService:
                 return False, f"Connection error: {error_msg}"
             else:
                 return False, f"Test failed: {error_msg}"
+
+    # ==================== Provider 抽象层支持 ====================
+
+    def get_model_and_provider_sync(
+        self,
+        model_id: Optional[str] = None
+    ) -> Tuple[Model, Provider]:
+        """
+        同步获取模型和提供商配置
+
+        Args:
+            model_id: 模型ID，支持复合ID (provider_id:model_id)
+
+        Returns:
+            Tuple of (Model, Provider)
+
+        Raises:
+            ValueError: 如果模型或提供商不存在
+        """
+        # 同步加载配置
+        with open(self.config_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+            config = ModelsConfig(**data)
+
+        # 确定使用哪个模型
+        if model_id is None:
+            model_id = f"{config.default.provider}:{config.default.model}"
+
+        # 查找模型（支持复合ID）
+        model = None
+        if ':' in model_id:
+            provider_id, simple_model_id = model_id.split(':', 1)
+            model = next(
+                (m for m in config.models
+                 if m.id == simple_model_id and m.provider_id == provider_id),
+                None
+            )
+        else:
+            model = next((m for m in config.models if m.id == model_id), None)
+
+        if not model:
+            raise ValueError(f"Model with id '{model_id}' not found")
+
+        # 查找提供商
+        provider = next((p for p in config.providers if p.id == model.provider_id), None)
+        if not provider:
+            raise ValueError(f"Provider with id '{model.provider_id}' not found")
+
+        return model, provider
+
+    def get_merged_capabilities(
+        self,
+        model: Model,
+        provider: Provider
+    ) -> ModelCapabilities:
+        """
+        获取合并后的模型能力配置
+
+        优先级：model.capabilities > provider.default_capabilities > 内置默认值
+
+        Args:
+            model: Model 配置
+            provider: Provider 配置
+
+        Returns:
+            合并后的 ModelCapabilities
+        """
+        # Start with default capabilities
+        base_caps = ModelCapabilities()
+
+        # Try to get builtin provider defaults
+        builtin = get_builtin_provider(provider.id)
+        if builtin:
+            base_caps = builtin.default_capabilities
+
+        # Override with provider config defaults
+        if provider.default_capabilities:
+            base_caps = base_caps.merge_with(provider.default_capabilities)
+
+        # Override with model-specific capabilities
+        if model.capabilities:
+            base_caps = base_caps.merge_with(model.capabilities)
+
+        return base_caps
+
+    def get_api_key_sync(self, provider_id: str) -> Optional[str]:
+        """
+        同步获取 API 密钥
+
+        Args:
+            provider_id: 提供商ID
+
+        Returns:
+            API 密钥，如果不存在则返回 None
+        """
+        if not self.keys_path.exists():
+            return None
+
+        try:
+            with open(self.keys_path, 'r', encoding='utf-8') as f:
+                keys_data = yaml.safe_load(f)
+                if keys_data and "providers" in keys_data:
+                    return keys_data["providers"].get(provider_id, {}).get("api_key")
+        except Exception:
+            pass
+        return None
+
+    def to_provider_config(self, provider: Provider) -> ProviderConfig:
+        """
+        将 Provider 转换为 ProviderConfig（用于 AdapterRegistry）
+
+        Args:
+            provider: Provider 配置
+
+        Returns:
+            ProviderConfig 实例
+        """
+        return ProviderConfig(
+            id=provider.id,
+            name=provider.name,
+            type=provider.type if hasattr(provider, 'type') and provider.type else ProviderType.BUILTIN,
+            protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
+            base_url=provider.base_url,
+            api_key_env=provider.api_key_env or "",
+            enabled=provider.enabled,
+            default_capabilities=provider.default_capabilities,
+            sdk_class=provider.sdk_class if hasattr(provider, 'sdk_class') else None,
+        )
+
+    def get_adapter_for_provider(self, provider: Provider):
+        """
+        获取提供商对应的 SDK 适配器
+
+        Args:
+            provider: Provider 配置
+
+        Returns:
+            BaseLLMAdapter 实例
+        """
+        provider_config = self.to_provider_config(provider)
+        return AdapterRegistry.get_for_provider(provider_config)
 
     # ==================== LLM 实例化 ====================
 

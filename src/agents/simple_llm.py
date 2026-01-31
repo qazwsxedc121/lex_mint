@@ -1,13 +1,13 @@
-"""简单的 LLM 调用服务 - 不使用 LangGraph"""
+"""Simple LLM call service - without LangGraph"""
 
 import os
 import logging
-from typing import List, Dict, Any, AsyncIterator, Optional
-from langchain_openai import ChatOpenAI
+from typing import List, Dict, Any, AsyncIterator, Optional, Union
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
+from src.providers.types import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -17,63 +17,64 @@ def call_llm(
     session_id: str = "unknown",
     model_id: Optional[str] = None
 ) -> str:
-    """直接调用 LLM，不使用 LangGraph.
+    """
+    Direct LLM call without LangGraph.
 
     Args:
-        messages: 消息列表 [{"role": "user/assistant", "content": "..."}]
-        session_id: 会话 ID（用于日志）
-        model_id: 模型 ID，如果为 None 则使用默认模型
+        messages: Message list [{"role": "user/assistant", "content": "..."}]
+        session_id: Session ID (for logging)
+        model_id: Model ID, if None uses default model
 
     Returns:
-        AI 的回复内容
+        AI response content
     """
     llm_logger = get_llm_logger()
 
-    # 动态获取 LLM 实例
+    # Dynamically get LLM instance
     model_service = ModelConfigService()
     llm = model_service.get_llm_instance(model_id)
 
-    # 获取实际使用的模型 ID
+    # Get actual model ID
     actual_model_id = model_id or model_service.get_llm_instance().model_name
 
-    print(f"🔧 准备调用 LLM (模型: {actual_model_id})")
-    print(f"   会话历史消息数: {len(messages)}")
-    logger.info(f"🔧 准备调用 LLM (模型: {actual_model_id})，消息数: {len(messages)}")
+    print(f"[LLM] Preparing to call LLM (model: {actual_model_id})")
+    print(f"      History messages: {len(messages)}")
+    logger.info(f"Preparing to call LLM (model: {actual_model_id}), messages: {len(messages)}")
 
-    # 转换消息格式
+    # Convert message format
     langchain_messages = []
     for i, msg in enumerate(messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
-            print(f"   消息 {i+1}: 用户 - {msg['content'][:50]}...")
+            print(f"      Message {i+1}: user - {msg['content'][:50]}...")
         elif msg.get("role") == "assistant":
             langchain_messages.append(AIMessage(content=msg["content"]))
-            print(f"   消息 {i+1}: 助手 - {msg['content'][:50]}...")
+            print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
 
     try:
-        print(f"🚀 正在发送 {len(langchain_messages)} 条消息到 LLM API...")
-        logger.info(f"🚀 调用 LLM API...")
+        print(f"[LLM] Sending {len(langchain_messages)} messages to LLM API...")
+        logger.info(f"Calling LLM API...")
 
-        # 调用 LLM（只调用一次！）
+        # Call LLM (only once!)
         response = llm.invoke(langchain_messages)
 
-        print(f"✅ 收到 LLM 回复，长度: {len(response.content)} 字符")
-        logger.info(f"✅ 收到回复: {len(response.content)} 字符")
+        print(f"[OK] Received LLM response, length: {len(response.content)} chars")
+        logger.info(f"Received response: {len(response.content)} chars")
 
-        # 记录日志
+        # Log interaction
         llm_logger.log_interaction(
             session_id=session_id,
             messages_sent=langchain_messages,
             response_received=response,
             model=actual_model_id
         )
-        print(f"📝 LLM 交互已记录到日志文件")
+        print(f"[LOG] LLM interaction logged")
 
         return response.content
 
     except Exception as e:
-        print(f"❌ LLM API 调用失败: {str(e)}")
-        logger.error(f"❌ API 调用失败: {str(e)}", exc_info=True)
+        print(f"[ERROR] LLM API call failed: {str(e)}")
+        logger.error(f"API call failed: {str(e)}", exc_info=True)
         llm_logger.log_error(session_id, e, context="LLM API call")
         raise
 
@@ -85,139 +86,163 @@ async def call_llm_stream(
     system_prompt: Optional[str] = None,
     max_rounds: Optional[int] = None,
     reasoning_effort: Optional[str] = None
-) -> AsyncIterator[str]:
-    """流式调用 LLM，逐token返回.
+) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    """
+    Streaming LLM call, yields tokens one by one.
+
+    Uses the adapter registry to select appropriate SDK based on provider config,
+    instead of text-matching on URLs.
 
     Args:
-        messages: 消息列表 [{"role": "user/assistant", "content": "..."}]
-        session_id: 会话 ID（用于日志）
-        model_id: 模型 ID，如果为 None 则使用默认模型
-        system_prompt: 系统提示词（可选）
-        max_rounds: 最大对话轮数（可选），-1 或 None 表示不限制
+        messages: Message list [{"role": "user/assistant", "content": "..."}]
+        session_id: Session ID (for logging)
+        model_id: Model ID, if None uses default model
+        system_prompt: System prompt (optional)
+        max_rounds: Max conversation rounds (optional), -1 or None means unlimited
         reasoning_effort: Reasoning effort level: "low", "medium", "high"
 
     Yields:
-        AI 回复的每个 token
+        String tokens during streaming, or dict with usage info at the end:
+        {"type": "usage", "usage": TokenUsage}
     """
     llm_logger = get_llm_logger()
 
-    # 动态获取 LLM 实例（启用流式输出）
+    # Get model and provider configuration
     model_service = ModelConfigService()
-    llm = model_service.get_llm_instance(model_id)
-    # 启用流式输出
-    llm.streaming = True
+    model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
 
-    # 如果提供了 reasoning_effort，根据提供商设置不同的参数
-    extra_params = {}
-    if reasoning_effort:
-        # 检查是否是 DeepSeek 提供商（通过 base_url 判断）
-        base_url = str(llm.openai_api_base or "")
-        is_deepseek = "deepseek" in base_url.lower()
+    # Get merged capabilities (provider defaults + model overrides)
+    capabilities = model_service.get_merged_capabilities(model_config, provider_config)
 
-        if is_deepseek:
-            # DeepSeek: use ChatDeepSeek which properly handles reasoning_content
-            from langchain_deepseek import ChatDeepSeek
-            api_key = llm.openai_api_key.get_secret_value() if hasattr(llm.openai_api_key, 'get_secret_value') else str(llm.openai_api_key)
-            llm = ChatDeepSeek(
-                model=llm.model_name,
-                api_key=api_key,
-                api_base=base_url,
-                streaming=True,
-                model_kwargs={"extra_body": {"thinking": {"type": "enabled"}}},
-            )
-            extra_params = {"thinking": {"type": "enabled"}, "provider": "deepseek"}
-            logger.info("DeepSeek Thinking Mode enabled via ChatDeepSeek")
-        else:
-            # 其他提供商使用 LangChain 的 reasoning 参数 (OpenAI Responses API)
-            llm.reasoning = {
-                "effort": reasoning_effort,
-                "summary": "auto"
-            }
-            extra_params = {"reasoning": {"effort": reasoning_effort, "summary": "auto"}}
-            logger.info(f"Reasoning enabled: effort={reasoning_effort}")
+    # Get the appropriate adapter via registry (no text matching!)
+    adapter = model_service.get_adapter_for_provider(provider_config)
 
-    # 获取实际使用的模型 ID
-    actual_model_id = model_id or model_service.get_llm_instance().model_name
+    # Determine if thinking should be enabled
+    thinking_enabled = False
+    if reasoning_effort and capabilities.reasoning:
+        thinking_enabled = True
+        logger.info(f"Thinking mode enabled for {model_config.id} (effort: {reasoning_effort})")
+    elif reasoning_effort and not capabilities.reasoning:
+        logger.warning(f"Model {model_config.id} does not support reasoning mode, ignoring reasoning_effort")
 
-    print(f"🔧 准备流式调用 LLM (模型: {actual_model_id})")
-    print(f"   会话历史消息数: {len(messages)}")
+    # Get API key
+    api_key = model_service.get_api_key_sync(provider_config.id)
+    if not api_key:
+        api_key = os.getenv(provider_config.api_key_env or "")
+
+    if not api_key:
+        raise RuntimeError(
+            f"API key not found for provider '{provider_config.id}'. "
+            f"Please set it via the UI or environment variable: {provider_config.api_key_env}"
+        )
+
+    # Create LLM instance via adapter
+    llm = adapter.create_llm(
+        model=model_config.id,
+        base_url=provider_config.base_url,
+        api_key=api_key,
+        temperature=model_config.temperature,
+        streaming=True,
+        thinking_enabled=thinking_enabled,
+        reasoning_effort=reasoning_effort,
+    )
+
+    actual_model_id = f"{provider_config.id}:{model_config.id}"
+
+    print(f"[LLM] Preparing streaming call (model: {actual_model_id})")
+    print(f"      History messages: {len(messages)}")
     if system_prompt:
-        print(f"   使用系统提示词: {system_prompt[:50]}...")
+        print(f"      Using system prompt: {system_prompt[:50]}...")
     if max_rounds:
         if max_rounds == -1:
-            print(f"   对话轮数限制: 无限制")
+            print(f"      Round limit: unlimited")
         else:
-            print(f"   最大对话轮数: {max_rounds}")
-    logger.info(f"🔧 准备流式调用 LLM (模型: {actual_model_id})，消息数: {len(messages)}")
+            print(f"      Max rounds: {max_rounds}")
+    if thinking_enabled:
+        print(f"      Thinking mode: enabled (effort: {reasoning_effort})")
+    logger.info(f"Preparing streaming LLM call (model: {actual_model_id}), messages: {len(messages)}")
 
-    # 转换消息格式
+    # Convert message format
     langchain_messages = []
 
-    # 注入系统提示词（如果提供）
+    # Inject system prompt (if provided)
     if system_prompt:
         langchain_messages.append(SystemMessage(content=system_prompt))
 
     for i, msg in enumerate(messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
-            print(f"   消息 {i+1}: 用户 - {msg['content'][:50]}...")
+            print(f"      Message {i+1}: user - {msg['content'][:50]}...")
         elif msg.get("role") == "assistant":
             langchain_messages.append(AIMessage(content=msg["content"]))
-            print(f"   消息 {i+1}: 助手 - {msg['content'][:50]}...")
+            print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
 
-    # 对话轮数截断（如果指定了 max_rounds）
+    # Truncate by conversation rounds (if specified)
     if max_rounds and max_rounds > 0:
         langchain_messages = _truncate_by_rounds(langchain_messages, max_rounds, system_prompt)
-        print(f"   截断后消息数: {len(langchain_messages)}")
+        print(f"      After truncation: {len(langchain_messages)} messages")
 
     try:
-        print(f"🚀 正在流式发送 {len(langchain_messages)} 条消息到 LLM API...")
-        logger.info(f"🚀 流式调用 LLM API...")
+        print(f"[LLM] Streaming {len(langchain_messages)} messages to LLM API...")
+        logger.info(f"Streaming LLM API call...")
 
-        # 收集完整回复用于日志记录
+        # Collect full response for logging
         full_response = ""
         full_reasoning = ""
-        in_thinking_phase = False  # Track if we're outputting thinking content
-        thinking_ended = False  # Track if thinking phase has ended
+        in_thinking_phase = False
+        thinking_ended = False
+        final_usage: Optional[TokenUsage] = None
 
-        # 流式调用 LLM
-        async for chunk in llm.astream(langchain_messages):
-            # 提取 reasoning_content (DeepSeek thinking mode)
-            if hasattr(chunk, 'additional_kwargs'):
-                reasoning = chunk.additional_kwargs.get('reasoning_content', '')
-                if reasoning:
-                    full_reasoning += reasoning
-                    # Start thinking block if not already started
-                    if not in_thinking_phase:
-                        in_thinking_phase = True
-                        yield "<think>"
-                    # Yield raw thinking content (without wrapping each chunk)
-                    yield reasoning
+        # Stream via adapter (unified interface)
+        async for chunk in adapter.stream(llm, langchain_messages):
+            # Handle thinking/reasoning content
+            if chunk.thinking:
+                full_reasoning += chunk.thinking
+                if not in_thinking_phase:
+                    in_thinking_phase = True
+                    yield "<think>"
+                yield chunk.thinking
 
+            # Handle regular content
             if chunk.content:
-                # End thinking block when content starts
                 if in_thinking_phase and not thinking_ended:
                     thinking_ended = True
                     yield "</think>"
                 full_response += chunk.content
                 yield chunk.content
 
-        # Close thinking tag if it was opened but no content followed
+            # Capture usage data (usually in final chunk)
+            if chunk.usage:
+                final_usage = chunk.usage
+
+        # Close thinking tag if opened but no content followed
         if in_thinking_phase and not thinking_ended:
             yield "</think>"
 
-        print(f"✅ LLM 流式回复完成，总长度: {len(full_response)} 字符")
-        if full_reasoning:
-            print(f"💭 思考内容长度: {len(full_reasoning)} 字符")
-        logger.info(f"✅ 流式回复完成: {len(full_response)} 字符")
+        # Yield usage data at the end
+        if final_usage:
+            yield {"type": "usage", "usage": final_usage}
 
-        # 记录完整交互到日志
+        print(f"[OK] LLM streaming complete, total length: {len(full_response)} chars")
+        if full_reasoning:
+            print(f"[THINK] Reasoning content length: {len(full_reasoning)} chars")
+        if final_usage:
+            print(f"[USAGE] Tokens: {final_usage.prompt_tokens} in / {final_usage.completion_tokens} out")
+        logger.info(f"Streaming complete: {len(full_response)} chars")
+
+        # Log complete interaction
         from langchain_core.messages import AIMessage as AIMsg
         response_msg = AIMsg(content=full_response)
-        # 添加 reasoning_content 到 extra_params 以便记录
-        log_extra_params = dict(extra_params) if extra_params else {}
+
+        log_extra_params = {}
+        if thinking_enabled:
+            log_extra_params["thinking_enabled"] = True
+            log_extra_params["reasoning_effort"] = reasoning_effort
         if full_reasoning:
             log_extra_params["reasoning_content"] = full_reasoning
+        if final_usage:
+            log_extra_params["usage"] = final_usage.model_dump()
+
         llm_logger.log_interaction(
             session_id=session_id,
             messages_sent=langchain_messages,
@@ -225,11 +250,11 @@ async def call_llm_stream(
             model=actual_model_id,
             extra_params=log_extra_params if log_extra_params else None
         )
-        print(f"📝 流式 LLM 交互已记录到日志文件")
+        print(f"[LOG] Streaming LLM interaction logged")
 
     except Exception as e:
-        print(f"❌ LLM 流式 API 调用失败: {str(e)}")
-        logger.error(f"❌ 流式 API 调用失败: {str(e)}", exc_info=True)
+        print(f"[ERROR] LLM streaming API call failed: {str(e)}")
+        logger.error(f"Streaming API call failed: {str(e)}", exc_info=True)
         llm_logger.log_error(session_id, e, context="LLM Stream API call")
         raise
 
@@ -240,19 +265,19 @@ def _truncate_by_rounds(
     system_prompt: Optional[str] = None
 ) -> List[Any]:
     """
-    按对话轮数截断消息列表.
+    Truncate message list by conversation rounds.
 
-    策略：保留系统提示词和最近的 N 轮对话（1轮 = 1个用户消息 + 1个助手回复）
+    Strategy: Keep system prompt and recent N rounds (1 round = 1 user message + 1 assistant reply)
 
     Args:
-        messages: LangChain 消息列表
-        max_rounds: 最大轮数
-        system_prompt: 系统提示词（如果有）
+        messages: LangChain message list
+        max_rounds: Maximum rounds
+        system_prompt: System prompt (if any)
 
     Returns:
-        截断后的消息列表
+        Truncated message list
     """
-    # 分离系统消息和对话消息
+    # Separate system message and conversation messages
     system_msg = None
     conversation_messages = messages
 
@@ -260,26 +285,26 @@ def _truncate_by_rounds(
         system_msg = messages[0]
         conversation_messages = messages[1:]
 
-    # 计算当前轮数（一轮 = user + assistant）
-    # 注意：可能存在不完整的轮次（只有 user 消息还没有 assistant 回复）
+    # Calculate current rounds (1 round = user + assistant)
+    # Note: May have incomplete rounds (only user message without assistant reply)
     current_rounds = len(conversation_messages) // 2
 
-    # 如果当前轮数不超过限制，直接返回
+    # If current rounds don't exceed limit, return directly
     if current_rounds <= max_rounds:
         return messages
 
-    print(f"⚠️  对话轮数超限 ({current_rounds} > {max_rounds})，截断到最近 {max_rounds} 轮...")
+    print(f"[WARN] Conversation rounds exceed limit ({current_rounds} > {max_rounds}), truncating to recent {max_rounds} rounds...")
 
-    # 保留最近的 max_rounds 轮对话
-    # 每轮包括 user + assistant 两条消息，共 max_rounds * 2 条
+    # Keep the most recent max_rounds rounds
+    # Each round includes user + assistant, total max_rounds * 2 messages
     keep_count = max_rounds * 2
     kept_conversation = conversation_messages[-keep_count:]
 
-    # 重新组装
+    # Reassemble
     result = []
     if system_msg:
         result.append(system_msg)
     result.extend(kept_conversation)
 
-    print(f"   截断完成：保留 {len(kept_conversation)} 条消息（{len(kept_conversation) // 2} 轮对话）")
+    print(f"      Truncation complete: kept {len(kept_conversation)} messages ({len(kept_conversation) // 2} rounds)")
     return result

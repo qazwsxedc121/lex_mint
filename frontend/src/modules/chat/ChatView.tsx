@@ -12,6 +12,7 @@ import { AssistantSelector } from './components/AssistantSelector';
 import { useChat } from './hooks/useChat';
 import { useChatContext } from './index';
 import { getAssistant, getReasoningSupportedPatterns } from '../../services/api';
+import type { UploadedFile } from '../../types/message';
 
 export const ChatView: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -70,7 +71,7 @@ export const ChatView: React.FC = () => {
     onAssistantRefresh();
   };
 
-  const handleSendMessage = (message: string, options?: { reasoningEffort?: string }) => {
+  const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => {
     sendMessage(message, options);
   };
 
@@ -99,6 +100,7 @@ export const ChatView: React.FC = () => {
         messages={messages}
         loading={loading}
         isStreaming={isStreaming}
+        sessionId={sessionId}
         onEditMessage={editMessage}
         onRegenerateMessage={regenerateMessage}
         onDeleteMessage={deleteMessage}
@@ -118,6 +120,7 @@ export const ChatView: React.FC = () => {
         disabled={loading}
         isStreaming={isStreaming}
         supportsReasoning={supportsReasoning}
+        sessionId={sessionId}
         assistantSelector={
           <AssistantSelector
             sessionId={sessionId}

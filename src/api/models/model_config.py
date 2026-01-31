@@ -6,14 +6,33 @@ LLM 模型配置数据模型
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
+
 
 class Provider(BaseModel):
     """LLM 提供商配置"""
     id: str = Field(..., description="提供商唯一标识")
     name: str = Field(..., description="提供商显示名称")
+    type: ProviderType = Field(default=ProviderType.BUILTIN, description="提供商来源类型")
+    protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
     base_url: str = Field(..., description="API 基础 URL")
-    api_key_env: str = Field(..., description="API 密钥环境变量名")
+    api_key_env: str = Field(default="", description="API 密钥环境变量名")
+    api_keys: List[str] = Field(default_factory=list, description="多 Key 轮询列表")
     enabled: bool = Field(default=True, description="是否启用")
+
+    # Capability declaration (provider-level defaults)
+    default_capabilities: Optional[ModelCapabilities] = Field(
+        default=None,
+        description="默认模型能力（provider级别）"
+    )
+
+    # Advanced configuration
+    url_suffix: str = Field(default="/v1", description="URL 后缀")
+    auto_append_path: bool = Field(default=True, description="是否自动拼接路径")
+    supports_model_list: bool = Field(default=False, description="是否支持获取模型列表")
+    sdk_class: Optional[str] = Field(default=None, description="SDK 适配器类覆盖")
+
+    # Runtime fields (not persisted)
     has_api_key: Optional[bool] = Field(default=None, description="是否已配置 API 密钥")
     api_key: Optional[str] = Field(default=None, description="API 密钥（仅用于传输，不持久化到配置文件）")
 
@@ -26,6 +45,12 @@ class Model(BaseModel):
     group: str = Field(default="通用", description="模型分组名称")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="温度参数")
     enabled: bool = Field(default=True, description="是否启用")
+
+    # Model capabilities (overrides provider defaults)
+    capabilities: Optional[ModelCapabilities] = Field(
+        default=None,
+        description="模型能力（覆盖 provider 默认值）"
+    )
 
 
 class DefaultConfig(BaseModel):
@@ -49,17 +74,24 @@ class ProviderCreate(BaseModel):
     """创建提供商请求"""
     id: str = Field(..., description="提供商唯一标识")
     name: str = Field(..., description="提供商显示名称")
+    type: ProviderType = Field(default=ProviderType.CUSTOM, description="提供商类型")
+    protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
     base_url: str = Field(..., description="API 基础 URL")
-    api_key: str = Field(..., min_length=1, description="API 密钥")
+    api_key: str = Field(default="", description="API 密钥")
     enabled: bool = Field(default=True, description="是否启用")
+    default_capabilities: Optional[ModelCapabilities] = Field(default=None, description="默认模型能力")
+    auto_append_path: bool = Field(default=True, description="是否自动拼接路径")
 
 
 class ProviderUpdate(BaseModel):
     """更新提供商请求"""
     name: Optional[str] = Field(None, description="提供商显示名称")
+    protocol: Optional[ApiProtocol] = Field(None, description="API 协议类型")
     base_url: Optional[str] = Field(None, description="API 基础 URL")
     enabled: Optional[bool] = Field(None, description="是否启用")
     api_key: Optional[str] = Field(None, min_length=1, description="API 密钥（可选，不提供则保持不变）")
+    default_capabilities: Optional[ModelCapabilities] = Field(None, description="默认模型能力")
+    auto_append_path: Optional[bool] = Field(None, description="是否自动拼接路径")
 
 
 class ProviderApiKeyUpdate(BaseModel):

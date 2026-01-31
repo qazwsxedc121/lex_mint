@@ -1,21 +1,61 @@
 default:
   provider: openrouter
   model: openai/gpt-5-nano
+
+# Pricing configuration (per 1M tokens, in USD)
+pricing:
+  deepseek:
+    deepseek-chat:
+      input_price_per_1m: 0.14
+      output_price_per_1m: 0.28
+    deepseek-reasoner:
+      input_price_per_1m: 0.55
+      output_price_per_1m: 2.19
+  openrouter:
+    # OpenRouter prices vary by model, default to 0
+    default:
+      input_price_per_1m: 0.0
+      output_price_per_1m: 0.0
+  openai:
+    gpt-4o:
+      input_price_per_1m: 2.50
+      output_price_per_1m: 10.00
+    gpt-4o-mini:
+      input_price_per_1m: 0.15
+      output_price_per_1m: 0.60
+    default:
+      input_price_per_1m: 0.0
+      output_price_per_1m: 0.0
+
 providers:
 - id: deepseek
   name: DeepSeek
+  type: builtin
+  protocol: openai
   base_url: https://api.deepseek.com
   api_key_env: DEEPSEEK_API_KEY
   enabled: true
-  has_api_key: null
-  api_key: null
+  sdk_class: deepseek
+  default_capabilities:
+    context_length: 64000
+    reasoning: true
+    function_calling: true
+    streaming: true
+
 - id: openrouter
   name: OpenRouter
+  type: builtin
+  protocol: openai
   base_url: https://openrouter.ai/api/v1
   api_key_env: OPENROUTER_API_KEY
   enabled: true
-  has_api_key: null
-  api_key: null
+  sdk_class: openai
+  supports_model_list: true
+  default_capabilities:
+    context_length: 128000
+    function_calling: true
+    streaming: true
+
 models:
 - id: deepseek-chat
   name: DeepSeek Chat
@@ -23,17 +63,24 @@ models:
   group: chat
   temperature: 0.7
   enabled: true
+  capabilities:
+    context_length: 64000
+    reasoning: true
+    function_calling: true
+
 - id: deepseek-chat
   name: DeepSeek Chat (via OpenRouter)
   provider_id: openrouter
   group: chat
   temperature: 0.7
   enabled: true
+
 - id: openai/gpt-5-nano
   name: openai/gpt-5-nano
   provider_id: openrouter
-  group: 通用
+  group: general
   temperature: 0.7
   enabled: true
+
 reasoning_supported_patterns:
 - deepseek-chat

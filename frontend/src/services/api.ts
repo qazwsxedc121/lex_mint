@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Session, SessionDetail, ChatRequest, ChatResponse } from '../types/message';
+import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { MutableRefObject } from 'react';
@@ -95,6 +95,8 @@ export async function sendMessage(
  * @param onError - Callback for errors
  * @param abortControllerRef - Optional ref to store AbortController for cancellation
  * @param reasoningEffort - Optional reasoning effort level: "low", "medium", "high"
+ * @param onUsage - Optional callback for usage/cost data
+ * @param attachments - Optional file attachments
  */
 export async function sendMessageStream(
   sessionId: string,
@@ -105,7 +107,9 @@ export async function sendMessageStream(
   onDone: () => void,
   onError: (error: string) => void,
   abortControllerRef?: MutableRefObject<AbortController | null>,
-  reasoningEffort?: string
+  reasoningEffort?: string,
+  onUsage?: (usage: TokenUsage, cost?: CostInfo) => void,
+  attachments?: UploadedFile[],
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -114,18 +118,29 @@ export async function sendMessageStream(
   }
 
   try {
+    const requestBody: any = {
+      session_id: sessionId,
+      message,
+      truncate_after_index: truncateAfterIndex,
+      skip_user_message: skipUserMessage,
+      reasoning_effort: reasoningEffort || null,
+    };
+
+    if (attachments && attachments.length > 0) {
+      requestBody.attachments = attachments.map(a => ({
+        filename: a.filename,
+        size: a.size,
+        mime_type: a.mime_type,
+        temp_path: a.temp_path,
+      }));
+    }
+
     const response = await fetch(`${API_BASE}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        session_id: sessionId,
-        message,
-        truncate_after_index: truncateAfterIndex,
-        skip_user_message: skipUserMessage,
-        reasoning_effort: reasoningEffort || null,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -168,6 +183,12 @@ export async function sendMessageStream(
                 return;
               }
 
+              // Handle usage/cost event
+              if (data.type === 'usage' && data.usage && onUsage) {
+                onUsage(data.usage, data.cost);
+                continue;
+              }
+
               if (data.chunk) {
                 onChunk(data.chunk);
               }
@@ -207,6 +228,51 @@ export async function checkHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ==================== 文件附件 API ====================
+
+/**
+ * Upload a file attachment
+ */
+export async function uploadFile(
+  sessionId: string,
+  file: File
+): Promise<UploadedFile> {
+  const formData = new FormData();
+  formData.append('session_id', sessionId);
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE}/api/chat/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Upload failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Download a file attachment
+ */
+export async function downloadFile(
+  sessionId: string,
+  messageIndex: number,
+  filename: string
+): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE}/api/chat/attachment/${sessionId}/${messageIndex}/${encodeURIComponent(filename)}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Download failed');
+  }
+
+  return response.blob();
 }
 
 // ==================== 模型管理 API ====================
@@ -428,6 +494,55 @@ export async function testProviderStoredConnection(
       model_id: modelId,
     }
   );
+  return response.data;
+}
+
+// ==================== Provider 抽象层 API ====================
+
+import type {
+  BuiltinProviderInfo,
+  ModelInfo,
+  CapabilitiesResponse,
+  ProtocolInfo,
+} from '../types/model';
+
+/**
+ * 获取所有内置 Provider 定义
+ */
+export async function listBuiltinProviders(): Promise<BuiltinProviderInfo[]> {
+  const response = await api.get<BuiltinProviderInfo[]>('/api/models/providers/builtin');
+  return response.data;
+}
+
+/**
+ * 获取指定内置 Provider 定义
+ */
+export async function getBuiltinProvider(providerId: string): Promise<BuiltinProviderInfo> {
+  const response = await api.get<BuiltinProviderInfo>(`/api/models/providers/builtin/${providerId}`);
+  return response.data;
+}
+
+/**
+ * 从 Provider API 获取可用模型列表
+ */
+export async function fetchProviderModels(providerId: string): Promise<ModelInfo[]> {
+  const response = await api.post<ModelInfo[]>(`/api/models/providers/${providerId}/fetch-models`);
+  return response.data;
+}
+
+/**
+ * 获取模型的能力配置（合并 provider 默认 + model 覆盖）
+ */
+export async function getModelCapabilities(modelId: string): Promise<CapabilitiesResponse> {
+  const response = await api.get<CapabilitiesResponse>(`/api/models/capabilities/${modelId}`);
+  return response.data;
+}
+
+/**
+ * 获取可用的 API 协议类型
+ */
+export async function listProtocols(): Promise<ProtocolInfo[]> {
+  const response = await api.get<ProtocolInfo[]>('/api/models/protocols');
   return response.data;
 }
 

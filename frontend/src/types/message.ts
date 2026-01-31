@@ -2,9 +2,39 @@
  * Type definitions for messages and chat-related data structures.
  */
 
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  reasoning_tokens?: number;
+}
+
+export interface CostInfo {
+  input_cost: number;
+  output_cost: number;
+  total_cost: number;
+  currency: string;
+}
+
+export interface FileAttachment {
+  filename: string;
+  size: number;
+  mime_type: string;
+}
+
+export interface UploadedFile {
+  filename: string;
+  size: number;
+  mime_type: string;
+  temp_path: string;
+}
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
+  attachments?: FileAttachment[];
+  usage?: TokenUsage;
+  cost?: CostInfo;
 }
 
 export interface Session {
@@ -18,8 +48,10 @@ export interface SessionDetail {
   session_id: string;
   title: string;
   created_at: string;
-  model_id: string;  // 会话使用的模型 ID（复合格式）
-  assistant_id?: string;  // 新增：会话使用的助手 ID
+  model_id: string;  // Composite model ID
+  assistant_id?: string;
+  total_usage?: TokenUsage;
+  total_cost?: CostInfo;
   state: {
     messages: Message[];
     current_step: number;

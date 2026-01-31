@@ -3,6 +3,8 @@
 import sys
 import io
 import asyncio
+import os
+import socket
 
 # Fix encoding
 if sys.platform == "win32":
@@ -19,19 +21,18 @@ print("=" * 80)
 print("使用内置服务器运行 (调试模式)")
 print("=" * 80)
 
-import socket
-
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
 
 if __name__ == "__main__":
-    port = 8000
+    # 从环境变量读取端口配置，默认 8888
+    port = int(os.getenv("API_PORT", "8888"))
 
     if is_port_in_use(port):
         print(f"⚠️  警告: 端口 {port} 已被占用!")
         print(f"   请先关闭占用端口的进程")
-        print(f"   或修改端口号")
+        print(f"   或在 .env 文件中修改 API_PORT")
         import sys
         sys.exit(1)
 
@@ -43,7 +44,6 @@ if __name__ == "__main__":
 
     # 使用 uvicorn 但带所有可能的日志选项
     import uvicorn
-    import os
 
     # 获取项目根目录的绝对路径
     project_root = os.path.dirname(os.path.abspath(__file__))
