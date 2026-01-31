@@ -118,21 +118,28 @@ class AgentService:
             for idx, att in enumerate(attachments):
                 filename = att["filename"]
                 temp_path = att["temp_path"]
+                mime_type = att["mime_type"]
 
-                # Read file content
-                temp_file_path = self.file_service.attachments_dir / temp_path
-                content = await self.file_service.get_file_content(temp_file_path)
+                # Determine if this is an image file
+                is_image = mime_type.startswith("image/")
 
                 # Add metadata for storage
                 attachment_metadata.append({
                     "filename": filename,
                     "size": att["size"],
-                    "mime_type": att["mime_type"]
+                    "mime_type": mime_type
                 })
 
-                # Append file content to message for LLM
-                full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
-                print(f"   File {idx + 1}: {filename} ({att['size']} bytes)")
+                if is_image:
+                    # Image files: do not embed in text, only store metadata
+                    # Content will be read and Base64 encoded in simple_llm.py
+                    print(f"   File {idx + 1}: {filename} ({att['size']} bytes) [image]")
+                else:
+                    # Text files: read and embed content into message
+                    temp_file_path = self.file_service.attachments_dir / temp_path
+                    content = await self.file_service.get_file_content(temp_file_path)
+                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
+                    print(f"   File {idx + 1}: {filename} ({att['size']} bytes) [text]")
 
                 # Move to permanent location
                 await self.file_service.move_to_permanent(
@@ -197,14 +204,15 @@ class AgentService:
         cost_data: Optional[CostInfo] = None
 
         try:
-            # Stream LLM, pass model_id, system_prompt, max_rounds and reasoning_effort
+            # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort and file_service
             async for chunk in call_llm_stream(
                 messages,
                 session_id=session_id,
                 model_id=model_id,
                 system_prompt=system_prompt,
                 max_rounds=max_rounds,
-                reasoning_effort=reasoning_effort
+                reasoning_effort=reasoning_effort,
+                file_service=self.file_service  # Pass file_service for image attachment support
             ):
                 # Check if this is a usage data dict
                 if isinstance(chunk, dict) and chunk.get("type") == "usage":
@@ -241,6 +249,28 @@ class AgentService:
             usage=usage_data, cost=cost_data
         )
         print(f"[OK] AI response saved")
+
+        # Trigger title generation in background (do not await)
+        try:
+            from .title_generation_service import TitleGenerationService
+            title_service = TitleGenerationService(storage=self.storage)
+
+            # Reload session to get latest state
+            updated_session = await self.storage.get_session(session_id)
+            message_count = len(updated_session['state']['messages'])
+            current_title = updated_session['title']
+
+            print(f"[TitleGen] Check: messages={message_count}, title='{current_title}', enabled={title_service.config.enabled}, threshold={title_service.config.trigger_threshold}")
+
+            if title_service.should_generate_title(message_count, current_title):
+                # Create background task (do not await)
+                asyncio.create_task(title_service.generate_title_async(session_id))
+                print(f"[TitleGen] Background title generation task created")
+            else:
+                print(f"[TitleGen] Skipped: condition not met")
+        except Exception as e:
+            logger.error(f"[TitleGen] Failed to create title generation task: {e}")
+            # Don't raise - title generation failure should not affect main flow
 
         # Yield usage and cost data as a special event at the end
         if usage_data:

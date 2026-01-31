@@ -7,6 +7,7 @@ import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
 import { ModelsPage } from './modules/settings/ModelsPage';
 import { ProvidersPage } from './modules/settings/ProvidersPage';
+import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
 import './index.css';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
             <Route path="assistants" element={<AssistantsPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="providers" element={<ProvidersPage />} />
+            <Route path="title-generation" element={<TitleGenerationSettings />} />
           </Route>
         </Route>
       </Routes>

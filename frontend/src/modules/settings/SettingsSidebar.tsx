@@ -10,6 +10,7 @@ import {
   UserGroupIcon,
   CpuChipIcon,
   ServerIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -22,6 +23,7 @@ const navItems: NavItem[] = [
   { path: '/settings/assistants', label: 'Assistants', icon: UserGroupIcon },
   { path: '/settings/models', label: 'Models', icon: CpuChipIcon },
   { path: '/settings/providers', label: 'Providers', icon: ServerIcon },
+  { path: '/settings/title-generation', label: 'Title Generation', icon: SparklesIcon },
 ];
 
 export const SettingsSidebar: React.FC = () => {

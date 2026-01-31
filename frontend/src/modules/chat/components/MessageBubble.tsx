@@ -5,7 +5,7 @@
 import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { downloadFile } from '../../../services/api';
@@ -199,26 +199,48 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <div className="text-sm prose prose-sm max-w-none dark:prose-invert">
               {/* Attachments display (for user messages) */}
               {isUser && message.attachments && message.attachments.length > 0 && (
-                <div className="mb-3 space-y-1">
-                  {message.attachments.map((att, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 dark:bg-blue-400/20 rounded border border-blue-400 dark:border-blue-600"
-                    >
-                      <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
-                      <span className="flex-1 text-sm truncate">{att.filename}</span>
-                      <span className="text-xs opacity-80">
-                        ({(att.size / 1024).toFixed(1)} KB)
-                      </span>
-                      <button
-                        onClick={() => handleDownloadAttachment(att.filename)}
-                        className="flex-shrink-0 hover:opacity-80"
-                        title="Download"
+                <div className="mb-3 space-y-2">
+                  {message.attachments.map((att, idx) => {
+                    const isImage = att.mime_type.startsWith('image/');
+
+                    return isImage ? (
+                      // Image attachment: show thumbnail
+                      <div key={idx} className="max-w-xs">
+                        <img
+                          src={`/api/chat/attachment/${sessionId}/${messageIndex}/${encodeURIComponent(att.filename)}`}
+                          alt={att.filename}
+                          className="w-full rounded border border-blue-400 dark:border-blue-600 cursor-pointer hover:opacity-90"
+                          onClick={() => handleDownloadAttachment(att.filename)}
+                          title="Click to download"
+                          loading="lazy"
+                        />
+                        <div className="flex items-center gap-1 mt-1 text-xs opacity-80">
+                          <PhotoIcon className="h-3 w-3" />
+                          <span className="truncate">{att.filename}</span>
+                          <span>({(att.size / 1024).toFixed(1)} KB)</span>
+                        </div>
+                      </div>
+                    ) : (
+                      // Text file: show file name with icon
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 dark:bg-blue-400/20 rounded border border-blue-400 dark:border-blue-600"
                       >
-                        <ArrowDownTrayIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+                        <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
+                        <span className="flex-1 text-sm truncate">{att.filename}</span>
+                        <span className="text-xs opacity-80">
+                          ({(att.size / 1024).toFixed(1)} KB)
+                        </span>
+                        <button
+                          onClick={() => handleDownloadAttachment(att.filename)}
+                          className="flex-shrink-0 hover:opacity-80"
+                          title="Download"
+                        >
+                          <ArrowDownTrayIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {isUser ? (

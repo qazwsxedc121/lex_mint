@@ -4,7 +4,7 @@
  * Contains ChatSidebar and ChatView with URL-based session management
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useParams, Outlet, useOutletContext } from 'react-router-dom';
 import { ChatSidebar } from './ChatSidebar';
 import { useSessions } from './hooks/useSessions';
@@ -19,12 +19,11 @@ interface ChatContextType {
 
 export const ChatModule: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const { sessions, createSession, deleteSession } = useSessions();
-  const [, setAssistantRefreshKey] = useState(0);
+  const { sessions, createSession, deleteSession, refreshSessions } = useSessions();
 
   const handleAssistantRefresh = useCallback(() => {
-    setAssistantRefreshKey((prev) => prev + 1);
-  }, []);
+    refreshSessions();
+  }, [refreshSessions]);
 
   // Find current session title
   const currentSession = sessions.find((s) => s.session_id === sessionId);
@@ -45,6 +44,7 @@ export const ChatModule: React.FC = () => {
         currentSessionId={sessionId || null}
         onNewSession={createSession}
         onDeleteSession={deleteSession}
+        onRefresh={refreshSessions}
       />
 
       {/* Chat Content */}

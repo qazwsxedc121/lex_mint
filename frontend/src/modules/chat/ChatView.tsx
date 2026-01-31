@@ -4,21 +4,20 @@
  * Displays messages and provides input for a specific session
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { MessageList } from './components/MessageList';
 import { InputBox } from './components/InputBox';
 import { AssistantSelector } from './components/AssistantSelector';
 import { useChat } from './hooks/useChat';
+import { useModelCapabilities } from './hooks/useModelCapabilities';
 import { useChatContext } from './index';
-import { getAssistant, getReasoningSupportedPatterns } from '../../services/api';
 import type { UploadedFile } from '../../types/message';
 
 export const ChatView: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { sessionTitle, onAssistantRefresh } = useChatContext();
-  const [supportsReasoning, setSupportsReasoning] = useState(false);
-  const [reasoningPatterns, setReasoningPatterns] = useState<string[]>([]);
+  const wasStreamingRef = useRef(false);
   const {
     messages,
     loading,
@@ -33,38 +32,24 @@ export const ChatView: React.FC = () => {
     updateAssistantId,
   } = useChat(sessionId || null);
 
-  // Load reasoning supported patterns from config
-  useEffect(() => {
-    const loadPatterns = async () => {
-      try {
-        const patterns = await getReasoningSupportedPatterns();
-        setReasoningPatterns(patterns);
-      } catch {
-        setReasoningPatterns([]);
-      }
-    };
-    loadPatterns();
-  }, []);
+  // Check model capabilities (vision, reasoning)
+  const { supportsVision, supportsReasoning } = useModelCapabilities(currentAssistantId);
 
-  // Check if current model supports reasoning
+  // Auto-refresh title after streaming completes
   useEffect(() => {
-    const checkReasoningSupport = async () => {
-      if (!currentAssistantId || currentAssistantId.startsWith('__legacy_model_') || reasoningPatterns.length === 0) {
-        setSupportsReasoning(false);
-        return;
-      }
-      try {
-        const assistant = await getAssistant(currentAssistantId);
-        const modelId = assistant.model_id?.split(':')[1] || '';
-        setSupportsReasoning(
-          reasoningPatterns.some(p => modelId.toLowerCase().includes(p.toLowerCase()))
-        );
-      } catch {
-        setSupportsReasoning(false);
-      }
-    };
-    checkReasoningSupport();
-  }, [currentAssistantId, reasoningPatterns]);
+    // Detect when streaming transitions from true to false
+    if (wasStreamingRef.current && !isStreaming) {
+      // Streaming just completed, schedule a refresh
+      const timer = setTimeout(() => {
+        onAssistantRefresh();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+
+    // Update ref for next comparison
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, onAssistantRefresh]);
 
   const handleAssistantChange = async (assistantId: string) => {
     updateAssistantId(assistantId);
@@ -120,7 +105,9 @@ export const ChatView: React.FC = () => {
         disabled={loading}
         isStreaming={isStreaming}
         supportsReasoning={supportsReasoning}
+        supportsVision={supportsVision}
         sessionId={sessionId}
+        currentAssistantId={currentAssistantId || undefined}
         assistantSelector={
           <AssistantSelector
             sessionId={sessionId}

@@ -17,6 +17,7 @@ from ..models.model_config import (
     ProviderTestRequest,
     ProviderTestStoredRequest,
     ProviderTestResponse,
+    ModelTestRequest,
 )
 from ..services.model_config_service import ModelConfigService
 from src.providers import (
@@ -276,7 +277,7 @@ async def list_models(
     return await service.get_models(provider_id)
 
 
-@router.get("/list/{model_id}", response_model=Model)
+@router.get("/list/{model_id:path}", response_model=Model)
 async def get_model(
     model_id: str,
     service: ModelConfigService = Depends(get_model_service)
@@ -301,7 +302,7 @@ async def create_model(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/list/{model_id}")
+@router.put("/list/{model_id:path}")
 async def update_model(
     model_id: str,
     model: Model,
@@ -315,7 +316,7 @@ async def update_model(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.delete("/list/{model_id}")
+@router.delete("/list/{model_id:path}")
 async def delete_model(
     model_id: str,
     service: ModelConfigService = Depends(get_model_service)
@@ -326,6 +327,62 @@ async def delete_model(
         return {"message": "Model deleted successfully"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/test-connection", response_model=ProviderTestResponse)
+async def test_model_connection(
+    test_request: ModelTestRequest,
+    service: ModelConfigService = Depends(get_model_service)
+):
+    """
+    测试模型连接是否有效
+
+    自动查找模型配置，使用已存储的 API Key 进行测试
+    """
+    model_id = test_request.model_id
+
+    # Parse composite model ID (provider_id:model_id)
+    if ':' not in model_id:
+        return ProviderTestResponse(
+            success=False,
+            message="Invalid model_id format. Expected format: provider_id:model_id"
+        )
+
+    provider_id, simple_model_id = model_id.split(':', 1)
+
+    # Get provider configuration
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        return ProviderTestResponse(
+            success=False,
+            message=f"Provider '{provider_id}' not found"
+        )
+
+    # Get model configuration
+    models = await service.get_models(provider_id)
+    model = next((m for m in models if m.id == simple_model_id), None)
+    if not model:
+        return ProviderTestResponse(
+            success=False,
+            message=f"Model '{simple_model_id}' not found in provider '{provider_id}'"
+        )
+
+    # Get API key
+    api_key = await service.get_api_key(provider_id)
+    if not api_key:
+        return ProviderTestResponse(
+            success=False,
+            message=f"No API key configured for provider '{provider_id}'"
+        )
+
+    # Test connection
+    success, message = await service.test_provider_connection(
+        base_url=provider.base_url,
+        api_key=api_key,
+        model_id=simple_model_id
+    )
+
+    return ProviderTestResponse(success=success, message=message)
 
 
 # ==================== 默认配置 ====================
@@ -421,7 +478,7 @@ async def fetch_provider_models(
         )
 
 
-@router.get("/capabilities/{model_id}", response_model=CapabilitiesResponse)
+@router.get("/capabilities/{model_id:path}", response_model=CapabilitiesResponse)
 async def get_model_capabilities(
     model_id: str,
     service: ModelConfigService = Depends(get_model_service)
@@ -433,6 +490,7 @@ async def get_model_capabilities(
 
     Args:
         model_id: Model ID (can be composite: provider_id:model_id)
+                  Supports model IDs with slashes (e.g., openrouter:bytedance-seed/seed-1.6-flash)
     """
     model = await service.get_model(model_id)
     if not model:

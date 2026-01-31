@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import type { Model, Provider, DefaultConfig } from '../../../types/model';
+import { testModelConnection } from '../../../services/api';
 
 interface ModelListProps {
   models: Model[];
@@ -29,6 +30,8 @@ export const ModelList: React.FC<ModelListProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [filterProvider, setFilterProvider] = useState<string>('');
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [formData, setFormData] = useState<Model>({
     id: '',
     name: '',
@@ -44,6 +47,7 @@ export const ModelList: React.FC<ModelListProps> = ({
 
   const handleCreate = () => {
     setEditingModel(null);
+    setTestResult(null);
     setFormData({
       id: '',
       name: '',
@@ -57,6 +61,7 @@ export const ModelList: React.FC<ModelListProps> = ({
 
   const handleEdit = (model: Model) => {
     setEditingModel(model);
+    setTestResult(null);
     setFormData(model);
     setShowForm(true);
   };
@@ -89,6 +94,32 @@ export const ModelList: React.FC<ModelListProps> = ({
       await setDefault(model.provider_id, model.id);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Set default failed');
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!formData.provider_id || !formData.id) {
+      setTestResult({
+        success: false,
+        message: 'Please fill in Provider and Model ID first'
+      });
+      return;
+    }
+
+    const compositeId = `${formData.provider_id}:${formData.id}`;
+    setTestingConnection(true);
+    setTestResult(null);
+
+    try {
+      const result = await testModelConnection(compositeId);
+      setTestResult(result);
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : 'Test failed'
+      });
+    } finally {
+      setTestingConnection(false);
     }
   };
 
@@ -328,6 +359,46 @@ export const ModelList: React.FC<ModelListProps> = ({
                     Enable this model
                   </label>
                 </div>
+
+                {/* Test Connection Section */}
+                {editingModel && (
+                  <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Connection Test
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={testingConnection}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {testingConnection ? 'Testing...' : 'Test Connection'}
+                      </button>
+                    </div>
+                    {testResult && (
+                      <div
+                        className={`mt-2 p-3 rounded-md border ${
+                          testResult.success
+                            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                            : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                        }`}
+                      >
+                        <p
+                          className={`text-sm ${
+                            testResult.success
+                              ? 'text-green-800 dark:text-green-200'
+                              : 'text-red-800 dark:text-red-200'
+                          }`}
+                        >
+                          <strong>{testResult.success ? 'Success:' : 'Failed:'}</strong>{' '}
+                          {testResult.message}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-3 mt-6">
                   <button
                     type="button"

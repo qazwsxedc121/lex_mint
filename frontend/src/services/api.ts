@@ -59,6 +59,23 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 /**
+ * Update session title
+ */
+export async function updateSessionTitle(sessionId: string, title: string): Promise<void> {
+  await api.put(`/api/sessions/${sessionId}/title`, { title });
+}
+
+/**
+ * Duplicate a session
+ */
+export async function duplicateSession(sessionId: string): Promise<string> {
+  const response = await api.post<{ session_id: string; message: string }>(
+    `/api/sessions/${sessionId}/duplicate`
+  );
+  return response.data.session_id;
+}
+
+/**
  * Delete a single message from a conversation.
  */
 export async function deleteMessage(sessionId: string, messageIndex: number): Promise<void> {
@@ -359,6 +376,16 @@ export async function deleteModel(modelId: string): Promise<void> {
 }
 
 /**
+ * 测试模型连接
+ */
+export async function testModelConnection(modelId: string): Promise<{ success: boolean; message: string }> {
+  const response = await api.post<{ success: boolean; message: string }>('/api/models/test-connection', {
+    model_id: modelId
+  });
+  return response.data;
+}
+
+/**
  * 获取默认模型配置
  */
 export async function getDefaultConfig(): Promise<DefaultConfig> {
@@ -543,6 +570,51 @@ export async function getModelCapabilities(modelId: string): Promise<Capabilitie
  */
 export async function listProtocols(): Promise<ProtocolInfo[]> {
   const response = await api.get<ProtocolInfo[]>('/api/models/protocols');
+  return response.data;
+}
+
+// ==================== Title Generation API ====================
+
+export interface TitleGenerationConfig {
+  enabled: boolean;
+  trigger_threshold: number;
+  model_id: string;
+  prompt_template: string;
+  max_context_rounds: number;
+  timeout_seconds: number;
+}
+
+export interface TitleGenerationConfigUpdate {
+  enabled?: boolean;
+  trigger_threshold?: number;
+  model_id?: string;
+  prompt_template?: string;
+  max_context_rounds?: number;
+  timeout_seconds?: number;
+}
+
+/**
+ * Get title generation configuration
+ */
+export async function getTitleGenerationConfig(): Promise<TitleGenerationConfig> {
+  const response = await api.get<TitleGenerationConfig>('/api/title-generation/config');
+  return response.data;
+}
+
+/**
+ * Update title generation configuration
+ */
+export async function updateTitleGenerationConfig(updates: TitleGenerationConfigUpdate): Promise<void> {
+  await api.put('/api/title-generation/config', updates);
+}
+
+/**
+ * Manually trigger title generation for a session
+ */
+export async function generateTitleManually(sessionId: string): Promise<{ message: string; title: string }> {
+  const response = await api.post<{ message: string; title: string }>('/api/title-generation/generate', {
+    session_id: sessionId
+  });
   return response.data;
 }
 

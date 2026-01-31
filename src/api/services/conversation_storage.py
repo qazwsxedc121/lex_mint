@@ -406,6 +406,75 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
+    async def set_messages(self, session_id: str, messages: List[Dict]):
+        """Set the complete message list for a session (replaces all existing messages).
+
+        Args:
+            session_id: Session UUID
+            messages: List of message dictionaries with 'role' and 'content' keys
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Read existing content
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+
+        # Rebuild markdown content from messages
+        new_content = ""
+        for msg in messages:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            role_display = "User" if msg["role"] == "user" else "Assistant"
+            new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
+
+        post.content = new_content
+
+        # Update current_step (count assistant messages)
+        assistant_count = sum(1 for msg in messages if msg["role"] == "assistant")
+        post.metadata["current_step"] = assistant_count
+
+        # Update title if all messages are deleted
+        if not messages:
+            post.metadata["title"] = "New Chat"
+
+        # Write back to file
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
+    async def update_session_metadata(self, session_id: str, metadata_updates: dict):
+        """Update session metadata (frontmatter).
+
+        Args:
+            session_id: Session UUID
+            metadata_updates: Dictionary of metadata fields to update
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Read and parse existing file
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+
+        # Update metadata fields
+        for key, value in metadata_updates.items():
+            post.metadata[key] = value
+
+        # Write back to file
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
     async def delete_session(self, session_id: str):
         """Delete a conversation session.
 

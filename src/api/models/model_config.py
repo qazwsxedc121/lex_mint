@@ -117,3 +117,9 @@ class ProviderTestResponse(BaseModel):
     """测试提供商连接响应"""
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(..., description="测试结果消息")
+
+
+class ModelTestRequest(BaseModel):
+    """测试模型连接请求"""
+    model_id: str = Field(..., description="模型ID（复合格式 provider_id:model_id）")
+

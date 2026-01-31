@@ -3,6 +3,7 @@
 import os
 import mimetypes
 import shutil
+import base64
 from pathlib import Path
 from typing import Dict, Optional
 from fastapi import UploadFile
@@ -16,11 +17,17 @@ class FileService:
     """Service for handling file uploads and storage."""
 
     ALLOWED_MIME_PREFIXES = [
+        # Text files
         'text/',
         'application/json',
         'application/xml',
         'application/javascript',
         'application/x-yaml',
+        # Image files
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
     ]
 
     def __init__(self, attachments_dir: Path, max_size_mb: int = 10):
@@ -34,14 +41,25 @@ class FileService:
         self.max_size_mb = max_size_mb
         self.max_size_bytes = max_size_mb * 1024 * 1024
 
+    def is_image_file(self, mime_type: str) -> bool:
+        """Check if file is an image.
+
+        Args:
+            mime_type: MIME type to check
+
+        Returns:
+            True if image, False otherwise
+        """
+        return mime_type.startswith('image/')
+
     async def validate_file(self, file: UploadFile) -> None:
-        """Validate file is text and under size limit.
+        """Validate file is text or image and under size limit.
 
         Args:
             file: Uploaded file to validate
 
         Raises:
-            ValueError: If file is invalid (too large or not text)
+            ValueError: If file is invalid (too large or not allowed type)
         """
         # Read file content for validation
         content = await file.read()
@@ -67,16 +85,22 @@ class FileService:
         )
 
         if not allowed:
-            # Additional check: try to decode as text
-            try:
-                content[:1024].decode('utf-8')
-                # If decodable, treat as text
-                logger.info(f"File {file.filename} validated as text (MIME: {mime_type})")
-                return
-            except UnicodeDecodeError:
+            # For non-image files, try to decode as text
+            if not self.is_image_file(mime_type):
+                try:
+                    content[:1024].decode('utf-8')
+                    # If decodable, treat as text
+                    logger.info(f"File {file.filename} validated as text (MIME: {mime_type})")
+                    return
+                except UnicodeDecodeError:
+                    raise ValueError(
+                        f"File type '{mime_type}' not supported. "
+                        "Only text files and images are allowed."
+                    )
+            else:
                 raise ValueError(
                     f"File type '{mime_type}' not supported. "
-                    "Only text files are allowed."
+                    "Only text files and images (JPEG, PNG, GIF, WebP) are allowed."
                 )
 
         logger.info(f"File {file.filename} validated successfully (MIME: {mime_type}, size: {len(content)} bytes)")
@@ -175,6 +199,19 @@ class FileService:
             # Fallback: try with chardet or just read as binary and decode with errors='replace'
             async with aiofiles.open(filepath, 'r', encoding='utf-8', errors='replace') as f:
                 return await f.read()
+
+    async def get_file_as_base64(self, filepath: Path) -> str:
+        """Read file and return Base64 encoded content.
+
+        Args:
+            filepath: Path to file
+
+        Returns:
+            Base64 encoded file content
+        """
+        async with aiofiles.open(filepath, 'rb') as f:
+            content = await f.read()
+            return base64.b64encode(content).decode('utf-8')
 
     def get_file_path(
         self,

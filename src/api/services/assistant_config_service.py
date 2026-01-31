@@ -93,8 +93,9 @@ class AssistantConfigService:
         # Write to temporary file first
         temp_path = self.config_path.with_suffix('.yaml.tmp')
         async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+            # Use mode='json' to serialize enums as values
             content = yaml.safe_dump(
-                config.model_dump(),
+                config.model_dump(mode='json'),
                 allow_unicode=True,
                 sort_keys=False
             )

@@ -179,8 +179,9 @@ class ModelConfigService:
         # 先写入临时文件
         temp_path = self.config_path.with_suffix('.yaml.tmp')
         async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+            # Use mode='json' to serialize enums as values
             content = yaml.safe_dump(
-                config.model_dump(),
+                config.model_dump(mode='json'),
                 allow_unicode=True,
                 sort_keys=False
             )
@@ -408,14 +409,26 @@ class ModelConfigService:
         """
         config = await self.load_config()
 
-        # 支持复合ID格式 "provider_id:model_id"
+        # 判断是否为复合ID：检查第一个冒号前是否为有效的provider_id
+        is_composite = False
+        provider_id = None
+        simple_model_id = None
+
         if ':' in model_id:
-            provider_id, simple_model_id = model_id.split(':', 1)
+            potential_provider, potential_model = model_id.split(':', 1)
+            # 检查是否为有效的provider_id
+            if any(p.id == potential_provider for p in config.providers):
+                is_composite = True
+                provider_id = potential_provider
+                simple_model_id = potential_model
+
+        if is_composite:
+            # 复合ID格式：provider_id:model_id
             for model in config.models:
                 if model.id == simple_model_id and model.provider_id == provider_id:
                     return model
         else:
-            # 简单ID：直接匹配（向后兼容）
+            # 简单ID（包括可能包含冒号的模型ID）
             for model in config.models:
                 if model.id == model_id:
                     return model
@@ -449,16 +462,41 @@ class ModelConfigService:
         """
         更新模型
 
+        Args:
+            model_id: 模型ID，可以是简单ID或复合ID (provider_id:model_id)
+
         Raises:
             ValueError: 如果模型不存在
         """
         config = await self.load_config()
 
-        for i, model in enumerate(config.models):
-            if model.id == model_id:
-                config.models[i] = updated
-                await self.save_config(config)
-                return
+        # 判断是否为复合ID：检查第一个冒号前是否为有效的provider_id
+        is_composite = False
+        provider_id = None
+        simple_model_id = None
+
+        if ':' in model_id:
+            potential_provider, potential_model = model_id.split(':', 1)
+            # 检查是否为有效的provider_id
+            if any(p.id == potential_provider for p in config.providers):
+                is_composite = True
+                provider_id = potential_provider
+                simple_model_id = potential_model
+
+        if is_composite:
+            # 复合ID格式：provider_id:model_id
+            for i, model in enumerate(config.models):
+                if model.id == simple_model_id and model.provider_id == provider_id:
+                    config.models[i] = updated
+                    await self.save_config(config)
+                    return
+        else:
+            # 简单ID（包括可能包含冒号的模型ID）
+            for i, model in enumerate(config.models):
+                if model.id == model_id:
+                    config.models[i] = updated
+                    await self.save_config(config)
+                    return
 
         raise ValueError(f"Model with id '{model_id}' not found")
 
@@ -474,9 +512,21 @@ class ModelConfigService:
         """
         config = await self.load_config()
 
-        # 解析复合ID
+        # 判断是否为复合ID：检查第一个冒号前是否为有效的provider_id
+        is_composite = False
+        provider_id = None
+        simple_model_id = None
+
         if ':' in model_id:
-            provider_id, simple_model_id = model_id.split(':', 1)
+            potential_provider, potential_model = model_id.split(':', 1)
+            # 检查是否为有效的provider_id
+            if any(p.id == potential_provider for p in config.providers):
+                is_composite = True
+                provider_id = potential_provider
+                simple_model_id = potential_model
+
+        if is_composite:
+            # 复合ID格式：provider_id:model_id
             composite_default = f"{config.default.provider}:{config.default.model}"
 
             # 检查是否是默认模型
@@ -493,7 +543,7 @@ class ModelConfigService:
                 if not (m.id == simple_model_id and m.provider_id == provider_id)
             ]
         else:
-            # 简单ID（向后兼容）
+            # 简单ID（包括可能包含冒号的模型ID，如 google/model:free）
             if config.default.model == model_id:
                 raise ValueError(f"Cannot delete default model '{model_id}'")
 

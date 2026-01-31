@@ -3,13 +3,85 @@
 import os
 import logging
 from typing import List, Dict, Any, AsyncIterator, Optional, Union
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from pathlib import Path
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
+from src.api.services.file_service import FileService
 from src.providers.types import TokenUsage
 
 logger = logging.getLogger(__name__)
+
+
+async def convert_to_langchain_messages(
+    messages: List[Dict],
+    session_id: str,
+    file_service: FileService
+) -> List[BaseMessage]:
+    """Convert messages to LangChain format, supporting multimodal content.
+
+    Args:
+        messages: Message list with optional attachments
+        session_id: Session ID for locating attachment files
+        file_service: File service for reading attachments
+
+    Returns:
+        List of LangChain BaseMessage objects
+    """
+    langchain_messages = []
+
+    for i, msg in enumerate(messages):
+        if msg.get("role") == "user":
+            attachments = msg.get("attachments", [])
+
+            # Check if any attachments are images
+            has_images = any(
+                att.get("mime_type", "").startswith("image/")
+                for att in attachments
+            )
+
+            if has_images:
+                # Construct multimodal content list
+                content_list = []
+
+                # Add text content (if any)
+                if msg["content"].strip():
+                    content_list.append({
+                        "type": "text",
+                        "text": msg["content"]
+                    })
+
+                # Add images
+                for att in attachments:
+                    if att.get("mime_type", "").startswith("image/"):
+                        # Read image file and Base64 encode
+                        image_path = file_service.get_file_path(
+                            session_id, i, att["filename"]
+                        )
+                        if image_path:
+                            try:
+                                base64_data = await file_service.get_file_as_base64(image_path)
+                                content_list.append({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{att['mime_type']};base64,{base64_data}"
+                                    }
+                                })
+                                logger.info(f"Added image to message: {att['filename']}")
+                            except Exception as e:
+                                logger.error(f"Failed to read image {att['filename']}: {e}")
+                                # Continue without this image
+
+                langchain_messages.append(HumanMessage(content=content_list))
+            else:
+                # Pure text message (or text files already embedded in content)
+                langchain_messages.append(HumanMessage(content=msg["content"]))
+
+        elif msg.get("role") == "assistant":
+            langchain_messages.append(AIMessage(content=msg["content"]))
+
+    return langchain_messages
 
 
 def call_llm(
@@ -85,7 +157,8 @@ async def call_llm_stream(
     model_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
     max_rounds: Optional[int] = None,
-    reasoning_effort: Optional[str] = None
+    reasoning_effort: Optional[str] = None,
+    file_service: Optional[FileService] = None
 ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
     """
     Streaming LLM call, yields tokens one by one.
@@ -100,6 +173,7 @@ async def call_llm_stream(
         system_prompt: System prompt (optional)
         max_rounds: Max conversation rounds (optional), -1 or None means unlimited
         reasoning_effort: Reasoning effort level: "low", "medium", "high"
+        file_service: File service for reading image attachments (optional)
 
     Yields:
         String tokens during streaming, or dict with usage info at the end:
@@ -162,20 +236,36 @@ async def call_llm_stream(
         print(f"      Thinking mode: enabled (effort: {reasoning_effort})")
     logger.info(f"Preparing streaming LLM call (model: {actual_model_id}), messages: {len(messages)}")
 
-    # Convert message format
+    # Convert message format (with multimodal support if file_service provided)
     langchain_messages = []
 
     # Inject system prompt (if provided)
     if system_prompt:
         langchain_messages.append(SystemMessage(content=system_prompt))
 
-    for i, msg in enumerate(messages):
-        if msg.get("role") == "user":
-            langchain_messages.append(HumanMessage(content=msg["content"]))
-            print(f"      Message {i+1}: user - {msg['content'][:50]}...")
-        elif msg.get("role") == "assistant":
-            langchain_messages.append(AIMessage(content=msg["content"]))
-            print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
+    # Use multimodal conversion if file_service is available
+    if file_service:
+        converted_messages = await convert_to_langchain_messages(messages, session_id, file_service)
+        langchain_messages.extend(converted_messages)
+        for i, msg in enumerate(messages):
+            # Check if message has image attachments
+            attachments = msg.get("attachments", [])
+            has_images = any(att.get("mime_type", "").startswith("image/") for att in attachments)
+            role = msg.get("role", "unknown")
+            content_preview = msg["content"][:50] if msg.get("content") else ""
+            if has_images:
+                print(f"      Message {i+1}: {role} - {content_preview}... [with images]")
+            else:
+                print(f"      Message {i+1}: {role} - {content_preview}...")
+    else:
+        # Fallback to simple text conversion (no image support)
+        for i, msg in enumerate(messages):
+            if msg.get("role") == "user":
+                langchain_messages.append(HumanMessage(content=msg["content"]))
+                print(f"      Message {i+1}: user - {msg['content'][:50]}...")
+            elif msg.get("role") == "assistant":
+                langchain_messages.append(AIMessage(content=msg["content"]))
+                print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
 
     # Truncate by conversation rounds (if specified)
     if max_rounds and max_rounds > 0:

@@ -1,0 +1,18 @@
+title_generation:
+  enabled: true
+  max_context_rounds: 3
+  model_id: deepseek:deepseek-chat
+  prompt_template: 'Please generate a concise title (10-30 characters) based on the
+
+    following conversation.
+
+    Return only the title text, without quotes or formatting.
+
+
+    Conversation:
+
+    {conversation_text}
+
+    '
+  timeout_seconds: 10
+  trigger_threshold: 1

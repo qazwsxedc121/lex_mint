@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useRef, type KeyboardEvent } from 'react';
-import { ChevronDownIcon, LightBulbIcon, PaperClipIcon, XMarkIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, LightBulbIcon, PaperClipIcon, XMarkIcon, DocumentTextIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { uploadFile } from '../../../services/api';
 import type { UploadedFile } from '../../../types/message';
 
@@ -23,7 +23,9 @@ interface InputBoxProps {
   // Toolbar props
   assistantSelector?: React.ReactNode;
   supportsReasoning?: boolean;
+  supportsVision?: boolean;
   sessionId?: string;
+  currentAssistantId?: string;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -33,7 +35,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   isStreaming = false,
   assistantSelector,
   supportsReasoning = false,
+  supportsVision = false,
   sessionId,
+  currentAssistantId: _currentAssistantId,
 }) => {
   const [input, setInput] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState('');
@@ -53,6 +57,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
         // Validate size on client side (10MB limit)
         if (file.size > 10 * 1024 * 1024) {
           alert(`File ${file.name} exceeds 10MB limit`);
+          continue;
+        }
+
+        // Check if file is an image
+        const isImage = file.type.startsWith('image/');
+        if (isImage && !supportsVision) {
+          alert(`Current model does not support image input. Please use a vision-capable model like GPT-4V or Claude 3.`);
           continue;
         }
 
@@ -154,7 +165,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || isStreaming || !sessionId}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Attach file (text files only, max 10MB)"
+          title={supportsVision ? "Attach file or image (max 10MB)" : "Attach text file (max 10MB)"}
         >
           <PaperClipIcon className="h-4 w-4" />
           {uploading && <span className="text-xs">Uploading...</span>}
@@ -163,7 +174,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
           ref={fileInputRef}
           type="file"
           multiple
-          accept="text/*,.txt,.md,.json,.csv,.log,.xml,.yaml,.yml,.py,.js,.ts,.java,.cpp,.go,.rs,.html,.css"
+          accept={supportsVision
+            ? "text/*,.txt,.md,.json,.csv,.log,.xml,.yaml,.yml,.py,.js,.ts,.java,.cpp,.go,.rs,.html,.css,image/*,.jpg,.jpeg,.png,.gif,.webp"
+            : "text/*,.txt,.md,.json,.csv,.log,.xml,.yaml,.yml,.py,.js,.ts,.java,.cpp,.go,.rs,.html,.css"
+          }
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -172,25 +186,32 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {/* Attachment preview */}
       {attachments.length > 0 && (
         <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
-          {attachments.map((att, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800"
-            >
-              <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 text-sm truncate">{att.filename}</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                ({(att.size / 1024).toFixed(1)} KB)
-              </span>
-              <button
-                onClick={() => handleRemoveAttachment(idx)}
-                className="flex-shrink-0 hover:text-red-600 dark:hover:text-red-400"
-                title="Remove file"
+          {attachments.map((att, idx) => {
+            const isImage = att.mime_type.startsWith('image/');
+            return (
+              <div
+                key={idx}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800"
               >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+                {isImage ? (
+                  <PhotoIcon className="h-4 w-4 flex-shrink-0" />
+                ) : (
+                  <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
+                )}
+                <span className="flex-1 text-sm truncate">{att.filename}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  ({(att.size / 1024).toFixed(1)} KB)
+                </span>
+                <button
+                  onClick={() => handleRemoveAttachment(idx)}
+                  className="flex-shrink-0 hover:text-red-600 dark:hover:text-red-400"
+                  title="Remove file"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 

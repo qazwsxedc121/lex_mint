@@ -29,6 +29,11 @@ class UpdateAssistantRequest(BaseModel):
     assistant_id: str
 
 
+class UpdateTitleRequest(BaseModel):
+    """更新标题请求"""
+    title: str
+
+
 def get_storage() -> ConversationStorage:
     """Dependency injection for ConversationStorage."""
     return ConversationStorage(settings.conversations_dir)
@@ -197,3 +202,74 @@ async def update_session_assistant(
     except ValueError as e:
         logger.error(f"❌ 助手错误: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/{session_id}/title", response_model=Dict[str, str])
+async def update_session_title(
+    session_id: str,
+    request: UpdateTitleRequest,
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """更新会话标题.
+
+    Args:
+        session_id: 会话 UUID
+        request: 包含新标题的请求体
+
+    Returns:
+        {"message": "Title updated successfully"}
+
+    Raises:
+        404: Session not found
+    """
+    logger.info(f"✏️ 更新会话标题: {session_id[:16]} -> {request.title}")
+    try:
+        await storage.update_session_metadata(session_id, {"title": request.title})
+        logger.info(f"✅ 标题更新成功")
+        return {"message": "Title updated successfully"}
+    except FileNotFoundError:
+        logger.error(f"❌ 会话未找到: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.post("/{session_id}/duplicate", response_model=Dict[str, str])
+async def duplicate_session(
+    session_id: str,
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """复制会话.
+
+    Args:
+        session_id: 要复制的会话 UUID
+
+    Returns:
+        {"session_id": "new-uuid", "message": "Session duplicated successfully"}
+
+    Raises:
+        404: Session not found
+    """
+    logger.info(f"📋 复制会话: {session_id[:16]}...")
+    try:
+        # Get the original session
+        original_session = await storage.get_session(session_id)
+
+        # Create a new session with the same model/assistant
+        assistant_id = original_session.get('assistant_id')
+        model_id = original_session.get('model_id')
+        new_session_id = await storage.create_session(model_id=model_id, assistant_id=assistant_id)
+
+        # Copy the title with a suffix
+        original_title = original_session.get('title', 'New Chat')
+        new_title = f"{original_title} (Copy)"
+        await storage.update_session_metadata(new_session_id, {"title": new_title})
+
+        # Copy the messages using set_messages method
+        original_messages = original_session.get('state', {}).get('messages', [])
+        if original_messages:
+            await storage.set_messages(new_session_id, original_messages)
+
+        logger.info(f"✅ 会话复制成功: {new_session_id}")
+        return {"session_id": new_session_id, "message": "Session duplicated successfully"}
+    except FileNotFoundError:
+        logger.error(f"❌ 会话未找到: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")

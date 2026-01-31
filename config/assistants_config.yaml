@@ -4,19 +4,14 @@ assistants:
   name: General Assistant
   description: General purpose conversational AI for everyday tasks
   model_id: deepseek:deepseek-chat
-  system_prompt: 'You are a helpful AI assistant. Provide clear, accurate, and friendly
-    responses.
-
-    Be concise but thorough. When uncertain, acknowledge limitations.
-
-    '
+  system_prompt: 'You are a helpful AI assistant. '
   temperature: 1.0
   max_rounds: null
   enabled: true
 - id: code-assistant
   name: Code Assistant
   description: Specialized in programming, debugging, and code analysis
-  model_id: deepseek:deepseek-chat
+  model_id: openrouter:z-ai/glm-4.5-air:free
   system_prompt: 'You are an expert programming assistant with deep knowledge of software
     development.
 
