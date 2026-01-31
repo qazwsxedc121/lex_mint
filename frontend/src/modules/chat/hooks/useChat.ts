@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { Message, TokenUsage, CostInfo, UploadedFile } from '../../../types/message';
-import { getSession, sendMessageStream, deleteMessage as apiDeleteMessage } from '../../../services/api';
+import { getSession, sendMessageStream, deleteMessage as apiDeleteMessage, insertSeparator as apiInsertSeparator } from '../../../services/api';
 
 export function useChat(sessionId: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -460,6 +460,29 @@ export function useChat(sessionId: string | null) {
     }
   };
 
+  const insertSeparator = async () => {
+    if (!sessionId || isProcessingRef.current) return;
+
+    isProcessingRef.current = true;
+
+    try {
+      const messageId = await apiInsertSeparator(sessionId);
+
+      // Add separator to UI
+      const separatorMessage: Message = {
+        message_id: messageId,
+        role: 'separator',
+        content: '--- Context cleared ---'
+      };
+
+      setMessages(prev => [...prev, separatorMessage]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to insert separator');
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+
   const updateModelId = (modelId: string) => {
     setCurrentModelId(modelId);
   };
@@ -481,6 +504,7 @@ export function useChat(sessionId: string | null) {
     editMessage,
     regenerateMessage,
     deleteMessage,
+    insertSeparator,
     stopGeneration,
     updateModelId,
     updateAssistantId,

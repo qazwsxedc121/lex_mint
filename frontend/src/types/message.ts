@@ -31,7 +31,7 @@ export interface UploadedFile {
 
 export interface Message {
   message_id?: string;  // UUID for each message (optional for backward compatibility)
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'separator';
   content: string;
   attachments?: FileAttachment[];
   usage?: TokenUsage;

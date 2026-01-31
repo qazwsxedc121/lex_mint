@@ -48,6 +48,11 @@ class DeleteMessageRequest(BaseModel):
     message_id: Optional[str] = None
 
 
+class InsertSeparatorRequest(BaseModel):
+    """Request model for insert separator endpoint."""
+    session_id: str
+
+
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
     storage = ConversationStorage(settings.conversations_dir)
@@ -339,4 +344,31 @@ async def delete_message(
             raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Either message_id or message_index must be provided")
+
+
+@router.post("/chat/separator")
+async def insert_separator(
+    request: InsertSeparatorRequest,
+    agent: AgentService = Depends(get_agent_service)
+):
+    """
+    Insert a context separator into conversation.
+
+    Separators mark context boundaries - when LLM is called, only messages
+    after the last separator will be included in the conversation history.
+
+    Args:
+        request: InsertSeparatorRequest with session_id
+
+    Returns:
+        Success response with message_id
+    """
+    try:
+        message_id = await agent.storage.append_separator(request.session_id)
+        return {"success": True, "message_id": message_id}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except Exception as e:
+        logger.error(f"Insert separator error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Insert error: {str(e)}")
 

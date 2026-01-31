@@ -236,6 +236,12 @@ async def call_llm_stream(
         print(f"      Thinking mode: enabled (effort: {reasoning_effort})")
     logger.info(f"Preparing streaming LLM call (model: {actual_model_id}), messages: {len(messages)}")
 
+    # === Filter messages after last separator ===
+    filtered_messages = _filter_messages_after_separator(messages)
+    if len(filtered_messages) < len(messages):
+        print(f"[CONTEXT] Filtered messages: {len(messages)} -> {len(filtered_messages)}")
+        logger.info(f"Context filtered: {len(messages)} -> {len(filtered_messages)} messages")
+
     # Convert message format (with multimodal support if file_service provided)
     langchain_messages = []
 
@@ -245,9 +251,9 @@ async def call_llm_stream(
 
     # Use multimodal conversion if file_service is available
     if file_service:
-        converted_messages = await convert_to_langchain_messages(messages, session_id, file_service)
+        converted_messages = await convert_to_langchain_messages(filtered_messages, session_id, file_service)
         langchain_messages.extend(converted_messages)
-        for i, msg in enumerate(messages):
+        for i, msg in enumerate(filtered_messages):
             # Check if message has image attachments
             attachments = msg.get("attachments", [])
             has_images = any(att.get("mime_type", "").startswith("image/") for att in attachments)
@@ -259,7 +265,7 @@ async def call_llm_stream(
                 print(f"      Message {i+1}: {role} - {content_preview}...")
     else:
         # Fallback to simple text conversion (no image support)
-        for i, msg in enumerate(messages):
+        for i, msg in enumerate(filtered_messages):
             if msg.get("role") == "user":
                 langchain_messages.append(HumanMessage(content=msg["content"]))
                 print(f"      Message {i+1}: user - {msg['content'][:50]}...")
@@ -398,3 +404,29 @@ def _truncate_by_rounds(
 
     print(f"      Truncation complete: kept {len(kept_conversation)} messages ({len(kept_conversation) // 2} rounds)")
     return result
+
+
+def _filter_messages_after_separator(messages: List[Dict]) -> List[Dict]:
+    """
+    Filter messages to only include those after the last separator.
+
+    Args:
+        messages: Full message list
+
+    Returns:
+        Filtered message list (excludes separator itself)
+    """
+    last_separator_index = -1
+
+    # Find last separator from the end
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "separator":
+            last_separator_index = i
+            break
+
+    # No separator: return all messages
+    if last_separator_index == -1:
+        return messages
+
+    # Return messages after separator (exclude separator)
+    return messages[last_separator_index + 1:]

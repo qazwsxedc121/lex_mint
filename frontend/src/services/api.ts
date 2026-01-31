@@ -88,6 +88,17 @@ export async function deleteMessage(sessionId: string, messageId: string): Promi
 }
 
 /**
+ * Insert a separator into conversation to clear context
+ */
+export async function insertSeparator(sessionId: string): Promise<string> {
+  const response = await api.post<{ success: boolean; message_id: string }>(
+    '/api/chat/separator',
+    { session_id: sessionId }
+  );
+  return response.data.message_id;
+}
+
+/**
  * Send a message and receive AI response.
  */
 export async function sendMessage(

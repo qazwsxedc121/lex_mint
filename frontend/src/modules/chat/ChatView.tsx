@@ -28,6 +28,7 @@ export const ChatView: React.FC = () => {
     editMessage,
     regenerateMessage,
     deleteMessage,
+    insertSeparator,
     stopGeneration,
     updateAssistantId,
   } = useChat(sessionId || null);
@@ -58,6 +59,10 @@ export const ChatView: React.FC = () => {
 
   const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => {
     sendMessage(message, options);
+  };
+
+  const handleInsertSeparator = () => {
+    insertSeparator();
   };
 
   if (!sessionId) {
@@ -102,6 +107,7 @@ export const ChatView: React.FC = () => {
       <InputBox
         onSend={handleSendMessage}
         onStop={stopGeneration}
+        onInsertSeparator={handleInsertSeparator}
         disabled={loading}
         isStreaming={isStreaming}
         supportsReasoning={supportsReasoning}

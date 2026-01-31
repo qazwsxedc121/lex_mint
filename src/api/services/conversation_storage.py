@@ -223,7 +223,12 @@ class ConversationStorage:
 
         # Append new message
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        role_display = "User" if role == "user" else "Assistant"
+        if role == "user":
+            role_display = "User"
+        elif role == "assistant":
+            role_display = "Assistant"
+        else:  # separator
+            role_display = "Separator"
         new_message = f"\n## {role_display} ({timestamp})\n{content}\n"
 
         # Add message_id as HTML comment
@@ -279,6 +284,22 @@ class ConversationStorage:
             await f.write(frontmatter.dumps(post))
 
         return message_id
+
+    async def append_separator(self, session_id: str) -> str:
+        """
+        Append a separator message to conversation.
+
+        Args:
+            session_id: Session UUID
+
+        Returns:
+            message_id: The generated UUID for the separator
+        """
+        return await self.append_message(
+            session_id=session_id,
+            role="separator",
+            content="--- Context cleared ---"
+        )
 
     async def list_sessions(self) -> List[Dict]:
         """List all conversation sessions.
@@ -415,7 +436,12 @@ class ConversationStorage:
         new_content = ""
         for msg in messages:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            role_display = "User" if msg["role"] == "user" else "Assistant"
+            if msg["role"] == "user":
+                role_display = "User"
+            elif msg["role"] == "assistant":
+                role_display = "Assistant"
+            else:  # separator
+                role_display = "Separator"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
 
             # Preserve message_id
@@ -688,14 +714,19 @@ class ConversationStorage:
         current_message = None
 
         for line in lines:
-            # Detect message headers (## User/Assistant (timestamp))
-            if line.startswith("## User (") or line.startswith("## Assistant ("):
+            # Detect message headers (## User/Assistant/Separator (timestamp))
+            if line.startswith("## User (") or line.startswith("## Assistant (") or line.startswith("## Separator ("):
                 # Save previous message
                 if current_message:
                     messages.append(current_message)
 
                 # Start new message
-                role = "user" if line.startswith("## User") else "assistant"
+                if line.startswith("## User"):
+                    role = "user"
+                elif line.startswith("## Assistant"):
+                    role = "assistant"
+                else:  # Separator
+                    role = "separator"
                 current_message = {"role": role, "content": ""}
             elif current_message is not None:
                 # Parse usage/cost/attachment/message_id HTML comments

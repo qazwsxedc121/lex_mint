@@ -77,6 +77,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onDelete,
 }) => {
   const isUser = message.role === 'user';
+  const isSeparator = message.role === 'separator';
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isCopied, setIsCopied] = useState(false);
@@ -144,20 +145,77 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
-  const handleDeleteClick = () => {
+  const handleDeleteClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (onDelete) {
       onDelete(messageId);
     }
     setShowDeleteConfirm(false);
   };
 
-  const handleDeleteCancel = () => {
+  const handleDeleteCancel = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     setShowDeleteConfirm(false);
   };
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleDeleteSeparator = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onDelete) {
+      onDelete(messageId);
+    }
+  };
+
+  // Separator rendering (centered display)
+  if (isSeparator) {
+    return (
+      <div className="flex flex-col items-center mb-4 group">
+        <div className="w-full max-w-[80%] relative">
+          {/* Separator line */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-400 dark:via-amber-600 to-transparent" />
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-300 text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <span>Context Cleared</span>
+            </div>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-400 dark:via-amber-600 to-transparent" />
+          </div>
+
+          {/* Delete button (on hover) */}
+          {canDelete && (
+            <div className="absolute -right-10 top-1/2 -translate-y-1/2">
+              <button
+                type="button"
+                onClick={handleDeleteSeparator}
+                className="p-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-600 dark:hover:text-red-400 border border-gray-300 dark:border-gray-600 opacity-0 group-hover:opacity-100 transition-all"
+                title="Delete separator"
+              >
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
@@ -400,6 +458,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
             {canDelete && (
               <button
+                type="button"
                 onClick={handleDeleteClick}
                 className="group relative p-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-600 dark:hover:text-red-400 border border-gray-300 dark:border-gray-600 transition-colors"
                 title="Delete"
@@ -416,7 +475,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleBackdropClick}
+        >
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
               Delete Message
@@ -426,12 +488,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </p>
             <div className="flex gap-3 justify-end">
               <button
+                type="button"
                 onClick={handleDeleteCancel}
                 className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleDeleteConfirm}
                 className="px-4 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
               >
