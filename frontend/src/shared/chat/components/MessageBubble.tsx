@@ -19,6 +19,7 @@ interface MessageBubbleProps {
   onEdit?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
+  customActions?: (message: Message, messageId: string) => React.ReactNode;
 }
 
 /**
@@ -75,6 +76,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onEdit,
   onRegenerate,
   onDelete,
+  customActions,
 }) => {
   const { api } = useChatServices();
   const isUser = message.role === 'user';
@@ -457,6 +459,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </span>
               </button>
             )}
+
+            {/* Custom actions slot */}
+            {customActions?.(message, messageId)}
 
             {canDelete && (
               <button

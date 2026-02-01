@@ -2,7 +2,7 @@
  * FileViewer - File content editor with CodeMirror
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -28,6 +28,7 @@ interface FileViewerProps {
   onContentSaved?: () => void;
   chatSidebarOpen: boolean;
   onToggleChatSidebar: () => void;
+  onEditorReady?: (actions: { insertContent: (text: string) => void }) => void;
 }
 
 const getLanguageExtension = (path: string) => {
@@ -63,6 +64,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   onContentSaved,
   chatSidebarOpen,
   onToggleChatSidebar,
+  onEditorReady,
 }) => {
   const [value, setValue] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
@@ -135,6 +137,25 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
   }, []);
 
+  // Insert content at cursor position
+  const insertContentAtCursor = useCallback((content: string) => {
+    if (!editorViewRef.current) return;
+
+    const view = editorViewRef.current;
+    const pos = view.state.selection.main.head;
+
+    view.dispatch({
+      changes: { from: pos, insert: content },
+      selection: { anchor: pos + content.length }
+    });
+
+    // No need to manually call setValue - CodeMirror's onChange will handle it
+    // Calling setValue here causes unnecessary re-render and flickering
+
+    // Focus the editor
+    view.focus();
+  }, []);
+
   // Command handlers
   const handleUndo = useCallback(() => {
     if (editorViewRef.current) {
@@ -204,40 +225,55 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   // Detect dark mode from DOM
   const isDarkMode = document.documentElement.classList.contains('dark');
 
-  // Create cursor position tracking extension
-  const cursorPositionExtension = EditorView.updateListener.of((update) => {
-    if (update.selectionSet) {
-      const pos = update.state.selection.main.head;
-      const line = update.state.doc.lineAt(pos);
-      setCursorPosition({
-        line: line.number,
-        col: pos - line.from + 1
-      });
-    }
-  });
+  // Create cursor position tracking extension (memoized to prevent re-creation)
+  const cursorPositionExtension = useMemo(() =>
+    EditorView.updateListener.of((update) => {
+      if (update.selectionSet) {
+        const pos = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(pos);
+        setCursorPosition({
+          line: line.number,
+          col: pos - line.from + 1
+        });
+      }
+    }),
+  []);
 
-  // Create update listener for undo/redo state
-  const updateListener = EditorView.updateListener.of((update) => {
-    if (update.docChanged) {
-      updateUndoRedoState();
-    }
-  });
+  // Create update listener for undo/redo state (memoized to prevent re-creation)
+  const updateListener = useMemo(() =>
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        updateUndoRedoState();
+      }
+    }),
+  [updateUndoRedoState]);
 
-  // Create font size theme extension
-  const getFontSizeTheme = (size: 'small' | 'medium' | 'large') => {
+  // Create font size theme extension (memoized to prevent re-creation)
+  const fontSizeTheme = useMemo(() => {
     const sizeMap = { small: '12px', medium: '14px', large: '16px' };
     return EditorView.theme({
-      '&': { fontSize: sizeMap[size] },
-      '.cm-content': { fontSize: sizeMap[size] },
-      '.cm-gutters': { fontSize: sizeMap[size] }
+      '&': { fontSize: sizeMap[fontSize] },
+      '.cm-content': { fontSize: sizeMap[fontSize] },
+      '.cm-gutters': { fontSize: sizeMap[fontSize] }
     });
-  };
+  }, [fontSize]);
+
+  // Search extension (memoized to prevent re-creation)
+  const searchExtension = useMemo(() => search({ top: true }), []);
+
+  // Line wrapping extension (memoized)
+  const lineWrappingExtension = useMemo(() => EditorView.lineWrapping, []);
 
   // Callback for when editor is created
   const onEditorCreate = useCallback((view: EditorView, _state: EditorState) => {
     editorViewRef.current = view;
     updateUndoRedoState();
-  }, [updateUndoRedoState]);
+
+    // Notify parent immediately when editor is ready
+    if (onEditorReady) {
+      onEditorReady({ insertContent: insertContentAtCursor });
+    }
+  }, [updateUndoRedoState, onEditorReady, insertContentAtCursor]);
 
   if (loading) {
     return (
@@ -263,17 +299,18 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     );
   }
 
-  const language = getLanguageExtension(content.path);
+  // Get language extension (memoized to prevent re-creation)
+  const language = useMemo(() => getLanguageExtension(content.path), [content.path]);
 
-  // Build extensions array with conditional features
-  const extensions = [
+  // Build extensions array with conditional features (memoized to prevent re-creation)
+  const extensions = useMemo(() => [
     language,
-    lineWrapping && EditorView.lineWrapping,
-    getFontSizeTheme(fontSize),
+    lineWrapping && lineWrappingExtension,
+    fontSizeTheme,
     cursorPositionExtension,
     updateListener,
-    search({ top: true }), // Search panel at top
-  ].filter(Boolean);
+    searchExtension,
+  ].filter(Boolean), [language, lineWrapping, lineWrappingExtension, fontSizeTheme, cursorPositionExtension, updateListener, searchExtension]);
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">

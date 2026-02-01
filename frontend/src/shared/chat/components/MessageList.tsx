@@ -14,6 +14,7 @@ interface MessageListProps {
   onEditMessage?: (messageId: string, content: string) => void;
   onRegenerateMessage?: (messageId: string) => void;
   onDeleteMessage?: (messageId: string) => void;
+  customMessageActions?: (message: Message, messageId: string) => React.ReactNode;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -24,6 +25,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onEditMessage,
   onRegenerateMessage,
   onDeleteMessage,
+  customMessageActions,
 }) => {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +53,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               onEdit={onEditMessage}
               onRegenerate={onRegenerateMessage}
               onDelete={onDeleteMessage}
+              customActions={customMessageActions}
             />
           ))}
           {loading && (

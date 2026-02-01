@@ -2,7 +2,7 @@
  * ProjectExplorer - Main project view with file tree and viewer
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { ProjectSelector } from './components/ProjectSelector';
 import { FileTree } from './components/FileTree';
@@ -11,6 +11,7 @@ import { useFileTree } from './hooks/useFileTree';
 import { useFileContent } from './hooks/useFileContent';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import ProjectChatSidebar from './components/ProjectChatSidebar';
+import { ProjectEditorContext } from './contexts/ProjectEditorContext';
 import type { Project } from '../../types/project';
 
 interface ProjectsOutletContext {
@@ -38,6 +39,9 @@ export const ProjectExplorer: React.FC = () => {
 
   // Local state for selected file
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(currentFilePath);
+
+  // State for editor actions (used by context)
+  const [editorActions, setEditorActions] = useState<{ insertContent: (text: string) => void } | null>(null);
 
   // Find current project
   const currentProject = projects.find(p => p.id === projectId);
@@ -82,6 +86,14 @@ export const ProjectExplorer: React.FC = () => {
       setCurrentFile(projectId, path);
     }
   };
+
+  // Create context value for editor actions
+  const editorContextValue = useMemo(() => ({
+    insertToEditor: (content: string) => {
+      editorActions?.insertContent(content);
+    },
+    isEditorAvailable: editorActions !== null && content !== null,
+  }), [editorActions, content]);
 
   if (!projectId) {
     return (
@@ -140,42 +152,45 @@ export const ProjectExplorer: React.FC = () => {
   }
 
   return (
-    <div data-name="project-explorer-root" className="flex flex-1 overflow-hidden min-w-0">
-      {/* Left: File Tree */}
-      <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <ProjectSelector
-          projects={projects}
-          currentProject={currentProject}
-          onManageClick={onManageClick}
-        />
-        <div className="flex-1 overflow-hidden">
-          <FileTree
-            tree={tree}
-            selectedPath={selectedFilePath}
-            onFileSelect={handleFileSelect}
+    <ProjectEditorContext.Provider value={editorContextValue}>
+      <div data-name="project-explorer-root" className="flex flex-1 overflow-hidden min-w-0">
+        {/* Left: File Tree */}
+        <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <ProjectSelector
+            projects={projects}
+            currentProject={currentProject}
+            onManageClick={onManageClick}
+          />
+          <div className="flex-1 overflow-hidden">
+            <FileTree
+              tree={tree}
+              selectedPath={selectedFilePath}
+              onFileSelect={handleFileSelect}
+            />
+          </div>
+        </div>
+
+        {/* Center: File Viewer */}
+        <div data-name="file-viewer-panel" className="flex-1 min-w-0 flex flex-col">
+          <FileViewer
+            projectId={projectId}
+            projectName={currentProject?.name || 'Project'}
+            content={content}
+            loading={contentLoading}
+            error={contentError}
+            chatSidebarOpen={chatSidebarOpen}
+            onToggleChatSidebar={toggleChatSidebar}
+            onEditorReady={setEditorActions}
           />
         </div>
-      </div>
 
-      {/* Center: File Viewer */}
-      <div data-name="file-viewer-panel" className="flex-1 min-w-0 flex flex-col">
-        <FileViewer
-          projectId={projectId}
-          projectName={currentProject?.name || 'Project'}
-          content={content}
-          loading={contentLoading}
-          error={contentError}
-          chatSidebarOpen={chatSidebarOpen}
-          onToggleChatSidebar={toggleChatSidebar}
-        />
+        {/* Right: Chat Sidebar (collapsible) */}
+        {chatSidebarOpen && (
+          <div data-name="chat-sidebar-container" className="w-[600px] flex-shrink-0 flex flex-col h-full border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <ProjectChatSidebar projectId={projectId} />
+          </div>
+        )}
       </div>
-
-      {/* Right: Chat Sidebar (collapsible) */}
-      {chatSidebarOpen && (
-        <div data-name="chat-sidebar-container" className="w-[600px] flex-shrink-0 flex flex-col h-full border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-          <ProjectChatSidebar projectId={projectId} />
-        </div>
-      )}
-    </div>
+    </ProjectEditorContext.Provider>
   );
 };

@@ -12,6 +12,7 @@ import { useChat } from '../hooks/useChat';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
+import type { Message } from '../../../types/message';
 
 export interface ChatViewProps {
   /**
@@ -20,9 +21,13 @@ export interface ChatViewProps {
    * Set to false in project module where SessionSelector is used
    */
   showHeader?: boolean;
+  /**
+   * Custom action buttons to render for each message
+   */
+  customMessageActions?: (message: Message, messageId: string) => React.ReactNode;
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMessageActions }) => {
   const { currentSessionId, currentSession, refreshSessions, context } = useChatServices();
 
   // Use onAssistantRefresh from service context if available
@@ -120,6 +125,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true }) => {
         onEditMessage={editMessage}
         onRegenerateMessage={regenerateMessage}
         onDeleteMessage={deleteMessage}
+        customMessageActions={customMessageActions}
       />
 
       {/* Error display */}

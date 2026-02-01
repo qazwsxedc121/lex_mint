@@ -3,12 +3,14 @@
  * Manages project sessions and provides ChatView with project context
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChatServiceProvider, ChatView, useChatServices } from '../../../shared/chat';
 import type { ChatNavigation } from '../../../shared/chat';
+import type { Message } from '../../../types/message';
 import SessionSelector from './SessionSelector';
 import { createProjectChatAPI } from '../services/projectChatAPI';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
+import { InsertToEditorButton } from './InsertToEditorButton';
 
 interface ProjectChatSidebarProps {
   projectId: string;  // Current project ID
@@ -176,6 +178,11 @@ function ChatServiceConsumer({
     }
   };
 
+  // Custom message actions for ChatView
+  const customMessageActions = useCallback((message: Message, messageId: string) => (
+    <InsertToEditorButton content={message.content} messageRole={message.role} />
+  ), []);
+
   if (sessionsLoading && sessions.length === 0) {
     return (
       <div data-name="chat-loading" className="flex items-center justify-center h-full">
@@ -199,7 +206,10 @@ function ChatServiceConsumer({
 
       {/* Chat View */}
       <div data-name="chat-view-container" className="flex-1 flex flex-col overflow-hidden">
-        <ChatView showHeader={false} />
+        <ChatView
+          showHeader={false}
+          customMessageActions={customMessageActions}
+        />
       </div>
     </div>
   );
