@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { Message, TokenUsage, CostInfo, UploadedFile } from '../../../types/message';
-import { getSession, sendMessageStream, deleteMessage as apiDeleteMessage, insertSeparator as apiInsertSeparator } from '../../../services/api';
+import { getSession, sendMessageStream, deleteMessage as apiDeleteMessage, insertSeparator as apiInsertSeparator, clearAllMessages as apiClearAllMessages } from '../../../services/api';
 
 export function useChat(sessionId: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -483,6 +483,27 @@ export function useChat(sessionId: string | null) {
     }
   };
 
+  const clearAllMessages = async () => {
+    if (!sessionId || isProcessingRef.current) return;
+
+    isProcessingRef.current = true;
+
+    try {
+      await apiClearAllMessages(sessionId);
+
+      // Clear all messages from UI
+      setMessages([]);
+
+      // Reset usage and cost totals
+      setTotalUsage(null);
+      setTotalCost(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear messages');
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+
   const updateModelId = (modelId: string) => {
     setCurrentModelId(modelId);
   };
@@ -505,6 +526,7 @@ export function useChat(sessionId: string | null) {
     regenerateMessage,
     deleteMessage,
     insertSeparator,
+    clearAllMessages,
     stopGeneration,
     updateModelId,
     updateAssistantId,

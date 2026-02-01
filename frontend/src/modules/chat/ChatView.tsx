@@ -29,6 +29,7 @@ export const ChatView: React.FC = () => {
     regenerateMessage,
     deleteMessage,
     insertSeparator,
+    clearAllMessages,
     stopGeneration,
     updateAssistantId,
   } = useChat(sessionId || null);
@@ -63,6 +64,10 @@ export const ChatView: React.FC = () => {
 
   const handleInsertSeparator = () => {
     insertSeparator();
+  };
+
+  const handleClearAllMessages = () => {
+    clearAllMessages();
   };
 
   if (!sessionId) {
@@ -108,6 +113,7 @@ export const ChatView: React.FC = () => {
         onSend={handleSendMessage}
         onStop={stopGeneration}
         onInsertSeparator={handleInsertSeparator}
+        onClearAllMessages={handleClearAllMessages}
         disabled={loading}
         isStreaming={isStreaming}
         supportsReasoning={supportsReasoning}

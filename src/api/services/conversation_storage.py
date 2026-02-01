@@ -508,6 +508,49 @@ class ConversationStorage:
         # Use the existing delete_message method
         await self.delete_message(session_id, message_index)
 
+    async def clear_all_messages(self, session_id: str):
+        """Clear all messages from the conversation.
+
+        Args:
+            session_id: Session UUID
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+        """
+        filepath = await self._find_session_file(session_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        # Read and parse existing file
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+
+        # Clear all content
+        post.content = ""
+
+        # Reset current_step
+        post.metadata["current_step"] = 0
+
+        # Reset title
+        post.metadata["title"] = "New Chat"
+
+        # Reset usage totals
+        post.metadata["total_usage"] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        post.metadata["total_cost"] = {
+            "total_cost": 0.0,
+            "currency": "USD",
+        }
+
+        # Write back to file
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
     async def set_messages(self, session_id: str, messages: List[Dict]):
         """Set the complete message list for a session (replaces all existing messages).
 

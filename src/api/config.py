@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     attachments_dir: Path = Path("attachments")
     max_file_size_mb: int = 10
 
+    # Project Configuration
+    projects_config_path: Path = Path("config/projects_config.yaml")
+    max_file_read_size_mb: int = 10
+    allowed_file_extensions: List[str] = [
+        ".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx",
+        ".json", ".yaml", ".yml", ".html", ".css", ".xml",
+        ".java", ".c", ".cpp", ".h", ".go", ".rs", ".sql"
+    ]
+
     # CORS Configuration
     cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 

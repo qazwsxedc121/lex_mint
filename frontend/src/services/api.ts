@@ -6,6 +6,7 @@ import axios from 'axios';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
+import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent } from '../types/project';
 import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -96,6 +97,15 @@ export async function insertSeparator(sessionId: string): Promise<string> {
     { session_id: sessionId }
   );
   return response.data.message_id;
+}
+
+/**
+ * Clear all messages from conversation
+ */
+export async function clearAllMessages(sessionId: string): Promise<void> {
+  await api.post('/api/chat/clear', {
+    session_id: sessionId,
+  });
 }
 
 /**
@@ -642,6 +652,64 @@ export async function generateTitleManually(sessionId: string): Promise<{ messag
   const response = await api.post<{ message: string; title: string }>('/api/title-generation/generate', {
     session_id: sessionId
   });
+  return response.data;
+}
+
+// ==================== Project Management API ====================
+
+/**
+ * Get all projects
+ */
+export async function listProjects(): Promise<Project[]> {
+  const response = await api.get<Project[]>('/api/projects');
+  return response.data;
+}
+
+/**
+ * Create a new project
+ */
+export async function createProject(project: ProjectCreate): Promise<Project> {
+  const response = await api.post<Project>('/api/projects', project);
+  return response.data;
+}
+
+/**
+ * Get a specific project
+ */
+export async function getProject(id: string): Promise<Project> {
+  const response = await api.get<Project>(`/api/projects/${id}`);
+  return response.data;
+}
+
+/**
+ * Update a project
+ */
+export async function updateProject(id: string, data: ProjectUpdate): Promise<Project> {
+  const response = await api.put<Project>(`/api/projects/${id}`, data);
+  return response.data;
+}
+
+/**
+ * Delete a project
+ */
+export async function deleteProject(id: string): Promise<void> {
+  await api.delete(`/api/projects/${id}`);
+}
+
+/**
+ * Get file tree for a project
+ */
+export async function getFileTree(id: string, path?: string): Promise<FileNode> {
+  const url = path ? `/api/projects/${id}/tree?path=${encodeURIComponent(path)}` : `/api/projects/${id}/tree`;
+  const response = await api.get<FileNode>(url);
+  return response.data;
+}
+
+/**
+ * Read file content from a project
+ */
+export async function readFile(id: string, path: string): Promise<FileContent> {
+  const response = await api.get<FileContent>(`/api/projects/${id}/files?path=${encodeURIComponent(path)}`);
   return response.data;
 }
 

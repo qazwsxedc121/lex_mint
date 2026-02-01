@@ -8,6 +8,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   ChatBubbleLeftRightIcon,
+  FolderIcon,
   Cog6ToothIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -26,6 +27,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: '/chat', label: 'Chat', icon: ChatBubbleLeftRightIcon },
+  { path: '/projects', label: 'Projects', icon: FolderIcon },
   { path: '/settings', label: 'Settings', icon: Cog6ToothIcon },
 ];
 

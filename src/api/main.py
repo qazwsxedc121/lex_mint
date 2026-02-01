@@ -14,7 +14,7 @@ setup_logging()
 
 import logging
 
-from .routers import sessions, chat, models, assistants, title_generation
+from .routers import sessions, chat, models, assistants, title_generation, projects
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ app.include_router(chat.router)
 app.include_router(models.router)
 app.include_router(assistants.router)
 app.include_router(title_generation.router)
+app.include_router(projects.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")
@@ -52,6 +53,10 @@ logger.info("=" * 80)
 async def startup_event():
     """应用启动时的初始化"""
     logger.info("=== 应用启动初始化 ===")
+
+    # 确保配置目录存在
+    settings.projects_config_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f"✅ 项目配置目录已就绪: {settings.projects_config_path.parent}")
 
     # 初始化模型配置（如果不存在则创建默认配置）
     from .services.model_config_service import ModelConfigService

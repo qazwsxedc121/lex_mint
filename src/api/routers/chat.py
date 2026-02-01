@@ -53,6 +53,11 @@ class InsertSeparatorRequest(BaseModel):
     session_id: str
 
 
+class ClearMessagesRequest(BaseModel):
+    """Request model for clear all messages endpoint."""
+    session_id: str
+
+
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
     storage = ConversationStorage(settings.conversations_dir)
@@ -371,4 +376,31 @@ async def insert_separator(
     except Exception as e:
         logger.error(f"Insert separator error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Insert error: {str(e)}")
+
+
+@router.post("/chat/clear")
+async def clear_all_messages(
+    request: ClearMessagesRequest,
+    agent: AgentService = Depends(get_agent_service)
+):
+    """
+    Clear all messages from the conversation.
+
+    This will delete all messages and reset the conversation to empty state.
+
+    Args:
+        request: ClearMessagesRequest with session_id
+
+    Returns:
+        Success response
+    """
+    try:
+        await agent.storage.clear_all_messages(request.session_id)
+        return {"success": True, "message": "All messages cleared"}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except Exception as e:
+        logger.error(f"Clear messages error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Clear error: {str(e)}")
+
 

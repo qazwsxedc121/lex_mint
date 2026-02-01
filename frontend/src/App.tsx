@@ -3,6 +3,9 @@ import { MainLayout } from './layouts/MainLayout';
 import { ChatModule } from './modules/chat';
 import { ChatWelcome } from './modules/chat/ChatWelcome';
 import { ChatView } from './modules/chat/ChatView';
+import { ProjectsModule } from './modules/projects';
+import { ProjectsWelcome } from './modules/projects/ProjectsWelcome';
+import { ProjectExplorer } from './modules/projects/ProjectExplorer';
 import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
 import { ModelsPage } from './modules/settings/ModelsPage';
@@ -19,6 +22,10 @@ function App() {
           <Route path="chat" element={<ChatModule />}>
             <Route index element={<ChatWelcome />} />
             <Route path=":sessionId" element={<ChatView />} />
+          </Route>
+          <Route path="projects" element={<ProjectsModule />}>
+            <Route index element={<ProjectsWelcome />} />
+            <Route path=":projectId" element={<ProjectExplorer />} />
           </Route>
           <Route path="settings" element={<SettingsModule />}>
             <Route index element={<Navigate to="assistants" replace />} />

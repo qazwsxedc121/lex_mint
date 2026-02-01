@@ -19,6 +19,7 @@ interface InputBoxProps {
   onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
+  onClearAllMessages?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
   // Toolbar props
@@ -33,6 +34,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   onSend,
   onStop,
   onInsertSeparator,
+  onClearAllMessages,
   disabled = false,
   isStreaming = false,
   assistantSelector,
@@ -46,6 +48,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,6 +110,25 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
   };
 
+  const handleClearClick = () => {
+    setShowClearConfirm(true);
+  };
+
+  const handleClearConfirm = () => {
+    setShowClearConfirm(false);
+    onClearAllMessages?.();
+  };
+
+  const handleClearCancel = () => {
+    setShowClearConfirm(false);
+  };
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      setShowClearConfirm(false);
+    }
+  };
+
   const currentOption = REASONING_EFFORT_OPTIONS.find(o => o.value === reasoningEffort) || REASONING_EFFORT_OPTIONS[0];
 
   return (
@@ -128,6 +150,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
             <span className="font-medium">Clear Context</span>
+          </button>
+        )}
+
+        {/* Clear all messages button */}
+        {onClearAllMessages && (
+          <button
+            onClick={handleClearClick}
+            disabled={isStreaming}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 hover:border-red-200 dark:hover:border-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Clear all messages"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span className="font-medium">Clear Messages</span>
           </button>
         )}
 
@@ -262,6 +299,37 @@ export const InputBox: React.FC<InputBoxProps> = ({
           )}
         </div>
       </div>
+
+      {/* Clear messages confirmation dialog */}
+      {showClearConfirm && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleBackdropClick}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              Clear All Messages
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Are you sure you want to clear all messages? This action cannot be undone and will delete the entire conversation history.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleClearCancel}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearConfirm}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,0 +1,19 @@
+projects:
+- id: proj_010d3943001e
+  name: gamedesign2test
+  root_path: C:\Users\qaz\Documents\gamedesign2test
+  description: null
+  created_at: '2026-02-01T14:37:27.277393'
+  updated_at: '2026-02-01T14:37:31.489172'
+- id: proj_2c43af15db55
+  name: test2
+  root_path: C:\Users\qaz\Documents\gamedesign2test2
+  description: null
+  created_at: '2026-02-01T14:47:23.421331'
+  updated_at: '2026-02-01T14:47:23.421338'
+- id: proj_23c7c2cee30a
+  name: test3
+  root_path: C:\Users\qaz\Documents\gamedesign2test3
+  description: null
+  created_at: '2026-02-01T14:47:33.346692'
+  updated_at: '2026-02-01T14:47:33.346698'

@@ -41,7 +41,8 @@
       "Bash(./venv/Scripts/pytest:*)",
       "Bash(find:*)",
       "Bash(findstr:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(del ProjectsSidebar.tsx)"
     ]
   }
 }
