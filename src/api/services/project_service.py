@@ -436,3 +436,84 @@ class ProjectService:
             raise ValueError(f"Path does not exist: {relative_path}")
 
         return root_path, target_path
+
+    async def write_file(
+        self,
+        project_id: str,
+        relative_path: str,
+        content: str,
+        encoding: str = "utf-8"
+    ) -> FileContent:
+        """Write content to a file in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+            content: Content to write
+            encoding: File encoding (default: utf-8)
+
+        Returns:
+            FileContent with updated file data
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be written
+        """
+        # Get project
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        # Get root path
+        root_path = Path(project.root_path)
+
+        # Build target path
+        if not relative_path or relative_path == ".":
+            raise ValueError("Cannot write to root directory")
+
+        target_path = root_path / relative_path
+
+        # Security check: prevent path traversal
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        # Check file extension
+        file_ext = target_path.suffix.lower()
+        if file_ext not in settings.allowed_file_extensions:
+            raise ValueError(f"File extension not allowed: {file_ext}")
+
+        # Check content size
+        content_bytes = content.encode(encoding)
+        content_size = len(content_bytes)
+        max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        if content_size > max_size_bytes:
+            raise ValueError(
+                f"Content size ({content_size} bytes) exceeds limit "
+                f"({settings.max_file_read_size_mb}MB)"
+            )
+
+        # Ensure parent directory exists
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write: write to temp file first, then rename
+        temp_path = target_path.with_suffix(target_path.suffix + '.tmp')
+        try:
+            temp_path.write_text(content, encoding=encoding)
+            # Atomic rename
+            temp_path.replace(target_path)
+        except Exception as e:
+            # Clean up temp file on error
+            if temp_path.exists():
+                temp_path.unlink()
+            raise ValueError(f"Failed to write file: {e}")
+
+        # Get file info and return
+        file_size = target_path.stat().st_size
+        mime_type = self._get_mime_type(file_ext)
+
+        return FileContent(
+            path=relative_path,
+            content=content,
+            encoding=encoding,
+            size=file_size,
+            mime_type=mime_type
+        )

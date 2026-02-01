@@ -71,3 +71,11 @@ class FileContent(BaseModel):
     encoding: str = Field(default="utf-8", description="File encoding")
     size: int = Field(..., description="File size in bytes")
     mime_type: Optional[str] = Field(None, description="MIME type")
+
+
+class FileWrite(BaseModel):
+    """File write request."""
+
+    path: str = Field(..., description="Relative path from project root")
+    content: str = Field(..., description="File content to write")
+    encoding: str = Field(default="utf-8", description="File encoding")

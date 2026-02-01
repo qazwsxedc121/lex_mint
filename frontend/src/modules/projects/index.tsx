@@ -12,7 +12,7 @@ export const ProjectsModule: React.FC = () => {
   const { projects, createProject, updateProject, deleteProject } = useProjects();
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden w-full min-w-0">
       <Outlet context={{
         projects,
         onManageClick: () => setShowManagement(true)

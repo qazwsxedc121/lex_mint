@@ -94,7 +94,7 @@ export const ProjectExplorer: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex overflow-hidden min-w-0">
       {/* File Tree Column */}
       <div className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700">
         <ProjectSelector
@@ -112,12 +112,15 @@ export const ProjectExplorer: React.FC = () => {
       </div>
 
       {/* File Viewer Column */}
-      <FileViewer
-        projectName={currentProject?.name || 'Project'}
-        content={content}
-        loading={contentLoading}
-        error={contentError}
-      />
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <FileViewer
+          projectId={projectId}
+          projectName={currentProject?.name || 'Project'}
+          content={content}
+          loading={contentLoading}
+          error={contentError}
+        />
+      </div>
     </div>
   );
 };

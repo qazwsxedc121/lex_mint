@@ -713,4 +713,16 @@ export async function readFile(id: string, path: string): Promise<FileContent> {
   return response.data;
 }
 
+/**
+ * Write content to a file in a project
+ */
+export async function writeFile(id: string, path: string, content: string, encoding: string = 'utf-8'): Promise<FileContent> {
+  const response = await api.put<FileContent>(`/api/projects/${id}/files`, {
+    path,
+    content,
+    encoding
+  });
+  return response.data;
+}
+
 export default api;
