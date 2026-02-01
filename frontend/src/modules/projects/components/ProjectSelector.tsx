@@ -5,6 +5,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDownIcon, CogIcon } from '@heroicons/react/24/outline';
+import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import type { Project } from '../../../types/project';
 
 interface ProjectSelectorProps {
@@ -19,9 +20,11 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   onManageClick,
 }) => {
   const navigate = useNavigate();
+  const { setCurrentProject } = useProjectWorkspaceStore();
   const [isOpen, setIsOpen] = React.useState(false);
 
   const handleProjectSelect = (projectId: string) => {
+    setCurrentProject(projectId);
     navigate(`/projects/${projectId}`);
     setIsOpen(false);
   };

@@ -2,9 +2,10 @@
  * ProjectsWelcome - Welcome screen shown when no project is selected
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { FolderIcon } from '@heroicons/react/24/outline';
+import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import type { Project } from '../../types/project';
 
 interface ProjectsOutletContext {
@@ -15,8 +16,17 @@ interface ProjectsOutletContext {
 export const ProjectsWelcome: React.FC = () => {
   const { projects, onManageClick } = useOutletContext<ProjectsOutletContext>();
   const navigate = useNavigate();
+  const { currentProjectId, setCurrentProject } = useProjectWorkspaceStore();
+
+  // Auto-restore last opened project on mount
+  useEffect(() => {
+    if (currentProjectId && projects.some(p => p.id === currentProjectId)) {
+      navigate(`/projects/${currentProjectId}`, { replace: true });
+    }
+  }, [currentProjectId, projects, navigate]);
 
   const handleProjectSelect = (projectId: string) => {
+    setCurrentProject(projectId);
     navigate(`/projects/${projectId}`);
   };
 

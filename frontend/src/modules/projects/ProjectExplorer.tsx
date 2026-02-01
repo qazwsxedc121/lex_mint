@@ -2,13 +2,14 @@
  * ProjectExplorer - Main project view with file tree and viewer
  */
 
-import React, { useState } from 'react';
-import { useParams, useOutletContext } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { ProjectSelector } from './components/ProjectSelector';
 import { FileTree } from './components/FileTree';
 import { FileViewer } from './components/FileViewer';
 import { useFileTree } from './hooks/useFileTree';
 import { useFileContent } from './hooks/useFileContent';
+import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import type { Project } from '../../types/project';
 
 interface ProjectsOutletContext {
@@ -18,11 +19,50 @@ interface ProjectsOutletContext {
 
 export const ProjectExplorer: React.FC = () => {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const { projects, onManageClick } = useOutletContext<ProjectsOutletContext>();
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+
+  // Get workspace state from global store
+  const {
+    currentProjectId,
+    currentFilePath,
+    setCurrentProject,
+    setCurrentFile
+  } = useProjectWorkspaceStore();
+
+  // Local state for selected file
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(currentFilePath);
 
   // Find current project
   const currentProject = projects.find(p => p.id === projectId);
+
+  // On mount: If no projectId in URL but we have a saved one, navigate to it
+  useEffect(() => {
+    if (!projectId && currentProjectId && projects.some(p => p.id === currentProjectId)) {
+      navigate(`/projects/${currentProjectId}`, { replace: true });
+    }
+  }, [projectId, currentProjectId, projects, navigate]);
+
+  // When projectId changes, update the store
+  useEffect(() => {
+    if (projectId && projectId !== currentProjectId) {
+      setCurrentProject(projectId);
+    }
+  }, [projectId, currentProjectId, setCurrentProject]);
+
+  // When file selection changes, update the store
+  useEffect(() => {
+    if (selectedFilePath !== currentFilePath) {
+      setCurrentFile(selectedFilePath);
+    }
+  }, [selectedFilePath, currentFilePath, setCurrentFile]);
+
+  // Restore file selection from store when component mounts or project changes
+  useEffect(() => {
+    if (projectId === currentProjectId && currentFilePath && !selectedFilePath) {
+      setSelectedFilePath(currentFilePath);
+    }
+  }, [projectId, currentProjectId, currentFilePath, selectedFilePath]);
 
   // Load file tree
   const { tree, loading: treeLoading, error: treeError } = useFileTree(projectId || null);
