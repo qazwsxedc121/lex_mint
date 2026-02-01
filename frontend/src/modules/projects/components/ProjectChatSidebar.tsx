@@ -54,7 +54,7 @@ export default function ProjectChatSidebar({ projectId }: ProjectChatSidebarProp
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div data-name="project-chat-sidebar-root" className="flex flex-col flex-1">
       <ChatServiceProvider
         api={projectChatAPI}
         navigation={navigation}
@@ -178,16 +178,16 @@ function ChatServiceConsumer({
 
   if (sessionsLoading && sessions.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div data-name="chat-loading" className="flex items-center justify-center h-full">
         <div className="text-gray-500 dark:text-gray-400">Loading...</div>
       </div>
     );
   }
 
   return (
-    <>
+    <div data-name="chat-service-consumer" className="flex flex-col flex-1">
       {/* Session Selector */}
-      <div className="border-b border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
+      <div data-name="session-selector-panel" className="border-b border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
         <SessionSelector
           sessions={sessions}
           currentSessionId={currentSessionId}
@@ -198,9 +198,9 @@ function ChatServiceConsumer({
       </div>
 
       {/* Chat View */}
-      <div className="flex-1 overflow-hidden">
+      <div data-name="chat-view-container" className="flex-1 flex flex-col overflow-hidden">
         <ChatView />
       </div>
-    </>
+    </div>
   );
 }

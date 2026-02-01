@@ -72,7 +72,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       navigation={navigation}
       context={context}
     >
-      <div className="flex flex-1">
+      <div data-name="chat-interface" className="flex flex-1">
         {/* Chat Sidebar */}
         <ChatSidebar />
 

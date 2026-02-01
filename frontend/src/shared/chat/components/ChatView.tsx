@@ -82,7 +82,7 @@ export const ChatView: React.FC = () => {
 
   if (!currentSessionId) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+      <div data-name="chat-view-welcome" className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
         <div className="text-center">
           <p className="text-lg mb-4">Welcome to LangGraph AI Agent</p>
           <p className="text-sm">Select a conversation or create a new one to start</p>
@@ -92,9 +92,9 @@ export const ChatView: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div data-name="chat-view-root" className="flex flex-col flex-1">
       {/* Header */}
-      <div className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+      <div data-name="chat-view-header" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {currentSession?.title || 'Chat'}
         </h1>
@@ -113,7 +113,7 @@ export const ChatView: React.FC = () => {
 
       {/* Error display */}
       {error && (
-        <div className="px-4 py-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 text-sm">
+        <div data-name="chat-view-error" className="px-4 py-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 text-sm">
           Error: {error}
         </div>
       )}

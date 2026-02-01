@@ -147,9 +147,9 @@ export const ChatSidebar: React.FC = () => {
   }, [openMenuId]);
 
   return (
-    <div className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
+    <div data-name="chat-sidebar" className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+      <div data-name="chat-sidebar-header" className="p-4 border-b border-gray-300 dark:border-gray-700">
         <button
           onClick={handleNewSession}
           className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -159,7 +159,7 @@ export const ChatSidebar: React.FC = () => {
       </div>
 
       {/* Session List */}
-      <div className="flex-1 overflow-y-auto">
+      <div data-name="chat-sidebar-sessions" className="flex-1 overflow-y-auto">
         {sessions.length === 0 ? (
           <div className="p-4 text-center text-gray-500 dark:text-gray-400">
             No conversations

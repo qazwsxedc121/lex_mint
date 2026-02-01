@@ -78,6 +78,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Error: `bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200`
    - Success: `bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200`
 
+8. **Component Debugging**
+   - **ALWAYS add `data-name` attribute** to container divs for easier debugging
+   - Use descriptive names: `data-name="chat-view-root"`, `data-name="file-tree-panel"`
+   - Helps identify elements in Chrome DevTools during layout debugging
+
 ## Project Overview
 
 LangGraph-based AI agent system with web interface using FastAPI backend and React frontend. The system uses DeepSeek as the LLM provider and stores conversations in Markdown format for easy cross-device synchronization.

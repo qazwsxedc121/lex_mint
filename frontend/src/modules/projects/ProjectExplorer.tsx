@@ -137,9 +137,9 @@ export const ProjectExplorer: React.FC = () => {
   }
 
   return (
-    <div className="flex overflow-hidden min-w-0">
+    <div data-name="project-explorer-root" className="flex flex-1 overflow-hidden min-w-0">
       {/* Left: File Tree */}
-      <div className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
         <ProjectSelector
           projects={projects}
           currentProject={currentProject}
@@ -155,7 +155,7 @@ export const ProjectExplorer: React.FC = () => {
       </div>
 
       {/* Center: File Viewer */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div data-name="file-viewer-panel" className="flex-1 min-w-0 flex flex-col">
         <FileViewer
           projectId={projectId}
           projectName={currentProject?.name || 'Project'}
@@ -169,7 +169,7 @@ export const ProjectExplorer: React.FC = () => {
 
       {/* Right: Chat Sidebar (collapsible) */}
       {chatSidebarOpen && (
-        <div className="w-[400px] flex-shrink-0 flex flex-col border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div data-name="chat-sidebar-container" className="w-[600px] flex-shrink-0 flex flex-col h-full border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
           <ProjectChatSidebar projectId={projectId} />
         </div>
       )}
