@@ -11,7 +11,7 @@ import { css } from '@codemirror/lang-css';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
-import { EditorState, StateEffect, StateField } from '@codemirror/state';
+import { EditorState } from '@codemirror/state';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { openSearchPanel, search } from '@codemirror/search';
 import type { FileContent } from '../../../types/project';
@@ -230,7 +230,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   };
 
   // Callback for when editor is created
-  const onEditorCreate = useCallback((view: EditorView, state: EditorState) => {
+  const onEditorCreate = useCallback((view: EditorView, _state: EditorState) => {
     editorViewRef.current = view;
     updateUndoRedoState();
   }, [updateUndoRedoState]);

@@ -42,7 +42,9 @@
       "Bash(find:*)",
       "Bash(findstr:*)",
       "Bash(cat:*)",
-      "Bash(del ProjectsSidebar.tsx)"
+      "Bash(del ProjectsSidebar.tsx)",
+      "Bash(git mv:*)",
+      "Bash(grep:*)"
     ]
   }
 }

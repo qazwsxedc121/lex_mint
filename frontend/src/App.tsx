@@ -1,8 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
 import { ChatModule } from './modules/chat';
-import { ChatWelcome } from './modules/chat/ChatWelcome';
-import { ChatView } from './modules/chat/ChatView';
+import { ChatWelcome, ChatView } from './shared/chat';
 import { ProjectsModule } from './modules/projects';
 import { ProjectsWelcome } from './modules/projects/ProjectsWelcome';
 import { ProjectExplorer } from './modules/projects/ProjectExplorer';

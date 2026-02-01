@@ -1,22 +1,24 @@
 /**
  * ChatView - Main chat view with messages and input
  *
- * Displays messages and provides input for a specific session
+ * Version 2.0: Uses currentSessionId from service
  */
 
 import React, { useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { MessageList } from './components/MessageList';
-import { InputBox } from './components/InputBox';
-import { AssistantSelector } from './components/AssistantSelector';
-import { useChat } from './hooks/useChat';
-import { useModelCapabilities } from './hooks/useModelCapabilities';
-import { useChatContext } from './index';
-import type { UploadedFile } from '../../types/message';
+import { MessageList } from './MessageList';
+import { InputBox } from './InputBox';
+import { AssistantSelector } from './AssistantSelector';
+import { useChat } from '../hooks/useChat';
+import { useModelCapabilities } from '../hooks/useModelCapabilities';
+import { useChatServices } from '../services/ChatServiceProvider';
+import type { UploadedFile } from '../../../types/message';
 
 export const ChatView: React.FC = () => {
-  const { sessionId } = useParams<{ sessionId: string }>();
-  const { sessionTitle, onAssistantRefresh } = useChatContext();
+  const { currentSessionId, currentSession, refreshSessions, context } = useChatServices();
+
+  // Use onAssistantRefresh from service context if available
+  const { onAssistantRefresh } = context || {};
+
   const wasStreamingRef = useRef(false);
   const {
     messages,
@@ -32,7 +34,7 @@ export const ChatView: React.FC = () => {
     clearAllMessages,
     stopGeneration,
     updateAssistantId,
-  } = useChat(sessionId || null);
+  } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
   const { supportsVision, supportsReasoning } = useModelCapabilities(currentAssistantId);
@@ -43,7 +45,11 @@ export const ChatView: React.FC = () => {
     if (wasStreamingRef.current && !isStreaming) {
       // Streaming just completed, schedule a refresh
       const timer = setTimeout(() => {
-        onAssistantRefresh();
+        if (onAssistantRefresh) {
+          onAssistantRefresh();
+        } else {
+          refreshSessions();
+        }
       }, 1000);
 
       return () => clearTimeout(timer);
@@ -51,11 +57,15 @@ export const ChatView: React.FC = () => {
 
     // Update ref for next comparison
     wasStreamingRef.current = isStreaming;
-  }, [isStreaming, onAssistantRefresh]);
+  }, [isStreaming, onAssistantRefresh, refreshSessions]);
 
   const handleAssistantChange = async (assistantId: string) => {
     updateAssistantId(assistantId);
-    onAssistantRefresh();
+    if (onAssistantRefresh) {
+      onAssistantRefresh();
+    } else {
+      await refreshSessions();
+    }
   };
 
   const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => {
@@ -70,7 +80,7 @@ export const ChatView: React.FC = () => {
     clearAllMessages();
   };
 
-  if (!sessionId) {
+  if (!currentSessionId) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
         <div className="text-center">
@@ -86,7 +96,7 @@ export const ChatView: React.FC = () => {
       {/* Header */}
       <div className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          {sessionTitle || 'Chat'}
+          {currentSession?.title || 'Chat'}
         </h1>
       </div>
 
@@ -95,7 +105,7 @@ export const ChatView: React.FC = () => {
         messages={messages}
         loading={loading}
         isStreaming={isStreaming}
-        sessionId={sessionId}
+        sessionId={currentSessionId}
         onEditMessage={editMessage}
         onRegenerateMessage={regenerateMessage}
         onDeleteMessage={deleteMessage}
@@ -118,11 +128,11 @@ export const ChatView: React.FC = () => {
         isStreaming={isStreaming}
         supportsReasoning={supportsReasoning}
         supportsVision={supportsVision}
-        sessionId={sessionId}
+        sessionId={currentSessionId}
         currentAssistantId={currentAssistantId || undefined}
         assistantSelector={
           <AssistantSelector
-            sessionId={sessionId}
+            sessionId={currentSessionId}
             currentAssistantId={currentAssistantId || undefined}
             onAssistantChange={handleAssistantChange}
           />

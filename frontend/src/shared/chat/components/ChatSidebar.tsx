@@ -1,7 +1,8 @@
 /**
  * ChatSidebar - Session list sidebar (Level 2)
  *
- * Displays session list with create/delete functionality
+ * Version 2.0: Self-contained, no external props needed
+ * All data and operations from useChatServices
  */
 
 import React, { useState } from 'react';
@@ -13,25 +14,20 @@ import {
   DocumentDuplicateIcon,
   SparklesIcon
 } from '@heroicons/react/24/outline';
-import type { Session } from '../../types/message';
-import { generateTitleManually, updateSessionTitle, duplicateSession } from '../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 
-interface ChatSidebarProps {
-  sessions: Session[];
-  currentSessionId: string | null;
-  onNewSession: () => Promise<string>;
-  onDeleteSession: (sessionId: string) => Promise<void>;
-  onRefresh?: () => void;
-}
-
-export const ChatSidebar: React.FC<ChatSidebarProps> = ({
-  sessions,
-  currentSessionId,
-  onNewSession,
-  onDeleteSession,
-  onRefresh,
-}) => {
+export const ChatSidebar: React.FC = () => {
   const navigate = useNavigate();
+  const {
+    api,
+    navigation,
+    sessions,
+    currentSessionId,
+    createSession,
+    deleteSession,
+    refreshSessions,
+  } = useChatServices();
+
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -39,25 +35,37 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   const handleNewSession = async () => {
     try {
-      const sessionId = await onNewSession();
-      navigate(`/chat/${sessionId}`);
+      const sessionId = await createSession();
+      if (navigation) {
+        navigation.navigateToSession(sessionId);
+      } else {
+        navigate(`/chat/${sessionId}`);
+      }
     } catch (err) {
       console.error('Failed to create session:', err);
     }
   };
 
   const handleSelectSession = (sessionId: string) => {
-    navigate(`/chat/${sessionId}`);
+    if (navigation) {
+      navigation.navigateToSession(sessionId);
+    } else {
+      navigate(`/chat/${sessionId}`);
+    }
   };
 
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this conversation?')) {
       try {
-        await onDeleteSession(sessionId);
+        await deleteSession(sessionId);
         // If deleted session was active, navigate to chat root
         if (currentSessionId === sessionId) {
-          navigate('/chat');
+          if (navigation) {
+            navigation.navigateToRoot();
+          } else {
+            navigate('/chat');
+          }
         }
       } catch (err) {
         console.error('Failed to delete session:', err);
@@ -76,8 +84,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
     try {
       setGeneratingTitleId(sessionId);
-      await generateTitleManually(sessionId);
-      onRefresh?.();
+      await api.generateTitleManually(sessionId);
+      await refreshSessions();
     } catch (err) {
       console.error('Failed to generate title:', err);
       alert('Failed to generate title');
@@ -86,20 +94,20 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   };
 
-  const handleStartEdit = (e: React.MouseEvent, session: Session) => {
+  const handleStartEdit = (e: React.MouseEvent, sessionId: string, currentTitle: string) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    setEditingSessionId(session.session_id);
-    setEditTitle(session.title);
+    setEditingSessionId(sessionId);
+    setEditTitle(currentTitle);
   };
 
   const handleSaveEdit = async (sessionId: string) => {
     if (!editTitle.trim()) return;
 
     try {
-      await updateSessionTitle(sessionId, editTitle.trim());
+      await api.updateSessionTitle(sessionId, editTitle.trim());
       setEditingSessionId(null);
-      onRefresh?.();
+      await refreshSessions();
     } catch (err) {
       console.error('Failed to update title:', err);
       alert('Failed to update title');
@@ -116,9 +124,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     setOpenMenuId(null);
 
     try {
-      const newSessionId = await duplicateSession(sessionId);
-      onRefresh?.();
-      navigate(`/chat/${newSessionId}`);
+      const newSessionId = await api.duplicateSession(sessionId);
+      await refreshSessions();
+      if (navigation) {
+        navigation.navigateToSession(newSessionId);
+      } else {
+        navigate(`/chat/${newSessionId}`);
+      }
     } catch (err) {
       console.error('Failed to duplicate session:', err);
       alert('Failed to duplicate session');
@@ -229,7 +241,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           Generate Title
                         </button>
                         <button
-                          onClick={(e) => handleStartEdit(e, session)}
+                          onClick={(e) => handleStartEdit(e, session.session_id, session.title)}
                           className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                         >
                           <PencilIcon className="h-4 w-4" />

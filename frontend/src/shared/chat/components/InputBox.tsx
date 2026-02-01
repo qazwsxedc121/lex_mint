@@ -4,7 +4,7 @@
 
 import React, { useState, useRef, type KeyboardEvent } from 'react';
 import { ChevronDownIcon, LightBulbIcon, PaperClipIcon, XMarkIcon, DocumentTextIcon, PhotoIcon } from '@heroicons/react/24/outline';
-import { uploadFile } from '../../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
 
 // Reasoning effort options for supported models
@@ -43,6 +43,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   sessionId,
   currentAssistantId: _currentAssistantId,
 }) => {
+  const { api } = useChatServices();
   const [input, setInput] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState('');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
@@ -72,7 +73,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           continue;
         }
 
-        const result = await uploadFile(sessionId, file);
+        const result = await api.uploadFile(sessionId, file);
         uploaded.push(result);
       }
       setAttachments(prev => [...prev, ...uploaded]);

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getAssistant, getModelCapabilities } from '../../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 
 interface ModelCapabilities {
   supportsVision: boolean;
@@ -12,6 +12,7 @@ interface ModelCapabilities {
 }
 
 export function useModelCapabilities(assistantId: string | null): ModelCapabilities {
+  const { api } = useChatServices();
   const [supportsVision, setSupportsVision] = useState(false);
   const [supportsReasoning, setSupportsReasoning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export function useModelCapabilities(assistantId: string | null): ModelCapabilit
 
       try {
         setLoading(true);
-        const assistant = await getAssistant(assistantId);
+        const assistant = await api.getAssistant(assistantId);
         const modelId = assistant.model_id;
 
         if (!modelId) {
@@ -36,7 +37,7 @@ export function useModelCapabilities(assistantId: string | null): ModelCapabilit
         }
 
         // Query model capabilities from backend
-        const response = await getModelCapabilities(modelId);
+        const response = await api.getModelCapabilities(modelId);
         setSupportsVision(response.capabilities.vision || false);
         setSupportsReasoning(response.capabilities.reasoning || false);
       } catch (error) {
@@ -49,7 +50,7 @@ export function useModelCapabilities(assistantId: string | null): ModelCapabilit
     };
 
     checkCapabilities();
-  }, [assistantId]);
+  }, [assistantId, api]);
 
   return { supportsVision, supportsReasoning, loading };
 }

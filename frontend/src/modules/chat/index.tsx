@@ -1,59 +1,44 @@
 /**
  * ChatModule - Main entry point for the chat module
  *
- * Contains ChatSidebar and ChatView with URL-based session management
+ * Version 3.0: Uses shared/chat components
+ * All core functionality moved to shared/chat for reusability
  */
 
-import React, { useCallback } from 'react';
-import { useParams, Outlet, useOutletContext } from 'react-router-dom';
-import { ChatSidebar } from './ChatSidebar';
-import { useSessions } from './hooks/useSessions';
-import type { Session } from '../../types/message';
+import React from 'react';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import { ChatInterface } from '../../shared/chat';
+import type { ChatNavigation } from '../../shared/chat';
 
-// Context type for child routes
+// Context type for child routes (backward compatibility)
 interface ChatContextType {
-  sessions: Session[];
-  sessionTitle?: string;
-  onAssistantRefresh: () => void;
+  onAssistantRefresh?: () => void;
 }
 
 export const ChatModule: React.FC = () => {
+  const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
-  const { sessions, createSession, deleteSession, refreshSessions } = useSessions();
 
-  const handleAssistantRefresh = useCallback(() => {
-    refreshSessions();
-  }, [refreshSessions]);
-
-  // Find current session title
-  const currentSession = sessions.find((s) => s.session_id === sessionId);
-  const sessionTitle = currentSession?.title;
-
-  // Context to pass to child routes
-  const context: ChatContextType = {
-    sessions,
-    sessionTitle,
-    onAssistantRefresh: handleAssistantRefresh,
+  // Create navigation implementation for current module
+  const navigation: ChatNavigation = {
+    navigateToSession: (id) => navigate(`/chat/${id}`),
+    navigateToRoot: () => navigate('/chat'),
+    getCurrentSessionId: () => sessionId || null,
   };
 
-  return (
-    <div className="flex flex-1">
-      {/* Chat Sidebar (Level 2) */}
-      <ChatSidebar
-        sessions={sessions}
-        currentSessionId={sessionId || null}
-        onNewSession={createSession}
-        onDeleteSession={deleteSession}
-        onRefresh={refreshSessions}
-      />
+  // Backward compatibility context for ChatView
+  const outletContext: ChatContextType = {};
 
-      {/* Chat Content */}
-      <Outlet context={context} />
-    </div>
+  return (
+    <ChatInterface
+      navigation={navigation}
+      useOutlet={true}
+      outletContext={outletContext}
+    />
   );
 };
 
-// Hook for child components to access chat context
+// Hook for child components to access chat context (backward compatibility)
 export function useChatContext() {
   return useOutletContext<ChatContextType>();
 }

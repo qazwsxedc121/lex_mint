@@ -1,0 +1,106 @@
+/**
+ * Service interfaces for Chat module dependency injection
+ */
+
+import type {
+  Session,
+  SessionDetail,
+  TokenUsage,
+  CostInfo,
+  UploadedFile
+} from '../../../types/message';
+import type { Assistant } from '../../../types/assistant';
+import type { CapabilitiesResponse } from '../../../types/model';
+import type { MutableRefObject } from 'react';
+
+/**
+ * ChatAPI - Encapsulates all backend API calls
+ * This interface allows different modules to provide custom implementations
+ */
+export interface ChatAPI {
+  // Session operations
+  getSession(sessionId: string): Promise<SessionDetail>;
+  createSession(modelId?: string, assistantId?: string): Promise<string>;
+  listSessions(): Promise<Session[]>;
+  deleteSession(sessionId: string): Promise<void>;
+  updateSessionTitle(sessionId: string, title: string): Promise<void>;
+  duplicateSession(sessionId: string): Promise<string>;
+  updateSessionAssistant(sessionId: string, assistantId: string): Promise<void>;
+
+  // Message operations
+  sendMessageStream(
+    sessionId: string,
+    message: string,
+    truncateAfterIndex: number | null,
+    skipUserMessage: boolean,
+    onChunk: (chunk: string) => void,
+    onDone: () => void,
+    onError: (error: string) => void,
+    abortControllerRef?: MutableRefObject<AbortController | null>,
+    reasoningEffort?: string,
+    onUsage?: (usage: TokenUsage, cost?: CostInfo) => void,
+    attachments?: UploadedFile[],
+    onUserMessageId?: (messageId: string) => void,
+    onAssistantMessageId?: (messageId: string) => void
+  ): Promise<void>;
+  deleteMessage(sessionId: string, messageId: string): Promise<void>;
+  insertSeparator(sessionId: string): Promise<string>;
+  clearAllMessages(sessionId: string): Promise<void>;
+
+  // File operations
+  uploadFile(sessionId: string, file: File): Promise<UploadedFile>;
+  downloadFile(sessionId: string, messageIndex: number, filename: string): Promise<Blob>;
+
+  // Assistant & model
+  listAssistants(): Promise<Assistant[]>;
+  getAssistant(assistantId: string): Promise<Assistant>;
+  getModelCapabilities(modelId: string): Promise<CapabilitiesResponse>;
+  generateTitleManually(sessionId: string): Promise<{ message: string; title: string }>;
+}
+
+/**
+ * ChatNavigation - Abstracts routing logic
+ * This allows different modules to handle navigation differently
+ */
+export interface ChatNavigation {
+  navigateToSession(sessionId: string): void;
+  navigateToRoot(): void;
+  getCurrentSessionId(): string | null;
+}
+
+/**
+ * ChatContextData - Shared state across chat components
+ * This provides context from parent modules (backward compatibility)
+ * @deprecated Use ChatServiceContextValue instead
+ */
+export interface ChatContextData {
+  sessions?: Session[];
+  sessionTitle?: string;
+  onSessionsRefresh?: () => void;
+  onAssistantRefresh?: () => void;
+}
+
+/**
+ * ChatServiceContextValue - Complete service context
+ * Includes API, navigation, and built-in state management
+ */
+export interface ChatServiceContextValue {
+  // API and Navigation services
+  api: ChatAPI;
+  navigation?: ChatNavigation;
+
+  // Built-in Sessions state management
+  sessions: Session[];
+  currentSession: Session | null;
+  currentSessionId: string | null;
+  sessionsLoading: boolean;
+  sessionsError: string | null;
+
+  // Built-in Sessions operations
+  createSession: (modelId?: string, assistantId?: string) => Promise<string>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  refreshSessions: () => Promise<void>;
+
+  // Backward compatibility context
+  context?: ChatContextData;
+}

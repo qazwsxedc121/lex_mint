@@ -4,9 +4,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { Message, TokenUsage, CostInfo, UploadedFile } from '../../../types/message';
-import { getSession, sendMessageStream, deleteMessage as apiDeleteMessage, insertSeparator as apiInsertSeparator, clearAllMessages as apiClearAllMessages } from '../../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 
 export function useChat(sessionId: string | null) {
+  const { api } = useChatServices();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function useChat(sessionId: string | null) {
     try {
       setLoading(true);
       setError(null);
-      const session = await getSession(sessionId);
+      const session = await api.getSession(sessionId);
       setMessages(session.state.messages);
       setCurrentModelId(session.model_id || null);
       setCurrentAssistantId(session.assistant_id || null);
@@ -86,7 +87,7 @@ export function useChat(sessionId: string | null) {
     let streamedContent = '';
 
     try {
-      await sendMessageStream(
+      await api.sendMessageStream(
         sessionId,
         content,
         null,
@@ -220,7 +221,7 @@ export function useChat(sessionId: string | null) {
     let streamedContent = '';
 
     try {
-      await sendMessageStream(
+      await api.sendMessageStream(
         sessionId,
         newContent,
         messageIndex - 1,
@@ -356,7 +357,7 @@ export function useChat(sessionId: string | null) {
     let streamedContent = '';
 
     try {
-      await sendMessageStream(
+      await api.sendMessageStream(
         sessionId,
         userMessageContent,
         truncateIndex,
@@ -450,7 +451,7 @@ export function useChat(sessionId: string | null) {
     setMessages(prev => prev.filter(m => m.message_id !== messageId));
 
     try {
-      await apiDeleteMessage(sessionId, messageId);
+      await api.deleteMessage(sessionId, messageId);
     } catch (err) {
       // Revert on error
       setError(err instanceof Error ? err.message : 'Failed to delete message');
@@ -466,7 +467,7 @@ export function useChat(sessionId: string | null) {
     isProcessingRef.current = true;
 
     try {
-      const messageId = await apiInsertSeparator(sessionId);
+      const messageId = await api.insertSeparator(sessionId);
 
       // Add separator to UI
       const separatorMessage: Message = {
@@ -489,7 +490,7 @@ export function useChat(sessionId: string | null) {
     isProcessingRef.current = true;
 
     try {
-      await apiClearAllMessages(sessionId);
+      await api.clearAllMessages(sessionId);
 
       // Clear all messages from UI
       setMessages([]);

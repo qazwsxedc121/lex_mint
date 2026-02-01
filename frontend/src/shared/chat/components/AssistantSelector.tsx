@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
-import { listAssistants, updateSessionAssistant } from '../../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 import type { Assistant } from '../../../types/assistant';
 
 interface AssistantSelectorProps {
@@ -20,6 +20,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
   currentAssistantId,
   onAssistantChange,
 }) => {
+  const { api } = useChatServices();
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -28,7 +29,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
   useEffect(() => {
     const loadAssistants = async () => {
       try {
-        const data = await listAssistants();
+        const data = await api.listAssistants();
         // Only show enabled assistants
         setAssistants(data.filter((a) => a.enabled));
       } catch (error) {
@@ -38,7 +39,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
       }
     };
     loadAssistants();
-  }, []);
+  }, [api]);
 
   // Current selected assistant
   const currentAssistant = assistants.find((a) => a.id === currentAssistantId);
@@ -50,7 +51,7 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
     }
 
     try {
-      await updateSessionAssistant(sessionId, assistant.id);
+      await api.updateSessionAssistant(sessionId, assistant.id);
       onAssistantChange?.(assistant.id);
       setIsOpen(false);
     } catch (error) {

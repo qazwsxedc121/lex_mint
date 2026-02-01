@@ -8,7 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
-import { downloadFile } from '../../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 
 interface MessageBubbleProps {
   message: Message;
@@ -76,6 +76,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onRegenerate,
   onDelete,
 }) => {
+  const { api } = useChatServices();
   const isUser = message.role === 'user';
   const isSeparator = message.role === 'separator';
   const [isEditing, setIsEditing] = useState(false);
@@ -98,7 +99,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     if (!sessionId) return;
 
     try {
-      const blob = await downloadFile(sessionId, messageIndex, filename);
+      const blob = await api.downloadFile(sessionId, messageIndex, filename);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

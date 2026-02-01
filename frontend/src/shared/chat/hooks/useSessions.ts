@@ -4,13 +4,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Session } from '../../../types/message';
-import {
-  createSession as apiCreateSession,
-  listSessions as apiListSessions,
-  deleteSession as apiDeleteSession,
-} from '../../../services/api';
+import { useChatServices } from '../services/ChatServiceProvider';
 
 export function useSessions() {
+  const { api } = useChatServices();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,14 +17,14 @@ export function useSessions() {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiListSessions();
+      const data = await api.listSessions();
       setSessions(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     loadSessions();
@@ -36,7 +33,7 @@ export function useSessions() {
   const createSession = async (): Promise<string> => {
     try {
       setError(null);
-      const sessionId = await apiCreateSession();
+      const sessionId = await api.createSession();
       // Reload sessions to include the new one
       await loadSessions();
       return sessionId;
@@ -49,7 +46,7 @@ export function useSessions() {
   const deleteSession = async (sessionId: string) => {
     try {
       setError(null);
-      await apiDeleteSession(sessionId);
+      await api.deleteSession(sessionId);
       // Remove from local state
       setSessions(prev => prev.filter(s => s.session_id !== sessionId));
     } catch (err) {
