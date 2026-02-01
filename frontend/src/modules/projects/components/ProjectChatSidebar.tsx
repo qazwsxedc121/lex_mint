@@ -1,0 +1,206 @@
+/**
+ * ProjectChatSidebar - Chat sidebar for project-specific conversations
+ * Manages project sessions and provides ChatView with project context
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChatServiceProvider, ChatView, useChatServices } from '../../../shared/chat';
+import type { ChatNavigation } from '../../../shared/chat';
+import SessionSelector from './SessionSelector';
+import { createProjectChatAPI } from '../services/projectChatAPI';
+import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
+
+interface ProjectChatSidebarProps {
+  projectId: string;  // Current project ID
+}
+
+export default function ProjectChatSidebar({ projectId }: ProjectChatSidebarProps) {
+  const { getProjectSession, setProjectSession } = useProjectWorkspaceStore();
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Get saved session for this project
+  const savedSessionId = getProjectSession(projectId);
+
+  // Create project-specific API instance
+  const projectChatAPI = useMemo(() => createProjectChatAPI(projectId), [projectId]);
+
+  // Reset current session when project changes
+  useEffect(() => {
+    setCurrentSessionId(null);
+  }, [projectId]);
+
+  // Update store when session changes
+  const handleSetCurrentSessionId = (sessionId: string | null) => {
+    setCurrentSessionId(sessionId);
+    setProjectSession(projectId, sessionId);
+  };
+
+  // Navigation object for internal session switching (no route changes)
+  const navigation: ChatNavigation = useMemo(() => ({
+    navigateToSession: (sessionId: string) => {
+      handleSetCurrentSessionId(sessionId);
+    },
+    navigateToRoot: () => {
+      // No-op: already in project view
+    },
+    getCurrentSessionId: () => {
+      return currentSessionId;
+    },
+  }), [currentSessionId]);
+
+  // Handle session selection
+  const handleSelectSession = (sessionId: string) => {
+    handleSetCurrentSessionId(sessionId);
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <ChatServiceProvider
+        api={projectChatAPI}
+        navigation={navigation}
+        context={{
+          onAssistantRefresh: async () => {
+            // Refresh sessions when title changes
+            // This is handled by ChatServiceProvider's internal state
+          },
+        }}
+      >
+        <ChatServiceConsumer
+          projectId={projectId}
+          currentSessionId={currentSessionId}
+          savedSessionId={savedSessionId}
+          onSelectSession={handleSelectSession}
+          onSetCurrentSessionId={handleSetCurrentSessionId}
+        />
+      </ChatServiceProvider>
+    </div>
+  );
+}
+
+/**
+ * Inner component that consumes ChatServiceProvider context
+ */
+interface ChatServiceConsumerProps {
+  projectId: string;
+  currentSessionId: string | null;
+  savedSessionId: string | null;
+  onSelectSession: (sessionId: string) => void;
+  onSetCurrentSessionId: (sessionId: string | null) => void;
+}
+
+function ChatServiceConsumer({
+  projectId,
+  currentSessionId,
+  savedSessionId,
+  onSelectSession,
+  onSetCurrentSessionId,
+}: ChatServiceConsumerProps) {
+  const { sessions, createSession, deleteSession, sessionsLoading } = useChatServices();
+  const [initialized, setInitialized] = useState(false);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+
+  // Track when sessions have been loaded at least once
+  useEffect(() => {
+    if (!sessionsLoading && !sessionsLoaded) {
+      setSessionsLoaded(true);
+    }
+  }, [sessionsLoading, sessionsLoaded]);
+
+  // Reset initialization when project changes
+  useEffect(() => {
+    setInitialized(false);
+    setSessionsLoaded(false);
+  }, [projectId]);
+
+  // Initialize: Restore saved session or auto-select first session
+  useEffect(() => {
+    // Wait for sessions to be loaded at least once
+    if (!sessionsLoaded) {
+      return;
+    }
+
+    // Only run initialization once when sessions are loaded
+    if (initialized) {
+      return;
+    }
+
+    const initialize = async () => {
+      // Try to restore saved session first
+      if (savedSessionId && sessions.some((s) => s.session_id === savedSessionId)) {
+        onSetCurrentSessionId(savedSessionId);
+      } else if (sessions.length > 0) {
+        // Saved session not found or not set, select the most recent one
+        onSetCurrentSessionId(sessions[0].session_id);
+      }
+      // Don't auto-create session - let user click "New Chat" button
+      setInitialized(true);
+    };
+
+    initialize();
+  }, [sessionsLoaded, initialized, sessions, savedSessionId, onSetCurrentSessionId]);
+
+  // Handle session creation
+  const handleCreateSession = async () => {
+    try {
+      const newSessionId = await createSession();
+      onSetCurrentSessionId(newSessionId);
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      alert('Failed to create new conversation. Please try again.');
+    }
+  };
+
+  // Handle session deletion
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      // If deleting current session, switch to another one first
+      if (sessionId === currentSessionId) {
+        const others = sessions.filter((s) => s.session_id !== sessionId);
+
+        if (others.length > 0) {
+          // Switch to the first remaining session
+          onSetCurrentSessionId(others[0].session_id);
+        } else {
+          // No other sessions, clear current session (don't auto-create)
+          await deleteSession(sessionId);
+          onSetCurrentSessionId(null);
+          return;
+        }
+      }
+
+      // Delete the session
+      await deleteSession(sessionId);
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      alert('Failed to delete conversation. Please try again.');
+    }
+  };
+
+  if (sessionsLoading && sessions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Session Selector */}
+      <div className="border-b border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
+        <SessionSelector
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onSelectSession={onSelectSession}
+          onCreateSession={handleCreateSession}
+          onDeleteSession={handleDeleteSession}
+        />
+      </div>
+
+      {/* Chat View */}
+      <div className="flex-1 overflow-hidden">
+        <ChatView />
+      </div>
+    </>
+  );
+}

@@ -44,7 +44,8 @@
       "Bash(cat:*)",
       "Bash(del ProjectsSidebar.tsx)",
       "Bash(git mv:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(./venv/Scripts/uvicorn:*)"
     ]
   }
 }

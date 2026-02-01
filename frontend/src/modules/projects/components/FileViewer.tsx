@@ -26,6 +26,8 @@ interface FileViewerProps {
   loading: boolean;
   error: string | null;
   onContentSaved?: () => void;
+  chatSidebarOpen: boolean;
+  onToggleChatSidebar: () => void;
 }
 
 const getLanguageExtension = (path: string) => {
@@ -58,7 +60,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   content,
   loading,
   error,
-  onContentSaved
+  onContentSaved,
+  chatSidebarOpen,
+  onToggleChatSidebar,
 }) => {
   const [value, setValue] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
@@ -303,6 +307,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           mimeType: content.mime_type,
           size: formatFileSize(content.size)
         }}
+        chatSidebarOpen={chatSidebarOpen}
+        onToggleChatSidebar={onToggleChatSidebar}
       />
 
       {/* Editor */}

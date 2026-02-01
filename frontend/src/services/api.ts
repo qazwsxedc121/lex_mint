@@ -21,7 +21,12 @@ const api = axios.create({
 /**
  * Create a new conversation session.
  */
-export async function createSession(modelId?: string, assistantId?: string): Promise<string> {
+export async function createSession(
+  modelId?: string,
+  assistantId?: string,
+  contextType: string = 'chat',
+  projectId?: string
+): Promise<string> {
   const body: { model_id?: string; assistant_id?: string } = {};
   if (assistantId) {
     body.assistant_id = assistantId;
@@ -29,8 +34,15 @@ export async function createSession(modelId?: string, assistantId?: string): Pro
     body.model_id = modelId;
   }
 
+  // Build query params
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
   const response = await api.post<{ session_id: string }>(
-    '/api/sessions',
+    `/api/sessions?${params.toString()}`,
     Object.keys(body).length > 0 ? body : undefined
   );
   return response.data.session_id;
@@ -39,39 +51,69 @@ export async function createSession(modelId?: string, assistantId?: string): Pro
 /**
  * Get all conversation sessions.
  */
-export async function listSessions(): Promise<Session[]> {
-  const response = await api.get<{ sessions: Session[] }>('/api/sessions');
+export async function listSessions(contextType: string = 'chat', projectId?: string): Promise<Session[]> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await api.get<{ sessions: Session[] }>(`/api/sessions?${params.toString()}`);
   return response.data.sessions;
 }
 
 /**
  * Get a specific session with full message history.
  */
-export async function getSession(sessionId: string): Promise<SessionDetail> {
-  const response = await api.get<SessionDetail>(`/api/sessions/${sessionId}`);
+export async function getSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<SessionDetail> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await api.get<SessionDetail>(`/api/sessions/${sessionId}?${params.toString()}`);
   return response.data;
 }
 
 /**
  * Delete a conversation session.
  */
-export async function deleteSession(sessionId: string): Promise<void> {
-  await api.delete(`/api/sessions/${sessionId}`);
+export async function deleteSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.delete(`/api/sessions/${sessionId}?${params.toString()}`);
 }
 
 /**
  * Update session title
  */
-export async function updateSessionTitle(sessionId: string, title: string): Promise<void> {
-  await api.put(`/api/sessions/${sessionId}/title`, { title });
+export async function updateSessionTitle(sessionId: string, title: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/title?${params.toString()}`, { title });
 }
 
 /**
  * Duplicate a session
  */
-export async function duplicateSession(sessionId: string): Promise<string> {
+export async function duplicateSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
   const response = await api.post<{ session_id: string; message: string }>(
-    `/api/sessions/${sessionId}/duplicate`
+    `/api/sessions/${sessionId}/duplicate?${params.toString()}`
   );
   return response.data.session_id;
 }
@@ -79,8 +121,14 @@ export async function duplicateSession(sessionId: string): Promise<string> {
 /**
  * Delete a single message from a conversation.
  */
-export async function deleteMessage(sessionId: string, messageId: string): Promise<void> {
-  await api.delete('/api/chat/message', {
+export async function deleteMessage(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.delete(`/api/chat/message?${params.toString()}`, {
     data: {
       session_id: sessionId,
       message_id: messageId,
@@ -91,9 +139,15 @@ export async function deleteMessage(sessionId: string, messageId: string): Promi
 /**
  * Insert a separator into conversation to clear context
  */
-export async function insertSeparator(sessionId: string): Promise<string> {
+export async function insertSeparator(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
   const response = await api.post<{ success: boolean; message_id: string }>(
-    '/api/chat/separator',
+    `/api/chat/separator?${params.toString()}`,
     { session_id: sessionId }
   );
   return response.data.message_id;
@@ -102,8 +156,14 @@ export async function insertSeparator(sessionId: string): Promise<string> {
 /**
  * Clear all messages from conversation
  */
-export async function clearAllMessages(sessionId: string): Promise<void> {
-  await api.post('/api/chat/clear', {
+export async function clearAllMessages(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.post(`/api/chat/clear?${params.toString()}`, {
     session_id: sessionId,
   });
 }
@@ -113,9 +173,17 @@ export async function clearAllMessages(sessionId: string): Promise<void> {
  */
 export async function sendMessage(
   sessionId: string,
-  message: string
+  message: string,
+  contextType: string = 'chat',
+  projectId?: string
 ): Promise<string> {
-  const response = await api.post<ChatResponse>('/api/chat', {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await api.post<ChatResponse>(`/api/chat?${params.toString()}`, {
     session_id: sessionId,
     message,
   } as ChatRequest);
@@ -137,6 +205,8 @@ export async function sendMessage(
  * @param attachments - Optional file attachments
  * @param onUserMessageId - Optional callback for user message ID from backend
  * @param onAssistantMessageId - Optional callback for assistant message ID from backend
+ * @param contextType - Context type (default: 'chat')
+ * @param projectId - Optional project ID
  */
 export async function sendMessageStream(
   sessionId: string,
@@ -152,6 +222,8 @@ export async function sendMessageStream(
   attachments?: UploadedFile[],
   onUserMessageId?: (messageId: string) => void,
   onAssistantMessageId?: (messageId: string) => void,
+  contextType: string = 'chat',
+  projectId?: string
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -166,7 +238,12 @@ export async function sendMessageStream(
       truncate_after_index: truncateAfterIndex,
       skip_user_message: skipUserMessage,
       reasoning_effort: reasoningEffort || null,
+      context_type: contextType,
     };
+
+    if (projectId) {
+      requestBody.project_id = projectId;
+    }
 
     if (attachments && attachments.length > 0) {
       requestBody.attachments = attachments.map(a => ({
@@ -291,13 +368,21 @@ export async function checkHealth(): Promise<boolean> {
  */
 export async function uploadFile(
   sessionId: string,
-  file: File
+  file: File,
+  contextType: string = 'chat',
+  projectId?: string
 ): Promise<UploadedFile> {
   const formData = new FormData();
   formData.append('session_id', sessionId);
   formData.append('file', file);
 
-  const response = await fetch(`${API_BASE}/api/chat/upload`, {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await fetch(`${API_BASE}/api/chat/upload?${params.toString()}`, {
     method: 'POST',
     body: formData,
   });
@@ -448,15 +533,27 @@ export async function getReasoningSupportedPatterns(): Promise<string[]> {
 /**
  * 更新会话使用的模型
  */
-export async function updateSessionModel(sessionId: string, modelId: string): Promise<void> {
-  await api.put(`/api/sessions/${sessionId}/model`, { model_id: modelId });
+export async function updateSessionModel(sessionId: string, modelId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/model?${params.toString()}`, { model_id: modelId });
 }
 
 /**
  * 更新会话使用的助手
  */
-export async function updateSessionAssistant(sessionId: string, assistantId: string): Promise<void> {
-  await api.put(`/api/sessions/${sessionId}/assistant`, { assistant_id: assistantId });
+export async function updateSessionAssistant(sessionId: string, assistantId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/assistant?${params.toString()}`, { assistant_id: assistantId });
 }
 
 // ==================== 助手管理 API ====================
@@ -648,8 +745,14 @@ export async function updateTitleGenerationConfig(updates: TitleGenerationConfig
 /**
  * Manually trigger title generation for a session
  */
-export async function generateTitleManually(sessionId: string): Promise<{ message: string; title: string }> {
-  const response = await api.post<{ message: string; title: string }>('/api/title-generation/generate', {
+export async function generateTitleManually(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<{ message: string; title: string }> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await api.post<{ message: string; title: string }>(`/api/title-generation/generate?${params.toString()}`, {
     session_id: sessionId
   });
   return response.data;

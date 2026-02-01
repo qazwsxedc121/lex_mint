@@ -10,6 +10,7 @@ import {
   ArrowsPointingOutIcon,
   HashtagIcon,
 } from '@heroicons/react/24/outline';
+import { ChatToggleButton } from './ChatToggleButton';
 
 interface EditorToolbarProps {
   // File operations
@@ -38,6 +39,10 @@ interface EditorToolbarProps {
   // Status display
   cursorPosition: { line: number; col: number };
   fileInfo: { encoding: string; mimeType: string; size: string };
+
+  // Chat sidebar toggle
+  chatSidebarOpen: boolean;
+  onToggleChatSidebar: () => void;
 }
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
@@ -60,6 +65,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onChangeFontSize,
   cursorPosition,
   fileInfo,
+  chatSidebarOpen,
+  onToggleChatSidebar,
 }) => {
   return (
     <div className="border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -165,7 +172,15 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           </select>
         </div>
 
-        {/* Group 4: Status Display */}
+        {/* Group 4: Chat Toggle */}
+        <div className="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-3 mr-2">
+          <ChatToggleButton
+            isOpen={chatSidebarOpen}
+            onToggle={onToggleChatSidebar}
+          />
+        </div>
+
+        {/* Group 5: Status Display */}
         <div className="flex items-center gap-3 text-gray-600 dark:text-gray-400 ml-auto">
           <span title="Cursor position">
             Ln {cursorPosition.line}:Col {cursorPosition.col}

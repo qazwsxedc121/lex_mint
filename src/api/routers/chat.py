@@ -1,6 +1,6 @@
 """Chat API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form, Query
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -33,6 +33,8 @@ class ChatRequest(BaseModel):
     truncate_after_index: Optional[int] = None  # 截断索引，删除此索引之后的消息
     skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
     reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
+    context_type: str = "chat"  # Context type: "chat" or "project"
+    project_id: Optional[str] = None  # Project ID (required when context_type="project")
 
 
 class ChatResponse(BaseModel):
@@ -46,16 +48,22 @@ class DeleteMessageRequest(BaseModel):
     session_id: str
     message_index: Optional[int] = None
     message_id: Optional[str] = None
+    context_type: str = "chat"
+    project_id: Optional[str] = None
 
 
 class InsertSeparatorRequest(BaseModel):
     """Request model for insert separator endpoint."""
     session_id: str
+    context_type: str = "chat"
+    project_id: Optional[str] = None
 
 
 class ClearMessagesRequest(BaseModel):
     """Request model for clear all messages endpoint."""
     session_id: str
+    context_type: str = "chat"
+    project_id: Optional[str] = None
 
 
 def get_agent_service() -> AgentService:
@@ -77,15 +85,20 @@ async def chat(
     """Send a message and receive AI response.
 
     Args:
-        request: ChatRequest with session_id and message
+        request: ChatRequest with session_id, message, and context parameters
 
     Returns:
         ChatResponse with session_id and AI response
 
     Raises:
         404: Session not found
+        400: Invalid context parameters
         500: Internal server error (agent failure)
     """
+    # Validate context parameters
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
     # 使用 print 强制输出，绕过日志系统
     print("=" * 80)
     print(f"📨 收到聊天请求")
@@ -103,7 +116,12 @@ async def chat(
         print("🤖 开始处理消息...")
         logger.info("🤖 开始处理消息...")
 
-        response = await agent.process_message(request.session_id, request.message)
+        response = await agent.process_message(
+            request.session_id,
+            request.message,
+            context_type=request.context_type,
+            project_id=request.project_id
+        )
 
         print("=" * 80)
         print("✅ 消息处理完成")
@@ -120,6 +138,10 @@ async def chat(
         print(f"❌ 会话未找到: {request.session_id}")
         logger.error(f"❌ 会话未找到: {request.session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        print(f"❌ 验证错误: {str(e)}")
+        logger.error(f"❌ 验证错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(f"❌ Agent 错误: {str(e)}")
         logger.error(f"❌ Agent 错误: {str(e)}", exc_info=True)
@@ -134,15 +156,20 @@ async def chat_stream(
     """流式发送消息并接收 AI 响应.
 
     Args:
-        request: ChatRequest with session_id and message
+        request: ChatRequest with session_id, message, and context parameters
 
     Returns:
         StreamingResponse with Server-Sent Events
 
     Raises:
         404: Session not found
+        400: Invalid context parameters
         500: Internal server error (agent failure)
     """
+    # Validate context parameters
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
     print("=" * 80)
     print(f"📨 收到流式聊天请求")
     print(f"   Session ID: {request.session_id[:16]}...")
@@ -167,7 +194,9 @@ async def chat_stream(
                 logger.info(f"[SSE] Truncating messages to index {request.truncate_after_index}")
                 await agent.storage.truncate_messages_after(
                     request.session_id,
-                    request.truncate_after_index
+                    request.truncate_after_index,
+                    context_type=request.context_type,
+                    project_id=request.project_id
                 )
 
             # Stream process messages
@@ -176,7 +205,9 @@ async def chat_stream(
                 request.message,
                 skip_user_append=request.skip_user_message,
                 reasoning_effort=request.reasoning_effort,
-                attachments=request.attachments
+                attachments=request.attachments,
+                context_type=request.context_type,
+                project_id=request.project_id
             ):
                 # Check if chunk is a dict event (usage, user_message_id, assistant_message_id)
                 if isinstance(chunk, dict):
@@ -204,6 +235,11 @@ async def chat_stream(
             print(f"❌ 会话未找到: {request.session_id}")
             logger.error(f"❌ 会话未找到: {request.session_id}")
             error_data = json.dumps({"error": "Session not found"})
+            yield f"data: {error_data}\n\n"
+        except ValueError as e:
+            print(f"❌ 验证错误: {str(e)}")
+            logger.error(f"❌ 验证错误: {str(e)}")
+            error_data = json.dumps({"error": str(e)})
             yield f"data: {error_data}\n\n"
         except Exception as e:
             print(f"❌ Agent 错误: {str(e)}")
@@ -266,6 +302,8 @@ async def download_attachment(
     session_id: str,
     message_index: int,
     filename: str,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
     file_service: FileService = Depends(get_file_service)
 ):
     """Download a file attachment.
@@ -274,6 +312,8 @@ async def download_attachment(
         session_id: Session identifier
         message_index: Message index
         filename: Filename
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
 
     Returns:
         File response
@@ -281,7 +321,12 @@ async def download_attachment(
     Raises:
         404: File not found
         403: Access denied (path traversal attempt)
+        400: Invalid context parameters
     """
+    # Validate context parameters
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
     logger.info(f"File download request: session={session_id[:16]}..., index={message_index}, file={filename}")
 
     # Get file path
@@ -312,21 +357,30 @@ async def delete_message(
     """Delete a single message from conversation.
 
     Args:
-        request: DeleteMessageRequest with session_id and either message_id or message_index
+        request: DeleteMessageRequest with session_id, context, and either message_id or message_index
 
     Returns:
         Success message
 
     Raises:
         404: Session not found
-        400: Invalid message index or ID
+        400: Invalid message index or ID, or invalid context parameters
         500: Internal server error
     """
+    # Validate context parameters
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
     # Prefer message_id if provided, fallback to message_index
     if request.message_id:
         logger.info(f"Delete message request: session={request.session_id[:16]}..., message_id={request.message_id}")
         try:
-            await agent.storage.delete_message_by_id(request.session_id, request.message_id)
+            await agent.storage.delete_message_by_id(
+                request.session_id,
+                request.message_id,
+                context_type=request.context_type,
+                project_id=request.project_id
+            )
             return {"success": True, "message": "Message deleted"}
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -338,11 +392,18 @@ async def delete_message(
     elif request.message_index is not None:
         logger.info(f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}")
         try:
-            await agent.storage.delete_message(request.session_id, request.message_index)
+            await agent.storage.delete_message(
+                request.session_id,
+                request.message_index,
+                context_type=request.context_type,
+                project_id=request.project_id
+            )
             return {"success": True, "message": "Message deleted"}
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Session not found")
         except IndexError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.error(f"Delete message error: {str(e)}", exc_info=True)
@@ -363,16 +424,31 @@ async def insert_separator(
     after the last separator will be included in the conversation history.
 
     Args:
-        request: InsertSeparatorRequest with session_id
+        request: InsertSeparatorRequest with session_id and context parameters
 
     Returns:
         Success response with message_id
+
+    Raises:
+        404: Session not found
+        400: Invalid context parameters
+        500: Internal server error
     """
+    # Validate context parameters
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
     try:
-        message_id = await agent.storage.append_separator(request.session_id)
+        message_id = await agent.storage.append_separator(
+            request.session_id,
+            context_type=request.context_type,
+            project_id=request.project_id
+        )
         return {"success": True, "message_id": message_id}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Insert separator error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Insert error: {str(e)}")
@@ -389,16 +465,31 @@ async def clear_all_messages(
     This will delete all messages and reset the conversation to empty state.
 
     Args:
-        request: ClearMessagesRequest with session_id
+        request: ClearMessagesRequest with session_id and context parameters
 
     Returns:
         Success response
+
+    Raises:
+        404: Session not found
+        400: Invalid context parameters
+        500: Internal server error
     """
+    # Validate context parameters
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
     try:
-        await agent.storage.clear_all_messages(request.session_id)
+        await agent.storage.clear_all_messages(
+            request.session_id,
+            context_type=request.context_type,
+            project_id=request.project_id
+        )
         return {"success": True, "message": "All messages cleared"}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Clear messages error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Clear error: {str(e)}")

@@ -32,7 +32,9 @@ class ConversationStorage:
     async def create_session(
         self,
         model_id: Optional[str] = None,
-        assistant_id: Optional[str] = None
+        assistant_id: Optional[str] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None
     ) -> str:
         """Create a new conversation session.
 
@@ -40,9 +42,14 @@ class ConversationStorage:
             model_id: 可选的模型 ID，支持简单ID或复合ID (provider_id:model_id)
                      如果未指定则使用默认模型（向后兼容）
             assistant_id: 可选的助手 ID，优先使用（新方式）
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Returns:
             session_id: UUID string for the new session
+
+        Raises:
+            ValueError: If context parameters are invalid
         """
         # 优先使用 assistant_id（新方式）
         if assistant_id:
@@ -71,10 +78,14 @@ class ConversationStorage:
             assistant_id = default_assistant.id
             model_id = default_assistant.model_id
 
+        # Get context-specific directory and create if needed
+        conversation_dir = self._get_conversation_dir(context_type, project_id)
+        conversation_dir.mkdir(parents=True, exist_ok=True)
+
         session_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"{timestamp}_{session_id[:8]}.md"
-        filepath = self.conversations_dir / filename
+        filepath = conversation_dir / filename
 
         # Create file with frontmatter metadata
         post = frontmatter.Post("")
@@ -97,11 +108,13 @@ class ConversationStorage:
 
         return session_id
 
-    async def get_session(self, session_id: str) -> Dict:
+    async def get_session(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> Dict:
         """Load a conversation session.
 
         Args:
             session_id: Session UUID to load
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Returns:
             Dictionary with session metadata and state:
@@ -119,8 +132,9 @@ class ConversationStorage:
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -191,6 +205,8 @@ class ConversationStorage:
         attachments: Optional[List[Dict]] = None,
         usage: Optional[TokenUsage] = None,
         cost: Optional[CostInfo] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None
     ) -> str:
         """Append a message to conversation file.
 
@@ -201,14 +217,17 @@ class ConversationStorage:
             attachments: List of file attachment metadata (for user messages)
             usage: Token usage data (for assistant messages)
             cost: Cost information (for assistant messages)
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Returns:
             message_id: The generated UUID for the new message
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -285,24 +304,35 @@ class ConversationStorage:
 
         return message_id
 
-    async def append_separator(self, session_id: str) -> str:
+    async def append_separator(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> str:
         """
         Append a separator message to conversation.
 
         Args:
             session_id: Session UUID
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Returns:
             message_id: The generated UUID for the separator
+
+        Raises:
+            ValueError: If context parameters are invalid
         """
         return await self.append_message(
             session_id=session_id,
             role="separator",
-            content="--- Context cleared ---"
+            content="--- Context cleared ---",
+            context_type=context_type,
+            project_id=project_id
         )
 
-    async def list_sessions(self) -> List[Dict]:
-        """List all conversation sessions.
+    async def list_sessions(self, context_type: str = "chat", project_id: Optional[str] = None) -> List[Dict]:
+        """List all conversation sessions in a specific context.
+
+        Args:
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Returns:
             List of session summaries sorted by creation time (newest first):
@@ -315,9 +345,19 @@ class ConversationStorage:
                 },
                 ...
             ]
+
+        Raises:
+            ValueError: If context parameters are invalid
         """
+        # Get context-specific directory
+        conversation_dir = self._get_conversation_dir(context_type, project_id)
+
+        # Return empty list if directory doesn't exist
+        if not conversation_dir.exists():
+            return []
+
         sessions = []
-        for filepath in sorted(self.conversations_dir.glob("*.md"), reverse=True):
+        for filepath in sorted(conversation_dir.glob("*.md"), reverse=True):
             try:
                 async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
                     content = await f.read()
@@ -343,18 +383,21 @@ class ConversationStorage:
 
         return sessions
 
-    async def truncate_messages_after(self, session_id: str, keep_until_index: int):
+    async def truncate_messages_after(self, session_id: str, keep_until_index: int, context_type: str = "chat", project_id: Optional[str] = None):
         """Delete all messages after specified index.
 
         Args:
             session_id: Session UUID
             keep_until_index: Keep messages up to and including this index.
                             Index -1 means delete all messages.
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -403,18 +446,21 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def delete_message(self, session_id: str, message_index: int):
+    async def delete_message(self, session_id: str, message_index: int, context_type: str = "chat", project_id: Optional[str] = None):
         """Delete a single message at specified index.
 
         Args:
             session_id: Session UUID
             message_index: Index of the message to delete
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
             IndexError: If message index is out of range
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -473,18 +519,20 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def delete_message_by_id(self, session_id: str, message_id: str):
+    async def delete_message_by_id(self, session_id: str, message_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Delete a single message by its ID.
 
         Args:
             session_id: Session UUID
             message_id: UUID of the message to delete
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
-            ValueError: If message_id is not found
+            ValueError: If message_id is not found or context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -506,18 +554,21 @@ class ConversationStorage:
             raise ValueError(f"Message with ID {message_id} not found")
 
         # Use the existing delete_message method
-        await self.delete_message(session_id, message_index)
+        await self.delete_message(session_id, message_index, context_type, project_id)
 
-    async def clear_all_messages(self, session_id: str):
+    async def clear_all_messages(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Clear all messages from the conversation.
 
         Args:
             session_id: Session UUID
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -551,17 +602,20 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def set_messages(self, session_id: str, messages: List[Dict]):
+    async def set_messages(self, session_id: str, messages: List[Dict], context_type: str = "chat", project_id: Optional[str] = None):
         """Set the complete message list for a session (replaces all existing messages).
 
         Args:
             session_id: Session UUID
             messages: List of message dictionaries with 'role' and 'content' keys
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -607,17 +661,20 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def update_session_metadata(self, session_id: str, metadata_updates: dict):
+    async def update_session_metadata(self, session_id: str, metadata_updates: dict, context_type: str = "chat", project_id: Optional[str] = None):
         """Update session metadata (frontmatter).
 
         Args:
             session_id: Session UUID
             metadata_updates: Dictionary of metadata fields to update
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -635,32 +692,38 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def delete_session(self, session_id: str):
+    async def delete_session(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Delete a conversation session.
 
         Args:
             session_id: Session UUID to delete
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         filepath.unlink()
 
-    async def update_session_model(self, session_id: str, model_id: str):
+    async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """更新会话使用的模型.
 
         Args:
             session_id: 会话 UUID
             model_id: 新的模型 ID
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -675,18 +738,20 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def update_session_assistant(self, session_id: str, assistant_id: str):
+    async def update_session_assistant(self, session_id: str, assistant_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """更新会话使用的助手.
 
         Args:
             session_id: 会话 UUID
             assistant_id: 新的助手 ID
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Raises:
             FileNotFoundError: If session doesn't exist
-            ValueError: If assistant doesn't exist
+            ValueError: If assistant doesn't exist or context parameters are invalid
         """
-        filepath = await self._find_session_file(session_id)
+        filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -709,17 +774,62 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
-    async def _find_session_file(self, session_id: str) -> Optional[Path]:
+    def _get_conversation_dir(self, context_type: str = "chat", project_id: Optional[str] = None) -> Path:
+        """Get the conversation directory for a specific context.
+
+        Args:
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+
+        Returns:
+            Path to the conversation directory for this context
+
+        Raises:
+            ValueError: If context_type is invalid or project_id is missing/invalid
+        """
+        # Validate context_type
+        if context_type not in ["chat", "project"]:
+            raise ValueError(f"Invalid context_type: {context_type}. Must be 'chat' or 'project'")
+
+        # Validate project_id for project context
+        if context_type == "project":
+            if not project_id:
+                raise ValueError("project_id is required for project context")
+            if not project_id.strip():
+                raise ValueError("project_id cannot be empty")
+            # Prevent path traversal
+            if ".." in project_id or "/" in project_id or "\\" in project_id:
+                raise ValueError(f"Invalid project_id: {project_id}. Contains invalid characters")
+
+        # Return appropriate directory
+        if context_type == "chat":
+            return self.conversations_dir / "chat"
+        else:  # project
+            return self.conversations_dir / "projects" / project_id
+
+    async def _find_session_file(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> Optional[Path]:
         """Find the file path for a session by its ID.
 
         Args:
             session_id: Session UUID to find
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
 
         Returns:
             Path to session file, or None if not found
+
+        Raises:
+            ValueError: If context parameters are invalid
         """
+        # Get the context-specific directory
+        search_dir = self._get_conversation_dir(context_type, project_id)
+
+        # Check if directory exists
+        if not search_dir.exists():
+            return None
+
         # Quick path: check if filename contains session_id prefix
-        for filepath in self.conversations_dir.glob(f"*_{session_id[:8]}.md"):
+        for filepath in search_dir.glob(f"*_{session_id[:8]}.md"):
             # Verify by reading metadata
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
@@ -730,7 +840,7 @@ class ConversationStorage:
                 continue
 
         # Fallback: scan all files
-        for filepath in self.conversations_dir.glob("*.md"):
+        for filepath in search_dir.glob("*.md"):
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     post = frontmatter.load(f)

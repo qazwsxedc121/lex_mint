@@ -10,6 +10,7 @@ import { FileViewer } from './components/FileViewer';
 import { useFileTree } from './hooks/useFileTree';
 import { useFileContent } from './hooks/useFileContent';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
+import ProjectChatSidebar from './components/ProjectChatSidebar';
 import type { Project } from '../../types/project';
 
 interface ProjectsOutletContext {
@@ -27,7 +28,9 @@ export const ProjectExplorer: React.FC = () => {
     currentProjectId,
     currentFilePath,
     setCurrentProject,
-    setCurrentFile
+    setCurrentFile,
+    chatSidebarOpen,
+    toggleChatSidebar
   } = useProjectWorkspaceStore();
 
   // Local state for selected file
@@ -134,9 +137,9 @@ export const ProjectExplorer: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden min-w-0">
-      {/* File Tree Column */}
-      <div className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700">
+    <div className="flex overflow-hidden min-w-0">
+      {/* Left: File Tree */}
+      <div className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
         <ProjectSelector
           projects={projects}
           currentProject={currentProject}
@@ -151,16 +154,25 @@ export const ProjectExplorer: React.FC = () => {
         </div>
       </div>
 
-      {/* File Viewer Column */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      {/* Center: File Viewer */}
+      <div className="flex-1 min-w-0 flex flex-col">
         <FileViewer
           projectId={projectId}
           projectName={currentProject?.name || 'Project'}
           content={content}
           loading={contentLoading}
           error={contentError}
+          chatSidebarOpen={chatSidebarOpen}
+          onToggleChatSidebar={toggleChatSidebar}
         />
       </div>
+
+      {/* Right: Chat Sidebar (collapsible) */}
+      {chatSidebarOpen && (
+        <div className="w-[400px] flex-shrink-0 flex flex-col border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <ProjectChatSidebar projectId={projectId} />
+        </div>
+      )}
     </div>
   );
 };
