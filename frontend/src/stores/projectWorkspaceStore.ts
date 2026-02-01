@@ -13,8 +13,8 @@ interface ProjectWorkspaceState {
   // Current opened project ID
   currentProjectId: string | null;
 
-  // Current opened file path within the project
-  currentFilePath: string | null;
+  // Map of projectId -> filePath for each project's last opened file
+  projectFileMap: Record<string, string>;
 
   // Map of projectId -> sessionId for each project's last session
   projectSessionMap: Record<string, string>;
@@ -24,7 +24,8 @@ interface ProjectWorkspaceState {
 
   // Actions to update workspace state
   setCurrentProject: (projectId: string | null) => void;
-  setCurrentFile: (filePath: string | null) => void;
+  setCurrentFile: (projectId: string, filePath: string | null) => void;
+  getCurrentFile: (projectId: string) => string | null;
   setProjectSession: (projectId: string, sessionId: string | null) => void;
   getProjectSession: (projectId: string) => string | null;
   toggleChatSidebar: () => void;
@@ -36,19 +37,29 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
   persist(
     (set, get) => ({
       currentProjectId: null,
-      currentFilePath: null,
+      projectFileMap: {},
       projectSessionMap: {},
       chatSidebarOpen: false,
 
       setCurrentProject: (projectId) => set({
-        currentProjectId: projectId,
-        // Clear file when switching projects (session is preserved in map)
-        currentFilePath: null
+        currentProjectId: projectId
       }),
 
-      setCurrentFile: (filePath) => set({
-        currentFilePath: filePath
-      }),
+      setCurrentFile: (projectId, filePath) => {
+        set((state) => {
+          const newMap = { ...state.projectFileMap };
+          if (filePath === null) {
+            delete newMap[projectId];
+          } else {
+            newMap[projectId] = filePath;
+          }
+          return { projectFileMap: newMap };
+        });
+      },
+
+      getCurrentFile: (projectId) => {
+        return get().projectFileMap[projectId] || null;
+      },
 
       setProjectSession: (projectId, sessionId) => {
         set((state) => {
@@ -76,13 +87,26 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
 
       clearWorkspace: () => set({
         currentProjectId: null,
-        currentFilePath: null,
+        projectFileMap: {},
         projectSessionMap: {},
         chatSidebarOpen: false
       }),
     }),
     {
       name: 'project-workspace-storage', // localStorage key
+      version: 1, // Increment this to force clear old incompatible data
+      migrate: (persistedState: any, version: number) => {
+        // If old version or no version, return fresh state
+        if (version < 1) {
+          return {
+            currentProjectId: null,
+            projectFileMap: {},
+            projectSessionMap: {},
+            chatSidebarOpen: false,
+          };
+        }
+        return persistedState;
+      },
     }
   )
 );

@@ -25,6 +25,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Code files (.py, .md, etc.): Can use UTF-8, Chinese, emoji
    - Terminal/console output: Only ASCII characters allowed
 
+4. **Windows Path Handling**
+   - **Key Discovery**: Git Bash and Windows use different path formats for the SAME directory
+   - Project root is mapped to TWO different paths:
+     - Git Bash: `/d/work/pythonProjects/agent_dev`
+     - Windows: `D:\work\pythonProjects\agent_dev`
+
+   **Rules by Tool Type**:
+
+   **Bash Tool (Git Bash environment)**:
+   - ALWAYS use relative paths with forward slashes: `logs/server.log`
+   - Can use backslashes too: `logs\server.log` (but forward slash preferred)
+   - Absolute paths must be Unix-style: `/d/work/pythonProjects/agent_dev/logs/server.log`
+   - Windows absolute paths DON'T WORK: ~~`C:/Users/.../logs/server.log`~~ ✗
+
+   **Read/Edit/Write/Glob Tools**:
+   - MUST use Windows absolute paths: `D:\work\pythonProjects\agent_dev\logs\server.log`
+   - Forward slashes also work: `C:/Users/lisareese1674/projects/agents-f17830c7de/logs/server.log`
+
+   **Grep Tool**:
+   - Can use relative paths: `logs/server.log`
+   - Works with both slash types
+
+   **Best Practice**:
+   - Use **relative paths** whenever possible (works across all tools)
+   - Example: `logs/server.log`, `src/api/main.py`, `frontend/src/App.tsx`
+   - Only use absolute paths when necessary (and use tool-appropriate format)
+
 ## Frontend Development Rules
 
 **IMPORTANT**: Follow these rules when developing frontend components:
@@ -32,53 +59,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **Always Use Tailwind CSS**
    - **NEVER use inline styles** (e.g., `style={{ color: '#666' }}`)
    - **ALWAYS use Tailwind CSS classes** for styling
-   - **WRONG**: `<div style={{ padding: '20px', color: '#666' }}>`
-   - **CORRECT**: `<div className="p-5 text-gray-500 dark:text-gray-400">`
+   - Example: Use `className="p-5 text-gray-500 dark:text-gray-400"` instead of `style={{ padding: '20px', color: '#666' }}`
 
 2. **Dark Mode Support**
-   - **ALWAYS include dark mode variants** for all styles
-   - Use `dark:` prefix for dark mode classes
-   - Example: `text-gray-900 dark:text-white`
-   - Example: `bg-white dark:bg-gray-800`
+   - **ALWAYS include dark mode variants** for all styles using the `dark:` prefix
+   - Example: `text-gray-900 dark:text-white`, `bg-white dark:bg-gray-800`
 
-3. **Consistent Color Palette**
-   - Text: `text-gray-900 dark:text-white` (primary text)
-   - Text: `text-gray-500 dark:text-gray-400` (secondary text)
-   - Background: `bg-white dark:bg-gray-800` (primary)
-   - Background: `bg-gray-50 dark:bg-gray-900` (secondary)
-   - Borders: `border-gray-300 dark:border-gray-600`
-
-4. **Input Fields & Forms**
-   - Base classes: `px-3 py-2 border rounded-md shadow-sm`
-   - Background: `bg-white dark:bg-gray-700`
-   - Text: `text-gray-900 dark:text-white`
-   - Border: `border-gray-300 dark:border-gray-600`
-   - Focus: `focus:ring-blue-500 focus:border-blue-500`
-   - Disabled: `disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500`
-   - Example:
-     ```tsx
-     <input
-       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800"
-     />
-     ```
-
-5. **Buttons**
-   - Primary: `bg-blue-600 hover:bg-blue-700 text-white`
-   - Disabled: `disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed`
-
-6. **Reference Existing Components**
+3. **Reference Existing Components**
    - **ALWAYS check existing settings pages** for style reference:
      - `frontend/src/modules/settings/components/AssistantList.tsx`
      - `frontend/src/modules/settings/components/ModelList.tsx`
      - `frontend/src/modules/settings/TitleGenerationSettings.tsx`
-   - Copy and adapt existing Tailwind patterns
+   - Copy and adapt existing Tailwind patterns for consistency
    - Maintain visual consistency across all pages
 
-7. **Error/Success Messages**
-   - Error: `bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200`
-   - Success: `bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200`
-
-8. **Component Debugging**
+4. **Component Debugging**
    - **ALWAYS add `data-name` attribute** to container divs for easier debugging
    - Use descriptive names: `data-name="chat-view-root"`, `data-name="file-tree-panel"`
    - Helps identify elements in Chrome DevTools during layout debugging
@@ -148,14 +143,9 @@ Access the web interface at http://localhost:5173
 ./venv/Scripts/pytest --cov=src --cov-report=html
 ```
 
-### Running Custom Scripts
-```bash
-# Run any Python script with venv
-./venv/Scripts/python your_script.py
-
-# Example: Test composite key functionality
-./venv/Scripts/python test_composite_key.py
-```
+### Logging
+- Backend logs: Check `logs/server.log`
+- All backend API and agent logs are written to this single file
 
 ## Architecture
 
@@ -171,13 +161,6 @@ For detailed documentation, see `docs/`:
 - **Storage**: Markdown files with YAML frontmatter in `conversations/` (no database)
 - **Agent**: LangGraph state-based architecture (`src/agents/`)
 - **LLM Providers**: Configurable via `config/models_config.yaml`
-
-## Testing Patterns
-
-- Mock `ChatOpenAI` class in tests using `patch('src.agents.simple_agent.ChatOpenAI')`
-- Mock response object needs `.content` attribute for message content
-- Test node functions independently before testing full graph
-- State type hints enable better test coverage
 
 ## Environment Variables
 

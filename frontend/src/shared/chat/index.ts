@@ -26,6 +26,7 @@ export type { ChatInterfaceProps } from './components/ChatInterface';
  */
 export { ChatSidebar } from './components/ChatSidebar';
 export { ChatView } from './components/ChatView';
+export type { ChatViewProps } from './components/ChatView';
 export { ChatWelcome } from './components/ChatWelcome';
 export { MessageList } from './components/MessageList';
 export { MessageBubble } from './components/MessageBubble';

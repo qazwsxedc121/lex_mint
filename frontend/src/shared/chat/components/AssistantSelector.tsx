@@ -4,7 +4,8 @@
  * Displays current assistant in chat interface, supports switching
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { Assistant } from '../../../types/assistant';
@@ -24,6 +25,8 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   // Load assistants list
   useEffect(() => {
@@ -40,6 +43,18 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
     };
     loadAssistants();
   }, [api]);
+
+  // Update dropdown position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, [isOpen]);
 
   // Current selected assistant
   const currentAssistant = assistants.find((a) => a.id === currentAssistantId);
@@ -75,9 +90,10 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
     : currentAssistant?.name || 'Unknown Assistant';
 
   return (
-    <div className="relative">
+    <div data-name="assistant-selector-root">
       {/* Current assistant display button */}
       <button
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-800"
         title={currentAssistant?.description || 'Select assistant'}
@@ -90,17 +106,26 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
         />
       </button>
 
-      {/* Dropdown menu */}
-      {isOpen && (
+      {/* Dropdown menu - rendered via Portal */}
+      {isOpen && createPortal(
         <>
           {/* Overlay */}
           <div
-            className="fixed inset-0 z-10"
+            className="fixed inset-0 z-[100]"
             onClick={() => setIsOpen(false)}
           />
 
-          {/* Menu content - opens upward */}
-          <div className="absolute right-0 bottom-full mb-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto">
+          {/* Menu content - positioned absolutely relative to viewport */}
+          <div
+            data-name="assistant-selector-dropdown"
+            className="fixed bg-white dark:bg-gray-800 rounded-md shadow-lg z-[101] border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto"
+            style={{
+              top: `${dropdownPosition.top - 8}px`,
+              left: `${dropdownPosition.left}px`,
+              width: '320px',
+              transform: 'translateY(-100%)',
+            }}
+          >
             <div className="py-2">
               {assistants.map((assistant) => {
                 const isSelected = assistant.id === currentAssistantId;
@@ -157,7 +182,8 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

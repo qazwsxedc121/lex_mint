@@ -13,7 +13,16 @@ import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
 
-export const ChatView: React.FC = () => {
+export interface ChatViewProps {
+  /**
+   * Whether to show the header with session title
+   * Default: true (shown in chat module)
+   * Set to false in project module where SessionSelector is used
+   */
+  showHeader?: boolean;
+}
+
+export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true }) => {
   const { currentSessionId, currentSession, refreshSessions, context } = useChatServices();
 
   // Use onAssistantRefresh from service context if available
@@ -93,12 +102,14 @@ export const ChatView: React.FC = () => {
 
   return (
     <div data-name="chat-view-root" className="flex flex-col flex-1">
-      {/* Header */}
-      <div data-name="chat-view-header" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          {currentSession?.title || 'Chat'}
-        </h1>
-      </div>
+      {/* Header (optional) */}
+      {showHeader && (
+        <div data-name="chat-view-header" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            {currentSession?.title || 'Chat'}
+          </h1>
+        </div>
+      )}
 
       {/* Messages */}
       <MessageList

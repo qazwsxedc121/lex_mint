@@ -133,9 +133,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const currentOption = REASONING_EFFORT_OPTIONS.find(o => o.value === reasoningEffort) || REASONING_EFFORT_OPTIONS[0];
 
   return (
-    <div className="border-t border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+    <div data-name="input-box-root" className="border-t border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+      <div data-name="input-box-toolbar" className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
         {/* Assistant selector */}
         {assistantSelector}
 
@@ -144,13 +144,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
           <button
             onClick={onInsertSeparator}
             disabled={isStreaming}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-200 dark:hover:border-amber-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center p-1.5 rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-200 dark:hover:border-amber-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Clear context (insert separator)"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
-            <span className="font-medium">Clear Context</span>
           </button>
         )}
 
@@ -159,13 +158,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
           <button
             onClick={handleClearClick}
             disabled={isStreaming}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 hover:border-red-200 dark:hover:border-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center p-1.5 rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 hover:border-red-200 dark:hover:border-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Clear all messages"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            <span className="font-medium">Clear Messages</span>
           </button>
         )}
 
@@ -240,7 +238,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
       {/* Attachment preview */}
       {attachments.length > 0 && (
-        <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
+        <div data-name="input-box-attachments" className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
           {attachments.map((att, idx) => {
             const isImage = att.mime_type.startsWith('image/');
             return (
@@ -271,8 +269,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
       )}
 
       {/* Input area */}
-      <div className="p-4">
-        <div className="flex gap-2">
+      <div data-name="input-box-input-area" className="p-4">
+        <div data-name="input-box-input-controls" className="flex gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -304,10 +302,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {/* Clear messages confirmation dialog */}
       {showClearConfirm && (
         <div
+          data-name="input-box-clear-confirm-backdrop"
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
           onClick={handleBackdropClick}
         >
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+          <div data-name="input-box-clear-confirm-modal" className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
               Clear All Messages
             </h3>

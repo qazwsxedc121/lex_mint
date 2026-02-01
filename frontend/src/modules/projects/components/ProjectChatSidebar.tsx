@@ -199,7 +199,7 @@ function ChatServiceConsumer({
 
       {/* Chat View */}
       <div data-name="chat-view-container" className="flex-1 flex flex-col overflow-hidden">
-        <ChatView />
+        <ChatView showHeader={false} />
       </div>
     </div>
   );

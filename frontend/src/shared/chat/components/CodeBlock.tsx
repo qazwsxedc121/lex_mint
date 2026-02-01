@@ -26,9 +26,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
   };
 
   return (
-    <div className="relative group my-4">
+    <div data-name="code-block-root" className="relative group my-4">
       {/* Language label and copy button */}
-      <div className="flex items-center justify-between bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
+      <div data-name="code-block-header" className="flex items-center justify-between bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
         <span className="font-mono">{language || 'text'}</span>
         <button
           onClick={handleCopy}

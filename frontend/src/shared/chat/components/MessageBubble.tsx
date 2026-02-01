@@ -186,8 +186,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   // Separator rendering (centered display)
   if (isSeparator) {
     return (
-      <div className="flex flex-col items-center mb-4 group">
-        <div className="w-full max-w-[80%] relative">
+      <div data-name="message-bubble-separator" className="flex flex-col items-center mb-4 group">
+        <div data-name="message-bubble-separator-content" className="w-full max-w-[80%] relative">
           {/* Separator line */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-400 dark:via-amber-600 to-transparent" />
@@ -219,9 +219,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   }
 
   return (
-    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
-      <div className="max-w-[80%]">
+    <div data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
+      <div data-name="message-bubble-content-wrapper" className="max-w-[80%]">
         <div
+          data-name="message-bubble-content"
           className={`rounded-lg px-4 py-3 ${
             isUser
               ? 'bg-blue-500 text-white'
@@ -400,7 +401,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Token usage info for assistant messages */}
         {!isUser && !isEditing && message.usage && !isStreaming && (
-          <div className="flex items-center gap-2 mt-1 px-1 text-xs text-gray-400 dark:text-gray-500">
+          <div data-name="message-bubble-usage-info" className="flex items-center gap-2 mt-1 px-1 text-xs text-gray-400 dark:text-gray-500">
             <span>{message.usage.prompt_tokens} in</span>
             <span className="text-gray-300 dark:text-gray-600">|</span>
             <span>{message.usage.completion_tokens} out</span>
@@ -415,7 +416,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Action buttons */}
         {!isEditing && (
-          <div className="flex gap-1 mt-1">
+          <div data-name="message-bubble-actions" className="flex gap-1 mt-1">
             <button
               onClick={handleCopy}
               className="group relative p-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 transition-colors"
@@ -477,10 +478,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div
+          data-name="message-bubble-delete-confirm-backdrop"
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
           onClick={handleBackdropClick}
         >
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+          <div data-name="message-bubble-delete-confirm-modal" className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
               Delete Message
             </h3>

@@ -26,12 +26,15 @@ export const ProjectExplorer: React.FC = () => {
   // Get workspace state from global store
   const {
     currentProjectId,
-    currentFilePath,
+    getCurrentFile,
     setCurrentProject,
     setCurrentFile,
     chatSidebarOpen,
     toggleChatSidebar
   } = useProjectWorkspaceStore();
+
+  // Get current file path for this project
+  const currentFilePath = projectId ? getCurrentFile(projectId) : null;
 
   // Local state for selected file
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(currentFilePath);
@@ -46,26 +49,22 @@ export const ProjectExplorer: React.FC = () => {
     }
   }, [projectId, currentProjectId, projects, navigate]);
 
-  // When projectId changes, update the store
+  // When projectId changes, update the store and clear selection
   useEffect(() => {
     if (projectId && projectId !== currentProjectId) {
       setCurrentProject(projectId);
+      setSelectedFilePath(null);
+      // Clear the stored file path for this project to prevent loading non-existent files
+      setCurrentFile(projectId, null);
     }
-  }, [projectId, currentProjectId, setCurrentProject]);
+  }, [projectId, currentProjectId, setCurrentProject, setCurrentFile]);
 
-  // When file selection changes, update the store
+  // Restore file selection from store when switching back to a project
   useEffect(() => {
-    if (selectedFilePath !== currentFilePath) {
-      setCurrentFile(selectedFilePath);
-    }
-  }, [selectedFilePath, currentFilePath, setCurrentFile]);
-
-  // Restore file selection from store when component mounts or project changes
-  useEffect(() => {
-    if (projectId === currentProjectId && currentFilePath && !selectedFilePath) {
+    if (projectId && currentFilePath && !selectedFilePath) {
       setSelectedFilePath(currentFilePath);
     }
-  }, [projectId, currentProjectId, currentFilePath, selectedFilePath]);
+  }, [projectId, currentFilePath, selectedFilePath]);
 
   // Load file tree
   const { tree, loading: treeLoading, error: treeError } = useFileTree(projectId || null);
@@ -78,6 +77,10 @@ export const ProjectExplorer: React.FC = () => {
 
   const handleFileSelect = (path: string) => {
     setSelectedFilePath(path);
+    // Save to store immediately when user selects a file
+    if (projectId) {
+      setCurrentFile(projectId, path);
+    }
   };
 
   if (!projectId) {
