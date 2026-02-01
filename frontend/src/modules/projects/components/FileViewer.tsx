@@ -2,7 +2,7 @@
  * FileViewer - File content editor with CodeMirror
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -11,9 +11,13 @@ import { css } from '@codemirror/lang-css';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
+import { EditorState, StateEffect, StateField } from '@codemirror/state';
+import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
+import { openSearchPanel, search } from '@codemirror/search';
 import type { FileContent } from '../../../types/project';
 import { Breadcrumb } from './Breadcrumb';
 import { writeFile } from '../../../services/api';
+import { EditorToolbar } from './EditorToolbar';
 
 interface FileViewerProps {
   projectId: string;
@@ -62,16 +66,48 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Editor view reference
+  const editorViewRef = useRef<EditorView | null>(null);
+
   // Line wrapping setting (default: true, persisted in localStorage)
   const [lineWrapping, setLineWrapping] = useState<boolean>(() => {
     const stored = localStorage.getItem('editor-line-wrapping');
     return stored !== null ? stored === 'true' : true;
   });
 
+  // Line numbers setting (default: true, persisted in localStorage)
+  const [lineNumbers, setLineNumbers] = useState<boolean>(() => {
+    const stored = localStorage.getItem('editor-line-numbers');
+    return stored !== null ? stored === 'true' : true;
+  });
+
+  // Font size setting (default: medium, persisted in localStorage)
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(() => {
+    const stored = localStorage.getItem('editor-font-size');
+    return (stored as 'small' | 'medium' | 'large') || 'medium';
+  });
+
+  // Cursor position
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+
+  // Undo/redo state
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
   // Persist line wrapping setting
   useEffect(() => {
     localStorage.setItem('editor-line-wrapping', lineWrapping.toString());
   }, [lineWrapping]);
+
+  // Persist line numbers setting
+  useEffect(() => {
+    localStorage.setItem('editor-line-numbers', lineNumbers.toString());
+  }, [lineNumbers]);
+
+  // Persist font size setting
+  useEffect(() => {
+    localStorage.setItem('editor-font-size', fontSize);
+  }, [fontSize]);
 
   // Sync content when file changes
   useEffect(() => {
@@ -85,6 +121,36 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   // Check if content has unsaved changes
   const hasUnsavedChanges = value !== originalContent;
+
+  // Update undo/redo state
+  const updateUndoRedoState = useCallback(() => {
+    if (editorViewRef.current) {
+      const state = editorViewRef.current.state;
+      setCanUndo(undoDepth(state) > 0);
+      setCanRedo(redoDepth(state) > 0);
+    }
+  }, []);
+
+  // Command handlers
+  const handleUndo = useCallback(() => {
+    if (editorViewRef.current) {
+      undo(editorViewRef.current);
+      updateUndoRedoState();
+    }
+  }, [updateUndoRedoState]);
+
+  const handleRedo = useCallback(() => {
+    if (editorViewRef.current) {
+      redo(editorViewRef.current);
+      updateUndoRedoState();
+    }
+  }, [updateUndoRedoState]);
+
+  const handleFind = useCallback(() => {
+    if (editorViewRef.current) {
+      openSearchPanel(editorViewRef.current);
+    }
+  }, []);
 
   // Save handler
   const handleSave = async () => {
@@ -134,6 +200,41 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   // Detect dark mode from DOM
   const isDarkMode = document.documentElement.classList.contains('dark');
 
+  // Create cursor position tracking extension
+  const cursorPositionExtension = EditorView.updateListener.of((update) => {
+    if (update.selectionSet) {
+      const pos = update.state.selection.main.head;
+      const line = update.state.doc.lineAt(pos);
+      setCursorPosition({
+        line: line.number,
+        col: pos - line.from + 1
+      });
+    }
+  });
+
+  // Create update listener for undo/redo state
+  const updateListener = EditorView.updateListener.of((update) => {
+    if (update.docChanged) {
+      updateUndoRedoState();
+    }
+  });
+
+  // Create font size theme extension
+  const getFontSizeTheme = (size: 'small' | 'medium' | 'large') => {
+    const sizeMap = { small: '12px', medium: '14px', large: '16px' };
+    return EditorView.theme({
+      '&': { fontSize: sizeMap[size] },
+      '.cm-content': { fontSize: sizeMap[size] },
+      '.cm-gutters': { fontSize: sizeMap[size] }
+    });
+  };
+
+  // Callback for when editor is created
+  const onEditorCreate = useCallback((view: EditorView, state: EditorState) => {
+    editorViewRef.current = view;
+    updateUndoRedoState();
+  }, [updateUndoRedoState]);
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
@@ -160,53 +261,49 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   const language = getLanguageExtension(content.path);
 
-  // Build extensions array with conditional line wrapping
-  const extensions = [language];
-  if (lineWrapping) {
-    extensions.push(EditorView.lineWrapping);
-  }
+  // Build extensions array with conditional features
+  const extensions = [
+    language,
+    lineWrapping && EditorView.lineWrapping,
+    getFontSizeTheme(fontSize),
+    cursorPositionExtension,
+    updateListener,
+    search({ top: true }), // Search panel at top
+  ].filter(Boolean);
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">
-      {/* Header */}
+      {/* Breadcrumb */}
       <div className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
         <Breadcrumb projectName={projectName} filePath={content.path} />
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-            <span>{formatFileSize(content.size)}</span>
-            <span>{content.encoding}</span>
-            <span>{content.mime_type}</span>
-          </div>
-
-          {/* Status indicators and settings */}
-          <div className="flex items-center gap-4">
-            {/* Line wrapping toggle */}
-            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={lineWrapping}
-                onChange={(e) => setLineWrapping(e.target.checked)}
-                className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-white dark:bg-gray-700"
-              />
-              <span>Wrap lines</span>
-            </label>
-
-            {/* Status indicators */}
-            <div className="flex items-center gap-2">
-              {hasUnsavedChanges && (
-                <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                  Unsaved changes
-                </span>
-              )}
-              {saveSuccess && (
-                <span className="text-xs text-green-600 dark:text-green-400">
-                  Saved successfully
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
+
+      {/* Toolbar */}
+      <EditorToolbar
+        onSave={handleSave}
+        onCancel={handleCancel}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saving={saving}
+        saveSuccess={saveSuccess}
+        saveError={saveError}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onFind={handleFind}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        lineWrapping={lineWrapping}
+        onToggleLineWrapping={setLineWrapping}
+        lineNumbers={lineNumbers}
+        onToggleLineNumbers={setLineNumbers}
+        fontSize={fontSize}
+        onChangeFontSize={setFontSize}
+        cursorPosition={cursorPosition}
+        fileInfo={{
+          encoding: content.encoding,
+          mimeType: content.mime_type,
+          size: formatFileSize(content.size)
+        }}
+      />
 
       {/* Editor */}
       <div className="flex-1 overflow-auto w-full min-w-0">
@@ -216,8 +313,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           theme={isDarkMode ? 'dark' : 'light'}
           extensions={extensions}
           onChange={(val) => setValue(val)}
+          onCreateEditor={onEditorCreate}
           basicSetup={{
-            lineNumbers: true,
+            lineNumbers: lineNumbers,
             highlightActiveLineGutter: true,
             highlightSpecialChars: true,
             foldGutter: true,
@@ -240,36 +338,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
             lintKeymap: true,
           }}
         />
-      </div>
-
-      {/* Save/Cancel buttons */}
-      <div className="border-t border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
-        {saveError && (
-          <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-800 dark:text-red-200">
-            {saveError}
-          </div>
-        )}
-        <div className="flex justify-between items-center">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            Press Ctrl+S to save
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleCancel}
-              disabled={!hasUnsavedChanges || saving}
-              className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-600 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!hasUnsavedChanges || saving}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
