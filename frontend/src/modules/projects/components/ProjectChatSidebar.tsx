@@ -28,7 +28,7 @@ export default function ProjectChatSidebar({
   };
 
   return (
-    <div data-name="project-chat-sidebar-root" className="flex flex-col flex-1">
+    <div data-name="project-chat-sidebar-root" className="flex flex-col flex-1 min-h-0">
       <ChatServiceConsumer
         projectId={projectId}
         currentSessionId={currentSessionId}
@@ -153,7 +153,7 @@ function ChatServiceConsumer({
   }
 
   return (
-    <div data-name="chat-service-consumer" className="flex flex-col flex-1">
+    <div data-name="chat-service-consumer" className="flex flex-col flex-1 min-h-0">
       {/* Session Selector */}
       <div data-name="session-selector-panel" className="border-b border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
         <SessionSelector
@@ -166,7 +166,7 @@ function ChatServiceConsumer({
       </div>
 
       {/* Chat View */}
-      <div data-name="chat-view-container" className="flex-1 flex flex-col overflow-hidden">
+      <div data-name="chat-view-container" className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <ChatView
           showHeader={false}
           customMessageActions={customMessageActions}

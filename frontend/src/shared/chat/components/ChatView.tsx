@@ -106,7 +106,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   }
 
   return (
-    <div data-name="chat-view-root" className="flex flex-col flex-1">
+    <div data-name="chat-view-root" className="flex flex-col flex-1 min-h-0">
       {/* Header (optional) */}
       {showHeader && (
         <div data-name="chat-view-header" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">

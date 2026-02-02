@@ -132,6 +132,8 @@ export async function deleteMessage(sessionId: string, messageId: string, contex
     data: {
       session_id: sessionId,
       message_id: messageId,
+      context_type: contextType,
+      project_id: projectId,
     },
   });
 }
@@ -283,7 +285,7 @@ export async function sendMessageStream(
         // 解码数据
         const chunk = decoder.decode(value, { stream: true });
 
-        // SSE 格式：每行 "data: {json}\n\n"
+        // SSE 格式：每�?"data: {json}\n\n"
         const lines = chunk.split('\n');
 
         for (const line of lines) {
@@ -324,8 +326,7 @@ export async function sendMessageStream(
                 onChunk(data.chunk);
               }
             } catch (e) {
-              // 忽略解析错误（可能是不完整的 JSON）
-              console.warn('Failed to parse SSE data:', dataStr);
+              // 忽略解析错误（可能是不完整的 JSON�?              console.warn('Failed to parse SSE data:', dataStr);
             }
           }
         }
@@ -425,8 +426,7 @@ export async function listProviders(): Promise<Provider[]> {
 }
 
 /**
- * 获取指定提供商
- */
+ * 获取指定提供�? */
 export async function getProvider(providerId: string, includeMaskedKey: boolean = false): Promise<Provider> {
   const url = includeMaskedKey
     ? `/api/models/providers/${providerId}?include_masked_key=true`
@@ -436,30 +436,26 @@ export async function getProvider(providerId: string, includeMaskedKey: boolean 
 }
 
 /**
- * 创建提供商
- */
+ * 创建提供�? */
 export async function createProvider(provider: Provider): Promise<void> {
   await api.post('/api/models/providers', provider);
 }
 
 /**
- * 更新提供商
- */
+ * 更新提供�? */
 export async function updateProvider(providerId: string, provider: Provider): Promise<void> {
   await api.put(`/api/models/providers/${providerId}`, provider);
 }
 
 /**
- * 删除提供商（级联删除关联模型）
- */
+ * 删除提供商（级联删除关联模型�? */
 export async function deleteProvider(providerId: string): Promise<void> {
   await api.delete(`/api/models/providers/${providerId}`);
 }
 
 /**
  * 获取模型列表
- * @param providerId - 可选的提供商ID，用于筛选
- */
+ * @param providerId - 可选的提供商ID，用于筛�? */
 export async function listModels(providerId?: string): Promise<Model[]> {
   const url = providerId
     ? `/api/models/list?provider_id=${providerId}`
@@ -523,16 +519,14 @@ export async function setDefaultConfig(providerId: string, modelId: string): Pro
 }
 
 /**
- * 获取支持 reasoning effort 的模型模式列表
- */
+ * 获取支持 reasoning effort 的模型模式列�? */
 export async function getReasoningSupportedPatterns(): Promise<string[]> {
   const response = await api.get<string[]>('/api/models/reasoning-patterns');
   return response.data;
 }
 
 /**
- * 更新会话使用的模型
- */
+ * 更新会话使用的模�? */
 export async function updateSessionModel(sessionId: string, modelId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
@@ -544,8 +538,7 @@ export async function updateSessionModel(sessionId: string, modelId: string, con
 }
 
 /**
- * 更新会话使用的助手
- */
+ * 更新会话使用的助�? */
 export async function updateSessionAssistant(sessionId: string, assistantId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
@@ -559,8 +552,7 @@ export async function updateSessionAssistant(sessionId: string, assistantId: str
 // ==================== 助手管理 API ====================
 
 /**
- * 获取所有助手列表
- */
+ * 获取所有助手列�? */
 export async function listAssistants(): Promise<Assistant[]> {
   const response = await api.get<Assistant[]>('/api/assistants');
   return response.data;
@@ -621,8 +613,7 @@ export async function setDefaultAssistant(assistantId: string): Promise<void> {
 // ==================== 测试连接 ====================
 
 /**
- * 测试提供商连接（使用提供的API Key）
- */
+ * 测试提供商连接（使用提供的API Key�? */
 export async function testProviderConnection(
   baseUrl: string,
   apiKey: string,
@@ -640,8 +631,7 @@ export async function testProviderConnection(
 }
 
 /**
- * 测试提供商连接（使用已存储的API Key）
- */
+ * 测试提供商连接（使用已存储的API Key�? */
 export async function testProviderStoredConnection(
   providerId: string,
   baseUrl: string,
@@ -658,7 +648,7 @@ export async function testProviderStoredConnection(
   return response.data;
 }
 
-// ==================== Provider 抽象层 API ====================
+// ==================== Provider 抽象�?API ====================
 
 import type {
   BuiltinProviderInfo,
@@ -668,7 +658,7 @@ import type {
 } from '../types/model';
 
 /**
- * 获取所有内置 Provider 定义
+ * 获取所有内�?Provider 定义
  */
 export async function listBuiltinProviders(): Promise<BuiltinProviderInfo[]> {
   const response = await api.get<BuiltinProviderInfo[]>('/api/models/providers/builtin');
@@ -684,7 +674,7 @@ export async function getBuiltinProvider(providerId: string): Promise<BuiltinPro
 }
 
 /**
- * 从 Provider API 获取可用模型列表
+ * �?Provider API 获取可用模型列表
  */
 export async function fetchProviderModels(providerId: string): Promise<ModelInfo[]> {
   const response = await api.post<ModelInfo[]>(`/api/models/providers/${providerId}/fetch-models`);
@@ -692,15 +682,14 @@ export async function fetchProviderModels(providerId: string): Promise<ModelInfo
 }
 
 /**
- * 获取模型的能力配置（合并 provider 默认 + model 覆盖）
- */
+ * 获取模型的能力配置（合并 provider 默认 + model 覆盖�? */
 export async function getModelCapabilities(modelId: string): Promise<CapabilitiesResponse> {
   const response = await api.get<CapabilitiesResponse>(`/api/models/capabilities/${modelId}`);
   return response.data;
 }
 
 /**
- * 获取可用的 API 协议类型
+ * 获取可用�?API 协议类型
  */
 export async function listProtocols(): Promise<ProtocolInfo[]> {
   const response = await api.get<ProtocolInfo[]>('/api/models/protocols');
@@ -829,3 +818,4 @@ export async function writeFile(id: string, path: string, content: string, encod
 }
 
 export default api;
+

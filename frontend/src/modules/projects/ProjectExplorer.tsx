@@ -226,7 +226,7 @@ export const ProjectExplorer: React.FC = () => {
 
             {/* Right: Chat Sidebar (collapsible) */}
             {chatSidebarOpen && (
-              <div data-name="chat-sidebar-container" className="w-[600px] flex-shrink-0 flex flex-col h-full border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <div data-name="chat-sidebar-container" className="w-[600px] flex-shrink-0 flex flex-col h-full min-h-0 overflow-hidden border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <ProjectChatSidebar
                   projectId={projectId}
                   currentSessionId={currentSessionId}
