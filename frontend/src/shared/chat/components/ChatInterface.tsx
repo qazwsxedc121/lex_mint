@@ -25,6 +25,7 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatView } from './ChatView';
 import { ChatServiceProvider } from '../services/ChatServiceProvider';
 import { defaultChatAPI } from '../services/defaultChatAPI';
+import { ChatComposerProvider } from '../contexts/ChatComposerContext';
 import type { ChatAPI, ChatNavigation, ChatContextData } from '../services/interfaces';
 
 export interface ChatInterfaceProps {
@@ -72,17 +73,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       navigation={navigation}
       context={context}
     >
-      <div data-name="chat-interface" className="flex flex-1">
-        {/* Chat Sidebar */}
-        <ChatSidebar />
+      <ChatComposerProvider>
+        <div data-name="chat-interface" className="flex flex-1">
+          {/* Chat Sidebar */}
+          <ChatSidebar />
 
-        {/* Chat Content */}
-        {useOutlet ? (
-          <Outlet context={outletContext} />
-        ) : (
-          <ChatView />
-        )}
-      </div>
+          {/* Chat Content */}
+          {useOutlet ? (
+            <Outlet context={outletContext} />
+          ) : (
+            <ChatView />
+          )}
+        </div>
+      </ChatComposerProvider>
     </ChatServiceProvider>
   );
 };

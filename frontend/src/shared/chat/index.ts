@@ -33,6 +33,8 @@ export { MessageBubble } from './components/MessageBubble';
 export { InputBox } from './components/InputBox';
 export { AssistantSelector } from './components/AssistantSelector';
 export { CodeBlock } from './components/CodeBlock';
+export { ChatComposerProvider, useChatComposer } from './contexts/ChatComposerContext';
+export type { ChatComposerActions, ChatComposerContextValue, ChatComposerBlockInput } from './contexts/ChatComposerContext';
 
 // ==================== Services ====================
 

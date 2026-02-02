@@ -2,9 +2,23 @@
  * InputBox component - message input field with send button and toolbar.
  */
 
-import React, { useState, useRef, type KeyboardEvent } from 'react';
-import { ChevronDownIcon, LightBulbIcon, PaperClipIcon, XMarkIcon, DocumentTextIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import React, { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
+import {
+  ChevronDownIcon,
+  LightBulbIcon,
+  PaperClipIcon,
+  XMarkIcon,
+  DocumentTextIcon,
+  PhotoIcon,
+  PlusIcon,
+  MinusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  CheckIcon,
+} from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
+import { useChatComposer } from '../contexts/ChatComposerContext';
+import type { ChatComposerBlockInput } from '../contexts/ChatComposerContext';
 import type { UploadedFile } from '../../../types/message';
 
 // Reasoning effort options for supported models
@@ -14,6 +28,28 @@ const REASONING_EFFORT_OPTIONS = [
   { value: 'medium', label: 'Medium', description: 'Balanced reasoning' },
   { value: 'high', label: 'High', description: 'Deep reasoning' },
 ];
+
+interface ChatBlock {
+  id: string;
+  title: string;
+  content: string;
+  collapsed: boolean;
+  isEditing: boolean;
+  kind: 'context' | 'note';
+  language?: string;
+  source?: { filePath: string; startLine: number; endLine: number };
+  isAttachmentNote?: boolean;
+  attachmentFilename?: string;
+  draftTitle?: string;
+  draftContent?: string;
+}
+
+const createBlockId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `block-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
 
 interface InputBoxProps {
   onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => void;
@@ -44,13 +80,218 @@ export const InputBox: React.FC<InputBoxProps> = ({
   currentAssistantId: _currentAssistantId,
 }) => {
   const { api } = useChatServices();
+  const { registerComposer } = useChatComposer();
   const [input, setInput] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState('');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [blocks, setBlocks] = useState<ChatBlock[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertText = useCallback((text: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setInput(prev => prev + text);
+      return;
+    }
+
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+
+    setInput(prev => `${prev.slice(0, start)}${text}${prev.slice(end)}`);
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursor = start + text.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  }, []);
+
+  const appendText = useCallback((text: string) => {
+    setInput(prev => (prev ? `${prev}\n\n${text}` : text));
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      const cursor = textarea.value.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  }, []);
+
+  const focusComposer = useCallback(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  const attachTextFile = useCallback(async (options: { filename: string; content: string; mimeType?: string }) => {
+    if (!sessionId) {
+      throw new Error('No active session');
+    }
+
+    const mimeType = options.mimeType || 'text/plain';
+    const file = new File([options.content], options.filename, { type: mimeType });
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert(`Attachment ${options.filename} exceeds 10MB limit`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await api.uploadFile(sessionId, file);
+      setAttachments(prev => [...prev, result]);
+    } finally {
+      setUploading(false);
+    }
+  }, [api, sessionId]);
+
+  const normalizeBlock = useCallback((inputBlock: ChatComposerBlockInput, options?: { isEditing?: boolean }) => {
+    const title = inputBlock.title?.trim() || 'Block';
+    const isEditing = options?.isEditing ?? false;
+    return {
+      id: createBlockId(),
+      title,
+      content: inputBlock.content ?? '',
+      collapsed: inputBlock.collapsed ?? !isEditing,
+      isEditing,
+      kind: inputBlock.kind ?? 'note',
+      language: inputBlock.language,
+      source: inputBlock.source,
+      isAttachmentNote: inputBlock.isAttachmentNote,
+      attachmentFilename: inputBlock.attachmentFilename,
+      draftTitle: isEditing ? title : undefined,
+      draftContent: isEditing ? (inputBlock.content ?? '') : undefined,
+    };
+  }, []);
+
+  const addBlock = useCallback((inputBlock: ChatComposerBlockInput) => {
+    setBlocks(prev => [...prev, normalizeBlock(inputBlock)]);
+  }, [normalizeBlock]);
+
+  const handleCreateBlock = () => {
+    const newBlock = normalizeBlock(
+      {
+        title: 'New block',
+        content: '',
+        collapsed: false,
+        kind: 'note',
+      },
+      { isEditing: true }
+    );
+    setBlocks(prev => [...prev, newBlock]);
+  };
+
+  const toggleBlockCollapsed = (blockId: string) => {
+    setBlocks(prev => prev.map(block => (
+      block.id === blockId
+        ? { ...block, collapsed: !block.collapsed }
+        : block
+    )));
+  };
+
+  const startEditBlock = (blockId: string) => {
+    setBlocks(prev => prev.map(block => (
+      block.id === blockId
+        ? {
+          ...block,
+          isEditing: true,
+          collapsed: false,
+          draftTitle: block.title,
+          draftContent: block.content,
+        }
+        : block
+    )));
+  };
+
+  const updateBlockDraft = (blockId: string, updates: { draftTitle?: string; draftContent?: string }) => {
+    setBlocks(prev => prev.map(block => (
+      block.id === blockId
+        ? { ...block, ...updates }
+        : block
+    )));
+  };
+
+  const saveBlockEdit = (blockId: string) => {
+    setBlocks(prev => prev.map(block => (
+      block.id === blockId
+        ? {
+          ...block,
+          title: block.draftTitle?.trim() || block.title,
+          content: block.draftContent ?? block.content,
+          isEditing: false,
+          collapsed: true,
+          draftTitle: undefined,
+          draftContent: undefined,
+        }
+        : block
+    )));
+  };
+
+  const cancelBlockEdit = (blockId: string) => {
+    setBlocks(prev => prev.map(block => (
+      block.id === blockId
+        ? {
+          ...block,
+          isEditing: false,
+          draftTitle: undefined,
+          draftContent: undefined,
+        }
+        : block
+    )));
+  };
+
+  const removeBlock = (blockId: string) => {
+    setBlocks(prev => prev.filter(block => block.id !== blockId));
+  };
+
+  const buildBlocksMessage = useCallback(() => {
+    const parts: string[] = [];
+
+    blocks.forEach((block) => {
+      const contentSource = block.isEditing ? (block.draftContent ?? block.content) : block.content;
+      const content = contentSource.trim();
+      const title = block.isEditing ? (block.draftTitle ?? block.title) : block.title;
+      if (!content && !block.isAttachmentNote) {
+        return;
+      }
+
+      if (block.isAttachmentNote) {
+        const header = block.source
+          ? `[Context: ${block.source.filePath} lines ${block.source.startLine}-${block.source.endLine}]`
+          : `[Block: ${title}]`;
+        const filename = block.attachmentFilename ? ` ${block.attachmentFilename}` : ' file';
+        parts.push(`${header}\n(Attached as${filename})`);
+        return;
+      }
+
+      const header = block.source
+        ? `[Context: ${block.source.filePath} lines ${block.source.startLine}-${block.source.endLine}]`
+        : `[Block: ${title}]`;
+      const shouldFence = block.kind === 'context' || !!block.language;
+      if (shouldFence) {
+        const fence = block.language ? `\`\`\`${block.language}` : '```';
+        parts.push(`${header}\n${fence}\n${content}\n\`\`\``);
+      } else {
+        parts.push(`${header}\n${content}`);
+      }
+    });
+
+    return parts.join('\n\n');
+  }, [blocks]);
+
+  useEffect(() => {
+    registerComposer({
+      insertText,
+      appendText,
+      focus: focusComposer,
+      attachTextFile,
+      addBlock,
+    });
+
+    return () => registerComposer(null);
+  }, [registerComposer, insertText, appendText, focusComposer, attachTextFile, addBlock]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -90,7 +331,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   };
 
   const handleSend = () => {
-    const message = input.trim();
+    const blocksMessage = buildBlocksMessage();
+    const messageParts = [blocksMessage, input.trim()].filter(Boolean);
+    const message = messageParts.join('\n\n');
+
     if (message || attachments.length > 0) {
       onSend(message, {
         reasoningEffort: reasoningEffort || undefined,
@@ -98,6 +342,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       });
       setInput('');
       setAttachments([]);
+      setBlocks([]);
     }
   };
 
@@ -131,6 +376,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   };
 
   const currentOption = REASONING_EFFORT_OPTIONS.find(o => o.value === reasoningEffort) || REASONING_EFFORT_OPTIONS[0];
+  const blocksMessage = buildBlocksMessage();
+  const canSend = !!input.trim() || !!blocksMessage || attachments.length > 0;
 
   return (
     <div data-name="input-box-root" className="border-t border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
@@ -138,6 +385,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
       <div data-name="input-box-toolbar" className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
         {/* Assistant selector */}
         {assistantSelector}
+
+        {/* Create block button */}
+        <button
+          onClick={handleCreateBlock}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+          title="Create block"
+        >
+          <PlusIcon className="h-4 w-4" />
+          <span>Block</span>
+        </button>
 
         {/* Clear context button */}
         {onInsertSeparator && (
@@ -236,6 +493,125 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       </div>
 
+      {/* Block list */}
+      {blocks.length > 0 && (
+        <div data-name="input-box-blocks" className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 space-y-2 bg-gray-50 dark:bg-gray-900/40">
+          {blocks.map((block) => {
+            const draftTitle = block.draftTitle ?? block.title;
+            const displayTitle = block.title || 'Block';
+            const draftContent = block.draftContent ?? block.content;
+            const contentLength = block.isEditing
+              ? (draftContent?.length || 0)
+              : block.content.length;
+            const metaLabel = block.isAttachmentNote
+              ? 'Attachment'
+              : `${contentLength} chars`;
+            const collapseDisabled = block.isEditing;
+            return (
+              <div
+                key={block.id}
+                data-name="input-block"
+                className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
+              >
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700">
+                  <button
+                    onClick={() => toggleBlockCollapsed(block.id)}
+                    disabled={collapseDisabled}
+                    className={`p-1 rounded ${
+                      collapseDisabled
+                        ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                    title={collapseDisabled ? 'Finish editing to collapse' : block.collapsed ? 'Expand block' : 'Collapse block'}
+                  >
+                    {block.collapsed ? (
+                      <PlusIcon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                    ) : (
+                      <MinusIcon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                    )}
+                  </button>
+                  {block.isEditing ? (
+                    <input
+                      value={draftTitle}
+                      onChange={(e) => updateBlockDraft(block.id, { draftTitle: e.target.value })}
+                      className="flex-1 min-w-0 text-sm font-medium px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      placeholder="Block title"
+                    />
+                  ) : (
+                    <div className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                      {displayTitle}
+                    </div>
+                  )}
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{metaLabel}</span>
+                  {block.isEditing ? (
+                    <>
+                      <button
+                        onClick={() => saveBlockEdit(block.id)}
+                        className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-700 dark:text-green-300"
+                        title="Save block"
+                      >
+                        <CheckIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => cancelBlockEdit(block.id)}
+                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"
+                        title="Cancel edit"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => startEditBlock(block.id)}
+                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"
+                        title="Edit block"
+                      >
+                        <PencilSquareIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => removeBlock(block.id)}
+                        className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400"
+                        title="Remove block"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {!block.collapsed && (
+                  <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                    {block.isEditing ? (
+                      <div className="space-y-2">
+                        {block.isAttachmentNote ? (
+                          <div className="text-xs text-gray-600 dark:text-gray-300">
+                            Attachment: {block.attachmentFilename || 'file'}
+                          </div>
+                        ) : (
+                          <textarea
+                            value={draftContent}
+                            onChange={(e) => updateBlockDraft(block.id, { draftContent: e.target.value })}
+                            className="w-full min-h-[120px] max-h-64 resize-none rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-2 py-2 overflow-auto"
+                            placeholder="Block content"
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap max-h-64 overflow-auto">
+                        {block.isAttachmentNote
+                          ? `Attachment: ${block.attachmentFilename || 'file'}`
+                          : block.content}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Attachment preview */}
       {attachments.length > 0 && (
         <div data-name="input-box-attachments" className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
@@ -272,6 +648,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       <div data-name="input-box-input-area" className="p-4">
         <div data-name="input-box-input-controls" className="flex gap-2">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -290,7 +667,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           ) : (
             <button
               onClick={handleSend}
-              disabled={disabled || (!input.trim() && attachments.length === 0)}
+              disabled={disabled || !canSend}
               className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Send

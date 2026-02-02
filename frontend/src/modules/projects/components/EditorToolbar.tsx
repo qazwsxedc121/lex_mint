@@ -9,6 +9,7 @@ import {
   MagnifyingGlassIcon,
   ArrowsPointingOutIcon,
   HashtagIcon,
+  ArrowUpOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { ChatToggleButton } from './ChatToggleButton';
 
@@ -43,6 +44,11 @@ interface EditorToolbarProps {
   // Chat sidebar toggle
   chatSidebarOpen: boolean;
   onToggleChatSidebar: () => void;
+
+  // Insert editor content to chat
+  onInsertToChat: () => void;
+  insertToChatDisabled: boolean;
+  insertToChatTitle: string;
 }
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
@@ -67,6 +73,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   fileInfo,
   chatSidebarOpen,
   onToggleChatSidebar,
+  onInsertToChat,
+  insertToChatDisabled,
+  insertToChatTitle,
 }) => {
   return (
     <div className="border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -174,6 +183,19 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
         {/* Group 4: Chat Toggle */}
         <div className="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-3 mr-2">
+          <button
+            title={insertToChatTitle}
+            onClick={onInsertToChat}
+            disabled={insertToChatDisabled}
+            data-name="editor-insert-chat-button"
+            className={`p-1.5 rounded ${
+              insertToChatDisabled
+                ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            <ArrowUpOnSquareIcon className="h-4 w-4" />
+          </button>
           <ChatToggleButton
             isOpen={chatSidebarOpen}
             onToggle={onToggleChatSidebar}

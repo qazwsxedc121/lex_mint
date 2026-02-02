@@ -3,78 +3,39 @@
  * Manages project sessions and provides ChatView with project context
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChatServiceProvider, ChatView, useChatServices } from '../../../shared/chat';
-import type { ChatNavigation } from '../../../shared/chat';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ChatView, useChatServices } from '../../../shared/chat';
 import type { Message } from '../../../types/message';
 import SessionSelector from './SessionSelector';
-import { createProjectChatAPI } from '../services/projectChatAPI';
-import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import { InsertToEditorButton } from './InsertToEditorButton';
 
 interface ProjectChatSidebarProps {
   projectId: string;  // Current project ID
+  currentSessionId: string | null;
+  savedSessionId: string | null;
+  onSetCurrentSessionId: (sessionId: string | null) => void;
 }
 
-export default function ProjectChatSidebar({ projectId }: ProjectChatSidebarProps) {
-  const { getProjectSession, setProjectSession } = useProjectWorkspaceStore();
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-
-  // Get saved session for this project
-  const savedSessionId = getProjectSession(projectId);
-
-  // Create project-specific API instance
-  const projectChatAPI = useMemo(() => createProjectChatAPI(projectId), [projectId]);
-
-  // Reset current session when project changes
-  useEffect(() => {
-    setCurrentSessionId(null);
-  }, [projectId]);
-
-  // Update store when session changes
-  const handleSetCurrentSessionId = (sessionId: string | null) => {
-    setCurrentSessionId(sessionId);
-    setProjectSession(projectId, sessionId);
-  };
-
-  // Navigation object for internal session switching (no route changes)
-  const navigation: ChatNavigation = useMemo(() => ({
-    navigateToSession: (sessionId: string) => {
-      handleSetCurrentSessionId(sessionId);
-    },
-    navigateToRoot: () => {
-      // No-op: already in project view
-    },
-    getCurrentSessionId: () => {
-      return currentSessionId;
-    },
-  }), [currentSessionId]);
-
+export default function ProjectChatSidebar({
+  projectId,
+  currentSessionId,
+  savedSessionId,
+  onSetCurrentSessionId,
+}: ProjectChatSidebarProps) {
   // Handle session selection
   const handleSelectSession = (sessionId: string) => {
-    handleSetCurrentSessionId(sessionId);
+    onSetCurrentSessionId(sessionId);
   };
 
   return (
     <div data-name="project-chat-sidebar-root" className="flex flex-col flex-1">
-      <ChatServiceProvider
-        api={projectChatAPI}
-        navigation={navigation}
-        context={{
-          onAssistantRefresh: async () => {
-            // Refresh sessions when title changes
-            // This is handled by ChatServiceProvider's internal state
-          },
-        }}
-      >
-        <ChatServiceConsumer
-          projectId={projectId}
-          currentSessionId={currentSessionId}
-          savedSessionId={savedSessionId}
-          onSelectSession={handleSelectSession}
-          onSetCurrentSessionId={handleSetCurrentSessionId}
-        />
-      </ChatServiceProvider>
+      <ChatServiceConsumer
+        projectId={projectId}
+        currentSessionId={currentSessionId}
+        savedSessionId={savedSessionId}
+        onSelectSession={handleSelectSession}
+        onSetCurrentSessionId={onSetCurrentSessionId}
+      />
     </div>
   );
 }

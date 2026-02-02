@@ -18,6 +18,9 @@ import type { FileContent } from '../../../types/project';
 import { Breadcrumb } from './Breadcrumb';
 import { writeFile } from '../../../services/api';
 import { EditorToolbar } from './EditorToolbar';
+import { useChatComposer, useChatServices } from '../../../shared/chat';
+
+const CHAT_CONTEXT_MAX_CHARS = 6000;
 
 interface FileViewerProps {
   projectId: string;
@@ -55,6 +58,42 @@ const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const getLanguageTag = (path: string): string => {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  const languageMap: Record<string, string> = {
+    'py': 'python',
+    'ts': 'ts',
+    'tsx': 'tsx',
+    'js': 'js',
+    'jsx': 'jsx',
+    'json': 'json',
+    'html': 'html',
+    'css': 'css',
+    'md': 'markdown',
+    'yml': 'yaml',
+    'yaml': 'yaml',
+    'txt': 'text',
+  };
+
+  return languageMap[ext] || ext;
+};
+
+const buildAttachmentFilename = (filePath: string, isSelection: boolean, startLine: number, endLine: number) => {
+  const normalized = filePath.replace(/\\/g, '/');
+  const baseName = normalized.split('/').pop() || 'context.txt';
+  const dotIndex = baseName.lastIndexOf('.');
+  const hasExt = dotIndex > 0;
+  const stem = hasExt ? baseName.slice(0, dotIndex) : baseName;
+  const ext = hasExt ? baseName.slice(dotIndex + 1) : 'txt';
+  const rangeLabel = isSelection ? `lines-${startLine}-${endLine}` : 'full';
+  return `${stem}.${rangeLabel}.${ext}`;
+};
+
+const countLines = (text: string) => {
+  const lines = text.split('\n').length;
+  return lines > 0 ? lines : 1;
+};
+
 export const FileViewer: React.FC<FileViewerProps> = ({
   projectId,
   projectName,
@@ -71,6 +110,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isInsertingToChat, setIsInsertingToChat] = useState(false);
+
+  const { currentSessionId, createSession, navigation } = useChatServices();
+  const chatComposer = useChatComposer();
 
   // Editor view reference
   const editorViewRef = useRef<EditorView | null>(null);
@@ -155,6 +198,133 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     // Focus the editor
     view.focus();
   }, []);
+
+  const ensureChatSession = useCallback(async () => {
+    if (currentSessionId) {
+      return currentSessionId;
+    }
+
+    try {
+      const newSessionId = await createSession();
+      navigation?.navigateToSession(newSessionId);
+      return newSessionId;
+    } catch (err) {
+      console.error('Failed to create chat session:', err);
+      alert('Failed to create chat session. Please try again.');
+      return null;
+    }
+  }, [currentSessionId, createSession, navigation]);
+
+  const getEditorContext = useCallback(() => {
+    if (!content) return null;
+
+    const view = editorViewRef.current;
+    const filePath = content.path;
+    const language = getLanguageTag(filePath);
+
+    if (view) {
+      const selection = view.state.selection.main;
+      if (!selection.empty) {
+        const selectedText = view.state.doc.sliceString(selection.from, selection.to);
+        const startLine = view.state.doc.lineAt(selection.from).number;
+        const endLine = view.state.doc.lineAt(selection.to).number;
+        return {
+          text: selectedText,
+          startLine,
+          endLine,
+          language,
+          filePath,
+          isSelection: true,
+        };
+      }
+    }
+
+    const fullText = value;
+    const totalLines = view ? view.state.doc.lines : countLines(fullText);
+    return {
+      text: fullText,
+      startLine: 1,
+      endLine: totalLines,
+      language,
+      filePath,
+      isSelection: false,
+    };
+  }, [content, value]);
+
+  const handleInsertToChat = useCallback(async () => {
+    if (!content || isInsertingToChat) return;
+
+    setIsInsertingToChat(true);
+    try {
+      if (!chatSidebarOpen) {
+        onToggleChatSidebar();
+      }
+
+      const sessionId = await ensureChatSession();
+      if (!sessionId) return;
+
+      const contextInfo = getEditorContext();
+      if (!contextInfo) return;
+
+      const isLong = contextInfo.text.length > CHAT_CONTEXT_MAX_CHARS;
+
+      if (isLong) {
+        const filename = buildAttachmentFilename(
+          contextInfo.filePath,
+          contextInfo.isSelection,
+          contextInfo.startLine,
+          contextInfo.endLine
+        );
+        await chatComposer.attachTextFile({
+          filename,
+          content: contextInfo.text,
+          mimeType: 'text/plain',
+        });
+        await chatComposer.addBlock({
+          title: `Context: ${contextInfo.filePath} lines ${contextInfo.startLine}-${contextInfo.endLine}`,
+          content: '',
+          collapsed: true,
+          kind: 'context',
+          language: contextInfo.language,
+          source: {
+            filePath: contextInfo.filePath,
+            startLine: contextInfo.startLine,
+            endLine: contextInfo.endLine,
+          },
+          isAttachmentNote: true,
+          attachmentFilename: filename,
+        });
+      } else {
+        await chatComposer.addBlock({
+          title: `Context: ${contextInfo.filePath} lines ${contextInfo.startLine}-${contextInfo.endLine}`,
+          content: contextInfo.text,
+          collapsed: true,
+          kind: 'context',
+          language: contextInfo.language,
+          source: {
+            filePath: contextInfo.filePath,
+            startLine: contextInfo.startLine,
+            endLine: contextInfo.endLine,
+          },
+        });
+      }
+
+      await chatComposer.focus();
+    } catch (err) {
+      console.error('Failed to insert editor content into chat:', err);
+      alert('Failed to insert content into chat. Please try again.');
+    } finally {
+      setIsInsertingToChat(false);
+    }
+  }, [
+    content,
+    isInsertingToChat,
+    chatSidebarOpen,
+    onToggleChatSidebar,
+    ensureChatSession,
+    getEditorContext,
+    chatComposer,
+  ]);
 
   // Command handlers
   const handleUndo = useCallback(() => {
@@ -289,6 +459,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     searchExtension,
   ].filter(Boolean), [language, lineWrapping, lineWrappingExtension, fontSizeTheme, cursorPositionExtension, updateListener, searchExtension]);
 
+  const insertToChatTitle = isInsertingToChat
+    ? 'Inserting to chat...'
+    : 'Insert selection or file to chat';
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
@@ -347,6 +521,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         }}
         chatSidebarOpen={chatSidebarOpen}
         onToggleChatSidebar={onToggleChatSidebar}
+        onInsertToChat={handleInsertToChat}
+        insertToChatDisabled={!content || isInsertingToChat}
+        insertToChatTitle={insertToChatTitle}
       />
 
       {/* Editor */}
