@@ -2,7 +2,7 @@
  * MessageBubble component - displays a single message.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
@@ -21,6 +21,115 @@ interface MessageBubbleProps {
   onDelete?: (messageId: string) => void;
   customActions?: (message: Message, messageId: string) => React.ReactNode;
 }
+
+interface ParsedUserBlock {
+  id: string;
+  kind: 'context' | 'block';
+  title: string;
+  content: string;
+  language: string;
+  isCodeFence: boolean;
+  isAttachmentNote: boolean;
+  attachmentLabel?: string;
+}
+
+const normalizeNewlines = (text: string) => text.replace(/\r\n/g, '\n');
+
+const parseUserBlocks = (rawContent: string): { blocks: ParsedUserBlock[]; message: string } => {
+  const content = normalizeNewlines(rawContent);
+  const blocks: ParsedUserBlock[] = [];
+  let index = 0;
+
+  const skipNewlines = () => {
+    while (index < content.length && content[index] === '\n') {
+      index += 1;
+    }
+  };
+
+  skipNewlines();
+
+  while (index < content.length) {
+    const headerMatch = content.slice(index).match(/^\[(Context|Block):([^\]]+)\]\n/);
+    if (!headerMatch) {
+      break;
+    }
+
+    const kind = headerMatch[1].toLowerCase() as 'context' | 'block';
+    const title = headerMatch[2].trim();
+    index += headerMatch[0].length;
+
+    let language = '';
+    let blockContent = '';
+    let isCodeFence = false;
+    let isAttachmentNote = false;
+    let attachmentLabel: string | undefined;
+
+    if (content.startsWith('```', index)) {
+      isCodeFence = true;
+      const fenceLineEnd = content.indexOf('\n', index);
+      const fenceLine = fenceLineEnd >= 0 ? content.slice(index, fenceLineEnd) : content.slice(index);
+      language = fenceLine.slice(3).trim();
+      index = fenceLineEnd >= 0 ? fenceLineEnd + 1 : content.length;
+
+      const fenceClose = content.indexOf('\n```', index);
+      if (fenceClose >= 0) {
+        blockContent = content.slice(index, fenceClose);
+        index = fenceClose + 4;
+        if (content[index] === '\n') {
+          index += 1;
+        }
+      } else {
+        blockContent = content.slice(index);
+        index = content.length;
+      }
+    } else if (content.startsWith('(Attached as', index)) {
+      const lineEnd = content.indexOf('\n', index);
+      const line = lineEnd >= 0 ? content.slice(index, lineEnd) : content.slice(index);
+      isAttachmentNote = true;
+      attachmentLabel = line;
+      index = lineEnd >= 0 ? lineEnd + 1 : content.length;
+    } else {
+      const nextHeaderOffset = content.slice(index).search(/\n\n(?=\[(Context|Block):)/);
+      if (nextHeaderOffset >= 0) {
+        blockContent = content.slice(index, index + nextHeaderOffset);
+        index = index + nextHeaderOffset + 2;
+      } else {
+        const messageSplit = content.indexOf('\n\n', index);
+        if (messageSplit >= 0) {
+          const remainder = content.slice(messageSplit + 2);
+          if (remainder.trim().length > 0) {
+            blockContent = content.slice(index, messageSplit);
+            index = messageSplit + 2;
+          } else {
+            blockContent = content.slice(index);
+            index = content.length;
+          }
+        } else {
+          blockContent = content.slice(index);
+          index = content.length;
+        }
+      }
+    }
+
+    blockContent = blockContent.replace(/^\n+|\n+$/g, '');
+
+    blocks.push({
+      id: `block-${blocks.length}-${title}`,
+      kind,
+      title,
+      content: blockContent,
+      language,
+      isCodeFence,
+      isAttachmentNote,
+      attachmentLabel,
+    });
+
+    skipNewlines();
+  }
+
+  const message = content.slice(index).trimStart();
+  return { blocks, message };
+};
 
 /**
  * Parse content to extract thinking blocks and regular content.
@@ -86,12 +195,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
+  const [expandedUserBlocks, setExpandedUserBlocks] = useState<Record<string, boolean>>({});
 
   // Parse thinking content from message
   const { thinking, mainContent, isThinkingInProgress } = useMemo(
     () => parseThinkingContent(message.content, isStreaming),
     [message.content, isStreaming]
   );
+  const { blocks: userBlocks, message: userMessage } = useMemo(
+    () => parseUserBlocks(message.content),
+    [message.content]
+  );
+
+  const displayUserMessage = userBlocks.length > 0 ? userMessage : message.content;
+
+  useEffect(() => {
+    setExpandedUserBlocks({});
+  }, [message.content]);
 
   const canEdit = isUser && !isStreaming && onEdit;
   const canRegenerate = !isStreaming && onRegenerate && message.content.trim() !== '';
@@ -260,7 +380,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               </p>
             </div>
           ) : (
-            <div className="text-sm prose prose-sm max-w-none dark:prose-invert">
+            <div className="text-sm">
               {/* Attachments display (for user messages) */}
               {isUser && message.attachments && message.attachments.length > 0 && (
                 <div className="mb-3 space-y-2">
@@ -308,9 +428,91 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </div>
               )}
               {isUser ? (
-                <p className="whitespace-pre-wrap m-0">{message.content}</p>
-              ) : (
                 <>
+                  {userBlocks.length > 0 && (
+                    <div data-name="user-message-blocks" className="mb-3 rounded-md border border-blue-300/40 bg-blue-600/30 overflow-hidden">
+                      <div className="flex items-center justify-between px-2.5 py-1 text-[11px] uppercase tracking-wide text-blue-100/80">
+                        <span>Blocks</span>
+                        <span>{userBlocks.length}</span>
+                      </div>
+                      <div className="divide-y divide-blue-400/30">
+                        {userBlocks.map((block) => {
+                          const isExpanded = !!expandedUserBlocks[block.id];
+                          const metaLabel = block.isAttachmentNote
+                            ? 'Attachment'
+                            : `${block.content.length} chars`;
+                          return (
+                            <div key={block.id}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedUserBlocks((prev) => ({
+                                  ...prev,
+                                  [block.id]: !prev[block.id],
+                                }))}
+                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-blue-50 hover:bg-blue-600/40 transition-colors"
+                                title={isExpanded ? 'Collapse block' : 'Expand block'}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDownIcon className="w-4 h-4 text-blue-100" />
+                                ) : (
+                                  <ChevronRightIcon className="w-4 h-4 text-blue-100" />
+                                )}
+                                <span className="text-[10px] uppercase tracking-wide text-blue-100/70">
+                                  {block.kind}
+                                </span>
+                                <span className="flex-1 truncate text-blue-50">{block.title || 'Block'}</span>
+                                <span className="text-[11px] text-blue-100/70">{metaLabel}</span>
+                              </button>
+                              {isExpanded && (
+                                <div className="px-2.5 py-2 bg-blue-600/20 text-blue-50">
+                                  {block.isAttachmentNote ? (
+                                    <div className="text-xs text-blue-100/80">
+                                      {block.attachmentLabel || 'Attachment'}
+                                    </div>
+                                  ) : block.isCodeFence ? (
+                                    <CodeBlock language={block.language} value={block.content} />
+                                  ) : (
+                                    <div className="prose prose-sm max-w-none prose-invert">
+                                      <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                          code({ className, children, ...props }: any) {
+                                            const match = /language-(\w+)/.exec(className || '');
+                                            const language = match ? match[1] : '';
+                                            const value = String(children).replace(/\n$/, '');
+                                            const isInline = !className;
+
+                                            return !isInline && language ? (
+                                              <CodeBlock language={language} value={value} />
+                                            ) : (
+                                              <code className={className} {...props}>
+                                                {children}
+                                              </code>
+                                            );
+                                          },
+                                        }}
+                                      >
+                                        {block.content || '_Empty block_'}
+                                      </ReactMarkdown>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {userBlocks.length > 0 && displayUserMessage && (
+                    <div className="mb-2">
+                      <div className="h-px bg-blue-300/40" />
+                    </div>
+                  )}
+                  <p className="whitespace-pre-wrap m-0">{displayUserMessage}</p>
+                </>
+              ) : (
+                <div className="prose prose-sm max-w-none dark:prose-invert">
                   {/* Thinking block (collapsible, auto-expand during streaming) */}
                   {thinking && (
                     <div className="mb-3 border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden">
@@ -395,7 +597,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   >
                     {mainContent || '*Generating...*'}
                   </ReactMarkdown>
-                </>
+                </div>
               )}
             </div>
           )}

@@ -150,7 +150,11 @@ export async function insertSeparator(sessionId: string, contextType: string = '
 
   const response = await api.post<{ success: boolean; message_id: string }>(
     `/api/chat/separator?${params.toString()}`,
-    { session_id: sessionId }
+    {
+      session_id: sessionId,
+      context_type: contextType,
+      project_id: projectId,
+    }
   );
   return response.data.message_id;
 }
@@ -167,6 +171,8 @@ export async function clearAllMessages(sessionId: string, contextType: string = 
 
   await api.post(`/api/chat/clear?${params.toString()}`, {
     session_id: sessionId,
+    context_type: contextType,
+    project_id: projectId,
   });
 }
 

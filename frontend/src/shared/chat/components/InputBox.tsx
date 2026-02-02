@@ -269,13 +269,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
       const header = block.source
         ? `[Context: ${block.source.filePath} lines ${block.source.startLine}-${block.source.endLine}]`
         : `[Block: ${title}]`;
-      const shouldFence = block.kind === 'context' || !!block.language;
-      if (shouldFence) {
-        const fence = block.language ? `\`\`\`${block.language}` : '```';
-        parts.push(`${header}\n${fence}\n${content}\n\`\`\``);
-      } else {
-        parts.push(`${header}\n${content}`);
-      }
+      const fence = block.language ? `\`\`\`${block.language}` : '```';
+      parts.push(`${header}\n${fence}\n${content}\n\`\`\``);
     });
 
     return parts.join('\n\n');
