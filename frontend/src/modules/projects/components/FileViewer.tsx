@@ -275,6 +275,20 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
   }, [updateUndoRedoState, onEditorReady, insertContentAtCursor]);
 
+  // Get language extension (memoized to prevent re-creation)
+  const filePath = content?.path ?? '';
+  const language = useMemo(() => getLanguageExtension(filePath), [filePath]);
+
+  // Build extensions array with conditional features (memoized to prevent re-creation)
+  const extensions = useMemo(() => [
+    language,
+    lineWrapping && lineWrappingExtension,
+    fontSizeTheme,
+    cursorPositionExtension,
+    updateListener,
+    searchExtension,
+  ].filter(Boolean), [language, lineWrapping, lineWrappingExtension, fontSizeTheme, cursorPositionExtension, updateListener, searchExtension]);
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
@@ -298,19 +312,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       </div>
     );
   }
-
-  // Get language extension (memoized to prevent re-creation)
-  const language = useMemo(() => getLanguageExtension(content.path), [content.path]);
-
-  // Build extensions array with conditional features (memoized to prevent re-creation)
-  const extensions = useMemo(() => [
-    language,
-    lineWrapping && lineWrappingExtension,
-    fontSizeTheme,
-    cursorPositionExtension,
-    updateListener,
-    searchExtension,
-  ].filter(Boolean), [language, lineWrapping, lineWrappingExtension, fontSizeTheme, cursorPositionExtension, updateListener, searchExtension]);
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">
