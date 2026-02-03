@@ -2,6 +2,7 @@
 
 import yaml
 import asyncio
+import shutil
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime
@@ -300,6 +301,62 @@ class ProjectService:
             mime_type=mime_type
         )
 
+    async def create_directory(
+        self,
+        project_id: str,
+        relative_path: str
+    ) -> FileNode:
+        """Create a new directory in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to directory from project root
+
+        Returns:
+            FileNode representing the created directory
+
+        Raises:
+            ValueError: If project not found, path invalid, or directory cannot be created
+        """
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        root_path = Path(project.root_path)
+
+        if not relative_path or relative_path == ".":
+            raise ValueError("Directory path is required")
+
+        target_path = root_path / relative_path
+
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        if target_path.exists():
+            raise ValueError(f"Directory already exists: {relative_path}")
+
+        if not target_path.parent.exists() or not target_path.parent.is_dir():
+            parent_relative = (
+                str(target_path.parent.relative_to(root_path))
+                if target_path.parent.is_relative_to(root_path)
+                else str(target_path.parent)
+            )
+            raise ValueError(f"Parent directory does not exist: {parent_relative}")
+
+        try:
+            target_path.mkdir()
+        except FileExistsError:
+            raise ValueError(f"Directory already exists: {relative_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to create directory: {e}")
+
+        return FileNode(
+            name=target_path.name,
+            path=relative_path,
+            type="directory",
+            children=[]
+        )
+
     def _build_tree_node(self, root_path: Path, current_path: Path, relative_path: str) -> FileNode:
         """Recursively build a file tree node.
 
@@ -408,6 +465,45 @@ class ProjectService:
             size=file_size,
             mime_type=mime_type
         )
+
+    async def delete_directory(
+        self,
+        project_id: str,
+        relative_path: str,
+        recursive: bool = False
+    ) -> None:
+        """Delete a directory in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to directory from project root
+            recursive: Whether to delete contents recursively
+
+        Raises:
+            ValueError: If project not found, path invalid, or directory cannot be deleted
+        """
+        if not relative_path or relative_path == ".":
+            raise ValueError("Cannot delete root directory")
+
+        root_path, target_path = await self._validate_path(project_id, relative_path)
+
+        if target_path == root_path:
+            raise ValueError("Cannot delete root directory")
+
+        if not target_path.is_dir():
+            raise ValueError(f"Path is not a directory: {relative_path}")
+
+        try:
+            if recursive:
+                shutil.rmtree(target_path)
+            else:
+                target_path.rmdir()
+        except OSError as e:
+            if not recursive:
+                raise ValueError("Directory is not empty")
+            raise ValueError(f"Failed to delete directory: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to delete directory: {e}")
 
     def _detect_encoding(self, file_path: Path) -> str:
         """Detect file encoding.
@@ -593,3 +689,33 @@ class ProjectService:
             size=file_size,
             mime_type=mime_type
         )
+
+    async def delete_file(
+        self,
+        project_id: str,
+        relative_path: str
+    ) -> None:
+        """Delete a file in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be deleted
+        """
+        if not relative_path or relative_path == ".":
+            raise ValueError("File path is required")
+
+        root_path, target_path = await self._validate_path(project_id, relative_path)
+
+        if target_path == root_path:
+            raise ValueError("Cannot delete root directory")
+
+        if not target_path.is_file():
+            raise ValueError(f"Path is not a file: {relative_path}")
+
+        try:
+            target_path.unlink()
+        except Exception as e:
+            raise ValueError(f"Failed to delete file: {e}")

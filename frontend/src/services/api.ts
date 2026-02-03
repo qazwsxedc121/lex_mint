@@ -288,15 +288,13 @@ export async function sendMessageStream(
 
         if (done) break;
 
-        // 解码数据
         const chunk = decoder.decode(value, { stream: true });
 
-        // SSE 格式：每�?"data: {json}\n\n"
         const lines = chunk.split('\n');
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6); // 移除 "data: " 前缀
+            const dataStr = line.slice(6); //  "data: " 
             try {
               const data = JSON.parse(dataStr);
 
@@ -332,7 +330,6 @@ export async function sendMessageStream(
                 onChunk(data.chunk);
               }
             } catch (e) {
-              // 忽略解析错误（可能是不完整的 JSON�?              console.warn('Failed to parse SSE data:', dataStr);
             }
           }
         }
@@ -368,7 +365,6 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-// ==================== 文件附件 API ====================
 
 /**
  * Upload a file attachment
@@ -421,10 +417,9 @@ export async function downloadFile(
   return response.blob();
 }
 
-// ==================== 模型管理 API ====================
 
 /**
- * 获取所有提供商列表
+ * List providers.
  */
 export async function listProviders(): Promise<Provider[]> {
   const response = await api.get<Provider[]>('/api/models/providers');
@@ -432,7 +427,8 @@ export async function listProviders(): Promise<Provider[]> {
 }
 
 /**
- * 获取指定提供�? */
+ * Get provider details.
+ */
 export async function getProvider(providerId: string, includeMaskedKey: boolean = false): Promise<Provider> {
   const url = includeMaskedKey
     ? `/api/models/providers/${providerId}?include_masked_key=true`
@@ -442,26 +438,29 @@ export async function getProvider(providerId: string, includeMaskedKey: boolean 
 }
 
 /**
- * 创建提供�? */
+ * Create a provider.
+ */
 export async function createProvider(provider: Provider): Promise<void> {
   await api.post('/api/models/providers', provider);
 }
 
 /**
- * 更新提供�? */
+ * Update a provider.
+ */
 export async function updateProvider(providerId: string, provider: Provider): Promise<void> {
   await api.put(`/api/models/providers/${providerId}`, provider);
 }
 
 /**
- * 删除提供商（级联删除关联模型�? */
+ * Delete a provider (and related models).
+ */
 export async function deleteProvider(providerId: string): Promise<void> {
   await api.delete(`/api/models/providers/${providerId}`);
 }
 
 /**
- * 获取模型列表
- * @param providerId - 可选的提供商ID，用于筛�? */
+ * List models.
+ */
 export async function listModels(providerId?: string): Promise<Model[]> {
   const url = providerId
     ? `/api/models/list?provider_id=${providerId}`
@@ -471,7 +470,7 @@ export async function listModels(providerId?: string): Promise<Model[]> {
 }
 
 /**
- * 获取指定模型
+ * Get a model.
  */
 export async function getModel(modelId: string): Promise<Model> {
   const response = await api.get<Model>(`/api/models/list/${modelId}`);
@@ -479,28 +478,28 @@ export async function getModel(modelId: string): Promise<Model> {
 }
 
 /**
- * 创建模型
+ * Create a model.
  */
 export async function createModel(model: Model): Promise<void> {
   await api.post('/api/models/list', model);
 }
 
 /**
- * 更新模型
+ * Update a model.
  */
 export async function updateModel(modelId: string, model: Model): Promise<void> {
   await api.put(`/api/models/list/${modelId}`, model);
 }
 
 /**
- * 删除模型
+ * Delete a model.
  */
 export async function deleteModel(modelId: string): Promise<void> {
   await api.delete(`/api/models/list/${modelId}`);
 }
 
 /**
- * 测试模型连接
+ * Test model connection.
  */
 export async function testModelConnection(modelId: string): Promise<{ success: boolean; message: string }> {
   const response = await api.post<{ success: boolean; message: string }>('/api/models/test-connection', {
@@ -510,7 +509,7 @@ export async function testModelConnection(modelId: string): Promise<{ success: b
 }
 
 /**
- * 获取默认模型配置
+ * Get default model configuration.
  */
 export async function getDefaultConfig(): Promise<DefaultConfig> {
   const response = await api.get<DefaultConfig>('/api/models/default');
@@ -518,21 +517,23 @@ export async function getDefaultConfig(): Promise<DefaultConfig> {
 }
 
 /**
- * 设置默认模型
+ * Set default model.
  */
 export async function setDefaultConfig(providerId: string, modelId: string): Promise<void> {
   await api.put(`/api/models/default?provider_id=${providerId}&model_id=${modelId}`);
 }
 
 /**
- * 获取支持 reasoning effort 的模型模式列�? */
+ * Get reasoning supported patterns.
+ */
 export async function getReasoningSupportedPatterns(): Promise<string[]> {
   const response = await api.get<string[]>('/api/models/reasoning-patterns');
   return response.data;
 }
 
 /**
- * 更新会话使用的模�? */
+ * Update session model.
+ */
 export async function updateSessionModel(sessionId: string, modelId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
@@ -544,7 +545,8 @@ export async function updateSessionModel(sessionId: string, modelId: string, con
 }
 
 /**
- * 更新会话使用的助�? */
+ * Update session assistant.
+ */
 export async function updateSessionAssistant(sessionId: string, assistantId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
@@ -555,17 +557,17 @@ export async function updateSessionAssistant(sessionId: string, assistantId: str
   await api.put(`/api/sessions/${sessionId}/assistant?${params.toString()}`, { assistant_id: assistantId });
 }
 
-// ==================== 助手管理 API ====================
 
 /**
- * 获取所有助手列�? */
+ * List Assistants.
+ */
 export async function listAssistants(): Promise<Assistant[]> {
   const response = await api.get<Assistant[]>('/api/assistants');
   return response.data;
 }
 
 /**
- * 获取指定助手
+ * Get Assistant.
  */
 export async function getAssistant(assistantId: string): Promise<Assistant> {
   const response = await api.get<Assistant>(`/api/assistants/${assistantId}`);
@@ -573,28 +575,28 @@ export async function getAssistant(assistantId: string): Promise<Assistant> {
 }
 
 /**
- * 创建助手
+ * Create Assistant.
  */
 export async function createAssistant(assistant: AssistantCreate): Promise<void> {
   await api.post('/api/assistants', assistant);
 }
 
 /**
- * 更新助手
+ * Update Assistant.
  */
 export async function updateAssistant(assistantId: string, assistant: AssistantUpdate): Promise<void> {
   await api.put(`/api/assistants/${assistantId}`, assistant);
 }
 
 /**
- * 删除助手（不能删除默认助手）
+ * Delete Assistant.
  */
 export async function deleteAssistant(assistantId: string): Promise<void> {
   await api.delete(`/api/assistants/${assistantId}`);
 }
 
 /**
- * 获取默认助手ID
+ * Get Default Assistant Id.
  */
 export async function getDefaultAssistantId(): Promise<string> {
   const response = await api.get<{ default_assistant_id: string }>('/api/assistants/default/id');
@@ -602,7 +604,7 @@ export async function getDefaultAssistantId(): Promise<string> {
 }
 
 /**
- * 获取默认助手
+ * Get Default Assistant.
  */
 export async function getDefaultAssistant(): Promise<Assistant> {
   const response = await api.get<Assistant>('/api/assistants/default/assistant');
@@ -610,16 +612,16 @@ export async function getDefaultAssistant(): Promise<Assistant> {
 }
 
 /**
- * 设置默认助手
+ * Set Default Assistant.
  */
 export async function setDefaultAssistant(assistantId: string): Promise<void> {
   await api.put(`/api/assistants/default/${assistantId}`);
 }
 
-// ==================== 测试连接 ====================
 
 /**
- * 测试提供商连接（使用提供的API Key�? */
+ * Test provider connection using a provided API key.
+ */
 export async function testProviderConnection(
   baseUrl: string,
   apiKey: string,
@@ -637,7 +639,8 @@ export async function testProviderConnection(
 }
 
 /**
- * 测试提供商连接（使用已存储的API Key�? */
+ * Test provider connection using a stored API key.
+ */
 export async function testProviderStoredConnection(
   providerId: string,
   baseUrl: string,
@@ -654,7 +657,6 @@ export async function testProviderStoredConnection(
   return response.data;
 }
 
-// ==================== Provider 抽象�?API ====================
 
 import type {
   BuiltinProviderInfo,
@@ -664,7 +666,7 @@ import type {
 } from '../types/model';
 
 /**
- * 获取所有内�?Provider 定义
+ * List built-in providers.
  */
 export async function listBuiltinProviders(): Promise<BuiltinProviderInfo[]> {
   const response = await api.get<BuiltinProviderInfo[]>('/api/models/providers/builtin');
@@ -672,7 +674,7 @@ export async function listBuiltinProviders(): Promise<BuiltinProviderInfo[]> {
 }
 
 /**
- * 获取指定内置 Provider 定义
+ * Get built-in provider definition.
  */
 export async function getBuiltinProvider(providerId: string): Promise<BuiltinProviderInfo> {
   const response = await api.get<BuiltinProviderInfo>(`/api/models/providers/builtin/${providerId}`);
@@ -680,7 +682,7 @@ export async function getBuiltinProvider(providerId: string): Promise<BuiltinPro
 }
 
 /**
- * �?Provider API 获取可用模型列表
+ * Fetch available models from provider API.
  */
 export async function fetchProviderModels(providerId: string): Promise<ModelInfo[]> {
   const response = await api.post<ModelInfo[]>(`/api/models/providers/${providerId}/fetch-models`);
@@ -688,14 +690,15 @@ export async function fetchProviderModels(providerId: string): Promise<ModelInfo
 }
 
 /**
- * 获取模型的能力配置（合并 provider 默认 + model 覆盖�? */
+ * Get model capabilities (provider defaults plus overrides).
+ */
 export async function getModelCapabilities(modelId: string): Promise<CapabilitiesResponse> {
   const response = await api.get<CapabilitiesResponse>(`/api/models/capabilities/${modelId}`);
   return response.data;
 }
 
 /**
- * 获取可用�?API 协议类型
+ * List supported API protocol types.
  */
 export async function listProtocols(): Promise<ProtocolInfo[]> {
   const response = await api.get<ProtocolInfo[]>('/api/models/protocols');
@@ -818,6 +821,39 @@ export async function createFile(
     encoding
   });
   return response.data;
+}
+
+/**
+ * Create a new folder in a project
+ */
+export async function createFolder(id: string, path: string): Promise<FileNode> {
+  const response = await api.post<FileNode>(`/api/projects/${id}/directories`, {
+    path
+  });
+  return response.data;
+}
+
+/**
+ * Delete a folder from a project
+ */
+export async function deleteFolder(id: string, path: string, recursive: boolean = false): Promise<void> {
+  await api.delete(`/api/projects/${id}/directories`, {
+    params: {
+      path,
+      recursive
+    }
+  });
+}
+
+/**
+ * Delete a file from a project
+ */
+export async function deleteFile(id: string, path: string): Promise<void> {
+  await api.delete(`/api/projects/${id}/files`, {
+    params: {
+      path
+    }
+  });
 }
 /**
  * Read file content from a project

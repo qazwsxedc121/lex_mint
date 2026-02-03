@@ -87,3 +87,9 @@ class FileWrite(BaseModel):
     path: str = Field(..., description="Relative path from project root")
     content: str = Field(..., description="File content to write")
     encoding: str = Field(default="utf-8", description="File encoding")
+
+
+class DirectoryCreate(BaseModel):
+    """Directory create request."""
+
+    path: str = Field(..., description="Relative path from project root")

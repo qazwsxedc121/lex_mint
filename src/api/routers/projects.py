@@ -13,7 +13,8 @@ from ..models.project_config import (
     FileNode,
     FileContent,
     FileCreate,
-    FileWrite
+    FileWrite,
+    DirectoryCreate
 )
 from ..config import settings
 
@@ -266,6 +267,38 @@ async def create_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{project_id}/directories", response_model=FileNode, status_code=201)
+async def create_directory(
+    project_id: str,
+    directory_data: DirectoryCreate
+):
+    """Create a new directory in a project.
+
+    Args:
+        project_id: Project ID
+        directory_data: Directory create data (path)
+
+    Returns:
+        Created directory node
+
+    Raises:
+        HTTPException: If project not found, path invalid, or directory cannot be created
+    """
+    try:
+        service = get_project_service()
+        node = await service.create_directory(
+            project_id,
+            directory_data.path
+        )
+        return node
+    except ValueError as e:
+        logger.error(f"Validation error creating directory: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating directory in {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{project_id}/files", response_model=FileContent)
 async def write_file(
     project_id: str,
@@ -297,4 +330,56 @@ async def write_file(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error writing file to {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{project_id}/files", status_code=204)
+async def delete_file(
+    project_id: str,
+    path: str = Query(..., description="Relative path to file from project root")
+):
+    """Delete a file from a project.
+
+    Args:
+        project_id: Project ID
+        path: Relative path to file
+
+    Raises:
+        HTTPException: If project not found, path invalid, or file cannot be deleted
+    """
+    try:
+        service = get_project_service()
+        await service.delete_file(project_id, path)
+    except ValueError as e:
+        logger.error(f"Validation error deleting file: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting file in {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{project_id}/directories", status_code=204)
+async def delete_directory(
+    project_id: str,
+    path: str = Query(..., description="Relative path to directory from project root"),
+    recursive: bool = Query(False, description="Delete contents recursively")
+):
+    """Delete a directory from a project.
+
+    Args:
+        project_id: Project ID
+        path: Relative path to directory
+        recursive: Whether to delete contents recursively
+
+    Raises:
+        HTTPException: If project not found, path invalid, or directory cannot be deleted
+    """
+    try:
+        service = get_project_service()
+        await service.delete_directory(project_id, path, recursive)
+    except ValueError as e:
+        logger.error(f"Validation error deleting directory: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting directory in {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

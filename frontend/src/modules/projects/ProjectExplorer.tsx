@@ -16,7 +16,7 @@ import type { Project } from '../../types/project';
 import { ChatComposerProvider, ChatServiceProvider } from '../../shared/chat';
 import type { ChatNavigation } from '../../shared/chat';
 import { createProjectChatAPI } from './services/projectChatAPI';
-import { createFile } from '../../services/api';
+import { createFile, createFolder, deleteFile, deleteFolder, readFile } from '../../services/api';
 
 interface ProjectsOutletContext {
   projects: Project[];
@@ -112,6 +112,55 @@ export const ProjectExplorer: React.FC = () => {
     await refreshTree();
     return created.path;
   }, [projectId, refreshTree]);
+
+  const handleCreateFolder = useCallback(async (directoryPath: string, folderName: string) => {
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
+    const normalizedDirectory = directoryPath ? directoryPath.replace(/\\/g, '/') : '';
+    const folderPath = normalizedDirectory ? `${normalizedDirectory}/${folderName}` : folderName;
+    await createFolder(projectId, folderPath);
+    await refreshTree();
+    return folderPath;
+  }, [projectId, refreshTree]);
+
+  const handleDuplicateFile = useCallback(async (filePath: string, newFileName: string) => {
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const lastSlash = normalizedPath.lastIndexOf('/');
+    const directory = lastSlash > -1 ? normalizedPath.slice(0, lastSlash) : '';
+    const newPath = directory ? `${directory}/${newFileName}` : newFileName;
+    const existing = await readFile(projectId, normalizedPath);
+    const created = await createFile(projectId, newPath, existing.content, existing.encoding);
+    await refreshTree();
+    return created.path;
+  }, [projectId, refreshTree]);
+
+  const handleDeleteFile = useCallback(async (filePath: string) => {
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
+    await deleteFile(projectId, filePath);
+    await refreshTree();
+    if (selectedFilePath === filePath) {
+      setSelectedFilePath(null);
+      setCurrentFile(projectId, null);
+    }
+  }, [projectId, refreshTree, selectedFilePath, setCurrentFile, setSelectedFilePath]);
+
+  const handleDeleteFolder = useCallback(async (directoryPath: string) => {
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
+    await deleteFolder(projectId, directoryPath, true);
+    await refreshTree();
+    if (selectedFilePath && (selectedFilePath === directoryPath || selectedFilePath.startsWith(`${directoryPath}/`))) {
+      setSelectedFilePath(null);
+      setCurrentFile(projectId, null);
+    }
+  }, [projectId, refreshTree, selectedFilePath, setCurrentFile, setSelectedFilePath]);
 
   // Create context value for editor actions
   const editorContextValue = useMemo(() => ({
@@ -217,14 +266,18 @@ export const ProjectExplorer: React.FC = () => {
                   onManageClick={onManageClick}
                 />
                 <div className="flex-1 overflow-hidden">
-                  <FileTree
-                    tree={tree}
-                    selectedPath={selectedFilePath}
-                    onFileSelect={handleFileSelect}
-                    onCreateFile={handleCreateFile}
-                  />
-                </div>
+                <FileTree
+                  tree={tree}
+                  selectedPath={selectedFilePath}
+                  onFileSelect={handleFileSelect}
+                  onCreateFile={handleCreateFile}
+                  onCreateFolder={handleCreateFolder}
+                  onDuplicateFile={handleDuplicateFile}
+                  onDeleteFile={handleDeleteFile}
+                  onDeleteFolder={handleDeleteFolder}
+                />
               </div>
+            </div>
             )}
 
             {/* Center: File Viewer */}
