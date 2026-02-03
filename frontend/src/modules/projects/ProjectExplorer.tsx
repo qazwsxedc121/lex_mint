@@ -16,6 +16,7 @@ import type { Project } from '../../types/project';
 import { ChatComposerProvider, ChatServiceProvider } from '../../shared/chat';
 import type { ChatNavigation } from '../../shared/chat';
 import { createProjectChatAPI } from './services/projectChatAPI';
+import { createFile } from '../../services/api';
 
 interface ProjectsOutletContext {
   projects: Project[];
@@ -83,7 +84,7 @@ export const ProjectExplorer: React.FC = () => {
   }, [projectId]);
 
   // Load file tree
-  const { tree, loading: treeLoading, error: treeError } = useFileTree(projectId || null);
+  const { tree, loading: treeLoading, error: treeError, refreshTree } = useFileTree(projectId || null);
 
   // Load file content when a file is selected
   const { content, loading: contentLoading, error: contentError } = useFileContent(
@@ -98,6 +99,17 @@ export const ProjectExplorer: React.FC = () => {
       setCurrentFile(projectId, path);
     }
   };
+
+  const handleCreateFile = useCallback(async (directoryPath: string, filename: string) => {
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
+    const normalizedDirectory = directoryPath ? directoryPath.replace(/\\/g, '/') : '';
+    const filePath = normalizedDirectory ? `${normalizedDirectory}/${filename}` : filename;
+    const created = await createFile(projectId, filePath, '');
+    await refreshTree();
+    return created.path;
+  }, [projectId, refreshTree]);
 
   // Create context value for editor actions
   const editorContextValue = useMemo(() => ({
@@ -206,6 +218,7 @@ export const ProjectExplorer: React.FC = () => {
                   tree={tree}
                   selectedPath={selectedFilePath}
                   onFileSelect={handleFileSelect}
+                  onCreateFile={handleCreateFile}
                 />
               </div>
             </div>

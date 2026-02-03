@@ -12,6 +12,7 @@ from ..models.project_config import (
     ProjectUpdate,
     FileNode,
     FileContent,
+    FileCreate,
     FileWrite
 )
 from ..config import settings
@@ -228,6 +229,40 @@ async def read_file(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error reading file from {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project_id}/files", response_model=FileContent, status_code=201)
+async def create_file(
+    project_id: str,
+    file_data: FileCreate
+):
+    """Create a new file in a project.
+
+    Args:
+        project_id: Project ID
+        file_data: File create data (path, content, encoding)
+
+    Returns:
+        Created file content
+
+    Raises:
+        HTTPException: If project not found, path invalid, or file cannot be created
+    """
+    try:
+        service = get_project_service()
+        content = await service.create_file(
+            project_id,
+            file_data.path,
+            file_data.content,
+            file_data.encoding
+        )
+        return content
+    except ValueError as e:
+        logger.error(f"Validation error creating file: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating file in {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

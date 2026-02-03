@@ -804,6 +804,22 @@ export async function getFileTree(id: string, path?: string): Promise<FileNode> 
 }
 
 /**
+ * Create a new file in a project
+ */
+export async function createFile(
+  id: string,
+  path: string,
+  content: string = '',
+  encoding: string = 'utf-8'
+): Promise<FileContent> {
+  const response = await api.post<FileContent>(`/api/projects/${id}/files`, {
+    path,
+    content,
+    encoding
+  });
+  return response.data;
+}
+/**
  * Read file content from a project
  */
 export async function readFile(id: string, path: string): Promise<FileContent> {

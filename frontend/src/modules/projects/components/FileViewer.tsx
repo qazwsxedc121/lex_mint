@@ -392,8 +392,31 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     return () => window.removeEventListener('keydown', handler);
   }, [value, originalContent, content, projectId]);
 
-  // Detect dark mode from DOM
-  const isDarkMode = document.documentElement.classList.contains('dark');
+  // Detect dark mode from system preference (Tailwind defaults to media strategy)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return false;
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDarkMode(event.matches);
+    };
+
+    setIsDarkMode(media.matches);
+
+    if (media.addEventListener) {
+      media.addEventListener('change', handleChange);
+      return () => media.removeEventListener('change', handleChange);
+    }
+
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, []);
 
   // Create cursor position tracking extension (memoized to prevent re-creation)
   const cursorPositionExtension = useMemo(() =>
@@ -428,6 +451,13 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     });
   }, [fontSize]);
 
+  // Ensure editor stretches to the available height
+  const fullHeightTheme = useMemo(() => EditorView.theme({
+    '&': { height: '100%' },
+    '.cm-scroller': { height: '100%' },
+    '.cm-content': { minHeight: '100%' }
+  }), []);
+
   // Search extension (memoized to prevent re-creation)
   const searchExtension = useMemo(() => search({ top: true }), []);
 
@@ -454,10 +484,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     language,
     lineWrapping && lineWrappingExtension,
     fontSizeTheme,
+    fullHeightTheme,
     cursorPositionExtension,
     updateListener,
     searchExtension,
-  ].filter(Boolean), [language, lineWrapping, lineWrappingExtension, fontSizeTheme, cursorPositionExtension, updateListener, searchExtension]);
+  ].filter(Boolean), [language, lineWrapping, lineWrappingExtension, fontSizeTheme, fullHeightTheme, cursorPositionExtension, updateListener, searchExtension]);
 
   const insertToChatTitle = isInsertingToChat
     ? 'Inserting to chat...'
@@ -527,8 +558,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       />
 
       {/* Editor */}
-      <div className="flex-1 overflow-auto w-full min-w-0">
+      <div className="flex-1 min-h-0 w-full min-w-0 overflow-hidden">
         <CodeMirror
+          className="h-full"
           value={value}
           height="100%"
           theme={isDarkMode ? 'dark' : 'light'}

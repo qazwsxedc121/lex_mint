@@ -49,27 +49,22 @@ if __name__ == "__main__":
     project_root = os.path.dirname(os.path.abspath(__file__))
     src_dir = os.path.join(project_root, "src")
 
-    # 配置
-    config = uvicorn.Config(
-        app="src.api.main:app",  # 必须用字符串形式，reload 才能生效
-        host="0.0.0.0",
-        port=port,
-        log_level="trace",  # 最详细的日志级别
-        access_log=True,
-        use_colors=True,
-        reload=True,
-        reload_dirs=[src_dir],  # 使用绝对路径
-    )
-
-    server = uvicorn.Server(config)
-
     # 添加启动前的打印
-    print("🚀 服务器正在启动...")
-    print("📝 所有 HTTP 请求都会显示在下面")
+    print("🚌 服务器正在启动..")
+    print("📑 所有 HTTP 请求都会显示在下面")
     print("=" * 80)
     print()
 
     try:
-        server.run()
+        uvicorn.run(
+            "src.api.main:app",
+            host="0.0.0.0",
+            port=port,
+            log_level="trace",
+            access_log=True,
+            use_colors=True,
+            reload=True,
+            reload_dirs=[src_dir],
+        )
     except KeyboardInterrupt:
         print("\n\n服务器已停止")

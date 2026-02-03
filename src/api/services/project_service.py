@@ -216,6 +216,90 @@ class ProjectService:
         # Build and return tree
         return self._build_tree_node(root_path, target_path, relative_path)
 
+    async def create_file(
+        self,
+        project_id: str,
+        relative_path: str,
+        content: str = "",
+        encoding: str = "utf-8"
+    ) -> FileContent:
+        """Create a new file in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+            content: Initial file content
+            encoding: File encoding (default: utf-8)
+
+        Returns:
+            FileContent with created file data
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be created
+        """
+        # Get project
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        # Get root path
+        root_path = Path(project.root_path)
+
+        # Validate path
+        if not relative_path or relative_path == ".":
+            raise ValueError("File path is required")
+
+        target_path = root_path / relative_path
+
+        # Security check: prevent path traversal
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        # Check if file already exists
+        if target_path.exists():
+            raise ValueError(f"File already exists: {relative_path}")
+
+        # Ensure parent directory exists
+        if not target_path.parent.exists() or not target_path.parent.is_dir():
+            parent_relative = (
+                str(target_path.parent.relative_to(root_path))
+                if target_path.parent.is_relative_to(root_path)
+                else str(target_path.parent)
+            )
+            raise ValueError(f"Parent directory does not exist: {parent_relative}")
+
+        # Check content size
+        content_bytes = content.encode(encoding)
+        content_size = len(content_bytes)
+        max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        if content_size > max_size_bytes:
+            raise ValueError(
+                f"Content size ({content_size} bytes) exceeds limit "
+                f"({settings.max_file_read_size_mb}MB)"
+            )
+
+        # Create file (fail if exists)
+        try:
+            with target_path.open("x", encoding=encoding) as f:
+                f.write(content)
+        except FileExistsError:
+            raise ValueError(f"File already exists: {relative_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to create file: {e}")
+
+        # Get file info and return
+        file_size = target_path.stat().st_size
+        file_ext = target_path.suffix.lower()
+        mime_type = self._get_mime_type(file_ext)
+
+        return FileContent(
+            path=relative_path,
+            content=content,
+            encoding=encoding,
+            size=file_size,
+            mime_type=mime_type
+        )
+
     def _build_tree_node(self, root_path: Path, current_path: Path, relative_path: str) -> FileNode:
         """Recursively build a file tree node.
 
@@ -296,11 +380,6 @@ class ProjectService:
         if not target_path.is_file():
             raise ValueError(f"Path is not a file: {relative_path}")
 
-        # Check file extension
-        file_ext = target_path.suffix.lower()
-        if file_ext not in settings.allowed_file_extensions:
-            raise ValueError(f"File extension not allowed: {file_ext}")
-
         # Check file size
         file_size = target_path.stat().st_size
         max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
@@ -319,6 +398,7 @@ class ProjectService:
             content = target_path.read_text(encoding=encoding, errors='replace')
 
         # Determine MIME type (basic implementation)
+        file_ext = target_path.suffix.lower()
         mime_type = self._get_mime_type(file_ext)
 
         return FileContent(
@@ -476,11 +556,6 @@ class ProjectService:
         if not self._is_safe_path(root_path, target_path):
             raise ValueError(f"Invalid path: {relative_path}")
 
-        # Check file extension
-        file_ext = target_path.suffix.lower()
-        if file_ext not in settings.allowed_file_extensions:
-            raise ValueError(f"File extension not allowed: {file_ext}")
-
         # Check content size
         content_bytes = content.encode(encoding)
         content_size = len(content_bytes)
@@ -508,6 +583,7 @@ class ProjectService:
 
         # Get file info and return
         file_size = target_path.stat().st_size
+        file_ext = target_path.suffix.lower()
         mime_type = self._get_mime_type(file_ext)
 
         return FileContent(
