@@ -37,7 +37,9 @@ export const ProjectExplorer: React.FC = () => {
     getProjectSession,
     setProjectSession,
     chatSidebarOpen,
-    toggleChatSidebar
+    toggleChatSidebar,
+    fileTreeOpen,
+    toggleFileTree
   } = useProjectWorkspaceStore();
 
   // Get current file path for this project
@@ -207,21 +209,23 @@ export const ProjectExplorer: React.FC = () => {
         <ProjectEditorContext.Provider value={editorContextValue}>
           <div data-name="project-explorer-root" className="flex flex-1 overflow-hidden min-w-0">
             {/* Left: File Tree */}
-            <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <ProjectSelector
-                projects={projects}
-                currentProject={currentProject}
-                onManageClick={onManageClick}
-              />
-              <div className="flex-1 overflow-hidden">
-                <FileTree
-                  tree={tree}
-                  selectedPath={selectedFilePath}
-                  onFileSelect={handleFileSelect}
-                  onCreateFile={handleCreateFile}
+            {fileTreeOpen && (
+              <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+                <ProjectSelector
+                  projects={projects}
+                  currentProject={currentProject}
+                  onManageClick={onManageClick}
                 />
+                <div className="flex-1 overflow-hidden">
+                  <FileTree
+                    tree={tree}
+                    selectedPath={selectedFilePath}
+                    onFileSelect={handleFileSelect}
+                    onCreateFile={handleCreateFile}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Center: File Viewer */}
             <div data-name="file-viewer-panel" className="flex-1 min-w-0 flex flex-col">
@@ -232,7 +236,9 @@ export const ProjectExplorer: React.FC = () => {
                 loading={contentLoading}
                 error={contentError}
                 chatSidebarOpen={chatSidebarOpen}
+                fileTreeOpen={fileTreeOpen}
                 onToggleChatSidebar={toggleChatSidebar}
+                onToggleFileTree={toggleFileTree}
                 onEditorReady={setEditorActions}
               />
             </div>

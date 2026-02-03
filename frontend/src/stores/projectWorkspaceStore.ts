@@ -21,6 +21,8 @@ interface ProjectWorkspaceState {
 
   // Chat sidebar visibility state
   chatSidebarOpen: boolean;
+  // File tree visibility state
+  fileTreeOpen: boolean;
 
   // Actions to update workspace state
   setCurrentProject: (projectId: string | null) => void;
@@ -30,6 +32,8 @@ interface ProjectWorkspaceState {
   getProjectSession: (projectId: string) => string | null;
   toggleChatSidebar: () => void;
   setChatSidebarOpen: (open: boolean) => void;
+  toggleFileTree: () => void;
+  setFileTreeOpen: (open: boolean) => void;
   clearWorkspace: () => void;
 }
 
@@ -40,6 +44,7 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
       projectFileMap: {},
       projectSessionMap: {},
       chatSidebarOpen: false,
+      fileTreeOpen: true,
 
       setCurrentProject: (projectId) => set({
         currentProjectId: projectId
@@ -85,11 +90,20 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
         chatSidebarOpen: open
       }),
 
+      toggleFileTree: () => set((state) => ({
+        fileTreeOpen: !state.fileTreeOpen
+      })),
+
+      setFileTreeOpen: (open) => set({
+        fileTreeOpen: open
+      }),
+
       clearWorkspace: () => set({
         currentProjectId: null,
         projectFileMap: {},
         projectSessionMap: {},
-        chatSidebarOpen: false
+        chatSidebarOpen: false,
+        fileTreeOpen: true
       }),
     }),
     {
@@ -103,6 +117,7 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
             projectFileMap: {},
             projectSessionMap: {},
             chatSidebarOpen: false,
+            fileTreeOpen: true,
           };
         }
         return persistedState;

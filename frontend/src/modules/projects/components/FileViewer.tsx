@@ -14,6 +14,7 @@ import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { openSearchPanel, search } from '@codemirror/search';
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
 import type { FileContent } from '../../../types/project';
 import { Breadcrumb } from './Breadcrumb';
 import { writeFile } from '../../../services/api';
@@ -30,7 +31,9 @@ interface FileViewerProps {
   error: string | null;
   onContentSaved?: () => void;
   chatSidebarOpen: boolean;
+  fileTreeOpen: boolean;
   onToggleChatSidebar: () => void;
+  onToggleFileTree: () => void;
   onEditorReady?: (actions: { insertContent: (text: string) => void }) => void;
 }
 
@@ -102,7 +105,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   error,
   onContentSaved,
   chatSidebarOpen,
+  fileTreeOpen,
   onToggleChatSidebar,
+  onToggleFileTree,
   onEditorReady,
 }) => {
   const [value, setValue] = useState<string>('');
@@ -494,6 +499,38 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     ? 'Inserting to chat...'
     : 'Insert selection or file to chat';
 
+  const renderBreadcrumbBar = (filePath?: string) => (
+    <div data-name="file-viewer-breadcrumb-bar" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
+      <div data-name="file-viewer-breadcrumb-row" className="flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          title={fileTreeOpen ? 'Hide file tree' : 'Show file tree'}
+          aria-pressed={fileTreeOpen}
+          onClick={onToggleFileTree}
+          data-name="file-tree-toggle"
+          className={`p-1.5 rounded ${
+            fileTreeOpen
+              ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+              : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          {fileTreeOpen ? (
+            <ChevronDoubleLeftIcon className="h-4 w-4" />
+          ) : (
+            <ChevronDoubleRightIcon className="h-4 w-4" />
+          )}
+        </button>
+        {filePath ? (
+          <Breadcrumb projectName={projectName} filePath={filePath} />
+        ) : (
+          <div data-name="file-viewer-breadcrumb-placeholder" className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+            {projectName}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
@@ -512,8 +549,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   if (!content) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-white dark:bg-gray-900">
-        <p className="text-gray-500 dark:text-gray-400 mb-2">Select a file to view</p>
+      <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">
+        {renderBreadcrumbBar()}
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <p className="text-gray-500 dark:text-gray-400 mb-2">Select a file to view</p>
+        </div>
       </div>
     );
   }
@@ -521,9 +561,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">
       {/* Breadcrumb */}
-      <div className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
-        <Breadcrumb projectName={projectName} filePath={content.path} />
-      </div>
+      {renderBreadcrumbBar(content.path)}
 
       {/* Toolbar */}
       <EditorToolbar
