@@ -11,6 +11,7 @@ from .conversation_storage import ConversationStorage
 from .pricing_service import PricingService
 from .file_service import FileService
 from .search_service import SearchService
+from .webpage_service import WebpageService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class AgentService:
         self.pricing_service = PricingService()
         self.file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
         self.search_service = SearchService()
+        self.webpage_service = WebpageService()
         logger.info("AgentService initialized (simplified version)")
 
     async def process_message(
@@ -63,6 +65,16 @@ class AgentService:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
+        raw_user_message = user_message
+        webpage_context = None
+        webpage_sources: List[Dict[str, Any]] = []
+        try:
+            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
+            if webpage_source_models:
+                webpage_sources = [s.model_dump() for s in webpage_source_models]
+        except Exception as e:
+            logger.warning(f"Webpage parsing failed: {e}")
+
         print(f"📝 [步骤 1] 保存用户消息到文件...")
         logger.info(f"📝 [步骤 1] 保存用户消息")
         await self.storage.append_message(session_id, "user", user_message, context_type=context_type, project_id=project_id)
@@ -87,11 +99,15 @@ class AgentService:
             except Exception as e:
                 logger.warning(f"Failed to load assistant config: {e}, using defaults")
 
+        # Optional web page parsing context
+        if webpage_context:
+            system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
+
         # Optional web search
         search_sources: List[Dict[str, Any]] = []
         search_context = None
         if use_web_search:
-            query = (search_query or user_message).strip()
+            query = (search_query or raw_user_message).strip()
             if len(query) > 200:
                 query = query[:200]
             try:
@@ -123,17 +139,23 @@ class AgentService:
 
         print(f"📝 [步骤 4] 保存 AI 回复到文件...")
         logger.info(f"📝 [步骤 4] 保存 AI 回复")
+        all_sources: List[Dict[str, Any]] = []
+        if webpage_sources:
+            all_sources.extend(webpage_sources)
+        if search_sources:
+            all_sources.extend(search_sources)
+
         await self.storage.append_message(
             session_id,
             "assistant",
             assistant_message,
-            sources=search_sources if search_sources else None,
+            sources=all_sources if all_sources else None,
             context_type=context_type,
             project_id=project_id
         )
         print(f"✅ AI 回复已保存")
 
-        return assistant_message, search_sources
+        return assistant_message, all_sources
 
     async def process_message_stream(
         self,
@@ -166,6 +188,16 @@ class AgentService:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
+        raw_user_message = user_message
+        webpage_context = None
+        webpage_sources: List[Dict[str, Any]] = []
+        try:
+            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
+            if webpage_source_models:
+                webpage_sources = [s.model_dump() for s in webpage_source_models]
+        except Exception as e:
+            logger.warning(f"Webpage parsing failed: {e}")
+
         # Process attachments
         attachment_metadata = []
         full_message_content = user_message
@@ -267,11 +299,15 @@ class AgentService:
             except Exception as e:
                 logger.warning(f"   Failed to load assistant config: {e}, using defaults")
 
+        # Optional web page parsing context
+        if webpage_context:
+            system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
+
         # Optional web search
         search_sources: List[Dict[str, Any]] = []
         search_context = None
         if use_web_search:
-            query = (search_query or user_message).strip()
+            query = (search_query or raw_user_message).strip()
             if len(query) > 200:
                 query = query[:200]
             try:
@@ -279,15 +315,22 @@ class AgentService:
                 search_sources = [s.model_dump() for s in sources]
                 if sources:
                     search_context = self.search_service.build_search_context(query, sources)
-                    yield {
-                        "type": "sources",
-                        "sources": search_sources
-                    }
             except Exception as e:
                 logger.warning(f"Web search failed: {e}")
 
         if search_context:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
+
+        all_sources: List[Dict[str, Any]] = []
+        if webpage_sources:
+            all_sources.extend(webpage_sources)
+        if search_sources:
+            all_sources.extend(search_sources)
+        if all_sources:
+            yield {
+                "type": "sources",
+                "sources": all_sources
+            }
 
         print(f"[Step 3] Streaming LLM call...")
         logger.info(f"[Step 3] Streaming LLM call")
@@ -345,7 +388,7 @@ class AgentService:
         assistant_message_id = await self.storage.append_message(
             session_id, "assistant", full_response,
             usage=usage_data, cost=cost_data,
-            sources=search_sources if search_sources else None,
+            sources=all_sources if all_sources else None,
             context_type=context_type,
             project_id=project_id
         )
