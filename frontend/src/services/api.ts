@@ -719,6 +719,35 @@ export async function listProtocols(): Promise<ProtocolInfo[]> {
   return response.data;
 }
 
+// ==================== Search Config API ====================
+
+export interface SearchConfig {
+  provider: string;
+  max_results: number;
+  timeout_seconds: number;
+}
+
+export interface SearchConfigUpdate {
+  provider?: string;
+  max_results?: number;
+  timeout_seconds?: number;
+}
+
+/**
+ * Get search configuration
+ */
+export async function getSearchConfig(): Promise<SearchConfig> {
+  const response = await api.get<SearchConfig>('/api/search/config');
+  return response.data;
+}
+
+/**
+ * Update search configuration
+ */
+export async function updateSearchConfig(updates: SearchConfigUpdate): Promise<void> {
+  await api.put('/api/search/config', updates);
+}
+
 // ==================== Title Generation API ====================
 
 export interface TitleGenerationConfig {

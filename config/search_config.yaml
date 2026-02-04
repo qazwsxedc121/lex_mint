@@ -1,4 +1,4 @@
 search:
-  provider: tavily
+  provider: duckduckgo
   max_results: 6
   timeout_seconds: 10
