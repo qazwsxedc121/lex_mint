@@ -11,6 +11,7 @@ import json
 from ..services.agent_service_simple import AgentService
 from ..services.conversation_storage import ConversationStorage
 from ..services.file_service import FileService
+from ..models.search import SearchSource
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -35,12 +36,15 @@ class ChatRequest(BaseModel):
     reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
     context_type: str = "chat"  # Context type: "chat" or "project"
     project_id: Optional[str] = None  # Project ID (required when context_type="project")
+    use_web_search: bool = False  # Whether to use web search for this message
+    search_query: Optional[str] = None  # Optional explicit search query
 
 
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
     session_id: str
     response: str
+    sources: Optional[List[SearchSource]] = None
 
 
 class DeleteMessageRequest(BaseModel):
@@ -116,11 +120,13 @@ async def chat(
         print("🤖 开始处理消息...")
         logger.info("🤖 开始处理消息...")
 
-        response = await agent.process_message(
+        response, sources = await agent.process_message(
             request.session_id,
             request.message,
             context_type=request.context_type,
-            project_id=request.project_id
+            project_id=request.project_id,
+            use_web_search=request.use_web_search,
+            search_query=request.search_query
         )
 
         print("=" * 80)
@@ -133,7 +139,7 @@ async def chat(
         logger.info(f"   AI 回复: {response[:100]}{'...' if len(response) > 100 else ''}")
         logger.info("=" * 80)
 
-        return ChatResponse(session_id=request.session_id, response=response)
+        return ChatResponse(session_id=request.session_id, response=response, sources=sources or None)
     except FileNotFoundError as e:
         print(f"❌ 会话未找到: {request.session_id}")
         logger.error(f"❌ 会话未找到: {request.session_id}")
@@ -207,7 +213,9 @@ async def chat_stream(
                 reasoning_effort=request.reasoning_effort,
                 attachments=request.attachments,
                 context_type=request.context_type,
-                project_id=request.project_id
+                project_id=request.project_id,
+                use_web_search=request.use_web_search,
+                search_query=request.search_query
             ):
                 # Check if chunk is a dict event (usage, user_message_id, assistant_message_id)
                 if isinstance(chunk, dict):

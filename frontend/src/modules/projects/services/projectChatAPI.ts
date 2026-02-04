@@ -58,9 +58,11 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       abortControllerRef?,
       reasoningEffort?,
       onUsage?,
+      onSources?,
       attachments?,
       onUserMessageId?,
-      onAssistantMessageId?
+      onAssistantMessageId?,
+      useWebSearch?
     ) => {
       return api.sendMessageStream(
         sessionId,
@@ -73,9 +75,11 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         abortControllerRef,
         reasoningEffort,
         onUsage,
+        onSources,
         attachments,
         onUserMessageId,
         onAssistantMessageId,
+        useWebSearch,
         contextType,
         projectId
       );

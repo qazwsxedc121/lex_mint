@@ -205,6 +205,7 @@ class ConversationStorage:
         attachments: Optional[List[Dict]] = None,
         usage: Optional[TokenUsage] = None,
         cost: Optional[CostInfo] = None,
+        sources: Optional[List[Dict]] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None
     ) -> str:
@@ -263,6 +264,10 @@ class ConversationStorage:
             new_message += f"\n<!-- usage: {json.dumps(usage.model_dump())} -->\n"
             if cost:
                 new_message += f"<!-- cost: {json.dumps(cost.model_dump())} -->\n"
+
+        # Add web search sources as HTML comments (for assistant messages)
+        if role == "assistant" and sources:
+            new_message += f"<!-- sources: {json.dumps(sources, ensure_ascii=False)} -->\n"
 
         post.content += new_message
 
@@ -887,6 +892,7 @@ class ConversationStorage:
                 cost_match = re.match(r'^<!-- cost: (.+) -->$', line.strip())
                 attachment_match = re.match(r'^<!-- attachment: (.+) -->$', line.strip())
                 message_id_match = re.match(r'^<!-- message_id: "(.+)" -->$', line.strip())
+                sources_match = re.match(r'^<!-- sources: (.+) -->$', line.strip())
 
                 if usage_match:
                     try:
@@ -909,6 +915,11 @@ class ConversationStorage:
                         pass
                 elif message_id_match:
                     current_message["message_id"] = message_id_match.group(1)
+                elif sources_match:
+                    try:
+                        current_message["sources"] = json.loads(sources_match.group(1))
+                    except json.JSONDecodeError:
+                        pass
                 else:
                     # Append line to current message content
                     # Skip empty lines at the start

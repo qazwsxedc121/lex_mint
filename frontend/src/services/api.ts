@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile } from '../types/message';
+import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
@@ -183,7 +183,8 @@ export async function sendMessage(
   sessionId: string,
   message: string,
   contextType: string = 'chat',
-  projectId?: string
+  projectId?: string,
+  useWebSearch?: boolean
 ): Promise<string> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
@@ -194,6 +195,7 @@ export async function sendMessage(
   const response = await api.post<ChatResponse>(`/api/chat?${params.toString()}`, {
     session_id: sessionId,
     message,
+    use_web_search: useWebSearch || false,
   } as ChatRequest);
   return response.data.response;
 }
@@ -227,9 +229,11 @@ export async function sendMessageStream(
   abortControllerRef?: MutableRefObject<AbortController | null>,
   reasoningEffort?: string,
   onUsage?: (usage: TokenUsage, cost?: CostInfo) => void,
+  onSources?: (sources: SearchSource[]) => void,
   attachments?: UploadedFile[],
   onUserMessageId?: (messageId: string) => void,
   onAssistantMessageId?: (messageId: string) => void,
+  useWebSearch?: boolean,
   contextType: string = 'chat',
   projectId?: string
 ): Promise<void> {
@@ -251,6 +255,10 @@ export async function sendMessageStream(
 
     if (projectId) {
       requestBody.project_id = projectId;
+    }
+
+    if (useWebSearch) {
+      requestBody.use_web_search = true;
     }
 
     if (attachments && attachments.length > 0) {
@@ -311,6 +319,12 @@ export async function sendMessageStream(
               // Handle usage/cost event
               if (data.type === 'usage' && data.usage && onUsage) {
                 onUsage(data.usage, data.cost);
+                continue;
+              }
+
+              // Handle sources event
+              if (data.type === 'sources' && data.sources && onSources) {
+                onSources(data.sources);
                 continue;
               }
 

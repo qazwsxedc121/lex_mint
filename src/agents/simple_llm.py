@@ -87,7 +87,8 @@ async def convert_to_langchain_messages(
 def call_llm(
     messages: List[Dict[str, str]],
     session_id: str = "unknown",
-    model_id: Optional[str] = None
+    model_id: Optional[str] = None,
+    system_prompt: Optional[str] = None
 ) -> str:
     """
     Direct LLM call without LangGraph.
@@ -115,6 +116,8 @@ def call_llm(
 
     # Convert message format
     langchain_messages = []
+    if system_prompt:
+        langchain_messages.append(SystemMessage(content=system_prompt))
     for i, msg in enumerate(messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))

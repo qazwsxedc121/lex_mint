@@ -7,6 +7,7 @@ import type {
   SessionDetail,
   TokenUsage,
   CostInfo,
+  SearchSource,
   UploadedFile
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
@@ -39,9 +40,11 @@ export interface ChatAPI {
     abortControllerRef?: MutableRefObject<AbortController | null>,
     reasoningEffort?: string,
     onUsage?: (usage: TokenUsage, cost?: CostInfo) => void,
+    onSources?: (sources: SearchSource[]) => void,
     attachments?: UploadedFile[],
     onUserMessageId?: (messageId: string) => void,
-    onAssistantMessageId?: (messageId: string) => void
+    onAssistantMessageId?: (messageId: string) => void,
+    useWebSearch?: boolean
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   insertSeparator(sessionId: string): Promise<string>;

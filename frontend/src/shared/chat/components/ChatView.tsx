@@ -82,7 +82,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     }
   };
 
-  const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => {
+  const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
     sendMessage(message, options);
   };
 

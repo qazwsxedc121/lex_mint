@@ -56,7 +56,7 @@ export function useChat(sessionId: string | null) {
     loadSession();
   }, [sessionId]);
 
-  const sendMessage = async (content: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => {
+  const sendMessage = async (content: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
@@ -140,6 +140,16 @@ export function useChat(sessionId: string | null) {
             } : cost);
           }
         },
+        (sources) => {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
+            }
+            return newMessages;
+          });
+        },
         options?.attachments,
         (userMessageId: string) => {
           // Backend returned user message ID, update the user message
@@ -166,7 +176,8 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
-        }
+        },
+        options?.useWebSearch
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
@@ -262,6 +273,7 @@ export function useChat(sessionId: string | null) {
           });
         },
         undefined,
+        undefined,
         (userMessageId: string) => {
           // Backend returned user message ID
           setMessages(prev => {
@@ -287,7 +299,8 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
-        }
+        },
+        undefined
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to edit message');
@@ -398,6 +411,7 @@ export function useChat(sessionId: string | null) {
           });
         },
         undefined,
+        undefined,
         (userMessageId: string) => {
           // Backend returned user message ID
           setMessages(prev => {
@@ -423,7 +437,8 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
-        }
+        },
+        undefined
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate message');

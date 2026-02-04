@@ -22,6 +22,13 @@ export interface FileAttachment {
   mime_type: string;
 }
 
+export interface SearchSource {
+  title: string;
+  url: string;
+  snippet?: string;
+  score?: number;
+}
+
 export interface UploadedFile {
   filename: string;
   size: number;
@@ -36,6 +43,7 @@ export interface Message {
   attachments?: FileAttachment[];
   usage?: TokenUsage;
   cost?: CostInfo;
+  sources?: SearchSource[];
 }
 
 export interface Session {
@@ -62,9 +70,12 @@ export interface SessionDetail {
 export interface ChatRequest {
   session_id: string;
   message: string;
+  use_web_search?: boolean;
+  search_query?: string;
 }
 
 export interface ChatResponse {
   session_id: string;
   response: string;
+  sources?: SearchSource[];
 }

@@ -208,6 +208,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   );
 
   const displayUserMessage = userBlocks.length > 0 ? userMessage : message.content;
+  const sources = message.sources || [];
 
   useEffect(() => {
     setExpandedUserBlocks({});
@@ -513,6 +514,36 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </>
               ) : (
                 <div className="prose prose-sm max-w-none dark:prose-invert">
+                  {sources.length > 0 && (
+                    <div data-name="message-bubble-sources" className="not-prose mb-3 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+                      <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                        <span>Sources</span>
+                        <span>{sources.length}</span>
+                      </div>
+                      <div className="px-3 pb-2 space-y-2">
+                        {sources.map((source, index) => (
+                          <div key={`${source.url}-${index}`} className="text-xs">
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                            >
+                              {source.title || source.url}
+                            </a>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
+                              {source.url}
+                            </div>
+                            {source.snippet && (
+                              <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                                {source.snippet}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {/* Thinking block (collapsible, auto-expand during streaming) */}
                   {thinking && (
                     <div className="mb-3 border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden">

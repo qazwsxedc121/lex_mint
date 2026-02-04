@@ -1,0 +1,4 @@
+search:
+  provider: tavily
+  max_results: 6
+  timeout_seconds: 10

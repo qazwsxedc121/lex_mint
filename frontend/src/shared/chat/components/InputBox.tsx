@@ -6,6 +6,7 @@ import React, { useState, useRef, useCallback, useEffect, type KeyboardEvent } f
 import {
   ChevronDownIcon,
   LightBulbIcon,
+  GlobeAltIcon,
   PaperClipIcon,
   XMarkIcon,
   DocumentTextIcon,
@@ -52,7 +53,7 @@ const createBlockId = () => {
 };
 
 interface InputBoxProps {
-  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[] }) => void;
+  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
   onClearAllMessages?: () => void;
@@ -84,6 +85,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [input, setInput] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState('');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
+  const [useWebSearch, setUseWebSearch] = useState(false);
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -334,6 +336,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       onSend(message, {
         reasoningEffort: reasoningEffort || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
+        useWebSearch,
       });
       setInput('');
       setAttachments([]);
@@ -464,6 +467,23 @@ export const InputBox: React.FC<InputBoxProps> = ({
             )}
           </div>
         )}
+
+        {/* Web search toggle */}
+        <button
+          type="button"
+          onClick={() => setUseWebSearch(prev => !prev)}
+          disabled={disabled || isStreaming}
+          data-name="input-box-web-search-toggle"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            useWebSearch
+              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+              : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+          }`}
+          title={useWebSearch ? 'Web search enabled' : 'Enable web search'}
+        >
+          <GlobeAltIcon className="h-4 w-4" />
+          <span className="font-medium">Search</span>
+        </button>
 
         {/* File upload button */}
         <button

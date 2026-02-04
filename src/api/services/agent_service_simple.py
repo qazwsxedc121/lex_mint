@@ -10,6 +10,7 @@ from src.providers.types import TokenUsage, CostInfo
 from .conversation_storage import ConversationStorage
 from .pricing_service import PricingService
 from .file_service import FileService
+from .search_service import SearchService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,18 @@ class AgentService:
         self.storage = storage
         self.pricing_service = PricingService()
         self.file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
+        self.search_service = SearchService()
         logger.info("AgentService initialized (simplified version)")
 
-    async def process_message(self, session_id: str, user_message: str, context_type: str = "chat", project_id: Optional[str] = None) -> str:
+    async def process_message(
+        self,
+        session_id: str,
+        user_message: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None
+    ) -> tuple[str, List[Dict[str, Any]]]:
         """Process a user message and return AI response.
 
         Args:
@@ -63,13 +73,49 @@ class AgentService:
         session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
         messages = session["state"]["messages"]
         model_id = session.get("model_id")  # 获取会话的模型 ID
+        assistant_id = session.get("assistant_id")
+
+        # Get assistant config (system prompt)
+        system_prompt = None
+        if assistant_id and not assistant_id.startswith("__legacy_model_"):
+            from .assistant_config_service import AssistantConfigService
+            assistant_service = AssistantConfigService()
+            try:
+                assistant = await assistant_service.get_assistant(assistant_id)
+                if assistant and assistant.system_prompt:
+                    system_prompt = assistant.system_prompt
+            except Exception as e:
+                logger.warning(f"Failed to load assistant config: {e}, using defaults")
+
+        # Optional web search
+        search_sources: List[Dict[str, Any]] = []
+        search_context = None
+        if use_web_search:
+            query = (search_query or user_message).strip()
+            if len(query) > 200:
+                query = query[:200]
+            try:
+                sources = await self.search_service.search(query)
+                search_sources = [s.model_dump() for s in sources]
+                if sources:
+                    search_context = self.search_service.build_search_context(query, sources)
+            except Exception as e:
+                logger.warning(f"Web search failed: {e}")
+
+        if search_context:
+            system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
         print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息，模型: {model_id}")
 
         print(f"🧠 [步骤 3] 调用 LLM...")
         logger.info(f"🧠 [步骤 3] 调用 LLM")
 
         # 直接调用 LLM（只调用一次！），传递 model_id
-        assistant_message = call_llm(messages, session_id=session_id, model_id=model_id)
+        assistant_message = call_llm(
+            messages,
+            session_id=session_id,
+            model_id=model_id,
+            system_prompt=system_prompt
+        )
 
         print(f"✅ LLM 处理完成")
         logger.info(f"✅ LLM 处理完成")
@@ -77,10 +123,17 @@ class AgentService:
 
         print(f"📝 [步骤 4] 保存 AI 回复到文件...")
         logger.info(f"📝 [步骤 4] 保存 AI 回复")
-        await self.storage.append_message(session_id, "assistant", assistant_message, context_type=context_type, project_id=project_id)
+        await self.storage.append_message(
+            session_id,
+            "assistant",
+            assistant_message,
+            sources=search_sources if search_sources else None,
+            context_type=context_type,
+            project_id=project_id
+        )
         print(f"✅ AI 回复已保存")
 
-        return assistant_message
+        return assistant_message, search_sources
 
     async def process_message_stream(
         self,
@@ -90,7 +143,9 @@ class AgentService:
         reasoning_effort: str = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None
     ) -> AsyncIterator[Any]:
         """Stream process user message and return AI response stream.
 
@@ -212,6 +267,28 @@ class AgentService:
             except Exception as e:
                 logger.warning(f"   Failed to load assistant config: {e}, using defaults")
 
+        # Optional web search
+        search_sources: List[Dict[str, Any]] = []
+        search_context = None
+        if use_web_search:
+            query = (search_query or user_message).strip()
+            if len(query) > 200:
+                query = query[:200]
+            try:
+                sources = await self.search_service.search(query)
+                search_sources = [s.model_dump() for s in sources]
+                if sources:
+                    search_context = self.search_service.build_search_context(query, sources)
+                    yield {
+                        "type": "sources",
+                        "sources": search_sources
+                    }
+            except Exception as e:
+                logger.warning(f"Web search failed: {e}")
+
+        if search_context:
+            system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
+
         print(f"[Step 3] Streaming LLM call...")
         logger.info(f"[Step 3] Streaming LLM call")
 
@@ -268,6 +345,7 @@ class AgentService:
         assistant_message_id = await self.storage.append_message(
             session_id, "assistant", full_response,
             usage=usage_data, cost=cost_data,
+            sources=search_sources if search_sources else None,
             context_type=context_type,
             project_id=project_id
         )
