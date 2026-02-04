@@ -37,3 +37,16 @@ export interface FileContent {
   size: number;
   mime_type: string;
 }
+
+export interface FileRenameRequest {
+  source_path: string;
+  target_path: string;
+}
+
+export interface FileRenameResult {
+  old_path: string;
+  new_path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  modified_at?: string;
+}

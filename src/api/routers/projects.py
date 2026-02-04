@@ -14,6 +14,8 @@ from ..models.project_config import (
     FileContent,
     FileCreate,
     FileWrite,
+    FileRename,
+    FileRenameResult,
     DirectoryCreate
 )
 from ..config import settings
@@ -330,6 +332,39 @@ async def write_file(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error writing file to {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{project_id}/paths/rename", response_model=FileRenameResult)
+async def rename_path(
+    project_id: str,
+    rename_data: FileRename
+):
+    """Rename or move a file or directory within a project.
+
+    Args:
+        project_id: Project ID
+        rename_data: Rename request data (source_path, target_path)
+
+    Returns:
+        Rename result metadata
+
+    Raises:
+        HTTPException: If project not found, paths invalid, or rename fails
+    """
+    try:
+        service = get_project_service()
+        result = await service.rename_path(
+            project_id,
+            rename_data.source_path,
+            rename_data.target_path
+        )
+        return result
+    except ValueError as e:
+        logger.error(f"Validation error renaming path: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error renaming path in {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

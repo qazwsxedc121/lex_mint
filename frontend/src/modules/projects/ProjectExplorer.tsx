@@ -16,7 +16,7 @@ import type { Project } from '../../types/project';
 import { ChatComposerProvider, ChatServiceProvider } from '../../shared/chat';
 import type { ChatNavigation } from '../../shared/chat';
 import { createProjectChatAPI } from './services/projectChatAPI';
-import { createFile, createFolder, deleteFile, deleteFolder, readFile } from '../../services/api';
+import { createFile, createFolder, deleteFile, deleteFolder, readFile, renameProjectPath } from '../../services/api';
 
 interface ProjectsOutletContext {
   projects: Project[];
@@ -162,6 +162,31 @@ export const ProjectExplorer: React.FC = () => {
     }
   }, [projectId, refreshTree, selectedFilePath, setCurrentFile, setSelectedFilePath]);
 
+  const handleRenamePath = useCallback(async (sourcePath: string, targetPath: string) => {
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
+    const normalizedSource = sourcePath.replace(/\\/g, '/');
+    const normalizedTarget = targetPath.replace(/\\/g, '/');
+    const result = await renameProjectPath(projectId, normalizedSource, normalizedTarget);
+    const newPath = result.new_path || normalizedTarget;
+    await refreshTree();
+
+    if (selectedFilePath) {
+      const normalizedSelected = selectedFilePath.replace(/\\/g, '/');
+      if (normalizedSelected === normalizedSource) {
+        setSelectedFilePath(newPath);
+        setCurrentFile(projectId, newPath);
+      } else if (normalizedSelected.startsWith(`${normalizedSource}/`)) {
+        const updatedPath = `${newPath}${normalizedSelected.slice(normalizedSource.length)}`;
+        setSelectedFilePath(updatedPath);
+        setCurrentFile(projectId, updatedPath);
+      }
+    }
+
+    return newPath;
+  }, [projectId, refreshTree, selectedFilePath, setCurrentFile, setSelectedFilePath]);
+
   // Create context value for editor actions
   const editorContextValue = useMemo(() => ({
     insertToEditor: (content: string) => {
@@ -275,6 +300,7 @@ export const ProjectExplorer: React.FC = () => {
                   onDuplicateFile={handleDuplicateFile}
                   onDeleteFile={handleDeleteFile}
                   onDeleteFolder={handleDeleteFolder}
+                  onRenamePath={handleRenamePath}
                 />
               </div>
             </div>

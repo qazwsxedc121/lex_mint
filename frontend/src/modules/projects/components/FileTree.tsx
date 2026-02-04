@@ -4,10 +4,10 @@
 
 import React, { Fragment, useEffect, useRef, useState } from 'react';
 import { Menu, Transition } from '@headlessui/react';
-import { FolderIcon, FolderOpenIcon, DocumentIcon, ChevronRightIcon, ChevronDownIcon, EllipsisVerticalIcon, TrashIcon, Square2StackIcon } from '@heroicons/react/24/outline';
+import { FolderIcon, FolderOpenIcon, DocumentIcon, ChevronRightIcon, ChevronDownIcon, EllipsisVerticalIcon, TrashIcon, Square2StackIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import type { FileNode } from '../../../types/project';
 
-type FileTreeMenuAction = 'new-file' | 'new-folder' | 'delete-folder' | 'duplicate-file' | 'delete-file';
+type FileTreeMenuAction = 'new-file' | 'new-folder' | 'delete-folder' | 'duplicate-file' | 'delete-file' | 'rename-path';
 type FileTreeCreateKind = 'file' | 'folder';
 
 interface FileTreeProps {
@@ -19,6 +19,7 @@ interface FileTreeProps {
   onDuplicateFile?: (filePath: string, newFileName: string) => Promise<string>;
   onDeleteFile?: (filePath: string) => Promise<void>;
   onDeleteFolder?: (directoryPath: string) => Promise<void>;
+  onRenamePath?: (sourcePath: string, targetPath: string) => Promise<string>;
   level?: number;
 }
 
@@ -27,12 +28,13 @@ interface FileTreeItemProps {
   selectedPath: string | null;
   onFileSelect: (path: string) => void;
   level: number;
-  onMenuAction?: (action: FileTreeMenuAction, directoryPath: string, directoryName: string) => void;
+  onMenuAction?: (action: FileTreeMenuAction, directoryPath: string, directoryName: string, nodeType: 'file' | 'directory') => void;
   allowCreateFile: boolean;
   allowCreateFolder: boolean;
   allowDuplicateFile: boolean;
   allowDeleteFile: boolean;
   allowDeleteFolder: boolean;
+  allowRename: boolean;
 }
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({
@@ -46,14 +48,16 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
   allowDuplicateFile,
   allowDeleteFile,
   allowDeleteFolder,
+  allowRename,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const isDirectory = tree.type === 'directory';
   const isSelected = selectedPath === tree.path;
   const showMenu = isDirectory
-    ? (allowCreateFile || allowCreateFolder || allowDeleteFolder)
-    : (allowDuplicateFile || allowDeleteFile);
+    ? (allowCreateFile || allowCreateFolder || allowDeleteFolder || allowRename)
+    : (allowDuplicateFile || allowDeleteFile || allowRename);
   const canDeleteFolder = allowDeleteFolder && tree.path !== '';
+  const canRename = allowRename && tree.path !== '';
 
   const handleClick = () => {
     if (isDirectory) {
@@ -68,7 +72,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
     if ((action === 'new-file' || action === 'new-folder') && isDirectory && !isExpanded) {
       setIsExpanded(true);
     }
-    onMenuAction?.(action, tree.path, tree.name);
+    onMenuAction?.(action, tree.path, tree.name, tree.type);
   };
 
   return (
@@ -162,6 +166,27 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                       )}
                     </Menu.Item>
                   )}
+                  {allowRename && (
+                    <Menu.Item disabled={!canRename}>
+                      {({ active, disabled }) => (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={disabled ? undefined : (event) => handleMenuAction(event, 'rename-path')}
+                          className={`flex w-full items-center px-3 py-2 text-sm ${
+                            disabled
+                              ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                              : active
+                              ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                              : 'text-gray-700 dark:text-gray-200'
+                          }`}
+                        >
+                          <PencilSquareIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                          Rename
+                        </button>
+                      )}
+                    </Menu.Item>
+                  )}
                   {isDirectory && allowDeleteFolder && (
                     <Menu.Item disabled={!canDeleteFolder}>
                       {({ active, disabled }) => (
@@ -245,6 +270,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
               allowDuplicateFile={allowDuplicateFile}
               allowDeleteFile={allowDeleteFile}
               allowDeleteFolder={allowDeleteFolder}
+              allowRename={allowRename}
             />
           ))}
         </div>
@@ -262,6 +288,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   onDuplicateFile,
   onDeleteFile,
   onDeleteFolder,
+  onRenamePath,
 }) => {
   const [createTarget, setCreateTarget] = useState<{
     directoryPath: string;
@@ -283,15 +310,21 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   const [deleteFileConfirm, setDeleteFileConfirm] = useState('');
   const [deleteFileError, setDeleteFileError] = useState<string | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ path: string; name: string; isDirectory: boolean } | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const deleteInputRef = useRef<HTMLInputElement | null>(null);
   const duplicateInputRef = useRef<HTMLInputElement | null>(null);
   const deleteFileInputRef = useRef<HTMLInputElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const allowCreateFile = Boolean(onCreateFile);
   const allowCreateFolder = Boolean(onCreateFolder);
   const allowDuplicateFile = Boolean(onDuplicateFile);
   const allowDeleteFile = Boolean(onDeleteFile);
   const allowDeleteFolder = Boolean(onDeleteFolder);
+  const allowRename = Boolean(onRenamePath);
 
   useEffect(() => {
     if (!createTarget) return undefined;
@@ -324,6 +357,14 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [deleteFileTarget]);
+
+  useEffect(() => {
+    if (!renameTarget) return undefined;
+    const timer = window.setTimeout(() => {
+      renameInputRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [renameTarget]);
 
   const getDuplicateName = (filename: string, siblingNames: Set<string>) => {
     const dotIndex = filename.lastIndexOf('.');
@@ -379,7 +420,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     return new Set(targetNode.children.map((child) => child.name));
   };
 
-  const handleMenuAction = (action: FileTreeMenuAction, directoryPath: string, directoryName: string) => {
+  const handleMenuAction = (action: FileTreeMenuAction, directoryPath: string, directoryName: string, nodeType: 'file' | 'directory') => {
     if (action === 'new-file') {
       setCreateTarget({ directoryPath, directoryName, kind: 'file' });
       setNewEntryName('');
@@ -410,6 +451,11 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
       setDeleteFileConfirm('');
       setDeleteFileError(null);
     }
+    if (action === 'rename-path') {
+      setRenameTarget({ path: directoryPath, name: directoryName, isDirectory: nodeType === 'directory' });
+      setRenameName(directoryName);
+      setRenameError(null);
+    }
   };
 
   const handleCloseCreate = () => {
@@ -438,6 +484,13 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     setDeleteFileConfirm('');
     setDeleteFileError(null);
     setDeletingFile(false);
+  };
+
+  const handleCloseRename = () => {
+    setRenameTarget(null);
+    setRenameName('');
+    setRenameError(null);
+    setRenaming(false);
   };
 
   const handleCreateSubmit = async () => {
@@ -548,6 +601,42 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     }
   };
 
+  const handleRenameSubmit = async () => {
+    if (!renameTarget || renaming || !onRenamePath) return;
+    const trimmedName = renameName.trim();
+    const label = renameTarget.isDirectory ? 'folder' : 'file';
+    if (!trimmedName) {
+      setRenameError(`Please enter a ${label} name.`);
+      return;
+    }
+    if (/[\\/]/.test(trimmedName)) {
+      setRenameError(`${label.charAt(0).toUpperCase() + label.slice(1)} name cannot contain / or \\\\.`);
+      return;
+    }
+    if (trimmedName === renameTarget.name) {
+      setRenameError('Please choose a different name.');
+      return;
+    }
+
+    const { directory } = splitPath(renameTarget.path);
+    const targetPath = directory ? `${directory}/${trimmedName}` : trimmedName;
+
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      const newPath = await onRenamePath(renameTarget.path, targetPath);
+      handleCloseRename();
+      if (!renameTarget.isDirectory) {
+        onFileSelect(newPath);
+      }
+    } catch (err: any) {
+      const fallbackMessage = renameTarget.isDirectory ? 'Failed to rename folder.' : 'Failed to rename file.';
+      const message = err?.response?.data?.detail || err?.message || fallbackMessage;
+      setRenameError(message);
+      setRenaming(false);
+    }
+  };
+
   return (
     <div data-name="file-tree" className="h-full overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700">
       <FileTreeItem
@@ -561,6 +650,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
         allowDuplicateFile={allowDuplicateFile}
         allowDeleteFile={allowDeleteFile}
         allowDeleteFolder={allowDeleteFolder}
+        allowRename={allowRename}
       />
       {createTarget && (
         <div data-name="file-entry-create-modal" className="fixed inset-0 z-50 overflow-y-auto">
@@ -690,6 +780,73 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                     disabled={duplicating}
                   >
                     {duplicating ? 'Duplicating...' : 'Duplicate'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {renameTarget && (
+        <div data-name="file-rename-modal" className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50"
+            onClick={handleCloseRename}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div data-name="file-rename-modal-card" className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                {renameTarget.isDirectory ? 'Rename Folder' : 'Rename File'}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                Rename <span className="font-medium text-gray-800 dark:text-gray-200">{renameTarget.name}</span>
+              </p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleRenameSubmit();
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    New {renameTarget.isDirectory ? 'Folder' : 'File'} Name
+                  </label>
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={renameName}
+                    onChange={(event) => setRenameName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        handleCloseRename();
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    disabled={renaming}
+                  />
+                </div>
+                {renameError && (
+                  <div className="text-sm text-red-600 dark:text-red-400">
+                    {renameError}
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseRename}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
+                    disabled={renaming}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={renaming}
+                  >
+                    {renaming ? 'Renaming...' : 'Rename'}
                   </button>
                 </div>
               </form>

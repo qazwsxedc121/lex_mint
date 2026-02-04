@@ -474,6 +474,95 @@ class TestProjectServiceFileReading:
 
 
 # =============================================================================
+# Phase 4.5: Rename Tests
+# =============================================================================
+
+class TestProjectServiceRename:
+    """Tests for rename functionality."""
+
+    @pytest.mark.asyncio
+    async def test_rename_file(self, project_service, test_project_path):
+        """Test renaming a file."""
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        result = await project_service.rename_path(
+            "test_proj",
+            "file1.txt",
+            "file1_renamed.txt"
+        )
+
+        assert not (test_project_path / "file1.txt").exists()
+        assert (test_project_path / "file1_renamed.txt").exists()
+        assert result.old_path == "file1.txt"
+        assert result.new_path == "file1_renamed.txt"
+        assert result.type == "file"
+        assert result.size is not None
+
+    @pytest.mark.asyncio
+    async def test_rename_directory(self, project_service, test_project_path):
+        """Test renaming a directory."""
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        result = await project_service.rename_path(
+            "test_proj",
+            "subdir",
+            "subdir2"
+        )
+
+        assert not (test_project_path / "subdir").exists()
+        assert (test_project_path / "subdir2").exists()
+        assert (test_project_path / "subdir2" / "file2.py").exists()
+        assert result.old_path == "subdir"
+        assert result.new_path == "subdir2"
+        assert result.type == "directory"
+
+    @pytest.mark.asyncio
+    async def test_rename_rejects_existing_target(self, project_service, test_project_path):
+        """Test renaming fails when target already exists."""
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        (test_project_path / "existing.txt").write_text("x", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="already exists"):
+            await project_service.rename_path(
+                "test_proj",
+                "file1.txt",
+                "existing.txt"
+            )
+
+    @pytest.mark.asyncio
+    async def test_rename_rejects_missing_parent(self, project_service, test_project_path):
+        """Test renaming fails when target parent does not exist."""
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        with pytest.raises(ValueError, match="Parent directory does not exist"):
+            await project_service.rename_path(
+                "test_proj",
+                "file1.txt",
+                "missing_dir/file1.txt"
+            )
+
+# =============================================================================
 # Phase 5: Security Tests
 # =============================================================================
 

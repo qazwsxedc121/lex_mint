@@ -6,7 +6,7 @@ import axios from 'axios';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
-import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent } from '../types/project';
+import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
 import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -871,6 +871,17 @@ export async function writeFile(id: string, path: string, content: string, encod
     path,
     content,
     encoding
+  });
+  return response.data;
+}
+
+/**
+ * Rename or move a file or directory in a project
+ */
+export async function renameProjectPath(id: string, sourcePath: string, targetPath: string): Promise<FileRenameResult> {
+  const response = await api.put<FileRenameResult>(`/api/projects/${id}/paths/rename`, {
+    source_path: sourcePath,
+    target_path: targetPath
   });
   return response.data;
 }

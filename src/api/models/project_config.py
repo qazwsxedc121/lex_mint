@@ -89,6 +89,23 @@ class FileWrite(BaseModel):
     encoding: str = Field(default="utf-8", description="File encoding")
 
 
+class FileRename(BaseModel):
+    """Rename request for file or directory."""
+
+    source_path: str = Field(..., description="Relative path from project root")
+    target_path: str = Field(..., description="New relative path from project root")
+
+
+class FileRenameResult(BaseModel):
+    """Rename result metadata."""
+
+    old_path: str = Field(..., description="Original relative path")
+    new_path: str = Field(..., description="New relative path")
+    type: str = Field(..., description="'file' or 'directory'")
+    size: Optional[int] = Field(None, description="File size in bytes (files only)")
+    modified_at: Optional[str] = Field(None, description="Last modified timestamp")
+
+
 class DirectoryCreate(BaseModel):
     """Directory create request."""
 

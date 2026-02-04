@@ -11,7 +11,8 @@ from src.api.models.project_config import (
     Project,
     ProjectsConfig,
     FileNode,
-    FileContent
+    FileContent,
+    FileRenameResult
 )
 from src.api.config import settings
 
@@ -391,7 +392,7 @@ class ProjectService:
 
                     # Calculate relative path for child
                     child_relative = str(Path(relative_path) / child.name) if relative_path else child.name
-                    child_relative = child_relative.replace("\\", "/")  # Normalize to forward slashes
+                    child_relative = child_relative.replace("\\\\", "/")  # Normalize to forward slashes
 
                     # Recursively build child node
                     child_node = self._build_tree_node(root_path, child, child_relative)
@@ -504,6 +505,82 @@ class ProjectService:
             raise ValueError(f"Failed to delete directory: {e}")
         except Exception as e:
             raise ValueError(f"Failed to delete directory: {e}")
+
+    async def rename_path(
+        self,
+        project_id: str,
+        source_path: str,
+        target_path: str
+    ) -> FileRenameResult:
+        """Rename or move a file/directory within a project.
+
+        Args:
+            project_id: Project ID
+            source_path: Existing relative path from project root
+            target_path: New relative path from project root
+
+        Returns:
+            FileRenameResult with updated metadata
+
+        Raises:
+            ValueError: If project not found, paths invalid, or rename fails
+        """
+        if not source_path or source_path == ".":
+            raise ValueError("Source path is required")
+        if not target_path or target_path == ".":
+            raise ValueError("Target path is required")
+
+        # Validate source path
+        root_path, source_abs = await self._validate_path(project_id, source_path)
+
+        if source_abs == root_path:
+            raise ValueError("Cannot rename root directory")
+
+        # Build and validate target path
+        target_abs = root_path / target_path
+        if not self._is_safe_path(root_path, target_abs):
+            raise ValueError(f"Invalid path: {target_path}")
+
+        if source_abs.resolve() == target_abs.resolve():
+            raise ValueError("Source and target paths are the same")
+
+        if target_abs.exists():
+            raise ValueError(f"Target path already exists: {target_path}")
+
+        if not target_abs.parent.exists() or not target_abs.parent.is_dir():
+            parent_relative = (
+                str(target_abs.parent.relative_to(root_path))
+                if target_abs.parent.is_relative_to(root_path)
+                else str(target_abs.parent)
+            )
+            raise ValueError(f"Parent directory does not exist: {parent_relative}")
+
+        try:
+            source_abs.replace(target_abs)
+        except Exception as e:
+            raise ValueError(f"Failed to rename path: {e}")
+
+        node_type = "directory" if target_abs.is_dir() else "file"
+        size = None
+        modified_at = None
+        if node_type == "file":
+            try:
+                stat = target_abs.stat()
+                size = stat.st_size
+                modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
+            except Exception:
+                pass
+
+        normalized_source = source_path.replace("\\", "/")
+        normalized_target = target_path.replace("\\", "/")
+
+        return FileRenameResult(
+            old_path=normalized_source,
+            new_path=normalized_target,
+            type=node_type,
+            size=size,
+            modified_at=modified_at
+        )
 
     def _detect_encoding(self, file_path: Path) -> str:
         """Detect file encoding.

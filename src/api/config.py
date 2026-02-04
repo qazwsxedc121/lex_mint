@@ -1,6 +1,6 @@
 """Configuration management using pydantic-settings."""
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 from typing import List
 
@@ -35,9 +35,10 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
 
 
 # Global settings instance
