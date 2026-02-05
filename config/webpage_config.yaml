@@ -2,6 +2,10 @@ webpage:
   enabled: true
   max_urls: 2
   timeout_seconds: 10
-  max_bytes: 1000000
-  max_content_chars: 6000
+  max_bytes: 3000000
+  max_content_chars: 20000
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
+  proxy: "http://127.0.0.1:7897"
+  trust_env: true
+  diagnostics_enabled: true
+  diagnostics_timeout_seconds: 2

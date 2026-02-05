@@ -11,7 +11,11 @@ import asyncio
 import html
 import ipaddress
 import logging
+import os
 import re
+import socket
+import ssl
+import time
 
 import httpx
 import yaml
@@ -36,9 +40,13 @@ class WebpageConfig:
     enabled: bool = True
     max_urls: int = 2
     timeout_seconds: int = 10
-    max_bytes: int = 1_000_000
-    max_content_chars: int = 6_000
+    max_bytes: int = 3_000_000
+    max_content_chars: int = 20_000
     user_agent: str = "agent_dev/1.0"
+    proxy: Optional[str] = None
+    trust_env: bool = True
+    diagnostics_enabled: bool = True
+    diagnostics_timeout_seconds: float = 2.0
 
 
 @dataclass
@@ -142,9 +150,13 @@ class WebpageService:
                     "enabled": True,
                     "max_urls": 2,
                     "timeout_seconds": 10,
-                    "max_bytes": 1_000_000,
-                    "max_content_chars": 6_000,
+                    "max_bytes": 3_000_000,
+                    "max_content_chars": 20_000,
                     "user_agent": "agent_dev/1.0",
+                    "proxy": None,
+                    "trust_env": True,
+                    "diagnostics_enabled": True,
+                    "diagnostics_timeout_seconds": 2,
                 }
             }
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,13 +173,39 @@ class WebpageService:
                 enabled=bool(page_data.get("enabled", True)),
                 max_urls=int(page_data.get("max_urls", 2)),
                 timeout_seconds=int(page_data.get("timeout_seconds", 10)),
-                max_bytes=int(page_data.get("max_bytes", 1_000_000)),
-                max_content_chars=int(page_data.get("max_content_chars", 6_000)),
+                max_bytes=int(page_data.get("max_bytes", 3_000_000)),
+                max_content_chars=int(page_data.get("max_content_chars", 20_000)),
                 user_agent=str(page_data.get("user_agent", "agent_dev/1.0")),
+                proxy=self._normalize_proxy(page_data.get("proxy")),
+                trust_env=bool(page_data.get("trust_env", True)),
+                diagnostics_enabled=bool(page_data.get("diagnostics_enabled", True)),
+                diagnostics_timeout_seconds=float(page_data.get("diagnostics_timeout_seconds", 2.0)),
             )
         except Exception as e:
             logger.warning(f"Failed to load webpage config: {e}")
             return WebpageConfig()
+
+    def save_config(self, updates: dict) -> None:
+        self._ensure_config_exists()
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            data = {}
+
+        if "webpage" not in data:
+            data["webpage"] = {}
+
+        if "proxy" in updates:
+            updates["proxy"] = self._normalize_proxy(updates.get("proxy"))
+
+        for key, value in updates.items():
+            data["webpage"][key] = value
+
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+
+        self.config = self._load_config()
 
     def extract_urls(self, text: str) -> List[str]:
         if not text:
@@ -251,11 +289,21 @@ class WebpageService:
             "User-Agent": self.config.user_agent,
             "Accept": "text/html, text/plain;q=0.9,*/*;q=0.1",
         }
+        start_time = time.monotonic()
+
+        proxy = self._resolve_proxy()
 
         try:
             logger.info(f"[Webpage] Fetching {url}")
             transport = httpx.AsyncHTTPTransport(retries=2)
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, transport=transport, http2=True) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=True,
+                transport=transport,
+                http2=True,
+                proxy=proxy,
+                trust_env=self.config.trust_env,
+            ) as client:
                 async with client.stream("GET", url, headers=headers) as response:
                     status_code = response.status_code
                     content_type = (response.headers.get("content-type") or "").lower()
@@ -304,6 +352,26 @@ class WebpageService:
                 len(body),
                 truncated_bytes,
             )
+        except httpx.TimeoutException as e:
+            elapsed = time.monotonic() - start_time
+            host = urlparse(url).hostname or ""
+            diag = await self._network_diagnostics(url)
+            error_detail = (
+                f"Timeout ({e.__class__.__name__}) after {elapsed:.2f}s host={host}"
+                f"{self._format_timeout_detail(timeout)}"
+                f"{diag}"
+            )
+            logger.warning(f"[Webpage] {url} failed: {error_detail}")
+            return WebpageResult(
+                url=url,
+                final_url=str(e.request.url) if e.request else url,
+                title="",
+                text="",
+                truncated=False,
+                error=error_detail,
+                status_code=None,
+                content_type=None,
+            )
         except httpx.HTTPStatusError as e:
             status = e.response.status_code if e.response else None
             error_detail = f"HTTP {status}" if status else "HTTP status error"
@@ -319,7 +387,11 @@ class WebpageService:
                 content_type=(e.response.headers.get('content-type') if e.response else None),
             )
         except httpx.RequestError as e:
-            error_detail = f"Request error ({e.__class__.__name__}): {e}"
+            elapsed = time.monotonic() - start_time
+            host = urlparse(url).hostname or ""
+            message = str(e).strip() or repr(e)
+            diag = await self._network_diagnostics(url)
+            error_detail = f"Request error ({e.__class__.__name__}) after {elapsed:.2f}s host={host}: {message}{diag}"
             logger.warning(f"[Webpage] {url} failed: {error_detail}")
             return WebpageResult(
                 url=url,
@@ -332,7 +404,8 @@ class WebpageService:
                 content_type=None,
             )
         except Exception as e:
-            error_detail = f"Fetch failed: {e}"
+            elapsed = time.monotonic() - start_time
+            error_detail = f"Fetch failed after {elapsed:.2f}s: {e}"
             logger.warning(f"[Webpage] {url} failed: {error_detail}")
             return WebpageResult(
                 url=url,
@@ -403,6 +476,210 @@ class WebpageService:
         if len(label) > 60:
             label = label[:57].rstrip() + "..."
         return label
+
+    @staticmethod
+    def _format_timeout_detail(timeout: httpx.Timeout) -> str:
+        parts = []
+        for name in ("connect", "read", "write", "pool"):
+            value = getattr(timeout, name, None)
+            if value is None:
+                continue
+            parts.append(f"{name}={value}")
+        if not parts:
+            return ""
+        return " (" + ", ".join(parts) + ")"
+
+    @staticmethod
+    def _normalize_proxy(value: object) -> Optional[str]:
+        if not value:
+            return None
+        if isinstance(value, str):
+            proxy = value.strip()
+            return proxy or None
+        return None
+
+    def _resolve_proxy(self) -> Optional[str]:
+        return self.config.proxy or None
+
+    @staticmethod
+    def _redact_proxy(proxy_url: str) -> str:
+        parsed = urlparse(proxy_url)
+        if not parsed.scheme or not parsed.netloc:
+            return proxy_url
+        if parsed.password:
+            user = parsed.username or ""
+            host = parsed.hostname or ""
+            port = f":{parsed.port}" if parsed.port else ""
+            netloc = f"{user}:***@{host}{port}" if user else f"***@{host}{port}"
+            return parsed._replace(netloc=netloc).geturl()
+        return proxy_url
+
+    async def _network_diagnostics(self, url: str) -> str:
+        if not self.config.diagnostics_enabled:
+            return ""
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        if not host:
+            return ""
+        scheme = parsed.scheme or "https"
+        port = 443 if scheme == "https" else 80
+        timeout = self._diagnostics_timeout()
+
+        parts: List[str] = []
+        proxy_env = self._proxy_env_summary()
+        proxy_cfg = self._resolve_proxy()
+        if proxy_cfg:
+            parts.append(f"proxy_cfg={self._redact_proxy(proxy_cfg)}")
+            parts.extend(await self._proxy_diagnostics(proxy_cfg, timeout))
+        if proxy_env:
+            parts.append(f"proxy_env={proxy_env}")
+        else:
+            parts.append("proxy_env=none")
+
+        ips: List[str] = []
+        try:
+            loop = asyncio.get_running_loop()
+            infos = await asyncio.wait_for(
+                loop.getaddrinfo(host, port, type=socket.SOCK_STREAM),
+                timeout=timeout,
+            )
+            for info in infos:
+                addr = info[4][0]
+                if addr not in ips:
+                    ips.append(addr)
+            if ips:
+                ips_preview = ",".join(ips[:3])
+                parts.append(f"dns={len(ips)} {ips_preview}")
+            else:
+                parts.append("dns=empty")
+        except Exception as exc:
+            parts.append(f"dns_error={exc.__class__.__name__}")
+            return " diag[" + " ".join(parts) + "]"
+
+        tcp_ok_ip = ""
+        tcp_error = ""
+        for ip in ips[:3]:
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, port),
+                    timeout=timeout,
+                )
+                writer.close()
+                await writer.wait_closed()
+                tcp_ok_ip = ip
+                break
+            except Exception as exc:
+                tcp_error = f"{ip}:{exc.__class__.__name__}"
+        if tcp_ok_ip:
+            parts.append(f"tcp_ok={tcp_ok_ip}:{port}")
+        elif tcp_error:
+            parts.append(f"tcp_fail={tcp_error}")
+        else:
+            parts.append("tcp_fail=unknown")
+
+        if scheme == "https" and tcp_ok_ip:
+            try:
+                ctx = ssl.create_default_context()
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(
+                        tcp_ok_ip,
+                        port,
+                        ssl=ctx,
+                        server_hostname=host,
+                    ),
+                    timeout=timeout,
+                )
+                writer.close()
+                await writer.wait_closed()
+                parts.append("tls_ok")
+            except Exception as exc:
+                parts.append(f"tls_fail={exc.__class__.__name__}")
+
+        return " diag[" + " ".join(parts) + "]"
+
+    def _diagnostics_timeout(self) -> float:
+        try:
+            value = float(self.config.diagnostics_timeout_seconds)
+        except (TypeError, ValueError):
+            value = 2.0
+        return max(0.5, min(value, 5.0))
+
+    async def _proxy_diagnostics(self, proxy_url: str, timeout: float) -> List[str]:
+        parts: List[str] = []
+        parsed = urlparse(proxy_url)
+        host = parsed.hostname or ""
+        if not host:
+            parts.append("proxy_parse=missing_host")
+            return parts
+        scheme = parsed.scheme or "http"
+        port = parsed.port or (443 if scheme == "https" else 80)
+
+        ips: List[str] = []
+        try:
+            loop = asyncio.get_running_loop()
+            infos = await asyncio.wait_for(
+                loop.getaddrinfo(host, port, type=socket.SOCK_STREAM),
+                timeout=timeout,
+            )
+            for info in infos:
+                addr = info[4][0]
+                if addr not in ips:
+                    ips.append(addr)
+            if ips:
+                ips_preview = ",".join(ips[:3])
+                parts.append(f"proxy_dns={len(ips)} {ips_preview}")
+            else:
+                parts.append("proxy_dns=empty")
+        except Exception as exc:
+            parts.append(f"proxy_dns_error={exc.__class__.__name__}")
+            return parts
+
+        tcp_ok_ip = ""
+        tcp_error = ""
+        for ip in ips[:3]:
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, port),
+                    timeout=timeout,
+                )
+                writer.close()
+                await writer.wait_closed()
+                tcp_ok_ip = ip
+                break
+            except Exception as exc:
+                tcp_error = f"{ip}:{exc.__class__.__name__}"
+        if tcp_ok_ip:
+            parts.append(f"proxy_tcp_ok={tcp_ok_ip}:{port}")
+        elif tcp_error:
+            parts.append(f"proxy_tcp_fail={tcp_error}")
+        else:
+            parts.append("proxy_tcp_fail=unknown")
+
+        if scheme == "https" and tcp_ok_ip:
+            try:
+                ctx = ssl.create_default_context()
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(
+                        tcp_ok_ip,
+                        port,
+                        ssl=ctx,
+                        server_hostname=host,
+                    ),
+                    timeout=timeout,
+                )
+                writer.close()
+                await writer.wait_closed()
+                parts.append("proxy_tls_ok")
+            except Exception as exc:
+                parts.append(f"proxy_tls_fail={exc.__class__.__name__}")
+
+        return parts
+
+    @staticmethod
+    def _proxy_env_summary() -> str:
+        keys = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy")
+        present = [key for key in keys if os.environ.get(key)]
+        return ",".join(present)
 
     @staticmethod
     def _is_valid_url(url: str) -> bool:

@@ -11,6 +11,7 @@ import {
   CpuChipIcon,
   ServerIcon,
   MagnifyingGlassIcon,
+  GlobeAltIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline';
 
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { path: '/settings/models', label: 'Models', icon: CpuChipIcon },
   { path: '/settings/providers', label: 'Providers', icon: ServerIcon },
   { path: '/settings/search', label: 'Search', icon: MagnifyingGlassIcon },
+  { path: '/settings/webpage', label: 'Webpage', icon: GlobeAltIcon },
   { path: '/settings/title-generation', label: 'Title Generation', icon: SparklesIcon },
 ];
 

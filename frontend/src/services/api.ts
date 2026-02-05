@@ -748,6 +748,49 @@ export async function updateSearchConfig(updates: SearchConfigUpdate): Promise<v
   await api.put('/api/search/config', updates);
 }
 
+// ==================== Webpage Config API ====================
+
+export interface WebpageConfig {
+  enabled: boolean;
+  max_urls: number;
+  timeout_seconds: number;
+  max_bytes: number;
+  max_content_chars: number;
+  user_agent: string;
+  proxy?: string | null;
+  trust_env: boolean;
+  diagnostics_enabled: boolean;
+  diagnostics_timeout_seconds: number;
+}
+
+export interface WebpageConfigUpdate {
+  enabled?: boolean;
+  max_urls?: number;
+  timeout_seconds?: number;
+  max_bytes?: number;
+  max_content_chars?: number;
+  user_agent?: string;
+  proxy?: string | null;
+  trust_env?: boolean;
+  diagnostics_enabled?: boolean;
+  diagnostics_timeout_seconds?: number;
+}
+
+/**
+ * Get webpage configuration
+ */
+export async function getWebpageConfig(): Promise<WebpageConfig> {
+  const response = await api.get<WebpageConfig>('/api/webpage/config');
+  return response.data;
+}
+
+/**
+ * Update webpage configuration
+ */
+export async function updateWebpageConfig(updates: WebpageConfigUpdate): Promise<void> {
+  await api.put('/api/webpage/config', updates);
+}
+
 // ==================== Title Generation API ====================
 
 export interface TitleGenerationConfig {
