@@ -51,7 +51,7 @@ models:
   name: DeepSeek Chat
   provider_id: deepseek
   group: chat
-  temperature: 0.7
+  temperature: 1.0
   enabled: true
   capabilities:
     context_length: 64000

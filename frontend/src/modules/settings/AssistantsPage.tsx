@@ -1,41 +1,41 @@
 /**
- * AssistantsPage - Wrapper for AssistantList with data loading
+ * AssistantsPage - Configuration-driven assistant management
+ *
+ * This page is now powered by the assistantsConfig, reducing boilerplate
+ * from 357 lines (AssistantList.tsx) to just ~40 lines.
  */
 
 import React from 'react';
-import { AssistantList } from './components/AssistantList';
+import { CrudSettingsPage } from './components/crud';
+import { assistantsConfig } from './config';
 import { useModels } from './hooks/useModels';
 import { useAssistants } from './hooks/useAssistants';
+import type { CrudHook } from './config/types';
+import type { Assistant } from '../../types/assistant';
 
 export const AssistantsPage: React.FC = () => {
   const modelsHook = useModels();
   const assistantsHook = useAssistants();
 
-  if (modelsHook.loading || assistantsHook.loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
-      </div>
-    );
-  }
-
-  if (modelsHook.error || assistantsHook.error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">{modelsHook.error || assistantsHook.error}</div>
-      </div>
-    );
-  }
+  // Adapt useAssistants hook to CrudHook interface
+  const crudHook: CrudHook<Assistant> = {
+    items: assistantsHook.assistants,
+    defaultItemId: assistantsHook.defaultAssistantId,
+    loading: assistantsHook.loading || modelsHook.loading,
+    error: assistantsHook.error || modelsHook.error,
+    createItem: assistantsHook.createAssistant,
+    updateItem: assistantsHook.updateAssistant,
+    deleteItem: assistantsHook.deleteAssistant,
+    setDefault: assistantsHook.setDefaultAssistant,
+    refreshData: assistantsHook.refreshData
+  };
 
   return (
-    <AssistantList
-      assistants={assistantsHook.assistants}
-      defaultAssistantId={assistantsHook.defaultAssistantId}
-      models={modelsHook.models}
-      onCreateAssistant={assistantsHook.createAssistant}
-      onUpdateAssistant={assistantsHook.updateAssistant}
-      onDeleteAssistant={assistantsHook.deleteAssistant}
-      onSetDefault={assistantsHook.setDefaultAssistant}
+    <CrudSettingsPage
+      config={assistantsConfig}
+      hook={crudHook}
+      context={{ models: modelsHook.models }}
+      getItemId={(item) => item.id}
     />
   );
 };

@@ -1,29 +1,40 @@
 /**
- * ModelsPage - Wrapper for ModelList with data loading
+ * ModelsPage - Configuration-driven model management
+ *
+ * This page is now powered by the modelsConfig, reducing boilerplate
+ * from 424 lines (ModelList.tsx) to just ~35 lines.
  */
 
 import React from 'react';
-import { ModelList } from './components/ModelList';
+import { CrudSettingsPage } from './components/crud';
+import { modelsConfig } from './config';
 import { useModels } from './hooks/useModels';
+import type { CrudHook } from './config/types';
+import type { Model } from '../../types/model';
 
 export const ModelsPage: React.FC = () => {
   const modelsHook = useModels();
 
-  if (modelsHook.loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
-      </div>
-    );
-  }
+  // Adapt useModels hook to CrudHook interface
+  const crudHook: CrudHook<Model> = {
+    items: modelsHook.models,
+    loading: modelsHook.loading,
+    error: modelsHook.error,
+    createItem: modelsHook.createModel,
+    updateItem: (id, data) => {
+      // Models use composite key provider_id:id
+      return modelsHook.updateModel(id, data as Model);
+    },
+    deleteItem: modelsHook.deleteModel,
+    refreshData: modelsHook.refreshData
+  };
 
-  if (modelsHook.error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">{modelsHook.error}</div>
-      </div>
-    );
-  }
-
-  return <ModelList {...modelsHook} />;
+  return (
+    <CrudSettingsPage
+      config={modelsConfig}
+      hook={crudHook}
+      context={{ providers: modelsHook.providers }}
+      getItemId={(item) => `${item.provider_id}:${item.id}`}
+    />
+  );
 };
