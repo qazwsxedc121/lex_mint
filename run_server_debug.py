@@ -55,12 +55,13 @@ if __name__ == "__main__":
     print("=" * 80)
     print()
 
+    log_level = os.getenv("UVICORN_LOG_LEVEL", "info")
     try:
         uvicorn.run(
             "src.api.main:app",
             host="0.0.0.0",
             port=port,
-            log_level="trace",
+            log_level=log_level,
             access_log=True,
             use_colors=True,
             reload=True,

@@ -410,7 +410,16 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
-        undefined,
+        (sources) => {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
+            }
+            return newMessages;
+          });
+        },
         undefined,
         (userMessageId: string) => {
           // Backend returned user message ID

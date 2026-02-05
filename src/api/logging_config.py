@@ -136,6 +136,8 @@ def setup_logging():
 
     # Reduce log level for third-party libraries
     logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
+    logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
+    logging.getLogger('uvicorn').setLevel(logging.WARNING)
     logging.getLogger('httpx').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
 
@@ -146,4 +148,3 @@ def setup_logging():
     print(f"All output (stdout/stderr) will be saved to: {log_file.absolute()}")
     print(f"Log rotation: max 10MB per file, keep 3 backups")
     print("=" * 80)
-

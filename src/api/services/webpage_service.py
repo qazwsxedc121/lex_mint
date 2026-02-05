@@ -24,6 +24,13 @@ from ..models.search import SearchSource
 
 logger = logging.getLogger(__name__)
 
+try:
+    import trafilatura
+    from trafilatura.metadata import extract_metadata
+except Exception:
+    trafilatura = None
+    extract_metadata = None
+
 URL_PATTERN = re.compile(r"https?://[^\s<>()\"']+", re.IGNORECASE)
 TRAILING_PUNCTUATION = ".,);:]}>\"'"
 
@@ -456,10 +463,33 @@ class WebpageService:
 
     def _extract_text(self, html_text: str, content_type: str) -> Tuple[str, str, str]:
         if "text/html" in content_type:
+            if trafilatura:
+                try:
+                    extracted = trafilatura.extract(
+                        html_text,
+                        output_format="txt",
+                        include_comments=False,
+                        include_tables=False,
+                        include_images=False
+                    )
+                    if extracted:
+                        logger.info("[Webpage] Extractor=trafilatura text_len=%s", len(extracted))
+                        title = ""
+                        description = ""
+                        if extract_metadata:
+                            meta = extract_metadata(html_text)
+                            if meta:
+                                title = meta.title or ""
+                                description = meta.description or ""
+                        return title, extracted, description
+                except Exception:
+                    pass
             parser = _HTMLTextExtractor()
             parser.feed(html_text)
             parser.close()
-            return parser.get_title(), parser.get_text(), parser.get_description()
+            text = parser.get_text()
+            logger.info("[Webpage] Extractor=html_parser text_len=%s", len(text))
+            return parser.get_title(), text, parser.get_description()
         return "", html_text, ""
 
     @staticmethod
