@@ -322,7 +322,7 @@ class ModelConfigService:
         """
         遮罩API密钥，只显示前缀和后4位
 
-        例如: sk-ba6c70ee741c45beb53f89da4280087c -> sk-****...087c
+        例如: sk- -> sk-****
         """
         if len(api_key) <= 8:
             return "****"

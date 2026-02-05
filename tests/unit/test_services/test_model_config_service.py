@@ -336,8 +336,8 @@ class TestModelConfigService:
 
         service = ModelConfigService(config_path, keys_path)
 
-        masked = service._mask_api_key("sk-ba6c70ee741c45beb53f89da4280087c")
-        assert masked == "sk-****...087c"
+        masked = service._mask_api_key("sk-80081234567890abcdef")
+        assert masked == "sk-****...890abcdef"
 
         # Short key
         masked_short = service._mask_api_key("short")
