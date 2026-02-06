@@ -54,4 +54,4 @@ npm run lint
 - Primary platform is Windows; prefer Windows command syntax in docs and scripts.
 - Always call venv executables directly (do not rely on activation).
 - Terminal output should be ASCII only when running commands or scripts.
-- Path differences: Git Bash uses `/d/work/pythonProjects/agent_dev`, Windows uses `D:\work\pythonProjects\agent_dev`.
+- Path differences: Git Bash uses `/d/work/pythonProjects/lex_mint`, Windows uses `D:\work\pythonProjects\lex_mint`.

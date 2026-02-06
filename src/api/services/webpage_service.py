@@ -49,7 +49,7 @@ class WebpageConfig:
     timeout_seconds: int = 10
     max_bytes: int = 3_000_000
     max_content_chars: int = 20_000
-    user_agent: str = "agent_dev/1.0"
+    user_agent: str = "lex_mint/1.0"
     proxy: Optional[str] = None
     trust_env: bool = True
     diagnostics_enabled: bool = True
@@ -159,7 +159,7 @@ class WebpageService:
                     "timeout_seconds": 10,
                     "max_bytes": 3_000_000,
                     "max_content_chars": 20_000,
-                    "user_agent": "agent_dev/1.0",
+                    "user_agent": "lex_mint/1.0",
                     "proxy": None,
                     "trust_env": True,
                     "diagnostics_enabled": True,
@@ -182,7 +182,7 @@ class WebpageService:
                 timeout_seconds=int(page_data.get("timeout_seconds", 10)),
                 max_bytes=int(page_data.get("max_bytes", 3_000_000)),
                 max_content_chars=int(page_data.get("max_content_chars", 20_000)),
-                user_agent=str(page_data.get("user_agent", "agent_dev/1.0")),
+                user_agent=str(page_data.get("user_agent", "lex_mint/1.0")),
                 proxy=self._normalize_proxy(page_data.get("proxy")),
                 trust_env=bool(page_data.get("trust_env", True)),
                 diagnostics_enabled=bool(page_data.get("diagnostics_enabled", True)),

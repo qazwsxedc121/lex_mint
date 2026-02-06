@@ -28,19 +28,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **Windows Path Handling**
    - **Key Discovery**: Git Bash and Windows use different path formats for the SAME directory
    - Project root is mapped to TWO different paths:
-     - Git Bash: `/d/work/pythonProjects/agent_dev`
-     - Windows: `D:\work\pythonProjects\agent_dev`
+     - Git Bash: `/d/work/pythonProjects/lex_mint`
+     - Windows: `D:\work\pythonProjects\lex_mint`
 
    **Rules by Tool Type**:
 
    **Bash Tool (Git Bash environment)**:
    - ALWAYS use relative paths with forward slashes: `logs/server.log`
    - Can use backslashes too: `logs\server.log` (but forward slash preferred)
-   - Absolute paths must be Unix-style: `/d/work/pythonProjects/agent_dev/logs/server.log`
+   - Absolute paths must be Unix-style: `/d/work/pythonProjects/lex_mint/logs/server.log`
    - Windows absolute paths DON'T WORK: ~~`C:/Users/.../logs/server.log`~~ ✗
 
    **Read/Edit/Write/Glob Tools**:
-   - Forward work: `D:/work/pythonProjects/agent_dev/logs/server.log`
+   - Forward work: `D:/work/pythonProjects/lex_mint/logs/server.log`
 
    **Grep Tool**:
    - Can use relative paths: `logs/server.log`

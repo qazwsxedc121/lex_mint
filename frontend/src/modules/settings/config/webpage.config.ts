@@ -73,7 +73,7 @@ export const webpageConfig: SimpleConfigSettingsConfig = {
       type: 'text',
       name: 'user_agent',
       label: 'User Agent',
-      placeholder: 'agent_dev/1.0',
+      placeholder: 'lex_mint/1.0',
       helpText: 'Custom User-Agent header for requests',
       condition: (formData) => formData.enabled !== false
     },
