@@ -8,6 +8,7 @@ import React, { useEffect, useRef } from 'react';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { AssistantSelector } from './AssistantSelector';
+import { FollowupChips } from './FollowupChips';
 import { useChat } from '../hooks/useChat';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
@@ -40,6 +41,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     error,
     isStreaming,
     currentAssistantId,
+    followupQuestions,
     sendMessage,
     editMessage,
     regenerateMessage,
@@ -126,6 +128,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         onRegenerateMessage={regenerateMessage}
         onDeleteMessage={deleteMessage}
         customMessageActions={customMessageActions}
+      />
+
+      {/* Follow-up question suggestions */}
+      <FollowupChips
+        questions={followupQuestions}
+        onSelect={(question) => sendMessage(question)}
+        disabled={loading || isStreaming}
       />
 
       {/* Error display */}

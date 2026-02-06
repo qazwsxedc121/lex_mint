@@ -40,8 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Windows absolute paths DON'T WORK: ~~`C:/Users/.../logs/server.log`~~ ✗
 
    **Read/Edit/Write/Glob Tools**:
-   - MUST use Windows absolute paths: `D:\work\pythonProjects\agent_dev\logs\server.log`
-   - Forward slashes also work: `C:/Users/lisareese1674/projects/agents-f17830c7de/logs/server.log`
+   - Forward work: `D:/work/pythonProjects/agent_dev/logs/server.log`
 
    **Grep Tool**:
    - Can use relative paths: `logs/server.log`

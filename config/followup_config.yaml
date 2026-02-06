@@ -1,0 +1,12 @@
+followup:
+  enabled: true
+  count: 3
+  model_id: deepseek:deepseek-chat
+  max_context_rounds: 3
+  timeout_seconds: 15
+  prompt_template: |
+    Based on the conversation below, generate exactly {count} follow-up questions the user might ask next.
+    Return ONLY the questions, one per line, without numbering.
+
+    Conversation:
+    {conversation_text}

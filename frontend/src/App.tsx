@@ -12,6 +12,7 @@ import { ProvidersPage } from './modules/settings/ProvidersPage';
 import { SearchSettings } from './modules/settings/SearchSettings';
 import { WebpageSettings } from './modules/settings/WebpageSettings';
 import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
+import { FollowupSettings } from './modules/settings/FollowupSettings';
 import './index.css';
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
             <Route path="search" element={<SearchSettings />} />
             <Route path="webpage" element={<WebpageSettings />} />
             <Route path="title-generation" element={<TitleGenerationSettings />} />
+            <Route path="followup" element={<FollowupSettings />} />
           </Route>
         </Route>
       </Routes>

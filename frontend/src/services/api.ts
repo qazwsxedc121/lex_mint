@@ -215,6 +215,7 @@ export async function sendMessage(
  * @param attachments - Optional file attachments
  * @param onUserMessageId - Optional callback for user message ID from backend
  * @param onAssistantMessageId - Optional callback for assistant message ID from backend
+ * @param onFollowupQuestions - Optional callback for follow-up question suggestions
  * @param contextType - Context type (default: 'chat')
  * @param projectId - Optional project ID
  */
@@ -235,7 +236,8 @@ export async function sendMessageStream(
   onAssistantMessageId?: (messageId: string) => void,
   useWebSearch?: boolean,
   contextType: string = 'chat',
-  projectId?: string
+  projectId?: string,
+  onFollowupQuestions?: (questions: string[]) => void
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -337,6 +339,12 @@ export async function sendMessageStream(
               // Handle assistant_message_id event
               if (data.type === 'assistant_message_id' && data.message_id && onAssistantMessageId) {
                 onAssistantMessageId(data.message_id);
+                continue;
+              }
+
+              // Handle followup_questions event
+              if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
+                onFollowupQuestions(data.questions);
                 continue;
               }
 

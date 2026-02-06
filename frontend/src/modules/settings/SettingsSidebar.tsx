@@ -13,6 +13,7 @@ import {
   MagnifyingGlassIcon,
   GlobeAltIcon,
   SparklesIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { path: '/settings/search', label: 'Search', icon: MagnifyingGlassIcon },
   { path: '/settings/webpage', label: 'Webpage', icon: GlobeAltIcon },
   { path: '/settings/title-generation', label: 'Title Generation', icon: SparklesIcon },
+  { path: '/settings/followup', label: 'Follow-up Questions', icon: ChatBubbleLeftRightIcon },
 ];
 
 export const SettingsSidebar: React.FC = () => {

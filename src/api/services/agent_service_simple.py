@@ -432,3 +432,18 @@ class AgentService:
             "message_id": assistant_message_id
         }
         yield assistant_message_id_event
+
+        # Generate follow-up questions
+        try:
+            from .followup_service import FollowupService
+            followup_service = FollowupService()
+
+            if followup_service.config.enabled and followup_service.config.count > 0:
+                updated_session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+                messages_for_followup = updated_session['state']['messages']
+                questions = await followup_service.generate_followups_async(messages_for_followup)
+                if questions:
+                    yield {"type": "followup_questions", "questions": questions}
+        except Exception as e:
+            logger.warning(f"Failed to generate follow-up questions: {e}")
+

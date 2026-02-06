@@ -16,6 +16,7 @@ export function useChat(sessionId: string | null) {
   const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
   const [totalCost, setTotalCost] = useState<CostInfo | null>(null);
+  const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -27,6 +28,7 @@ export function useChat(sessionId: string | null) {
       setCurrentAssistantId(null);
       setTotalUsage(null);
       setTotalCost(null);
+      setFollowupQuestions([]);
       return;
     }
 
@@ -60,6 +62,9 @@ export function useChat(sessionId: string | null) {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
+
+    // Clear follow-up questions when sending a new message
+    setFollowupQuestions([]);
 
     // Optimistically add user message to UI (without message_id, wait for backend)
     const userMessage: Message = {
@@ -177,7 +182,13 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
-        options?.useWebSearch
+        options?.useWebSearch,
+        undefined,  // contextType
+        undefined,  // projectId
+        (questions: string[]) => {
+          // Backend returned follow-up questions
+          setFollowupQuestions(questions);
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
@@ -537,6 +548,10 @@ export function useChat(sessionId: string | null) {
     setCurrentAssistantId(assistantId);
   };
 
+  const clearFollowupQuestions = () => {
+    setFollowupQuestions([]);
+  };
+
   return {
     messages,
     loading,
@@ -546,6 +561,7 @@ export function useChat(sessionId: string | null) {
     currentAssistantId,
     totalUsage,
     totalCost,
+    followupQuestions,
     sendMessage,
     editMessage,
     regenerateMessage,
@@ -555,5 +571,6 @@ export function useChat(sessionId: string | null) {
     stopGeneration,
     updateModelId,
     updateAssistantId,
+    clearFollowupQuestions,
   };
 }
