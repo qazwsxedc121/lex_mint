@@ -47,7 +47,16 @@
       "Bash(grep:*)",
       "Bash(./venv/Scripts/uvicorn:*)",
       "Bash(echo:*)",
-      "Bash(wmic process where \"name=''python.exe''\" get processid,executablepath /format:csv)"
+      "Bash(wmic process where \"name=''python.exe''\" get processid,executablepath /format:csv)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:stevekinney.com)",
+      "WebFetch(domain:hyperdev.matsuoka.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:lobehub.com)",
+      "Bash(python3:*)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

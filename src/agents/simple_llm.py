@@ -4,7 +4,7 @@ import os
 import logging
 from typing import List, Dict, Any, AsyncIterator, Optional, Union
 from pathlib import Path
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
@@ -12,6 +12,117 @@ from src.api.services.file_service import FileService
 from src.providers.types import TokenUsage
 
 logger = logging.getLogger(__name__)
+
+# --- Context trimming constants ---
+DEFAULT_CONTEXT_LENGTH = 4096
+DEFAULT_OUTPUT_RESERVE_RATIO = 0.25   # config-based: reserve 25% for output
+MIN_OUTPUT_RESERVE = 1024
+MAX_OUTPUT_RESERVE = 32000
+
+
+def _calculate_output_reserve(context_length: int, from_profile: bool) -> int:
+    """Calculate how many tokens to reserve for model output.
+
+    Args:
+        context_length: Total context window size.
+        from_profile: True if context_length came from llm.profile
+            (max_input_tokens already excludes output), False if from config
+            (context_length is total window).
+
+    Returns:
+        Number of tokens to reserve for output.
+    """
+    if from_profile:
+        # profile's max_input_tokens already excludes output budget,
+        # only apply a small 5% safety margin
+        return int(context_length * 0.05)
+    # config-based: reserve 25%, clamped to [1024, 32000]
+    reserve = int(context_length * DEFAULT_OUTPUT_RESERVE_RATIO)
+    return max(MIN_OUTPUT_RESERVE, min(MAX_OUTPUT_RESERVE, reserve))
+
+
+def _get_context_limit(llm, capabilities) -> int:
+    """Determine the max input tokens allowed before calling the LLM.
+
+    Priority:
+      1. llm.profile['max_input_tokens'] (LangChain built-in, zero cost)
+      2. capabilities.context_length (from models_config.yaml)
+      3. DEFAULT_CONTEXT_LENGTH (absolute fallback)
+
+    Returns:
+        Usable input token budget (context window minus output reserve).
+    """
+    # Priority 1: LangChain profile
+    profile_limit = None
+    try:
+        profile = getattr(llm, "profile", None)
+        if profile and isinstance(profile, dict):
+            profile_limit = profile.get("max_input_tokens")
+    except Exception:
+        pass
+
+    if profile_limit and isinstance(profile_limit, int) and profile_limit > 0:
+        reserve = _calculate_output_reserve(profile_limit, from_profile=True)
+        budget = profile_limit - reserve
+        logger.info(
+            f"[CONTEXT] Using profile max_input_tokens={profile_limit}, "
+            f"reserve={reserve}, budget={budget}"
+        )
+        return budget
+
+    # Priority 2: capabilities from config
+    config_limit = getattr(capabilities, "context_length", None)
+    if config_limit and isinstance(config_limit, int) and config_limit > DEFAULT_CONTEXT_LENGTH:
+        reserve = _calculate_output_reserve(config_limit, from_profile=False)
+        budget = config_limit - reserve
+        logger.info(
+            f"[CONTEXT] Using config context_length={config_limit}, "
+            f"reserve={reserve}, budget={budget}"
+        )
+        return budget
+
+    # Priority 3: absolute fallback
+    reserve = _calculate_output_reserve(DEFAULT_CONTEXT_LENGTH, from_profile=False)
+    budget = DEFAULT_CONTEXT_LENGTH - reserve
+    logger.info(
+        f"[CONTEXT] Using default context_length={DEFAULT_CONTEXT_LENGTH}, "
+        f"reserve={reserve}, budget={budget}"
+    )
+    return budget
+
+
+def _trim_to_context_limit(
+    messages: List[BaseMessage], max_input_tokens: int
+) -> List[BaseMessage]:
+    """Trim messages to fit within the token budget using approximate counting.
+
+    Args:
+        messages: LangChain messages (may include a leading SystemMessage).
+        max_input_tokens: Maximum input tokens allowed.
+
+    Returns:
+        Trimmed message list (system message always preserved).
+    """
+    trimmed = trim_messages(
+        messages,
+        max_tokens=max_input_tokens,
+        strategy="last",
+        token_counter="approximate",
+        include_system=True,
+        start_on="human",
+    )
+    if len(trimmed) < len(messages):
+        logger.info(
+            f"[TRIM] Messages trimmed: {len(messages)} -> {len(trimmed)} "
+            f"(budget: {max_input_tokens} tokens)"
+        )
+        print(
+            f"[TRIM] Messages trimmed to fit context window: "
+            f"{len(messages)} -> {len(trimmed)} messages "
+            f"(budget: {max_input_tokens} tokens)"
+        )
+    return trimmed
+
 
 def _build_llm_request_params(
     temperature: Optional[float] = None,
@@ -134,6 +245,8 @@ def call_llm(
 
     # Dynamically get LLM instance
     model_service = ModelConfigService()
+    model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
+    capabilities = model_service.get_merged_capabilities(model_config, provider_config)
     llm = model_service.get_llm_instance(
         model_id,
         temperature=temperature,
@@ -170,6 +283,10 @@ def call_llm(
         elif msg.get("role") == "assistant":
             langchain_messages.append(AIMessage(content=msg["content"]))
             print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
+
+    # === Safety net: trim to context window limit ===
+    max_input_tokens = _get_context_limit(llm=llm, capabilities=capabilities)
+    langchain_messages = _trim_to_context_limit(langchain_messages, max_input_tokens)
 
     try:
         print(f"[LLM] Sending {len(langchain_messages)} messages to LLM API...")
@@ -355,6 +472,10 @@ async def call_llm_stream(
     if max_rounds and max_rounds > 0:
         langchain_messages = _truncate_by_rounds(langchain_messages, max_rounds, system_prompt)
         print(f"      After truncation: {len(langchain_messages)} messages")
+
+    # === Safety net: trim to context window limit ===
+    max_input_tokens = _get_context_limit(llm=llm, capabilities=capabilities)
+    langchain_messages = _trim_to_context_limit(langchain_messages, max_input_tokens)
 
     try:
         print(f"[LLM] Streaming {len(langchain_messages)} messages to LLM API...")
