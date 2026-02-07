@@ -15,6 +15,7 @@ export const defaultChatAPI: ChatAPI = {
   updateSessionTitle: api.updateSessionTitle,
   duplicateSession: api.duplicateSession,
   updateSessionAssistant: api.updateSessionAssistant,
+  updateSessionParamOverrides: api.updateSessionParamOverrides,
 
   // Message operations
   sendMessageStream: api.sendMessageStream,

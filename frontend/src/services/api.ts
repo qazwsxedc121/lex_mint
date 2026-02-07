@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource } from '../types/message';
+import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
@@ -577,6 +577,24 @@ export async function updateSessionAssistant(sessionId: string, assistantId: str
   }
 
   await api.put(`/api/sessions/${sessionId}/assistant?${params.toString()}`, { assistant_id: assistantId });
+}
+
+/**
+ * Update session parameter overrides.
+ */
+export async function updateSessionParamOverrides(
+  sessionId: string,
+  paramOverrides: ParamOverrides,
+  contextType: string = 'chat',
+  projectId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/param-overrides?${params.toString()}`, { param_overrides: paramOverrides });
 }
 
 

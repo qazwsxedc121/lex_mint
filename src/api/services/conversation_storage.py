@@ -1,5 +1,6 @@
 """Conversation storage service using Markdown files with YAML frontmatter."""
 
+import asyncio
 import frontmatter
 import json
 from datetime import datetime
@@ -28,6 +29,8 @@ class ConversationStorage:
         """
         self.conversations_dir = Path(conversations_dir)
         self.conversations_dir.mkdir(exist_ok=True)
+        # Per-file locks to prevent concurrent read-modify-write corruption
+        self._file_locks: Dict[str, asyncio.Lock] = {}
 
     async def create_session(
         self,
@@ -189,6 +192,7 @@ class ConversationStorage:
             "created_at": post.metadata["created_at"],
             "assistant_id": assistant_id,  # 返回助手ID
             "model_id": model_id,           # 返回复合ID格式（向后兼容）
+            "param_overrides": post.metadata.get("param_overrides", {}),
             "total_usage": post.metadata.get("total_usage"),
             "total_cost": post.metadata.get("total_cost"),
             "state": {
@@ -683,19 +687,25 @@ class ConversationStorage:
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        # Read and parse existing file
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
-            file_content = await f.read()
+        # Use per-file lock to prevent concurrent read-modify-write corruption
+        file_key = str(filepath)
+        if file_key not in self._file_locks:
+            self._file_locks[file_key] = asyncio.Lock()
 
-        post = frontmatter.loads(file_content)
+        async with self._file_locks[file_key]:
+            # Read and parse existing file
+            async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+                file_content = await f.read()
 
-        # Update metadata fields
-        for key, value in metadata_updates.items():
-            post.metadata[key] = value
+            post = frontmatter.loads(file_content)
 
-        # Write back to file
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(frontmatter.dumps(post))
+            # Update metadata fields
+            for key, value in metadata_updates.items():
+                post.metadata[key] = value
+
+            # Write back to file
+            async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+                await f.write(frontmatter.dumps(post))
 
     async def delete_session(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Delete a conversation session.
@@ -774,6 +784,7 @@ class ConversationStorage:
         post = frontmatter.loads(file_content)
         post.metadata["assistant_id"] = assistant_id
         post.metadata["model_id"] = assistant.model_id  # 同步更新模型ID
+        post.metadata["param_overrides"] = {}  # Clear overrides on assistant switch
 
         # 写回文件
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:

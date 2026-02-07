@@ -50,6 +50,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     clearAllMessages,
     stopGeneration,
     updateAssistantId,
+    paramOverrides,
+    hasActiveOverrides,
+    updateParamOverrides,
   } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
@@ -156,6 +159,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         supportsVision={supportsVision}
         sessionId={currentSessionId}
         currentAssistantId={currentAssistantId || undefined}
+        paramOverrides={paramOverrides}
+        hasActiveOverrides={hasActiveOverrides}
+        onParamOverridesChange={updateParamOverrides}
         assistantSelector={
           <AssistantSelector
             sessionId={currentSessionId}

@@ -46,6 +46,10 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.updateSessionAssistant(sessionId, assistantId, contextType, projectId);
     },
 
+    updateSessionParamOverrides: async (sessionId: string, paramOverrides) => {
+      return api.updateSessionParamOverrides(sessionId, paramOverrides, contextType, projectId);
+    },
+
     // Message operations
     sendMessageStream: async (
       sessionId: string,

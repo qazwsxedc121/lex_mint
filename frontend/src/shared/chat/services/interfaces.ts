@@ -8,7 +8,8 @@ import type {
   TokenUsage,
   CostInfo,
   SearchSource,
-  UploadedFile
+  UploadedFile,
+  ParamOverrides
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
@@ -27,6 +28,7 @@ export interface ChatAPI {
   updateSessionTitle(sessionId: string, title: string): Promise<void>;
   duplicateSession(sessionId: string): Promise<string>;
   updateSessionAssistant(sessionId: string, assistantId: string): Promise<void>;
+  updateSessionParamOverrides(sessionId: string, paramOverrides: ParamOverrides): Promise<void>;
 
   // Message operations
   sendMessageStream(

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile } from '../../../types/message';
+import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 export function useChat(sessionId: string | null) {
@@ -17,6 +17,7 @@ export function useChat(sessionId: string | null) {
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
   const [totalCost, setTotalCost] = useState<CostInfo | null>(null);
   const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
+  const [paramOverrides, setParamOverrides] = useState<ParamOverrides>({});
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -29,6 +30,7 @@ export function useChat(sessionId: string | null) {
       setTotalUsage(null);
       setTotalCost(null);
       setFollowupQuestions([]);
+      setParamOverrides({});
       return;
     }
 
@@ -41,6 +43,7 @@ export function useChat(sessionId: string | null) {
       setCurrentAssistantId(session.assistant_id || null);
       setTotalUsage(session.total_usage || null);
       setTotalCost(session.total_cost || null);
+      setParamOverrides(session.param_overrides || {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load session');
       setMessages([]);
@@ -48,6 +51,7 @@ export function useChat(sessionId: string | null) {
       setCurrentAssistantId(null);
       setTotalUsage(null);
       setTotalCost(null);
+      setParamOverrides({});
     } finally {
       setLoading(false);
     }
@@ -546,7 +550,21 @@ export function useChat(sessionId: string | null) {
 
   const updateAssistantId = (assistantId: string) => {
     setCurrentAssistantId(assistantId);
+    // Clear overrides when switching assistants
+    setParamOverrides({});
   };
+
+  const updateParamOverrides = async (overrides: ParamOverrides) => {
+    if (!sessionId) return;
+    try {
+      await api.updateSessionParamOverrides(sessionId, overrides);
+      setParamOverrides(overrides);
+    } catch (err) {
+      console.error('Failed to update param overrides:', err);
+    }
+  };
+
+  const hasActiveOverrides = Object.keys(paramOverrides).length > 0;
 
   const clearFollowupQuestions = () => {
     setFollowupQuestions([]);
@@ -572,5 +590,8 @@ export function useChat(sessionId: string | null) {
     updateModelId,
     updateAssistantId,
     clearFollowupQuestions,
+    paramOverrides,
+    hasActiveOverrides,
+    updateParamOverrides,
   };
 }

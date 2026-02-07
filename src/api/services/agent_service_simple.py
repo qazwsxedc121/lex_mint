@@ -108,6 +108,15 @@ class AgentService:
             except Exception as e:
                 logger.warning(f"Failed to load assistant config: {e}, using defaults")
 
+        # Apply per-session parameter overrides
+        param_overrides = session.get("param_overrides", {})
+        if param_overrides:
+            if "model_id" in param_overrides:
+                model_id = param_overrides["model_id"]
+            for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
+                if key in param_overrides:
+                    assistant_params[key] = param_overrides[key]
+
         # Optional web page parsing context
         if webpage_context:
             system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
@@ -317,6 +326,18 @@ class AgentService:
                             print(f"     - Max rounds: {max_rounds}")
             except Exception as e:
                 logger.warning(f"   Failed to load assistant config: {e}, using defaults")
+
+        # Apply per-session parameter overrides
+        param_overrides = session.get("param_overrides", {})
+        if param_overrides:
+            if "model_id" in param_overrides:
+                model_id = param_overrides["model_id"]
+            if "max_rounds" in param_overrides:
+                max_rounds = param_overrides["max_rounds"]
+            for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
+                if key in param_overrides:
+                    assistant_params[key] = param_overrides[key]
+            print(f"   Applied param overrides: {param_overrides}")
 
         # Optional web page parsing context
         if webpage_context:

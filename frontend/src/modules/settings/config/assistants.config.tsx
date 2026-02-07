@@ -6,6 +6,7 @@
 
 import type { CrudSettingsConfig } from './types';
 import type { Assistant } from '../../../types/assistant';
+import { PARAM_SUPPORT } from '../../../shared/constants/paramSupport';
 
 // === Provider-aware parameter visibility ===
 
@@ -20,14 +21,6 @@ const getSdkClass = (formData: any, context: any): string => {
   const providerId = getProviderId(formData);
   const provider = context.providers?.find((p: any) => p.id === providerId);
   return provider?.sdk_class || provider?.protocol || 'openai';
-};
-
-const PARAM_SUPPORT: Record<string, string[]> = {
-  max_tokens: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai'],
-  top_p: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai'],
-  top_k: ['anthropic', 'ollama'],
-  frequency_penalty: ['openai', 'deepseek', 'xai'],
-  presence_penalty: ['openai', 'deepseek', 'xai'],
 };
 
 const supportsParam = (param: string) => (formData: any, context: any): boolean => {

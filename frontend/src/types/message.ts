@@ -53,12 +53,24 @@ export interface Session {
   message_count?: number;
 }
 
+export interface ParamOverrides {
+  model_id?: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  max_rounds?: number;
+}
+
 export interface SessionDetail {
   session_id: string;
   title: string;
   created_at: string;
   model_id: string;  // Composite model ID
   assistant_id?: string;
+  param_overrides?: ParamOverrides;
   total_usage?: TokenUsage;
   total_cost?: CostInfo;
   state: {

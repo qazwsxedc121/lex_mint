@@ -45,7 +45,9 @@
       "Bash(del ProjectsSidebar.tsx)",
       "Bash(git mv:*)",
       "Bash(grep:*)",
-      "Bash(./venv/Scripts/uvicorn:*)"
+      "Bash(./venv/Scripts/uvicorn:*)",
+      "Bash(echo:*)",
+      "Bash(wmic process where \"name=''python.exe''\" get processid,executablepath /format:csv)"
     ]
   }
 }

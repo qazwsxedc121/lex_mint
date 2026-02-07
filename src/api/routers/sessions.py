@@ -34,6 +34,11 @@ class UpdateTitleRequest(BaseModel):
     title: str
 
 
+class UpdateParamOverridesRequest(BaseModel):
+    """更新参数覆盖请求"""
+    param_overrides: Dict
+
+
 def get_storage() -> ConversationStorage:
     """Dependency injection for ConversationStorage."""
     return ConversationStorage(settings.conversations_dir)
@@ -325,6 +330,85 @@ async def update_session_title(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         logger.error(f"❌ 验证错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+ALLOWED_OVERRIDE_KEYS = {
+    "model_id", "temperature", "max_tokens", "top_p", "top_k",
+    "frequency_penalty", "presence_penalty", "max_rounds"
+}
+
+PARAM_RANGES = {
+    "temperature": (0, 2),
+    "max_tokens": (1, 8192),
+    "top_p": (0, 1),
+    "top_k": (1, 200),
+    "frequency_penalty": (-2, 2),
+    "presence_penalty": (-2, 2),
+    "max_rounds": (-1, 1000),
+}
+
+
+@router.put("/{session_id}/param-overrides", response_model=Dict[str, str])
+async def update_param_overrides(
+    session_id: str,
+    request: UpdateParamOverridesRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Update per-session parameter overrides.
+
+    Args:
+        session_id: Session UUID
+        request: Contains param_overrides dict with allowed keys
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Returns:
+        {"message": "Parameter overrides updated"}
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    overrides = request.param_overrides
+
+    # Validate keys
+    invalid_keys = set(overrides.keys()) - ALLOWED_OVERRIDE_KEYS
+    if invalid_keys:
+        raise HTTPException(status_code=400, detail=f"Invalid override keys: {invalid_keys}")
+
+    # Validate ranges for numeric parameters
+    for key, value in overrides.items():
+        if key == "model_id":
+            if not isinstance(value, str) or ':' not in value:
+                raise HTTPException(status_code=400, detail="model_id must be in 'provider:model' format")
+            # Validate model exists
+            from ..services.model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            parts = value.split(":", 1)
+            model = await model_service.get_model(parts[1])
+            if not model:
+                raise HTTPException(status_code=400, detail=f"Model '{value}' not found")
+            continue
+
+        if key in PARAM_RANGES:
+            if not isinstance(value, (int, float)):
+                raise HTTPException(status_code=400, detail=f"{key} must be a number")
+            min_val, max_val = PARAM_RANGES[key]
+            if value < min_val or value > max_val:
+                raise HTTPException(status_code=400, detail=f"{key} must be between {min_val} and {max_val}")
+
+    logger.info(f"Updating param overrides for session {session_id[:16]}: {overrides}")
+    try:
+        await storage.update_session_metadata(
+            session_id, {"param_overrides": overrides},
+            context_type=context_type, project_id=project_id
+        )
+        return {"message": "Parameter overrides updated"}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 

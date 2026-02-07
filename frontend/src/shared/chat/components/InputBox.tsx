@@ -21,6 +21,8 @@ import { useChatServices } from '../services/ChatServiceProvider';
 import { useChatComposer } from '../contexts/ChatComposerContext';
 import type { ChatComposerBlockInput } from '../contexts/ChatComposerContext';
 import type { UploadedFile } from '../../../types/message';
+import type { ParamOverrides } from '../../../types/message';
+import { ParamOverridePopover } from './ParamOverridePopover';
 
 // Reasoning effort options for supported models
 const REASONING_EFFORT_OPTIONS = [
@@ -65,6 +67,9 @@ interface InputBoxProps {
   supportsVision?: boolean;
   sessionId?: string;
   currentAssistantId?: string;
+  paramOverrides?: ParamOverrides;
+  hasActiveOverrides?: boolean;
+  onParamOverridesChange?: (overrides: ParamOverrides) => void;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -79,6 +84,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   supportsVision = false,
   sessionId,
   currentAssistantId: _currentAssistantId,
+  paramOverrides,
+  hasActiveOverrides = false,
+  onParamOverridesChange,
 }) => {
   const { api } = useChatServices();
   const { registerComposer } = useChatComposer();
@@ -383,6 +391,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
       <div data-name="input-box-toolbar" className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
         {/* Assistant selector */}
         {assistantSelector}
+
+        {/* Parameter overrides button */}
+        {sessionId && _currentAssistantId && !_currentAssistantId.startsWith('__legacy_model_') && onParamOverridesChange && (
+          <ParamOverridePopover
+            sessionId={sessionId}
+            currentAssistantId={_currentAssistantId}
+            paramOverrides={paramOverrides || {}}
+            onOverridesChange={onParamOverridesChange}
+            hasActiveOverrides={hasActiveOverrides}
+          />
+        )}
 
         {/* Create block button */}
         <button
