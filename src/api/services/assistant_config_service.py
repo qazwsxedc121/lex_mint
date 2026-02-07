@@ -234,7 +234,7 @@ class AssistantConfigService:
         """
         Get effective temperature for assistant
 
-        Returns assistant's temperature if set, otherwise model's default temperature
+        Returns assistant's temperature if set, otherwise default temperature
 
         Args:
             assistant: Assistant object
@@ -244,11 +244,6 @@ class AssistantConfigService:
         """
         if assistant.temperature is not None:
             return assistant.temperature
-
-        # Fallback to model's default temperature
-        model = await self.model_service.get_model(assistant.model_id)
-        if model:
-            return model.temperature
 
         # Last resort default
         return 0.7
@@ -273,12 +268,16 @@ class AssistantConfigService:
         # Get effective temperature
         temperature = await self.get_effective_temperature(assistant)
 
-        # Create LLM instance using model service (with overridden temperature)
-        # First get the base LLM instance
-        llm = self.model_service.get_llm_instance(assistant.model_id)
-
-        # Override temperature
-        llm.temperature = temperature
+        # Create LLM instance using model service with assistant parameters
+        llm = self.model_service.get_llm_instance(
+            assistant.model_id,
+            temperature=temperature,
+            max_tokens=assistant.max_tokens,
+            top_p=assistant.top_p,
+            top_k=assistant.top_k,
+            frequency_penalty=assistant.frequency_penalty,
+            presence_penalty=assistant.presence_penalty,
+        )
 
         return llm, assistant.system_prompt, assistant.max_tokens
 
@@ -305,7 +304,11 @@ class AssistantConfigService:
             description="Temporary assistant for backward compatibility",
             model_id=model_id,
             system_prompt=None,
-            temperature=model.temperature,
+            temperature=0.7,
             max_tokens=None,
+            top_p=None,
+            top_k=None,
+            frequency_penalty=None,
+            presence_penalty=None,
             enabled=True
         )

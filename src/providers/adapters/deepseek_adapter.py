@@ -65,6 +65,21 @@ class DeepSeekAdapter(BaseLLMAdapter):
         else:
             llm_kwargs["temperature"] = temperature
 
+        # Add max_tokens as direct param
+        if "max_tokens" in kwargs:
+            llm_kwargs["max_tokens"] = kwargs["max_tokens"]
+
+        # Add sampling parameters via model_kwargs (merge with existing thinking mode kwargs)
+        extra_model_kwargs = {}
+        for key in ["top_p", "frequency_penalty", "presence_penalty"]:
+            if key in kwargs:
+                extra_model_kwargs[key] = kwargs[key]
+        if extra_model_kwargs:
+            if "model_kwargs" in llm_kwargs:
+                llm_kwargs["model_kwargs"].update(extra_model_kwargs)
+            else:
+                llm_kwargs["model_kwargs"] = extra_model_kwargs
+
         return ChatDeepSeek(**llm_kwargs)
 
     async def stream(

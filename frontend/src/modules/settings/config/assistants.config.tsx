@@ -7,10 +7,92 @@
 import type { CrudSettingsConfig } from './types';
 import type { Assistant } from '../../../types/assistant';
 
+// === Provider-aware parameter visibility ===
+
+const getProviderId = (formData: any): string | undefined => {
+  const modelId = formData.model_id;
+  if (!modelId) return undefined;
+  const parts = String(modelId).split(':');
+  return parts.length ? parts[0] : undefined;
+};
+
+const getSdkClass = (formData: any, context: any): string => {
+  const providerId = getProviderId(formData);
+  const provider = context.providers?.find((p: any) => p.id === providerId);
+  return provider?.sdk_class || provider?.protocol || 'openai';
+};
+
+const PARAM_SUPPORT: Record<string, string[]> = {
+  max_tokens: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai'],
+  top_p: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai'],
+  top_k: ['anthropic', 'ollama'],
+  frequency_penalty: ['openai', 'deepseek', 'xai'],
+  presence_penalty: ['openai', 'deepseek', 'xai'],
+};
+
+const supportsParam = (param: string) => (formData: any, context: any): boolean => {
+  if (!formData.model_id) return false;
+  const sdk = getSdkClass(formData, context);
+  return (PARAM_SUPPORT[param] || []).includes(sdk);
+};
+
+// === Shared field definitions for LLM parameters ===
+
+const llmParamFields = [
+  {
+    type: 'number' as const,
+    name: 'max_tokens',
+    label: 'Max Tokens',
+    min: 1,
+    step: 1,
+    helpText: 'Max output tokens (empty = provider default)',
+    condition: supportsParam('max_tokens'),
+  },
+  {
+    type: 'number' as const,
+    name: 'top_p',
+    label: 'Top P',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    helpText: 'Top-p nucleus sampling (empty = provider default)',
+    condition: supportsParam('top_p'),
+  },
+  {
+    type: 'number' as const,
+    name: 'top_k',
+    label: 'Top K',
+    min: 1,
+    step: 1,
+    helpText: 'Top-k sampling (empty = provider default)',
+    condition: supportsParam('top_k'),
+  },
+  {
+    type: 'number' as const,
+    name: 'frequency_penalty',
+    label: 'Frequency Penalty',
+    min: -2,
+    max: 2,
+    step: 0.1,
+    helpText: 'Frequency penalty (empty = provider default)',
+    condition: supportsParam('frequency_penalty'),
+  },
+  {
+    type: 'number' as const,
+    name: 'presence_penalty',
+    label: 'Presence Penalty',
+    min: -2,
+    max: 2,
+    step: 0.1,
+    helpText: 'Presence penalty (empty = provider default)',
+    condition: supportsParam('presence_penalty'),
+  },
+];
+
 export const assistantsConfig: CrudSettingsConfig<Assistant> = {
   type: 'crud',
   title: 'Assistant List',
-  description: 'Configure AI assistants with different models, temperatures, and behaviors',
+  description: 'Configure assistants with models, temperatures, and sampling parameters',
   itemName: 'assistant',
   itemNamePlural: 'assistants',
 
@@ -44,7 +126,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       label: 'Temperature',
       sortable: true,
       hideOnMobile: true,
-      render: (value) => value ?? 'Default'
+      render: (value) => value ?? 0.7
     },
     {
       key: 'max_rounds',
@@ -129,6 +211,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       formatValue: (v) => v.toFixed(1),
       helpText: 'Controls randomness in responses'
     },
+    ...llmParamFields,
     {
       type: 'number',
       name: 'max_rounds',
@@ -207,6 +290,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       formatValue: (v) => v.toFixed(1),
       helpText: 'Controls randomness in responses'
     },
+    ...llmParamFields,
     {
       type: 'number',
       name: 'max_rounds',

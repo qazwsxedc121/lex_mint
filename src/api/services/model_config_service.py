@@ -119,7 +119,6 @@ class ModelConfigService:
                     "name": "DeepSeek Chat",
                     "provider_id": "deepseek",
                     "group": "chat",
-                    "temperature": 0.7,
                     "enabled": True,
                     "capabilities": {
                         "context_length": 64000,
@@ -132,7 +131,6 @@ class ModelConfigService:
                     "name": "DeepSeek Reasoner",
                     "provider_id": "deepseek",
                     "group": "reasoning",
-                    "temperature": 0.7,
                     "enabled": True,
                     "capabilities": {
                         "context_length": 64000,
@@ -144,7 +142,6 @@ class ModelConfigService:
                     "name": "GPT-4 Turbo",
                     "provider_id": "openai",
                     "group": "chat",
-                    "temperature": 0.7,
                     "enabled": False,
                     "capabilities": {
                         "context_length": 128000,
@@ -157,7 +154,6 @@ class ModelConfigService:
                     "name": "GPT-3.5 Turbo",
                     "provider_id": "openai",
                     "group": "chat",
-                    "temperature": 0.7,
                     "enabled": False
                 }
             ]
@@ -789,7 +785,17 @@ class ModelConfigService:
 
     # ==================== LLM 实例化 ====================
 
-    def get_llm_instance(self, model_id: Optional[str] = None) -> ChatOpenAI:
+    def get_llm_instance(
+        self,
+        model_id: Optional[str] = None,
+        *,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        frequency_penalty: Optional[float] = None,
+        presence_penalty: Optional[float] = None
+    ) -> ChatOpenAI:
         """
         创建 LLM 实例（同步方法）
 
@@ -859,9 +865,25 @@ class ModelConfigService:
             )
 
         # 创建 LLM 实例
-        return ChatOpenAI(
-            model=model.id,
-            temperature=model.temperature,
-            base_url=provider.base_url,
-            api_key=api_key
-        )
+        model_kwargs = {}
+        if top_p is not None:
+            model_kwargs["top_p"] = top_p
+        if top_k is not None:
+            model_kwargs["top_k"] = top_k
+        if frequency_penalty is not None:
+            model_kwargs["frequency_penalty"] = frequency_penalty
+        if presence_penalty is not None:
+            model_kwargs["presence_penalty"] = presence_penalty
+
+        build_kwargs = {
+            "model": model.id,
+            "temperature": 0.7 if temperature is None else temperature,
+            "base_url": provider.base_url,
+            "api_key": api_key,
+        }
+        if max_tokens is not None:
+            build_kwargs["max_tokens"] = max_tokens
+        if model_kwargs:
+            build_kwargs["model_kwargs"] = model_kwargs
+
+        return ChatOpenAI(**build_kwargs)

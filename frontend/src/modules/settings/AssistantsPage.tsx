@@ -34,7 +34,7 @@ export const AssistantsPage: React.FC = () => {
     <CrudSettingsPage
       config={assistantsConfig}
       hook={crudHook}
-      context={{ models: modelsHook.models }}
+      context={{ models: modelsHook.models, providers: modelsHook.providers }}
       getItemId={(item) => item.id}
     />
   );

@@ -31,8 +31,8 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    endOfMessagesRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [messages, sessionId]);
 
   return (
     <div data-name="message-list" className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
@@ -73,3 +73,5 @@ export const MessageList: React.FC<MessageListProps> = ({
     </div>
   );
 };
+
+

@@ -13,6 +13,29 @@ from src.providers.types import TokenUsage
 
 logger = logging.getLogger(__name__)
 
+def _build_llm_request_params(
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    top_p: Optional[float] = None,
+    top_k: Optional[int] = None,
+    frequency_penalty: Optional[float] = None,
+    presence_penalty: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Build sanitized request params for logging (no secrets)."""
+    params: Dict[str, Any] = {
+        "temperature": 0.7 if temperature is None else temperature
+    }
+    for key, value in {
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+        "top_k": top_k,
+        "frequency_penalty": frequency_penalty,
+        "presence_penalty": presence_penalty,
+    }.items():
+        if value is not None:
+            params[key] = value
+    return params
+
 
 async def convert_to_langchain_messages(
     messages: List[Dict],
@@ -88,7 +111,13 @@ def call_llm(
     messages: List[Dict[str, str]],
     session_id: str = "unknown",
     model_id: Optional[str] = None,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    top_p: Optional[float] = None,
+    top_k: Optional[int] = None,
+    frequency_penalty: Optional[float] = None,
+    presence_penalty: Optional[float] = None
 ) -> str:
     """
     Direct LLM call without LangGraph.
@@ -105,10 +134,26 @@ def call_llm(
 
     # Dynamically get LLM instance
     model_service = ModelConfigService()
-    llm = model_service.get_llm_instance(model_id)
+    llm = model_service.get_llm_instance(
+        model_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        top_k=top_k,
+        frequency_penalty=frequency_penalty,
+        presence_penalty=presence_penalty,
+    )
 
     # Get actual model ID
     actual_model_id = model_id or model_service.get_llm_instance().model_name
+    request_params = _build_llm_request_params(
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        top_k=top_k,
+        frequency_penalty=frequency_penalty,
+        presence_penalty=presence_penalty,
+    )
 
     print(f"[LLM] Preparing to call LLM (model: {actual_model_id})")
     print(f"      History messages: {len(messages)}")
@@ -141,7 +186,8 @@ def call_llm(
             session_id=session_id,
             messages_sent=langchain_messages,
             response_received=response,
-            model=actual_model_id
+            model=actual_model_id,
+            extra_params={"request_params": request_params}
         )
         print(f"[LOG] LLM interaction logged")
 
@@ -160,6 +206,12 @@ async def call_llm_stream(
     model_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
     max_rounds: Optional[int] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    top_p: Optional[float] = None,
+    top_k: Optional[int] = None,
+    frequency_penalty: Optional[float] = None,
+    presence_penalty: Optional[float] = None,
     reasoning_effort: Optional[str] = None,
     file_service: Optional[FileService] = None
 ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
@@ -213,15 +265,38 @@ async def call_llm_stream(
             f"Please set it via the UI or environment variable: {provider_config.api_key_env}"
         )
 
+    # Build extra params from assistant config (if provided)
+    extra_params = {}
+    for param_name, param_value in {
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+        "top_k": top_k,
+        "frequency_penalty": frequency_penalty,
+        "presence_penalty": presence_penalty,
+    }.items():
+        if param_value is not None:
+            extra_params[param_name] = param_value
+
+    temperature_value = 0.7 if temperature is None else temperature
+    request_params = _build_llm_request_params(
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        top_k=top_k,
+        frequency_penalty=frequency_penalty,
+        presence_penalty=presence_penalty,
+    )
+
     # Create LLM instance via adapter
     llm = adapter.create_llm(
         model=model_config.id,
         base_url=provider_config.base_url,
         api_key=api_key,
-        temperature=model_config.temperature,
+        temperature=temperature_value,
         streaming=True,
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
+        **extra_params,
     )
 
     actual_model_id = f"{provider_config.id}:{model_config.id}"
@@ -333,7 +408,7 @@ async def call_llm_stream(
         from langchain_core.messages import AIMessage as AIMsg
         response_msg = AIMsg(content=full_response)
 
-        log_extra_params = {}
+        log_extra_params = {"request_params": request_params}
         if thinking_enabled:
             log_extra_params["thinking_enabled"] = True
             log_extra_params["reasoning_effort"] = reasoning_effort

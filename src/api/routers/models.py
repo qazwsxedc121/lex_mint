@@ -156,9 +156,13 @@ async def create_provider(
         provider = Provider(
             id=provider_data.id,
             name=provider_data.name,
+            type=provider_data.type,
+            protocol=provider_data.protocol,
             base_url=provider_data.base_url,
             api_key_env=f"{provider_data.id.upper()}_API_KEY",  # 生成默认环境变量名
-            enabled=provider_data.enabled
+            enabled=provider_data.enabled,
+            default_capabilities=provider_data.default_capabilities,
+            auto_append_path=provider_data.auto_append_path,
         )
         # 添加提供商配置
         await service.add_provider(provider)
@@ -190,10 +194,16 @@ async def update_provider(
         updated_data = existing.model_dump()
         if provider_update.name is not None:
             updated_data['name'] = provider_update.name
+        if provider_update.protocol is not None:
+            updated_data['protocol'] = provider_update.protocol
         if provider_update.base_url is not None:
             updated_data['base_url'] = provider_update.base_url
         if provider_update.enabled is not None:
             updated_data['enabled'] = provider_update.enabled
+        if provider_update.default_capabilities is not None:
+            updated_data['default_capabilities'] = provider_update.default_capabilities
+        if provider_update.auto_append_path is not None:
+            updated_data['auto_append_path'] = provider_update.auto_append_path
 
         # 创建更新后的 Provider 对象（不包含api_key，因为它不在Provider的配置中）
         updated_data.pop('api_key', None)

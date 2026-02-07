@@ -89,13 +89,22 @@ class AgentService:
 
         # Get assistant config (system prompt)
         system_prompt = None
+        assistant_params = {}
         if assistant_id and not assistant_id.startswith("__legacy_model_"):
             from .assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             try:
                 assistant = await assistant_service.get_assistant(assistant_id)
-                if assistant and assistant.system_prompt:
+                if assistant:
                     system_prompt = assistant.system_prompt
+                    assistant_params = {
+                        "temperature": assistant.temperature,
+                        "max_tokens": assistant.max_tokens,
+                        "top_p": assistant.top_p,
+                        "top_k": assistant.top_k,
+                        "frequency_penalty": assistant.frequency_penalty,
+                        "presence_penalty": assistant.presence_penalty,
+                    }
             except Exception as e:
                 logger.warning(f"Failed to load assistant config: {e}, using defaults")
 
@@ -130,7 +139,8 @@ class AgentService:
             messages,
             session_id=session_id,
             model_id=model_id,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            **assistant_params
         )
 
         print(f"✅ LLM 处理完成")
@@ -276,6 +286,7 @@ class AgentService:
         # Get assistant config (system prompt and max rounds)
         system_prompt = None
         max_rounds = None
+        assistant_params = {}
 
         # Check for legacy session identifier
         if assistant_id and assistant_id.startswith("__legacy_model_"):
@@ -288,6 +299,14 @@ class AgentService:
                 if assistant:
                     system_prompt = assistant.system_prompt
                     max_rounds = assistant.max_rounds
+                    assistant_params = {
+                        "temperature": assistant.temperature,
+                        "max_tokens": assistant.max_tokens,
+                        "top_p": assistant.top_p,
+                        "top_k": assistant.top_k,
+                        "frequency_penalty": assistant.frequency_penalty,
+                        "presence_penalty": assistant.presence_penalty,
+                    }
                     print(f"   Using assistant config:")
                     if system_prompt:
                         print(f"     - System prompt: {system_prompt[:50]}...")
@@ -349,7 +368,8 @@ class AgentService:
                 system_prompt=system_prompt,
                 max_rounds=max_rounds,
                 reasoning_effort=reasoning_effort,
-                file_service=self.file_service  # Pass file_service for image attachment support
+                file_service=self.file_service,  # Pass file_service for image attachment support
+                **assistant_params
             ):
                 # Check if this is a usage data dict
                 if isinstance(chunk, dict) and chunk.get("type") == "usage":

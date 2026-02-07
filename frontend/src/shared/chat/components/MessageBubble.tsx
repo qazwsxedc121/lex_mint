@@ -343,7 +343,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
-      <div data-name="message-bubble-content-wrapper" className="max-w-[80%]">
+      <div data-name="message-bubble-content-wrapper" className={isUser ? 'max-w-[80%]' : 'w-full'}>
         <div
           data-name="message-bubble-content"
           className={`rounded-lg px-4 py-3 ${
@@ -749,3 +749,4 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     </div>
   );
 };
+

@@ -43,7 +43,6 @@ class Model(BaseModel):
     name: str = Field(..., description="模型显示名称")
     provider_id: str = Field(..., description="所属提供商ID")
     group: str = Field(default="通用", description="模型分组名称")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="温度参数")
     enabled: bool = Field(default=True, description="是否启用")
 
     # Model capabilities (overrides provider defaults)
@@ -122,4 +121,3 @@ class ProviderTestResponse(BaseModel):
 class ModelTestRequest(BaseModel):
     """测试模型连接请求"""
     model_id: str = Field(..., description="模型ID（复合格式 provider_id:model_id）")
-

@@ -61,6 +61,10 @@ class OllamaAdapter(BaseLLMAdapter):
             llm_kwargs["reasoning"] = True
             logger.info(f"Ollama reasoning mode enabled for {model}")
 
+        # Map max_tokens to num_predict (before explicit num_predict check)
+        if "max_tokens" in kwargs:
+            llm_kwargs["num_predict"] = kwargs["max_tokens"]
+
         # Add optional parameters
         if "num_ctx" in kwargs:
             llm_kwargs["num_ctx"] = kwargs["num_ctx"]

@@ -69,6 +69,14 @@ class OpenAIAdapter(BaseLLMAdapter):
             if key in kwargs:
                 llm_kwargs[key] = kwargs[key]
 
+        # Add sampling parameters via model_kwargs
+        model_kwargs = {}
+        for key in ["top_p", "frequency_penalty", "presence_penalty"]:
+            if key in kwargs:
+                model_kwargs[key] = kwargs[key]
+        if model_kwargs:
+            llm_kwargs["model_kwargs"] = model_kwargs
+
         return ChatOpenAI(**llm_kwargs)
 
     async def stream(

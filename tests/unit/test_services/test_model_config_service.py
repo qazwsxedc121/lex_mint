@@ -246,7 +246,6 @@ class TestModelConfigService:
             name="DeepSeek Coder",
             provider_id="deepseek",
             group="chat",
-            temperature=0.7,
             enabled=True
         )
 
@@ -266,7 +265,6 @@ class TestModelConfigService:
             "name": "DeepSeek Coder",
             "provider_id": "deepseek",
             "group": "chat",
-            "temperature": 0.7,
             "enabled": True
         })
 
@@ -337,7 +335,7 @@ class TestModelConfigService:
         service = ModelConfigService(config_path, keys_path)
 
         masked = service._mask_api_key("sk-80081234567890abcdef")
-        assert masked == "sk-****...890abcdef"
+        assert masked == "sk-****...cdef"
 
         # Short key
         masked_short = service._mask_api_key("short")

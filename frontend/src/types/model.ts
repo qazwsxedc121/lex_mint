@@ -57,7 +57,6 @@ export interface Model {
   name: string;
   provider_id: string;
   group: string;
-  temperature: number;
   enabled: boolean;
 
   // Model capabilities (overrides provider defaults)

@@ -42,12 +42,6 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       label: 'Group',
       sortable: true,
       hideOnMobile: true
-    },
-    {
-      key: 'temperature',
-      label: 'Temperature',
-      sortable: true,
-      hideOnMobile: true
     }
   ],
 
@@ -99,16 +93,6 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       helpText: 'Model family or group'
     },
     {
-      type: 'number',
-      name: 'temperature',
-      label: 'Default Temperature',
-      min: 0,
-      max: 2,
-      step: 0.1,
-      defaultValue: 0.7,
-      helpText: 'Default temperature for this model'
-    },
-    {
       type: 'checkbox',
       name: 'enabled',
       label: 'Enable this model',
@@ -155,16 +139,6 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       placeholder: 'e.g., gpt-4',
       required: true,
       helpText: 'Model family or group'
-    },
-    {
-      type: 'number',
-      name: 'temperature',
-      label: 'Default Temperature',
-      min: 0,
-      max: 2,
-      step: 0.1,
-      defaultValue: 0.7,
-      helpText: 'Default temperature for this model'
     },
     {
       type: 'checkbox',

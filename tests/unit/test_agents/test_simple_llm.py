@@ -109,7 +109,6 @@ class TestCallLLMStream:
         # Mock model and provider config
         mock_model = Mock()
         mock_model.id = "deepseek-chat"
-        mock_model.temperature = 0.7
 
         mock_provider = Mock()
         mock_provider.id = "deepseek"
@@ -185,7 +184,6 @@ class TestCallLLMStream:
         """Test streaming with system prompt."""
         mock_model = Mock()
         mock_model.id = "deepseek-chat"
-        mock_model.temperature = 0.7
 
         mock_provider = Mock()
         mock_provider.id = "deepseek"
@@ -242,7 +240,6 @@ class TestCallLLMStream:
         """Test streaming with thinking/reasoning mode."""
         mock_model = Mock()
         mock_model.id = "deepseek-reasoner"
-        mock_model.temperature = 0.7
 
         mock_provider = Mock()
         mock_provider.id = "deepseek"
@@ -309,7 +306,6 @@ class TestCallLLMStream:
         """Test streaming error handling."""
         mock_model = Mock()
         mock_model.id = "deepseek-chat"
-        mock_model.temperature = 0.7
 
         mock_provider = Mock()
         mock_provider.id = "deepseek"

@@ -203,7 +203,6 @@ class ModelConfig(BaseModel):
     name: str = Field(..., description="Display name")
     provider_id: str = Field(..., description="Parent provider ID")
     group: str = Field(default="General", description="Model group/category")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Default temperature")
     enabled: bool = Field(default=True, description="Whether the model is enabled")
 
     # === Model capabilities (overrides provider defaults) ===

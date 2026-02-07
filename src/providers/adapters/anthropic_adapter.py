@@ -70,6 +70,12 @@ class AnthropicAdapter(BaseLLMAdapter):
             llm_kwargs.pop("temperature", None)
             logger.info(f"Anthropic extended thinking enabled for {model}")
 
+        # Add sampling parameters (ChatAnthropic accepts these directly)
+        if "top_p" in kwargs:
+            llm_kwargs["top_p"] = kwargs["top_p"]
+        if "top_k" in kwargs:
+            llm_kwargs["top_k"] = kwargs["top_k"]
+
         # Add max_tokens if specified
         if "max_tokens" in kwargs:
             llm_kwargs["max_tokens"] = kwargs["max_tokens"]

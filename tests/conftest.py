@@ -98,7 +98,6 @@ def sample_model_config():
                 "name": "DeepSeek Chat",
                 "provider_id": "deepseek",
                 "group": "chat",
-                "temperature": 0.7,
                 "enabled": True
             }
         ]

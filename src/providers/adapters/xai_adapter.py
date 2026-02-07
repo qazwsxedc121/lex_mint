@@ -60,6 +60,18 @@ class XAIAdapter(BaseLLMAdapter):
             llm_kwargs["live_search"] = True
             logger.info(f"xAI Live Search enabled for {model}")
 
+        # Add max_tokens as direct param
+        if "max_tokens" in kwargs:
+            llm_kwargs["max_tokens"] = kwargs["max_tokens"]
+
+        # Add sampling parameters via model_kwargs
+        model_kwargs = {}
+        for key in ["top_p", "frequency_penalty", "presence_penalty"]:
+            if key in kwargs:
+                model_kwargs[key] = kwargs[key]
+        if model_kwargs:
+            llm_kwargs["model_kwargs"] = model_kwargs
+
         return ChatXAI(**llm_kwargs)
 
     async def stream(
