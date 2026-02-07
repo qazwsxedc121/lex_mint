@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
+import { MermaidBlock } from './MermaidBlock';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 interface MessageBubbleProps {
@@ -543,7 +544,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                             const isInline = !className;
 
                                             return !isInline && language ? (
-                                              <CodeBlock language={language} value={value} />
+                                              language === 'mermaid'
+                                                ? <MermaidBlock value={value} />
+                                                : <CodeBlock language={language} value={value} />
                                             ) : (
                                               <code className={className} {...props}>
                                                 {children}
@@ -639,7 +642,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         const isInline = !className;
 
                         return !isInline && language ? (
-                          <CodeBlock language={language} value={value} />
+                          language === 'mermaid'
+                            ? <MermaidBlock value={value} />
+                            : <CodeBlock language={language} value={value} />
                         ) : (
                           <code className={className} {...props}>
                             {children}
