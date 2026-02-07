@@ -192,12 +192,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const { api } = useChatServices();
   const isUser = message.role === 'user';
   const isSeparator = message.role === 'separator';
+  const isSummary = message.role === 'summary';
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isCopied, setIsCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [expandedUserBlocks, setExpandedUserBlocks] = useState<Record<string, boolean>>({});
+  const [showSummaryContent, setShowSummaryContent] = useState(false);
 
   // Parse thinking content from message
   const { thinking, mainContent, isThinkingInProgress } = useMemo(
@@ -333,6 +335,61 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 onClick={handleDeleteSeparator}
                 className="p-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-600 dark:hover:text-red-400 border border-gray-300 dark:border-gray-600 opacity-0 group-hover:opacity-100 transition-all"
                 title="Delete separator"
+              >
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Summary rendering (violet-themed collapsible block)
+  if (isSummary) {
+    const isSummaryStreaming = !message.message_id;
+    return (
+      <div data-name="message-bubble-summary" className="flex flex-col items-center mb-4 group">
+        <div data-name="message-bubble-summary-content" className="w-full max-w-[80%] relative">
+          {/* Summary header line */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-violet-400 dark:via-violet-600 to-transparent" />
+            <button
+              onClick={() => setShowSummaryContent(!showSummaryContent)}
+              className="flex items-center gap-2 px-4 py-2 bg-violet-50 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-800 rounded-lg text-violet-700 dark:text-violet-300 text-sm font-medium hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors"
+            >
+              {showSummaryContent ? (
+                <ChevronDownIcon className="w-4 h-4" />
+              ) : (
+                <ChevronRightIcon className="w-4 h-4" />
+              )}
+              <svg className={`w-4 h-4 ${isSummaryStreaming ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>{isSummaryStreaming ? 'Compressing Context...' : 'Context Compressed'}</span>
+            </button>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-violet-400 dark:via-violet-600 to-transparent" />
+          </div>
+
+          {/* Collapsible summary content */}
+          {showSummaryContent && message.content && (
+            <div className="mt-2 px-4 py-3 bg-violet-50/50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg text-sm text-gray-700 dark:text-gray-300 max-h-96 overflow-y-auto">
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
+
+          {/* Delete button (on hover) */}
+          {canDelete && (
+            <div className="absolute -right-10 top-1/2 -translate-y-1/2">
+              <button
+                type="button"
+                onClick={handleDeleteSeparator}
+                className="p-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-600 dark:hover:text-red-400 border border-gray-300 dark:border-gray-600 opacity-0 group-hover:opacity-100 transition-all"
+                title="Delete summary"
               >
                 <TrashIcon className="w-4 h-4" />
               </button>

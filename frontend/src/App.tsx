@@ -21,6 +21,7 @@ import { SearchSettings } from './modules/settings/SearchSettings';
 import { WebpageSettings } from './modules/settings/WebpageSettings';
 import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
 import { FollowupSettings } from './modules/settings/FollowupSettings';
+import { CompressionSettings } from './modules/settings/CompressionSettings';
 import './index.css';
 
 function App() {
@@ -52,6 +53,7 @@ function App() {
             <Route path="webpage" element={<WebpageSettings />} />
             <Route path="title-generation" element={<TitleGenerationSettings />} />
             <Route path="followup" element={<FollowupSettings />} />
+            <Route path="compression" element={<CompressionSettings />} />
           </Route>
         </Route>
       </Routes>

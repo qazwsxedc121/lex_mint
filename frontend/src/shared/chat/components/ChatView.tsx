@@ -41,6 +41,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     loading,
     error,
     isStreaming,
+    isCompressing,
     currentAssistantId,
     followupQuestions,
     contextInfo,
@@ -51,6 +52,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     deleteMessage,
     insertSeparator,
     clearAllMessages,
+    compressContext,
     stopGeneration,
     updateAssistantId,
     paramOverrides,
@@ -100,6 +102,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const handleClearAllMessages = () => {
     clearAllMessages();
+  };
+
+  const handleCompressContext = () => {
+    compressContext();
   };
 
   const handleBranchMessage = async (messageId: string) => {
@@ -176,6 +182,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         onSend={handleSendMessage}
         onStop={stopGeneration}
         onInsertSeparator={handleInsertSeparator}
+        onCompressContext={handleCompressContext}
+        isCompressing={isCompressing}
         onClearAllMessages={handleClearAllMessages}
         disabled={loading}
         isStreaming={isStreaming}

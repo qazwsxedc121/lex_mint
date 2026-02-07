@@ -41,6 +41,12 @@ export const defaultChatAPI: ChatAPI = {
   deleteMessage: api.deleteMessage,
   insertSeparator: api.insertSeparator,
   clearAllMessages: api.clearAllMessages,
+  compressContext: async (sessionId, onChunk, onComplete, onError, abortControllerRef?) => {
+    return api.compressContext(
+      sessionId, onChunk, onComplete, onError,
+      'chat', undefined, abortControllerRef
+    );
+  },
 
   // File operations
   uploadFile: api.uploadFile,

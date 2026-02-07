@@ -17,3 +17,4 @@ export { searchConfig } from './search.config';
 export { titleGenerationConfig } from './titleGeneration.config';
 export { webpageConfig } from './webpage.config';
 export { followupConfig } from './followup.config';
+export { compressionConfig } from './compression.config';

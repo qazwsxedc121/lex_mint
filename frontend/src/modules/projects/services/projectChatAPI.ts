@@ -109,6 +109,13 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.clearAllMessages(sessionId, contextType, projectId);
     },
 
+    compressContext: async (sessionId, onChunk, onComplete, onError, abortControllerRef?) => {
+      return api.compressContext(
+        sessionId, onChunk, onComplete, onError,
+        contextType, projectId, abortControllerRef
+      );
+    },
+
     // File operations
     uploadFile: async (sessionId: string, file: File) => {
       return api.uploadFile(sessionId, file, contextType, projectId);

@@ -251,6 +251,8 @@ class ConversationStorage:
             role_display = "User"
         elif role == "assistant":
             role_display = "Assistant"
+        elif role == "summary":
+            role_display = "Summary"
         else:  # separator
             role_display = "Separator"
         new_message = f"\n## {role_display} ({timestamp})\n{content}\n"
@@ -335,6 +337,54 @@ class ConversationStorage:
             context_type=context_type,
             project_id=project_id
         )
+
+    async def append_summary(
+        self,
+        session_id: str,
+        content: str,
+        compressed_count: int = 0,
+        context_type: str = "chat",
+        project_id: Optional[str] = None
+    ) -> str:
+        """
+        Append a summary message to conversation.
+
+        Args:
+            session_id: Session UUID
+            content: Summary text content
+            compressed_count: Number of messages that were compressed
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+
+        Returns:
+            message_id: The generated UUID for the summary
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
+        """
+        filepath = await self._find_session_file(session_id, context_type, project_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        message_id = str(uuid.uuid4())
+
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_message = f"\n## Summary ({timestamp})\n{content}\n"
+        new_message += f"\n<!-- message_id: \"{message_id}\" -->\n"
+        new_message += f"<!-- compression_meta: {json.dumps({'compressed_count': compressed_count})} -->\n"
+
+        post.content += new_message
+
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
+        return message_id
 
     async def list_sessions(self, context_type: str = "chat", project_id: Optional[str] = None) -> List[Dict]:
         """List all conversation sessions in a specific context.
@@ -427,7 +477,14 @@ class ConversationStorage:
         new_content = ""
         for msg in truncated_messages:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            role_display = "User" if msg["role"] == "user" else "Assistant"
+            if msg["role"] == "user":
+                role_display = "User"
+            elif msg["role"] == "assistant":
+                role_display = "Assistant"
+            elif msg["role"] == "summary":
+                role_display = "Summary"
+            else:  # separator
+                role_display = "Separator"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
 
             # Preserve message_id
@@ -444,6 +501,10 @@ class ConversationStorage:
                 new_content += f"<!-- usage: {json.dumps(msg['usage'])} -->\n"
             if "cost" in msg:
                 new_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
+
+            # Preserve compression_meta (for summary messages)
+            if "compression_meta" in msg:
+                new_content += f"<!-- compression_meta: {json.dumps(msg['compression_meta'])} -->\n"
 
         post.content = new_content
 
@@ -495,6 +556,8 @@ class ConversationStorage:
                 role_display = "User"
             elif msg["role"] == "assistant":
                 role_display = "Assistant"
+            elif msg["role"] == "summary":
+                role_display = "Summary"
             else:  # separator
                 role_display = "Separator"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
@@ -513,6 +576,10 @@ class ConversationStorage:
                 new_content += f"<!-- usage: {json.dumps(msg['usage'])} -->\n"
             if "cost" in msg:
                 new_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
+
+            # Preserve compression_meta (for summary messages)
+            if "compression_meta" in msg:
+                new_content += f"<!-- compression_meta: {json.dumps(msg['compression_meta'])} -->\n"
 
         post.content = new_content
 
@@ -638,7 +705,14 @@ class ConversationStorage:
         new_content = ""
         for msg in messages:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            role_display = "User" if msg["role"] == "user" else "Assistant"
+            if msg["role"] == "user":
+                role_display = "User"
+            elif msg["role"] == "assistant":
+                role_display = "Assistant"
+            elif msg["role"] == "summary":
+                role_display = "Summary"
+            else:  # separator
+                role_display = "Separator"
             new_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
 
             # Preserve message_id if present
@@ -883,8 +957,8 @@ class ConversationStorage:
         current_message = None
 
         for line in lines:
-            # Detect message headers (## User/Assistant/Separator (timestamp))
-            if line.startswith("## User (") or line.startswith("## Assistant (") or line.startswith("## Separator ("):
+            # Detect message headers (## User/Assistant/Separator/Summary (timestamp))
+            if line.startswith("## User (") or line.startswith("## Assistant (") or line.startswith("## Separator (") or line.startswith("## Summary ("):
                 # Save previous message
                 if current_message:
                     messages.append(current_message)
@@ -894,6 +968,8 @@ class ConversationStorage:
                     role = "user"
                 elif line.startswith("## Assistant"):
                     role = "assistant"
+                elif line.startswith("## Summary"):
+                    role = "summary"
                 else:  # Separator
                     role = "separator"
                 current_message = {"role": role, "content": ""}
@@ -904,6 +980,7 @@ class ConversationStorage:
                 attachment_match = re.match(r'^<!-- attachment: (.+) -->$', line.strip())
                 message_id_match = re.match(r'^<!-- message_id: "(.+)" -->$', line.strip())
                 sources_match = re.match(r'^<!-- sources: (.+) -->$', line.strip())
+                compression_meta_match = re.match(r'^<!-- compression_meta: (.+) -->$', line.strip())
 
                 if usage_match:
                     try:
@@ -929,6 +1006,11 @@ class ConversationStorage:
                 elif sources_match:
                     try:
                         current_message["sources"] = json.loads(sources_match.group(1))
+                    except json.JSONDecodeError:
+                        pass
+                elif compression_meta_match:
+                    try:
+                        current_message["compression_meta"] = json.loads(compression_meta_match.group(1))
                     except json.JSONDecodeError:
                         pass
                 else:

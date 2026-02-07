@@ -12,6 +12,7 @@ export function useChat(sessionId: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
@@ -604,11 +605,78 @@ export function useChat(sessionId: string | null) {
     setFollowupQuestions([]);
   };
 
+  const compressContext = async () => {
+    if (!sessionId || isProcessingRef.current || isCompressing) return;
+
+    isProcessingRef.current = true;
+    setIsCompressing(true);
+    setError(null);
+
+    // Add placeholder summary message (streaming)
+    const placeholderMessage: Message = {
+      role: 'summary',
+      content: '',
+    };
+    setMessages(prev => [...prev, placeholderMessage]);
+
+    let streamedContent = '';
+
+    try {
+      await api.compressContext(
+        sessionId,
+        (chunk: string) => {
+          streamedContent += chunk;
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'summary') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], content: streamedContent };
+            }
+            return newMessages;
+          });
+        },
+        (data: { message_id: string; compressed_count: number }) => {
+          // Update placeholder with final message_id
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'summary') {
+              newMessages[lastIndex] = {
+                ...newMessages[lastIndex],
+                message_id: data.message_id,
+              };
+            }
+            return newMessages;
+          });
+        },
+        (error: string) => {
+          setError(error);
+          // Remove the placeholder on error
+          setMessages(prev => prev.filter(m => m !== placeholderMessage));
+        },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to compress context');
+      setMessages(prev => {
+        // Remove the last summary message if it has no content
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg?.role === 'summary' && !lastMsg.content) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+    } finally {
+      setIsCompressing(false);
+      isProcessingRef.current = false;
+    }
+  };
+
   return {
     messages,
     loading,
     error,
     isStreaming,
+    isCompressing,
     currentModelId,
     currentAssistantId,
     totalUsage,
@@ -622,6 +690,7 @@ export function useChat(sessionId: string | null) {
     deleteMessage,
     insertSeparator,
     clearAllMessages,
+    compressContext,
     stopGeneration,
     updateModelId,
     updateAssistantId,

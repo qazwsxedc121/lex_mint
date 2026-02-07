@@ -58,6 +58,8 @@ interface InputBoxProps {
   onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
+  onCompressContext?: () => void;
+  isCompressing?: boolean;
   onClearAllMessages?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -76,6 +78,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   onSend,
   onStop,
   onInsertSeparator,
+  onCompressContext,
+  isCompressing = false,
   onClearAllMessages,
   disabled = false,
   isStreaming = false,
@@ -423,6 +427,24 @@ export const InputBox: React.FC<InputBoxProps> = ({
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        )}
+
+        {/* Compress context button */}
+        {onCompressContext && (
+          <button
+            onClick={onCompressContext}
+            disabled={isStreaming || isCompressing}
+            className={`flex items-center justify-center p-1.5 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              isCompressing
+                ? 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
+                : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 hover:text-violet-700 dark:hover:text-violet-300 hover:border-violet-200 dark:hover:border-violet-800'
+            }`}
+            title="Compress context (summarize conversation)"
+          >
+            <svg className={`h-4 w-4 ${isCompressing ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </button>
         )}

@@ -194,6 +194,103 @@ export async function clearAllMessages(sessionId: string, contextType: string = 
 }
 
 /**
+ * Compress conversation context by summarizing messages via LLM.
+ * Streams the summary as SSE events.
+ */
+export async function compressContext(
+  sessionId: string,
+  onChunk: (chunk: string) => void,
+  onComplete: (data: { message_id: string; compressed_count: number }) => void,
+  onError: (error: string) => void,
+  contextType: string = 'chat',
+  projectId?: string,
+  abortControllerRef?: MutableRefObject<AbortController | null>
+): Promise<void> {
+  const controller = new AbortController();
+  if (abortControllerRef) {
+    abortControllerRef.current = controller;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/chat/compress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        context_type: contextType,
+        project_id: projectId,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.error) {
+                onError(data.error);
+                return;
+              }
+
+              if (data.done) {
+                return;
+              }
+
+              if (data.type === 'compression_complete') {
+                onComplete({
+                  message_id: data.message_id,
+                  compressed_count: data.compressed_count,
+                });
+                continue;
+              }
+
+              if (data.chunk) {
+                onChunk(data.chunk);
+              }
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log('Compression aborted by user');
+      return;
+    }
+    throw error;
+  } finally {
+    if (abortControllerRef) {
+      abortControllerRef.current = null;
+    }
+  }
+}
+
+/**
  * Send a message and receive AI response.
  */
 export async function sendMessage(

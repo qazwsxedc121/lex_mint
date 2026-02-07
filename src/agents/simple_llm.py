@@ -272,11 +272,19 @@ def call_llm(
     print(f"      History messages: {len(messages)}")
     logger.info(f"Preparing to call LLM (model: {actual_model_id}), messages: {len(messages)}")
 
+    # === Filter messages after last context boundary ===
+    filtered_messages, summary_content = _filter_messages_by_context_boundary(messages)
+    if len(filtered_messages) < len(messages):
+        print(f"[CONTEXT] Filtered messages: {len(messages)} -> {len(filtered_messages)}")
+        logger.info(f"Context filtered: {len(messages)} -> {len(filtered_messages)} messages")
+
     # Convert message format
     langchain_messages = []
     if system_prompt:
         langchain_messages.append(SystemMessage(content=system_prompt))
-    for i, msg in enumerate(messages):
+    if summary_content:
+        langchain_messages.append(SystemMessage(content=f"The following is a summary of the prior conversation:\n\n{summary_content}"))
+    for i, msg in enumerate(filtered_messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
             print(f"      Message {i+1}: user - {msg['content'][:50]}...")
@@ -431,11 +439,14 @@ async def call_llm_stream(
         print(f"      Thinking mode: enabled (effort: {reasoning_effort})")
     logger.info(f"Preparing streaming LLM call (model: {actual_model_id}), messages: {len(messages)}")
 
-    # === Filter messages after last separator ===
-    filtered_messages = _filter_messages_after_separator(messages)
+    # === Filter messages after last context boundary (separator or summary) ===
+    filtered_messages, summary_content = _filter_messages_by_context_boundary(messages)
     if len(filtered_messages) < len(messages):
         print(f"[CONTEXT] Filtered messages: {len(messages)} -> {len(filtered_messages)}")
         logger.info(f"Context filtered: {len(messages)} -> {len(filtered_messages)} messages")
+        if summary_content:
+            print(f"[CONTEXT] Summary context injected ({len(summary_content)} chars)")
+            logger.info(f"Summary context injected: {len(summary_content)} chars")
 
     # Convert message format (with multimodal support if file_service provided)
     langchain_messages = []
@@ -443,6 +454,10 @@ async def call_llm_stream(
     # Inject system prompt (if provided)
     if system_prompt:
         langchain_messages.append(SystemMessage(content=system_prompt))
+
+    # Inject summary context as a system message (if previous context was compressed)
+    if summary_content:
+        langchain_messages.append(SystemMessage(content=f"The following is a summary of the prior conversation:\n\n{summary_content}"))
 
     # Use multimodal conversion if file_service is available
     if file_service:
@@ -612,27 +627,36 @@ def _truncate_by_rounds(
     return result
 
 
-def _filter_messages_after_separator(messages: List[Dict]) -> List[Dict]:
+def _filter_messages_by_context_boundary(messages: List[Dict]) -> Tuple[List[Dict], Optional[str]]:
     """
-    Filter messages to only include those after the last separator.
+    Filter messages to only include those after the last context boundary
+    (separator or summary). If the boundary is a summary, also return its content.
 
     Args:
         messages: Full message list
 
     Returns:
-        Filtered message list (excludes separator itself)
+        Tuple of (filtered message list, summary content or None)
     """
-    last_separator_index = -1
+    last_boundary_index = -1
+    boundary_is_summary = False
 
-    # Find last separator from the end
+    # Find last separator or summary from the end
     for i in range(len(messages) - 1, -1, -1):
-        if messages[i].get("role") == "separator":
-            last_separator_index = i
+        role = messages[i].get("role")
+        if role == "separator" or role == "summary":
+            last_boundary_index = i
+            boundary_is_summary = (role == "summary")
             break
 
-    # No separator: return all messages
-    if last_separator_index == -1:
-        return messages
+    # No boundary: return all messages
+    if last_boundary_index == -1:
+        return messages, None
 
-    # Return messages after separator (exclude separator)
-    return messages[last_separator_index + 1:]
+    # Extract summary content if applicable
+    summary_content = None
+    if boundary_is_summary:
+        summary_content = messages[last_boundary_index].get("content", "")
+
+    # Return messages after boundary (exclude boundary itself)
+    return messages[last_boundary_index + 1:], summary_content

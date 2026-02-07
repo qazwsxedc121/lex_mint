@@ -14,6 +14,7 @@ import {
   GlobeAltIcon,
   SparklesIcon,
   ChatBubbleLeftRightIcon,
+  ArchiveBoxArrowDownIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { path: '/settings/webpage', label: 'Webpage', icon: GlobeAltIcon },
   { path: '/settings/title-generation', label: 'Title Generation', icon: SparklesIcon },
   { path: '/settings/followup', label: 'Follow-up Questions', icon: ChatBubbleLeftRightIcon },
+  { path: '/settings/compression', label: 'Compression', icon: ArchiveBoxArrowDownIcon },
 ];
 
 export const SettingsSidebar: React.FC = () => {

@@ -55,6 +55,13 @@ export interface ChatAPI {
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   insertSeparator(sessionId: string): Promise<string>;
   clearAllMessages(sessionId: string): Promise<void>;
+  compressContext(
+    sessionId: string,
+    onChunk: (chunk: string) => void,
+    onComplete: (data: { message_id: string; compressed_count: number }) => void,
+    onError: (error: string) => void,
+    abortControllerRef?: MutableRefObject<AbortController | null>
+  ): Promise<void>;
 
   // File operations
   uploadFile(sessionId: string, file: File): Promise<UploadedFile>;

@@ -1,0 +1,30 @@
+compression:
+  min_messages: 2
+  model_id: openrouter:bytedance-seed/seed-1.6-flash
+  prompt_template: 'You are a conversation summarizer. Create a concise but comprehensive
+    summary of the conversation below.
+
+
+    The summary must:
+
+    1. Capture all key topics discussed, decisions made, and conclusions reached
+
+    2. Preserve specific details needed to continue (names, numbers, code snippets,
+    file paths, URLs, technical terms)
+
+    3. Note any unresolved questions or pending tasks
+
+    4. Be written for seamless continuation
+
+
+    Conversation to summarize:
+
+    {formatted_messages}
+
+
+    Write the summary now. Start with "**Conversation Summary**" and organize by topic
+    if multiple subjects were covered.
+
+    '
+  temperature: 0.3
+  timeout_seconds: 60

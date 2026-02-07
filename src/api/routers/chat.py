@@ -70,6 +70,13 @@ class ClearMessagesRequest(BaseModel):
     project_id: Optional[str] = None
 
 
+class CompressContextRequest(BaseModel):
+    """Request model for compress context endpoint."""
+    session_id: str
+    context_type: str = "chat"
+    project_id: Optional[str] = None
+
+
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
     storage = ConversationStorage(settings.conversations_dir)
@@ -501,5 +508,70 @@ async def clear_all_messages(
     except Exception as e:
         logger.error(f"Clear messages error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Clear error: {str(e)}")
+
+
+@router.post("/chat/compress")
+async def compress_context(
+    request: CompressContextRequest,
+    agent: AgentService = Depends(get_agent_service)
+):
+    """Compress conversation context by summarizing messages via LLM.
+
+    Streams the summary as SSE events, then appends it to the conversation.
+
+    Args:
+        request: CompressContextRequest with session_id and context parameters
+
+    Returns:
+        StreamingResponse with Server-Sent Events
+
+    Raises:
+        404: Session not found
+        400: Invalid context parameters
+        500: Internal server error
+    """
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    from ..services.compression_service import CompressionService
+    compression_service = CompressionService(agent.storage)
+
+    async def event_generator():
+        try:
+            async for chunk in compression_service.compress_context_stream(
+                session_id=request.session_id,
+                context_type=request.context_type,
+                project_id=request.project_id,
+            ):
+                if isinstance(chunk, dict):
+                    data = json.dumps(chunk, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                    continue
+
+                data = json.dumps({"chunk": chunk}, ensure_ascii=False)
+                yield f"data: {data}\n\n"
+
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+        except FileNotFoundError:
+            error_data = json.dumps({"error": "Session not found"})
+            yield f"data: {error_data}\n\n"
+        except ValueError as e:
+            error_data = json.dumps({"error": str(e)})
+            yield f"data: {error_data}\n\n"
+        except Exception as e:
+            logger.error(f"Compress context error: {str(e)}", exc_info=True)
+            error_data = json.dumps({"error": str(e)})
+            yield f"data: {error_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
