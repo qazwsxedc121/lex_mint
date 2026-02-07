@@ -9,9 +9,11 @@ import type { ChatAPI } from './interfaces';
 export const defaultChatAPI: ChatAPI = {
   // Session operations
   getSession: api.getSession,
-  createSession: api.createSession,
+  createSession: (modelId?: string, assistantId?: string, temporary?: boolean) =>
+    api.createSession(modelId, assistantId, 'chat', undefined, temporary || false),
   listSessions: api.listSessions,
   deleteSession: api.deleteSession,
+  saveTemporarySession: api.saveTemporarySession,
   updateSessionTitle: api.updateSessionTitle,
   duplicateSession: api.duplicateSession,
   branchSession: api.branchSession,

@@ -441,6 +441,8 @@ class AgentService:
         print(f"[OK] AI response saved with ID: {assistant_message_id}")
 
         # Trigger title generation in background (do not await)
+        # Skip for temporary sessions to save API cost
+        is_temporary = session.get("temporary", False)
         try:
             from .title_generation_service import TitleGenerationService
             title_service = TitleGenerationService(storage=self.storage)
@@ -450,9 +452,9 @@ class AgentService:
             message_count = len(updated_session['state']['messages'])
             current_title = updated_session['title']
 
-            print(f"[TitleGen] Check: messages={message_count}, title='{current_title}', enabled={title_service.config.enabled}, threshold={title_service.config.trigger_threshold}")
+            print(f"[TitleGen] Check: messages={message_count}, title='{current_title}', enabled={title_service.config.enabled}, threshold={title_service.config.trigger_threshold}, temporary={is_temporary}")
 
-            if title_service.should_generate_title(message_count, current_title):
+            if not is_temporary and title_service.should_generate_title(message_count, current_title):
                 # Create background task (do not await)
                 asyncio.create_task(title_service.generate_title_async(session_id))
                 print(f"[TitleGen] Background title generation task created")

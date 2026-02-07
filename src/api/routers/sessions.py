@@ -17,6 +17,7 @@ class CreateSessionRequest(BaseModel):
     """创建会话请求"""
     model_id: Optional[str] = None  # 向后兼容
     assistant_id: Optional[str] = None  # 新方式：使用助手
+    temporary: bool = False
 
 
 class UpdateModelRequest(BaseModel):
@@ -70,14 +71,16 @@ async def create_session(
 
     assistant_id = request.assistant_id if request else None
     model_id = request.model_id if request else None
-    logger.info(f"📝 创建新会话（助手: {assistant_id or '默认'}, 模型: {model_id or '默认'}）...")
+    temporary = request.temporary if request else False
+    logger.info(f"📝 创建新会话（助手: {assistant_id or '默认'}, 模型: {model_id or '默认'}, 临时: {temporary}）...")
 
     try:
         session_id = await storage.create_session(
             model_id=model_id,
             assistant_id=assistant_id,
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
+            temporary=temporary
         )
         logger.info(f"✅ 新会话已创建: {session_id}")
         return {"session_id": session_id}
@@ -210,6 +213,43 @@ async def delete_session(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         logger.error(f"❌ 验证错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{session_id}/save", response_model=Dict[str, str])
+async def save_temporary_session(
+    session_id: str,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Convert a temporary session to a permanent one.
+
+    Args:
+        session_id: Session UUID
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Returns:
+        {"message": "Session saved"}
+
+    Raises:
+        404: Session not found
+        400: Invalid context parameters
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    logger.info(f"Saving temporary session: {session_id[:16]}...")
+    try:
+        await storage.convert_to_permanent(session_id, context_type=context_type, project_id=project_id)
+        logger.info(f"Session saved successfully")
+        return {"message": "Session saved"}
+    except FileNotFoundError:
+        logger.error(f"Session not found: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 

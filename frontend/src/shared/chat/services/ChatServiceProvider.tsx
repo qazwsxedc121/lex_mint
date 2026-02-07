@@ -82,6 +82,34 @@ export const ChatServiceProvider: React.FC<ChatServiceProviderProps> = ({
     }
   }, [api, loadSessions]);
 
+  // Create temporary session operation (does not reload session list)
+  const createTemporarySession = useCallback(async (): Promise<string> => {
+    try {
+      setSessionsError(null);
+      const sessionId = await api.createSession(undefined, undefined, true);
+      // Do NOT reload sessions - temp sessions are hidden from the list
+      return sessionId;
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Failed to create temporary session';
+      setSessionsError(error);
+      throw err;
+    }
+  }, [api]);
+
+  // Save temporary session (convert to permanent)
+  const saveTemporarySession = useCallback(async (sessionId: string): Promise<void> => {
+    try {
+      setSessionsError(null);
+      await api.saveTemporarySession(sessionId);
+      // Reload sessions so the saved session appears in the sidebar
+      await loadSessions();
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Failed to save session';
+      setSessionsError(error);
+      throw err;
+    }
+  }, [api, loadSessions]);
+
   // Delete session operation
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
@@ -117,6 +145,8 @@ export const ChatServiceProvider: React.FC<ChatServiceProviderProps> = ({
     sessionsLoading,
     sessionsError,
     createSession,
+    createTemporarySession,
+    saveTemporarySession,
     deleteSession,
     refreshSessions,
     context: legacyContext,
@@ -129,6 +159,8 @@ export const ChatServiceProvider: React.FC<ChatServiceProviderProps> = ({
     sessionsLoading,
     sessionsError,
     createSession,
+    createTemporarySession,
+    saveTemporarySession,
     deleteSession,
     refreshSessions,
     legacyContext,

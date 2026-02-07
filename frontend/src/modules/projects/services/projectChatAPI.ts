@@ -22,8 +22,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.getSession(sessionId, contextType, projectId);
     },
 
-    createSession: async (modelId?: string, assistantId?: string) => {
-      return api.createSession(modelId, assistantId, contextType, projectId);
+    createSession: async (modelId?: string, assistantId?: string, temporary?: boolean) => {
+      return api.createSession(modelId, assistantId, contextType, projectId, temporary || false);
     },
 
     listSessions: async () => {
@@ -32,6 +32,10 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
 
     deleteSession: async (sessionId: string) => {
       return api.deleteSession(sessionId, contextType, projectId);
+    },
+
+    saveTemporarySession: async (sessionId: string) => {
+      return api.saveTemporarySession(sessionId, contextType, projectId);
     },
 
     updateSessionTitle: async (sessionId: string, title: string) => {

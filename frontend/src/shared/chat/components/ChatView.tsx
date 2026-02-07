@@ -30,7 +30,7 @@ export interface ChatViewProps {
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMessageActions }) => {
-  const { api, navigation, currentSessionId, currentSession, refreshSessions, context } = useChatServices();
+  const { api, navigation, currentSessionId, currentSession, refreshSessions, context, saveTemporarySession } = useChatServices();
 
   // Use onAssistantRefresh from service context if available
   const { onAssistantRefresh } = context || {};
@@ -46,6 +46,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     followupQuestions,
     contextInfo,
     lastPromptTokens,
+    isTemporary,
+    setIsTemporary,
     sendMessage,
     editMessage,
     regenerateMessage,
@@ -82,6 +84,34 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     // Update ref for next comparison
     wasStreamingRef.current = isStreaming;
   }, [isStreaming, onAssistantRefresh, refreshSessions]);
+
+  // Auto-cleanup temporary session when navigating away
+  // Use refs so the cleanup function always reads the latest values,
+  // avoiding stale-closure deletion after "Save" flips isTemporary to false.
+  const isTemporaryRef = useRef(isTemporary);
+  const currentSessionIdRef = useRef(currentSessionId);
+  useEffect(() => { isTemporaryRef.current = isTemporary; }, [isTemporary]);
+  useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
+
+  useEffect(() => {
+    const prevSessionId = currentSessionId;
+    return () => {
+      // Only delete if the session is still temporary at cleanup time
+      if (isTemporaryRef.current && prevSessionId) {
+        api.deleteSession(prevSessionId).catch(() => {});
+      }
+    };
+  }, [currentSessionId, api]);
+
+  const handleSaveTemporary = async () => {
+    if (!currentSessionId) return;
+    try {
+      await saveTemporarySession(currentSessionId);
+      setIsTemporary(false);
+    } catch (err) {
+      console.error('Failed to save session:', err);
+    }
+  };
 
   const handleAssistantChange = async (assistantId: string) => {
     updateAssistantId(assistantId);
@@ -137,9 +167,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       {/* Header (optional) */}
       {showHeader && (
         <div data-name="chat-view-header" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            {currentSession?.title || 'Chat'}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+              {currentSession?.title || 'Chat'}
+            </h1>
+            {isTemporary && (
+              <>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                  Temporary
+                </span>
+                <button
+                  onClick={handleSaveTemporary}
+                  className="inline-flex items-center px-3 py-1 rounded text-xs font-medium bg-green-500 text-white hover:bg-green-600 transition-colors"
+                >
+                  Save
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 

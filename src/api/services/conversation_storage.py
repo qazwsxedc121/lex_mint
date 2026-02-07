@@ -37,7 +37,8 @@ class ConversationStorage:
         model_id: Optional[str] = None,
         assistant_id: Optional[str] = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        temporary: bool = False
     ) -> str:
         """Create a new conversation session.
 
@@ -103,6 +104,9 @@ class ConversationStorage:
         # 新会话：存储 assistant_id
         if assistant_id:
             metadata["assistant_id"] = assistant_id
+
+        if temporary:
+            metadata["temporary"] = True
 
         post.metadata = metadata
 
@@ -195,6 +199,7 @@ class ConversationStorage:
             "param_overrides": post.metadata.get("param_overrides", {}),
             "total_usage": post.metadata.get("total_usage"),
             "total_cost": post.metadata.get("total_cost"),
+            "temporary": post.metadata.get("temporary", False),
             "state": {
                 "messages": messages,
                 "current_step": post.metadata.get("current_step", 0)
@@ -422,6 +427,10 @@ class ConversationStorage:
                     content = await f.read()
 
                 post = frontmatter.loads(content)
+
+                # Skip temporary sessions
+                if post.metadata.get("temporary", False):
+                    continue
 
                 # Count messages
                 message_count = (
@@ -798,6 +807,69 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         filepath.unlink()
+
+    async def cleanup_temporary_sessions(self):
+        """Delete all temporary session files across all contexts.
+
+        Called at backend startup to clean up leftover temp files.
+        """
+        cleaned = 0
+        # Scan chat directory
+        chat_dir = self.conversations_dir / "chat"
+        if chat_dir.exists():
+            for filepath in chat_dir.glob("*.md"):
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        post = frontmatter.load(f)
+                        if post.metadata.get("temporary", False):
+                            filepath.unlink()
+                            cleaned += 1
+                except Exception:
+                    continue
+
+        # Scan project directories
+        projects_dir = self.conversations_dir / "projects"
+        if projects_dir.exists():
+            for filepath in projects_dir.glob("**/*.md"):
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        post = frontmatter.load(f)
+                        if post.metadata.get("temporary", False):
+                            filepath.unlink()
+                            cleaned += 1
+                except Exception:
+                    continue
+
+        return cleaned
+
+    async def convert_to_permanent(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+        """Convert a temporary session to a permanent one.
+
+        Removes the 'temporary' key from frontmatter.
+
+        Args:
+            session_id: Session UUID
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+        """
+        filepath = await self._find_session_file(session_id, context_type, project_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+
+        # Remove temporary flag
+        if "temporary" in post.metadata:
+            del post.metadata["temporary"]
+
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
 
     async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """更新会话使用的模型.

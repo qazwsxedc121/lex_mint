@@ -56,6 +56,7 @@ export interface Session {
   title: string;
   created_at: string;
   message_count?: number;
+  temporary?: boolean;
 }
 
 export interface ParamOverrides {
@@ -78,6 +79,7 @@ export interface SessionDetail {
   param_overrides?: ParamOverrides;
   total_usage?: TokenUsage;
   total_cost?: CostInfo;
+  temporary?: boolean;
   state: {
     messages: Message[];
     current_step: number;

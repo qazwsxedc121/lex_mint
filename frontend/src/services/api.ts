@@ -25,13 +25,17 @@ export async function createSession(
   modelId?: string,
   assistantId?: string,
   contextType: string = 'chat',
-  projectId?: string
+  projectId?: string,
+  temporary: boolean = false
 ): Promise<string> {
-  const body: { model_id?: string; assistant_id?: string } = {};
+  const body: { model_id?: string; assistant_id?: string; temporary?: boolean } = {};
   if (assistantId) {
     body.assistant_id = assistantId;
   } else if (modelId) {
     body.model_id = modelId;
+  }
+  if (temporary) {
+    body.temporary = true;
   }
 
   // Build query params
@@ -87,6 +91,19 @@ export async function deleteSession(sessionId: string, contextType: string = 'ch
   }
 
   await api.delete(`/api/sessions/${sessionId}?${params.toString()}`);
+}
+
+/**
+ * Save a temporary session (convert to permanent).
+ */
+export async function saveTemporarySession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.post(`/api/sessions/${sessionId}/save?${params.toString()}`);
 }
 
 /**

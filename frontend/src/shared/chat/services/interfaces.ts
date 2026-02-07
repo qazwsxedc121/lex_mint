@@ -23,9 +23,10 @@ import type { MutableRefObject } from 'react';
 export interface ChatAPI {
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
-  createSession(modelId?: string, assistantId?: string): Promise<string>;
+  createSession(modelId?: string, assistantId?: string, temporary?: boolean): Promise<string>;
   listSessions(): Promise<Session[]>;
   deleteSession(sessionId: string): Promise<void>;
+  saveTemporarySession(sessionId: string): Promise<void>;
   updateSessionTitle(sessionId: string, title: string): Promise<void>;
   duplicateSession(sessionId: string): Promise<string>;
   branchSession(sessionId: string, messageId: string): Promise<string>;
@@ -114,6 +115,8 @@ export interface ChatServiceContextValue {
 
   // Built-in Sessions operations
   createSession: (modelId?: string, assistantId?: string) => Promise<string>;
+  createTemporarySession: () => Promise<string>;
+  saveTemporarySession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   refreshSessions: () => Promise<void>;
 

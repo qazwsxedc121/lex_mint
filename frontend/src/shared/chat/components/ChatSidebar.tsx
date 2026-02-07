@@ -12,7 +12,8 @@ import {
   TrashIcon,
   PencilIcon,
   DocumentDuplicateIcon,
-  SparklesIcon
+  SparklesIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
 
@@ -24,6 +25,7 @@ export const ChatSidebar: React.FC = () => {
     sessions,
     currentSessionId,
     createSession,
+    createTemporarySession,
     deleteSession,
     refreshSessions,
   } = useChatServices();
@@ -43,6 +45,19 @@ export const ChatSidebar: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to create session:', err);
+    }
+  };
+
+  const handleNewTemporarySession = async () => {
+    try {
+      const sessionId = await createTemporarySession();
+      if (navigation) {
+        navigation.navigateToSession(sessionId);
+      } else {
+        navigate(`/chat/${sessionId}`);
+      }
+    } catch (err) {
+      console.error('Failed to create temporary session:', err);
     }
   };
 
@@ -148,13 +163,21 @@ export const ChatSidebar: React.FC = () => {
 
   return (
     <div data-name="chat-sidebar" className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
-      {/* Header */}
-      <div data-name="chat-sidebar-header" className="p-4 border-b border-gray-300 dark:border-gray-700">
+      {/* Toolbar */}
+      <div data-name="chat-sidebar-toolbar" className="flex items-center gap-1 px-3 py-2 border-b border-gray-300 dark:border-gray-700">
         <button
           onClick={handleNewSession}
-          className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+          className="p-2 rounded-lg text-blue-500 dark:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title="New Chat"
         >
-          + New Chat
+          <PlusIcon className="h-5 w-5" />
+        </button>
+        <button
+          onClick={handleNewTemporarySession}
+          className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title="Temp Chat"
+        >
+          <PlusIcon className="h-5 w-5" />
         </button>
       </div>
 

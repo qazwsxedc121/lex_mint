@@ -21,6 +21,7 @@ export function useChat(sessionId: string | null) {
   const [contextInfo, setContextInfo] = useState<ContextInfo | null>(null);
   const [lastPromptTokens, setLastPromptTokens] = useState<number | null>(null);
   const [paramOverrides, setParamOverrides] = useState<ParamOverrides>({});
+  const [isTemporary, setIsTemporary] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -36,6 +37,7 @@ export function useChat(sessionId: string | null) {
       setContextInfo(null);
       setLastPromptTokens(null);
       setParamOverrides({});
+      setIsTemporary(false);
       return;
     }
 
@@ -49,6 +51,7 @@ export function useChat(sessionId: string | null) {
       setTotalUsage(session.total_usage || null);
       setTotalCost(session.total_cost || null);
       setParamOverrides(session.param_overrides || {});
+      setIsTemporary(session.temporary || false);
 
       // Derive lastPromptTokens from last assistant message's usage
       const msgs = session.state.messages;
@@ -70,6 +73,7 @@ export function useChat(sessionId: string | null) {
       setContextInfo(null);
       setLastPromptTokens(null);
       setParamOverrides({});
+      setIsTemporary(false);
     } finally {
       setLoading(false);
     }
@@ -684,6 +688,8 @@ export function useChat(sessionId: string | null) {
     followupQuestions,
     contextInfo,
     lastPromptTokens,
+    isTemporary,
+    setIsTemporary,
     sendMessage,
     editMessage,
     regenerateMessage,

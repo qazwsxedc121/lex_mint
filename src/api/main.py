@@ -76,6 +76,13 @@ async def startup_event():
 
     logger.info("✅ 助手配置初始化完成")
 
+    # Clean up leftover temporary sessions from previous runs
+    from .services.conversation_storage import ConversationStorage
+    storage = ConversationStorage(settings.conversations_dir)
+    cleaned = await storage.cleanup_temporary_sessions()
+    if cleaned:
+        logger.info(f"Cleaned up {cleaned} temporary session(s)")
+
 
 @app.get("/api/health")
 async def health_check():
