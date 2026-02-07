@@ -133,12 +133,46 @@ export const FormField: React.FC<FormFieldProps> = ({
         );
 
       case 'slider':
+        {
+          const allowEmpty = config.allowEmpty;
+          const isDefault = allowEmpty && (value === undefined || value === null);
+          const effectiveValue = isDefault
+            ? (config.defaultValue ?? config.min)
+            : (value ?? config.defaultValue ?? config.min);
+          const displayValue = isDefault
+            ? (config.emptyLabel || 'Default')
+            : (config.formatValue ? config.formatValue(effectiveValue) : effectiveValue);
+
         return (
           <div>
+            {allowEmpty && (
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  checked={isDefault}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      onChange(undefined);
+                    } else {
+                      onChange(config.defaultValue ?? config.min);
+                    }
+                  }}
+                  disabled={config.disabled}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  id={`slider-default-${config.name}`}
+                />
+                <label
+                  htmlFor={`slider-default-${config.name}`}
+                  className="text-xs text-gray-600 dark:text-gray-300"
+                >
+                  Use default
+                </label>
+              </div>
+            )}
             <div className="flex justify-between items-center mb-2">
               {config.showValue !== false && (
                 <span className="text-sm text-gray-700 dark:text-gray-300">
-                  {config.formatValue ? config.formatValue(value ?? config.defaultValue ?? config.min) : (value ?? config.defaultValue ?? config.min)}
+                  {displayValue}
                 </span>
               )}
             </div>
@@ -147,9 +181,9 @@ export const FormField: React.FC<FormFieldProps> = ({
               min={config.min}
               max={config.max}
               step={config.step}
-              value={value ?? config.defaultValue ?? config.min}
+              value={effectiveValue}
               onChange={(e) => onChange(parseFloat(e.target.value))}
-              disabled={config.disabled}
+              disabled={config.disabled || isDefault}
               className="w-full"
             />
             {config.showLabels !== false && (
@@ -157,9 +191,10 @@ export const FormField: React.FC<FormFieldProps> = ({
                 <span>{config.minLabel || config.min}</span>
                 <span>{config.maxLabel || config.max}</span>
               </div>
-            )}
+              )}
           </div>
         );
+      }
 
       case 'textarea':
         return (

@@ -111,6 +111,10 @@ export interface SliderFieldConfig extends BaseFieldConfig {
   minLabel?: string;
   /** Custom max label */
   maxLabel?: string;
+  /** Allow empty (use provider default) */
+  allowEmpty?: boolean;
+  /** Empty value label */
+  emptyLabel?: string;
 }
 
 /**
@@ -233,6 +237,30 @@ export interface CrudSettingsConfig<T = any> {
     context: any,
     isEdit: boolean
   ) => ReactNode;
+  /** Create page metadata */
+  createPage?: {
+    title?: string;
+    description?: string;
+    backLabel?: string;
+    cancelLabel?: string;
+    successMessage?: string;
+  };
+  /** Edit page metadata */
+  editPage?: {
+    title?: string | ((item: T) => string);
+    description?: string | ((item: T) => string);
+    backLabel?: string;
+    cancelLabel?: string;
+    successMessage?: string | ((item: T) => string);
+  };
+  /** Create UI mode */
+  createMode?: 'modal' | 'page';
+  /** Create page path */
+  createPath?: string;
+  /** Edit UI mode */
+  editMode?: 'modal' | 'page';
+  /** Edit page path builder (used when editMode = "page") */
+  editPath?: (itemId: string, item: T) => string;
 
   // Actions
   /** Row actions */

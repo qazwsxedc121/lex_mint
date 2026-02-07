@@ -9,6 +9,14 @@ import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
 import { ModelsPage } from './modules/settings/ModelsPage';
 import { ProvidersPage } from './modules/settings/ProvidersPage';
+import {
+  AssistantsCreatePage,
+  AssistantsEditPage,
+  ModelsCreatePage,
+  ModelsEditPage,
+  ProvidersCreatePage,
+  ProvidersEditPage
+} from './modules/settings/CrudPages';
 import { SearchSettings } from './modules/settings/SearchSettings';
 import { WebpageSettings } from './modules/settings/WebpageSettings';
 import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
@@ -32,8 +40,14 @@ function App() {
           <Route path="settings" element={<SettingsModule />}>
             <Route index element={<Navigate to="assistants" replace />} />
             <Route path="assistants" element={<AssistantsPage />} />
+            <Route path="assistants/new" element={<AssistantsCreatePage />} />
+            <Route path="assistants/:assistantId" element={<AssistantsEditPage />} />
             <Route path="models" element={<ModelsPage />} />
+            <Route path="models/new" element={<ModelsCreatePage />} />
+            <Route path="models/:modelId" element={<ModelsEditPage />} />
             <Route path="providers" element={<ProvidersPage />} />
+            <Route path="providers/new" element={<ProvidersCreatePage />} />
+            <Route path="providers/:providerId" element={<ProvidersEditPage />} />
             <Route path="search" element={<SearchSettings />} />
             <Route path="webpage" element={<WebpageSettings />} />
             <Route path="title-generation" element={<TitleGenerationSettings />} />

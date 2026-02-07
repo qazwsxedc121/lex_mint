@@ -13,6 +13,10 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
   description: 'Manage language models from different providers',
   itemName: 'model',
   itemNamePlural: 'models',
+  createMode: 'page',
+  createPath: '/settings/models/new',
+  editMode: 'page',
+  editPath: (itemId) => `/settings/models/${encodeURIComponent(itemId)}`,
 
   // Table configuration
   columns: [

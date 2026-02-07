@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { CrudTable } from './CrudTable';
@@ -35,6 +36,7 @@ export function CrudSettingsPage<T = any>({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const isEdit = editingItem !== null;
   const fields = isEdit && config.editFields ? config.editFields : config.createFields;
@@ -46,7 +48,10 @@ export function CrudSettingsPage<T = any>({
     // Set default values from field configs
     fields.forEach((field) => {
       if (data[field.name] === undefined && 'defaultValue' in field) {
-        data[field.name] = field.defaultValue;
+        const skipDefault = field.type === 'slider' && field.allowEmpty;
+        if (!skipDefault) {
+          data[field.name] = field.defaultValue;
+        }
       }
     });
 
@@ -55,6 +60,10 @@ export function CrudSettingsPage<T = any>({
 
   // Handle create button
   const handleCreate = () => {
+    if (config.createMode === 'page' && config.createPath) {
+      navigate(config.createPath);
+      return;
+    }
     setEditingItem(null);
     setFormData(initializeFormData());
     setShowCreateModal(true);
@@ -64,6 +73,10 @@ export function CrudSettingsPage<T = any>({
 
   // Handle edit button
   const handleEdit = (item: T) => {
+    if (config.editMode === 'page' && config.editPath) {
+      navigate(config.editPath(getItemId(item), item));
+      return;
+    }
     setEditingItem(item);
     setFormData(initializeFormData(item));
     setShowCreateModal(true);

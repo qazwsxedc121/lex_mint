@@ -15,6 +15,10 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
   description: 'Manage LLM providers (DeepSeek, OpenAI, Anthropic, etc.)',
   itemName: 'provider',
   itemNamePlural: 'providers',
+  createMode: 'page',
+  createPath: '/settings/providers/new',
+  editMode: 'page',
+  editPath: (itemId) => `/settings/providers/${itemId}`,
 
   // Table configuration
   columns: [
