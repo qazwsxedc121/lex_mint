@@ -70,7 +70,9 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       attachments?,
       onUserMessageId?,
       onAssistantMessageId?,
-      useWebSearch?
+      useWebSearch?,
+      onFollowupQuestions?,
+      onContextInfo?
     ) => {
       return api.sendMessageStream(
         sessionId,
@@ -89,7 +91,9 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         onAssistantMessageId,
         useWebSearch,
         contextType,
-        projectId
+        projectId,
+        onFollowupQuestions,
+        onContextInfo
       );
     },
 

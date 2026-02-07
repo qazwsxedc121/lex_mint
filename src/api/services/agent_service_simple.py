@@ -405,6 +405,11 @@ class AgentService:
                         )
                     continue
 
+                # Forward context_info event to frontend
+                if isinstance(chunk, dict) and chunk.get("type") == "context_info":
+                    yield chunk
+                    continue
+
                 full_response += chunk
                 yield chunk
 

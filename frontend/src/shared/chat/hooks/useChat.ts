@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides } from '../../../types/message';
+import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 export function useChat(sessionId: string | null) {
@@ -17,6 +17,8 @@ export function useChat(sessionId: string | null) {
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
   const [totalCost, setTotalCost] = useState<CostInfo | null>(null);
   const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
+  const [contextInfo, setContextInfo] = useState<ContextInfo | null>(null);
+  const [lastPromptTokens, setLastPromptTokens] = useState<number | null>(null);
   const [paramOverrides, setParamOverrides] = useState<ParamOverrides>({});
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
@@ -30,6 +32,8 @@ export function useChat(sessionId: string | null) {
       setTotalUsage(null);
       setTotalCost(null);
       setFollowupQuestions([]);
+      setContextInfo(null);
+      setLastPromptTokens(null);
       setParamOverrides({});
       return;
     }
@@ -44,6 +48,17 @@ export function useChat(sessionId: string | null) {
       setTotalUsage(session.total_usage || null);
       setTotalCost(session.total_cost || null);
       setParamOverrides(session.param_overrides || {});
+
+      // Derive lastPromptTokens from last assistant message's usage
+      const msgs = session.state.messages;
+      let derivedPromptTokens: number | null = null;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant' && msgs[i].usage?.prompt_tokens) {
+          derivedPromptTokens = msgs[i].usage!.prompt_tokens;
+          break;
+        }
+      }
+      setLastPromptTokens(derivedPromptTokens);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load session');
       setMessages([]);
@@ -51,6 +66,8 @@ export function useChat(sessionId: string | null) {
       setCurrentAssistantId(null);
       setTotalUsage(null);
       setTotalCost(null);
+      setContextInfo(null);
+      setLastPromptTokens(null);
       setParamOverrides({});
     } finally {
       setLoading(false);
@@ -148,6 +165,8 @@ export function useChat(sessionId: string | null) {
               total_cost: prev.total_cost + cost.total_cost,
             } : cost);
           }
+          // Track prompt tokens for context usage bar
+          setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
           setMessages(prev => {
@@ -187,11 +206,12 @@ export function useChat(sessionId: string | null) {
           });
         },
         options?.useWebSearch,
-        undefined,  // contextType
-        undefined,  // projectId
         (questions: string[]) => {
           // Backend returned follow-up questions
           setFollowupQuestions(questions);
+        },
+        (info: ContextInfo) => {
+          setContextInfo(info);
         }
       );
     } catch (err) {
@@ -286,6 +306,7 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
+          setLastPromptTokens(usage.prompt_tokens);
         },
         undefined,
         undefined,
@@ -315,7 +336,11 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
-        undefined
+        undefined,
+        undefined,
+        (info: ContextInfo) => {
+          setContextInfo(info);
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to edit message');
@@ -424,6 +449,7 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
+          setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
           setMessages(prev => {
@@ -462,7 +488,11 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
-        undefined
+        undefined,
+        undefined,
+        (info: ContextInfo) => {
+          setContextInfo(info);
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate message');
@@ -537,6 +567,10 @@ export function useChat(sessionId: string | null) {
       // Reset usage and cost totals
       setTotalUsage(null);
       setTotalCost(null);
+
+      // Reset context usage
+      setContextInfo(null);
+      setLastPromptTokens(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clear messages');
     } finally {
@@ -580,6 +614,8 @@ export function useChat(sessionId: string | null) {
     totalUsage,
     totalCost,
     followupQuestions,
+    contextInfo,
+    lastPromptTokens,
     sendMessage,
     editMessage,
     regenerateMessage,

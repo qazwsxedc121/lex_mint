@@ -9,6 +9,7 @@ import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { AssistantSelector } from './AssistantSelector';
 import { FollowupChips } from './FollowupChips';
+import { ContextUsageBar } from './ContextUsageBar';
 import { useChat } from '../hooks/useChat';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
@@ -42,6 +43,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     isStreaming,
     currentAssistantId,
     followupQuestions,
+    contextInfo,
+    lastPromptTokens,
     sendMessage,
     editMessage,
     regenerateMessage,
@@ -160,6 +163,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
           Error: {error}
         </div>
       )}
+
+      {/* Context usage bar */}
+      <ContextUsageBar
+        promptTokens={lastPromptTokens}
+        contextBudget={contextInfo?.context_budget ?? null}
+        contextWindow={contextInfo?.context_window ?? null}
+      />
 
       {/* Input with toolbar */}
       <InputBox

@@ -9,7 +9,8 @@ import type {
   CostInfo,
   SearchSource,
   UploadedFile,
-  ParamOverrides
+  ParamOverrides,
+  ContextInfo
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
@@ -47,7 +48,9 @@ export interface ChatAPI {
     attachments?: UploadedFile[],
     onUserMessageId?: (messageId: string) => void,
     onAssistantMessageId?: (messageId: string) => void,
-    useWebSearch?: boolean
+    useWebSearch?: boolean,
+    onFollowupQuestions?: (questions: string[]) => void,
+    onContextInfo?: (info: ContextInfo) => void
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   insertSeparator(sessionId: string): Promise<string>;

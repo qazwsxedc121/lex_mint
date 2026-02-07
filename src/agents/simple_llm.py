@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import List, Dict, Any, AsyncIterator, Optional, Union
+from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
 
@@ -41,7 +41,7 @@ def _calculate_output_reserve(context_length: int, from_profile: bool) -> int:
     return max(MIN_OUTPUT_RESERVE, min(MAX_OUTPUT_RESERVE, reserve))
 
 
-def _get_context_limit(llm, capabilities) -> int:
+def _get_context_limit(llm, capabilities) -> Tuple[int, int]:
     """Determine the max input tokens allowed before calling the LLM.
 
     Priority:
@@ -50,7 +50,7 @@ def _get_context_limit(llm, capabilities) -> int:
       3. DEFAULT_CONTEXT_LENGTH (absolute fallback)
 
     Returns:
-        Usable input token budget (context window minus output reserve).
+        Tuple of (usable input token budget, raw context window size).
     """
     # Priority 1: LangChain profile
     profile_limit = None
@@ -68,7 +68,7 @@ def _get_context_limit(llm, capabilities) -> int:
             f"[CONTEXT] Using profile max_input_tokens={profile_limit}, "
             f"reserve={reserve}, budget={budget}"
         )
-        return budget
+        return budget, profile_limit
 
     # Priority 2: capabilities from config
     config_limit = getattr(capabilities, "context_length", None)
@@ -79,7 +79,7 @@ def _get_context_limit(llm, capabilities) -> int:
             f"[CONTEXT] Using config context_length={config_limit}, "
             f"reserve={reserve}, budget={budget}"
         )
-        return budget
+        return budget, config_limit
 
     # Priority 3: absolute fallback
     reserve = _calculate_output_reserve(DEFAULT_CONTEXT_LENGTH, from_profile=False)
@@ -88,7 +88,7 @@ def _get_context_limit(llm, capabilities) -> int:
         f"[CONTEXT] Using default context_length={DEFAULT_CONTEXT_LENGTH}, "
         f"reserve={reserve}, budget={budget}"
     )
-    return budget
+    return budget, DEFAULT_CONTEXT_LENGTH
 
 
 def _trim_to_context_limit(
@@ -285,7 +285,7 @@ def call_llm(
             print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
 
     # === Safety net: trim to context window limit ===
-    max_input_tokens = _get_context_limit(llm=llm, capabilities=capabilities)
+    max_input_tokens, _context_window = _get_context_limit(llm=llm, capabilities=capabilities)
     langchain_messages = _trim_to_context_limit(langchain_messages, max_input_tokens)
 
     try:
@@ -474,8 +474,15 @@ async def call_llm_stream(
         print(f"      After truncation: {len(langchain_messages)} messages")
 
     # === Safety net: trim to context window limit ===
-    max_input_tokens = _get_context_limit(llm=llm, capabilities=capabilities)
+    max_input_tokens, context_window = _get_context_limit(llm=llm, capabilities=capabilities)
     langchain_messages = _trim_to_context_limit(langchain_messages, max_input_tokens)
+
+    # Yield context info so frontend can display usage bar
+    yield {
+        "type": "context_info",
+        "context_budget": max_input_tokens,
+        "context_window": context_window,
+    }
 
     try:
         print(f"[LLM] Streaming {len(langchain_messages)} messages to LLM API...")

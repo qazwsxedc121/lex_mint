@@ -16,6 +16,11 @@ export interface CostInfo {
   currency: string;
 }
 
+export interface ContextInfo {
+  context_budget: number;
+  context_window: number;
+}
+
 export interface FileAttachment {
   filename: string;
   size: number;

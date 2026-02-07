@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides } from '../types/message';
+import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
@@ -235,6 +235,7 @@ export async function sendMessage(
  * @param onFollowupQuestions - Optional callback for follow-up question suggestions
  * @param contextType - Context type (default: 'chat')
  * @param projectId - Optional project ID
+ * @param onContextInfo - Optional callback for context window info
  */
 export async function sendMessageStream(
   sessionId: string,
@@ -254,7 +255,8 @@ export async function sendMessageStream(
   useWebSearch?: boolean,
   contextType: string = 'chat',
   projectId?: string,
-  onFollowupQuestions?: (questions: string[]) => void
+  onFollowupQuestions?: (questions: string[]) => void,
+  onContextInfo?: (info: ContextInfo) => void
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -362,6 +364,12 @@ export async function sendMessageStream(
               // Handle followup_questions event
               if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
                 onFollowupQuestions(data.questions);
+                continue;
+              }
+
+              // Handle context_info event
+              if (data.type === 'context_info' && onContextInfo) {
+                onContextInfo(data);
                 continue;
               }
 

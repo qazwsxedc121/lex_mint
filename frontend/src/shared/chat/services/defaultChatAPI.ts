@@ -19,7 +19,25 @@ export const defaultChatAPI: ChatAPI = {
   updateSessionParamOverrides: api.updateSessionParamOverrides,
 
   // Message operations
-  sendMessageStream: api.sendMessageStream,
+  sendMessageStream: async (
+    sessionId, message, truncateAfterIndex, skipUserMessage,
+    onChunk, onDone, onError,
+    abortControllerRef?, reasoningEffort?, onUsage?, onSources?,
+    attachments?, onUserMessageId?, onAssistantMessageId?,
+    useWebSearch?, onFollowupQuestions?, onContextInfo?
+  ) => {
+    return api.sendMessageStream(
+      sessionId, message, truncateAfterIndex, skipUserMessage,
+      onChunk, onDone, onError,
+      abortControllerRef, reasoningEffort, onUsage, onSources,
+      attachments, onUserMessageId, onAssistantMessageId,
+      useWebSearch,
+      'chat',       // contextType
+      undefined,    // projectId
+      onFollowupQuestions,
+      onContextInfo
+    );
+  },
   deleteMessage: api.deleteMessage,
   insertSeparator: api.insertSeparator,
   clearAllMessages: api.clearAllMessages,
