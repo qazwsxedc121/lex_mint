@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../../../types/assistant';
 import * as api from '../../../services/api';
+import { getRandomIconKey } from '../../../shared/constants/assistantIcons';
 
 export function useAssistants() {
   const [assistants, setAssistants] = useState<Assistant[]>([]);
@@ -43,7 +44,11 @@ export function useAssistants() {
 
   const createAssistant = useCallback(async (assistant: AssistantCreate) => {
     try {
-      await api.createAssistant(assistant);
+      const payload = {
+        ...assistant,
+        icon: assistant.icon || getRandomIconKey(),
+      };
+      await api.createAssistant(payload);
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create assistant';

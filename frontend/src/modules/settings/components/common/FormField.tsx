@@ -4,8 +4,13 @@
  * Generic form field renderer supporting all field types defined in config.
  */
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import type { FieldConfig, ConfigContext } from '../../config/types';
+import {
+  ASSISTANT_ICONS,
+  ASSISTANT_ICON_KEYS,
+  getAssistantIcon,
+} from '../../../../shared/constants/assistantIcons';
 
 interface FormFieldProps {
   /** Field configuration */
@@ -211,6 +216,19 @@ export const FormField: React.FC<FormFieldProps> = ({
           />
         );
 
+      case 'icon-picker': {
+        const selectedKey = value || '';
+        const SelectedIcon = selectedKey ? getAssistantIcon(selectedKey) : null;
+        const columns = config.columns || 10;
+
+        return <IconPickerField
+          selectedKey={selectedKey}
+          SelectedIcon={SelectedIcon}
+          columns={columns}
+          onChange={onChange}
+        />;
+      }
+
       default:
         return <div className="text-red-500">Unknown field type</div>;
     }
@@ -252,6 +270,123 @@ export const FormField: React.FC<FormFieldProps> = ({
         <p className="text-xs text-red-600 dark:text-red-400 mt-1">
           {error}
         </p>
+      )}
+    </div>
+  );
+};
+
+/** Max icons shown per page in the grid to keep rendering fast */
+const PAGE_SIZE = 200;
+
+/** Collapsible icon picker with search */
+const IconPickerField: React.FC<{
+  selectedKey: string;
+  SelectedIcon: ReturnType<typeof getAssistantIcon> | null;
+  columns: number;
+  onChange: (key: string) => void;
+}> = ({ selectedKey, SelectedIcon, columns, onChange }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  const filteredKeys = useMemo(() => {
+    if (!search.trim()) return ASSISTANT_ICON_KEYS;
+    const q = search.trim().toLowerCase();
+    return ASSISTANT_ICON_KEYS.filter((k) => k.toLowerCase().includes(q));
+  }, [search]);
+
+  const visibleKeys = useMemo(
+    () => filteredKeys.slice(0, page * PAGE_SIZE),
+    [filteredKeys, page],
+  );
+
+  const hasMore = visibleKeys.length < filteredKeys.length;
+
+  return (
+    <div data-name="icon-picker-field">
+      {/* Collapsed state: show selected icon + toggle button */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-3 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+      >
+        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+          {SelectedIcon ? (
+            <SelectedIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          ) : (
+            <span className="text-xs text-gray-400 dark:text-gray-500">--</span>
+          )}
+        </div>
+        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 text-left">
+          {selectedKey || 'Click to choose an icon'}
+        </span>
+        <svg
+          className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Expanded panel */}
+      {expanded && (
+        <div className="mt-2 border border-gray-200 dark:border-gray-600 rounded-md overflow-hidden">
+          {/* Search input */}
+          <div className="p-2 border-b border-gray-200 dark:border-gray-600">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Search icons..."
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white placeholder-gray-400"
+            />
+            <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              {filteredKeys.length} icons{search.trim() ? ' found' : ' available'}
+            </div>
+          </div>
+
+          {/* Icon grid */}
+          <div
+            className="max-h-64 overflow-y-auto p-2"
+            style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '4px' }}
+          >
+            {visibleKeys.map((key) => {
+              const Icon = ASSISTANT_ICONS[key];
+              const isSelected = key === selectedKey;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => { onChange(key); setExpanded(false); }}
+                  title={key}
+                  className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${
+                    isSelected
+                      ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Load more */}
+          {hasMore && (
+            <div className="p-2 border-t border-gray-200 dark:border-gray-600 text-center">
+              <button
+                type="button"
+                onClick={() => setPage((p) => p + 1)}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Load more ({filteredKeys.length - visibleKeys.length} remaining)
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

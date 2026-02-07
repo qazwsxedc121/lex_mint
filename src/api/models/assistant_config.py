@@ -21,6 +21,7 @@ class Assistant(BaseModel):
     frequency_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0, description="Frequency penalty")
     presence_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0, description="Presence penalty")
     max_rounds: Optional[int] = Field(None, description="Maximum conversation rounds to keep (-1 = unlimited, None = unlimited)")
+    icon: Optional[str] = Field(None, description="Lucide icon key for the assistant avatar")
     enabled: bool = Field(default=True, description="Whether assistant is enabled")
 
 
@@ -44,6 +45,7 @@ class AssistantCreate(BaseModel):
     frequency_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0, description="Frequency penalty")
     presence_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0, description="Presence penalty")
     max_rounds: Optional[int] = Field(None, description="Maximum conversation rounds (-1 = unlimited)")
+    icon: Optional[str] = Field(None, description="Lucide icon key for the assistant avatar")
     enabled: bool = Field(default=True, description="Whether assistant is enabled")
 
 
@@ -60,4 +62,5 @@ class AssistantUpdate(BaseModel):
     frequency_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0, description="Frequency penalty")
     presence_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0, description="Presence penalty")
     max_rounds: Optional[int] = Field(None, description="Maximum conversation rounds (-1 = unlimited)")
+    icon: Optional[str] = Field(None, description="Lucide icon key for the assistant avatar")
     enabled: Optional[bool] = Field(None, description="Whether assistant is enabled")

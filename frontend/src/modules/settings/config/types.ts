@@ -135,6 +135,17 @@ export interface TextareaFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Icon picker field for selecting a Lucide icon
+ */
+export interface IconPickerFieldConfig extends BaseFieldConfig {
+  type: 'icon-picker';
+  /** Default value */
+  defaultValue?: string;
+  /** Number of columns in the icon grid */
+  columns?: number;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -143,7 +154,8 @@ export type FieldConfig =
   | SelectFieldConfig
   | CheckboxFieldConfig
   | SliderFieldConfig
-  | TextareaFieldConfig;
+  | TextareaFieldConfig
+  | IconPickerFieldConfig;
 
 // ==================== Table Configuration ====================
 

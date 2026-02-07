@@ -7,6 +7,7 @@
 import type { CrudSettingsConfig } from './types';
 import type { Assistant } from '../../../types/assistant';
 import { PARAM_SUPPORT } from '../../../shared/constants/paramSupport';
+import { getAssistantIcon } from '../../../shared/constants/assistantIcons';
 
 // === Provider-aware parameter visibility ===
 
@@ -123,6 +124,19 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
   // Table configuration
   columns: [
     {
+      key: 'icon',
+      label: '',
+      width: 'w-12',
+      render: (_value, row) => {
+        const Icon = getAssistantIcon(row.icon);
+        return (
+          <div className="flex items-center justify-center">
+            <Icon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+          </div>
+        );
+      }
+    },
+    {
       key: 'name',
       label: 'Name',
       sortable: true,
@@ -188,6 +202,12 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       label: 'Name',
       placeholder: 'My Assistant',
       required: true
+    },
+    {
+      type: 'icon-picker' as const,
+      name: 'icon',
+      label: 'Icon',
+      helpText: 'Choose an icon for this assistant'
     },
     {
       type: 'text',
@@ -267,6 +287,12 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       label: 'Name',
       placeholder: 'My Assistant',
       required: true
+    },
+    {
+      type: 'icon-picker' as const,
+      name: 'icon',
+      label: 'Icon',
+      helpText: 'Choose an icon for this assistant'
     },
     {
       type: 'text',

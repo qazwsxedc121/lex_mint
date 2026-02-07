@@ -15,6 +15,7 @@ export interface Assistant {
   frequency_penalty?: number | null;
   presence_penalty?: number | null;
   max_rounds?: number;  // Maximum conversation rounds (-1 = unlimited, null/undefined = unlimited)
+  icon?: string;  // Lucide icon key for the assistant avatar
   enabled: boolean;
 }
 
@@ -31,6 +32,7 @@ export interface AssistantCreate {
   frequency_penalty?: number | null;
   presence_penalty?: number | null;
   max_rounds?: number;  // -1 = unlimited
+  icon?: string;
   enabled?: boolean;
 }
 
@@ -46,6 +48,7 @@ export interface AssistantUpdate {
   frequency_penalty?: number | null;
   presence_penalty?: number | null;
   max_rounds?: number;  // -1 = unlimited
+  icon?: string;
   enabled?: boolean;
 }
 

@@ -4,8 +4,6 @@
 
 import React, { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
 import {
-  ChevronDownIcon,
-  LightBulbIcon,
   GlobeAltIcon,
   PaperClipIcon,
   XMarkIcon,
@@ -17,6 +15,7 @@ import {
   TrashIcon,
   CheckIcon,
 } from '@heroicons/react/24/outline';
+import { Brain } from 'lucide-react';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useChatComposer } from '../contexts/ChatComposerContext';
 import type { ChatComposerBlockInput } from '../contexts/ChatComposerContext';
@@ -31,6 +30,20 @@ const REASONING_EFFORT_OPTIONS = [
   { value: 'medium', label: 'Medium', description: 'Balanced reasoning' },
   { value: 'high', label: 'High', description: 'Deep reasoning' },
 ];
+
+// Shared toolbar button classes
+const TOOLBAR_BTN = 'flex items-center justify-center p-1.5 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const TOOLBAR_BTN_DEFAULT = `${TOOLBAR_BTN} bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600`;
+
+// Brain icon color by reasoning level
+const getReasoningIconColor = (effort: string): string => {
+  switch (effort) {
+    case 'low':    return 'text-amber-400 dark:text-amber-500';
+    case 'medium': return 'text-amber-600 dark:text-amber-400';
+    case 'high':   return 'text-orange-500 dark:text-orange-400';
+    default:       return '';
+  }
+};
 
 interface ChatBlock {
   id: string;
@@ -392,8 +405,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   return (
     <div data-name="input-box-root" className="border-t border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
       {/* Toolbar */}
-      <div data-name="input-box-toolbar" className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-        {/* Assistant selector */}
+      <div data-name="input-box-toolbar" className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+        {/* Group 1: Assistant & Model */}
         {assistantSelector}
 
         {/* Parameter overrides button */}
@@ -407,14 +420,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
           />
         )}
 
+        {/* Separator */}
+        <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-0.5" />
+
+        {/* Group 2: Context Management */}
         {/* Create block button */}
         <button
           onClick={handleCreateBlock}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+          className={TOOLBAR_BTN_DEFAULT}
           title="Create block"
         >
           <PlusIcon className="h-4 w-4" />
-          <span>Block</span>
         </button>
 
         {/* Clear context button */}
@@ -436,7 +452,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           <button
             onClick={onCompressContext}
             disabled={isStreaming || isCompressing}
-            className={`flex items-center justify-center p-1.5 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`${TOOLBAR_BTN} ${
               isCompressing
                 ? 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
                 : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 hover:text-violet-700 dark:hover:text-violet-300 hover:border-violet-200 dark:hover:border-violet-800'
@@ -463,21 +479,23 @@ export const InputBox: React.FC<InputBoxProps> = ({
           </button>
         )}
 
-        {/* Reasoning effort selector (for supported models) */}
+        {/* Separator */}
+        <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-0.5" />
+
+        {/* Group 3: Message Enhancements */}
+        {/* Reasoning effort selector */}
         {supportsReasoning && (
           <div className="relative">
             <button
               onClick={() => setShowReasoningMenu(!showReasoningMenu)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border transition-colors ${
+              className={`${TOOLBAR_BTN} ${
                 reasoningEffort
                   ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                   : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
-              title="Reasoning effort for extended thinking"
+              title={`Reasoning: ${currentOption.label}`}
             >
-              <LightBulbIcon className="h-4 w-4" />
-              <span className="font-medium">{currentOption.label}</span>
-              <ChevronDownIcon className={`h-3 w-3 transition-transform ${showReasoningMenu ? 'rotate-180' : ''}`} />
+              <Brain className={`h-4 w-4 ${getReasoningIconColor(reasoningEffort)}`} />
             </button>
 
             {showReasoningMenu && (
@@ -515,7 +533,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           onClick={() => setUseWebSearch(prev => !prev)}
           disabled={disabled || isStreaming}
           data-name="input-box-web-search-toggle"
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          className={`${TOOLBAR_BTN} ${
             useWebSearch
               ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
@@ -523,18 +541,20 @@ export const InputBox: React.FC<InputBoxProps> = ({
           title={useWebSearch ? 'Web search enabled' : 'Enable web search'}
         >
           <GlobeAltIcon className="h-4 w-4" />
-          <span className="font-medium">Search</span>
         </button>
 
         {/* File upload button */}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || isStreaming || !sessionId}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title={supportsVision ? "Attach file or image (max 10MB)" : "Attach text file (max 10MB)"}
+          className={`${TOOLBAR_BTN} ${
+            uploading
+              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 animate-pulse'
+              : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+          }`}
+          title={uploading ? 'Uploading...' : supportsVision ? 'Attach file or image (max 10MB)' : 'Attach text file (max 10MB)'}
         >
           <PaperClipIcon className="h-4 w-4" />
-          {uploading && <span className="text-xs">Uploading...</span>}
         </button>
         <input
           ref={fileInputRef}

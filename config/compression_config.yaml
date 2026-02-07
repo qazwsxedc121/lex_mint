@@ -1,6 +1,6 @@
 compression:
   min_messages: 2
-  model_id: openrouter:bytedance-seed/seed-1.6-flash
+  model_id: deepseek:deepseek-chat
   prompt_template: 'You are a conversation summarizer. Create a concise but comprehensive
     summary of the conversation below.
 
@@ -23,7 +23,7 @@ compression:
 
 
     Write the summary now. Start with "**Conversation Summary**" and organize by topic
-    if multiple subjects were covered.
+    if multiple subjects were covered. Use the same language with the conversation
 
     '
   temperature: 0.3
