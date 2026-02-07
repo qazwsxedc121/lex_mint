@@ -42,6 +42,10 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.duplicateSession(sessionId, contextType, projectId);
     },
 
+    branchSession: async (sessionId: string, messageId: string) => {
+      return api.branchSession(sessionId, messageId, contextType, projectId);
+    },
+
     updateSessionAssistant: async (sessionId: string, assistantId: string) => {
       return api.updateSessionAssistant(sessionId, assistantId, contextType, projectId);
     },

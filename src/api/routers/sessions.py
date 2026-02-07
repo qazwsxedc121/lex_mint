@@ -412,6 +412,88 @@ async def update_param_overrides(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class BranchSessionRequest(BaseModel):
+    """Branch session request"""
+    message_id: str
+
+
+@router.post("/{session_id}/branch", response_model=Dict[str, str])
+async def branch_session(
+    session_id: str,
+    request: BranchSessionRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Branch a session from a specific message.
+
+    Creates a new session containing only messages up to and including the
+    specified message_id.
+
+    Args:
+        session_id: Source session UUID
+        request: Contains message_id to branch from
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Returns:
+        {"session_id": "new-uuid", "message": "Session branched successfully"}
+
+    Raises:
+        404: Session not found
+        400: message_id not found or invalid context parameters
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    logger.info(f"Branching session: {session_id[:16]} from message {request.message_id}...")
+    try:
+        original_session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
+
+        # Find the message by message_id
+        original_messages = original_session.get('state', {}).get('messages', [])
+        branch_index = None
+        for i, msg in enumerate(original_messages):
+            if msg.get('message_id') == request.message_id:
+                branch_index = i
+                break
+
+        if branch_index is None:
+            raise HTTPException(status_code=400, detail=f"message_id '{request.message_id}' not found in session")
+
+        truncated_messages = original_messages[:branch_index + 1]
+
+        # Create new session with same model/assistant
+        assistant_id = original_session.get('assistant_id')
+        model_id = original_session.get('model_id')
+        new_session_id = await storage.create_session(
+            model_id=model_id,
+            assistant_id=assistant_id,
+            context_type=context_type,
+            project_id=project_id
+        )
+
+        # Set title with Branch suffix
+        original_title = original_session.get('title', 'New Chat')
+        new_title = f"{original_title} (Branch)"
+        await storage.update_session_metadata(new_session_id, {"title": new_title}, context_type=context_type, project_id=project_id)
+
+        # Copy truncated messages
+        if truncated_messages:
+            await storage.set_messages(new_session_id, truncated_messages, context_type=context_type, project_id=project_id)
+
+        logger.info(f"Session branched successfully: {new_session_id} with {len(truncated_messages)} messages")
+        return {"session_id": new_session_id, "message": "Session branched successfully"}
+    except FileNotFoundError:
+        logger.error(f"Session not found: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/{session_id}/duplicate", response_model=Dict[str, str])
 async def duplicate_session(
     session_id: str,

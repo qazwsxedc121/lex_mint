@@ -29,7 +29,7 @@ export interface ChatViewProps {
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMessageActions }) => {
-  const { currentSessionId, currentSession, refreshSessions, context } = useChatServices();
+  const { api, navigation, currentSessionId, currentSession, refreshSessions, context } = useChatServices();
 
   // Use onAssistantRefresh from service context if available
   const { onAssistantRefresh } = context || {};
@@ -99,6 +99,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     clearAllMessages();
   };
 
+  const handleBranchMessage = async (messageId: string) => {
+    if (!currentSessionId) return;
+    try {
+      const newSessionId = await api.branchSession(currentSessionId, messageId);
+      await refreshSessions();
+      if (navigation) {
+        navigation.navigateToSession(newSessionId);
+      }
+    } catch (err: any) {
+      console.error('Branch failed:', err);
+    }
+  };
+
   if (!currentSessionId) {
     return (
       <div data-name="chat-view-welcome" className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
@@ -130,6 +143,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         onEditMessage={editMessage}
         onRegenerateMessage={regenerateMessage}
         onDeleteMessage={deleteMessage}
+        onBranchMessage={handleBranchMessage}
         customMessageActions={customMessageActions}
       />
 

@@ -119,6 +119,23 @@ export async function duplicateSession(sessionId: string, contextType: string = 
 }
 
 /**
+ * Branch a session from a specific message
+ */
+export async function branchSession(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<string> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await api.post<{ session_id: string; message: string }>(
+    `/api/sessions/${sessionId}/branch?${params.toString()}`,
+    { message_id: messageId }
+  );
+  return response.data.session_id;
+}
+
+/**
  * Delete a single message from a conversation.
  */
 export async function deleteMessage(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<void> {

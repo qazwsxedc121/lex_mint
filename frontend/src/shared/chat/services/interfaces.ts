@@ -27,6 +27,7 @@ export interface ChatAPI {
   deleteSession(sessionId: string): Promise<void>;
   updateSessionTitle(sessionId: string, title: string): Promise<void>;
   duplicateSession(sessionId: string): Promise<string>;
+  branchSession(sessionId: string, messageId: string): Promise<string>;
   updateSessionAssistant(sessionId: string, assistantId: string): Promise<void>;
   updateSessionParamOverrides(sessionId: string, paramOverrides: ParamOverrides): Promise<void>;
 

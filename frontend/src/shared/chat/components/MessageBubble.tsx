@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { useChatServices } from '../services/ChatServiceProvider';
@@ -19,6 +19,7 @@ interface MessageBubbleProps {
   onEdit?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
+  onBranch?: (messageId: string) => void;
   customActions?: (message: Message, messageId: string) => React.ReactNode;
 }
 
@@ -185,6 +186,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onEdit,
   onRegenerate,
   onDelete,
+  onBranch,
   customActions,
 }) => {
   const { api } = useChatServices();
@@ -689,6 +691,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <ArrowPathIcon className="w-4 h-4" />
                 <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                   Regenerate
+                </span>
+              </button>
+            )}
+
+            {/* Branch action */}
+            {!isStreaming && onBranch && (
+              <button
+                onClick={() => onBranch(messageId)}
+                className="group relative p-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 transition-colors"
+                title="Branch"
+              >
+                <ArrowUturnRightIcon className="w-4 h-4" />
+                <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Branch
                 </span>
               </button>
             )}

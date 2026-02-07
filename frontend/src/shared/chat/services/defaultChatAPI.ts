@@ -14,6 +14,7 @@ export const defaultChatAPI: ChatAPI = {
   deleteSession: api.deleteSession,
   updateSessionTitle: api.updateSessionTitle,
   duplicateSession: api.duplicateSession,
+  branchSession: api.branchSession,
   updateSessionAssistant: api.updateSessionAssistant,
   updateSessionParamOverrides: api.updateSessionParamOverrides,
 
