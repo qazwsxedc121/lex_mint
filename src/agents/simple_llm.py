@@ -1,6 +1,7 @@
 """Simple LLM call service - without LangGraph"""
 
 import os
+import time
 import logging
 from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple
 from pathlib import Path
@@ -508,6 +509,7 @@ async def call_llm_stream(
         full_reasoning = ""
         in_thinking_phase = False
         thinking_ended = False
+        thinking_start_time: Optional[float] = None
         final_usage: Optional[TokenUsage] = None
 
         # Stream via adapter (unified interface)
@@ -517,6 +519,7 @@ async def call_llm_stream(
                 full_reasoning += chunk.thinking
                 if not in_thinking_phase:
                     in_thinking_phase = True
+                    thinking_start_time = time.time()
                     yield "<think>"
                 yield chunk.thinking
 
@@ -524,7 +527,9 @@ async def call_llm_stream(
             if chunk.content:
                 if in_thinking_phase and not thinking_ended:
                     thinking_ended = True
+                    duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                     yield "</think>"
+                    yield {"type": "thinking_duration", "duration_ms": duration_ms}
                 full_response += chunk.content
                 yield chunk.content
 
@@ -534,7 +539,9 @@ async def call_llm_stream(
 
         # Close thinking tag if opened but no content followed
         if in_thinking_phase and not thinking_ended:
+            duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
             yield "</think>"
+            yield {"type": "thinking_duration", "duration_ms": duration_ms}
 
         # Yield usage data at the end
         if final_usage:

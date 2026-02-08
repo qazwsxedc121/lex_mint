@@ -217,6 +217,17 @@ export function useChat(sessionId: string | null) {
         },
         (info: ContextInfo) => {
           setContextInfo(info);
+        },
+        (durationMs: number) => {
+          // Backend returned thinking duration
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
+            }
+            return newMessages;
+          });
         }
       );
     } catch (err) {
@@ -345,6 +356,16 @@ export function useChat(sessionId: string | null) {
         undefined,
         (info: ContextInfo) => {
           setContextInfo(info);
+        },
+        (durationMs: number) => {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
+            }
+            return newMessages;
+          });
         }
       );
     } catch (err) {
@@ -497,6 +518,16 @@ export function useChat(sessionId: string | null) {
         undefined,
         (info: ContextInfo) => {
           setContextInfo(info);
+        },
+        (durationMs: number) => {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
+            }
+            return newMessages;
+          });
         }
       );
     } catch (err) {

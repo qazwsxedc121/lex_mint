@@ -370,7 +370,8 @@ export async function sendMessageStream(
   contextType: string = 'chat',
   projectId?: string,
   onFollowupQuestions?: (questions: string[]) => void,
-  onContextInfo?: (info: ContextInfo) => void
+  onContextInfo?: (info: ContextInfo) => void,
+  onThinkingDuration?: (durationMs: number) => void
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -484,6 +485,12 @@ export async function sendMessageStream(
               // Handle context_info event
               if (data.type === 'context_info' && onContextInfo) {
                 onContextInfo(data);
+                continue;
+              }
+
+              // Handle thinking_duration event
+              if (data.type === 'thinking_duration' && onThinkingDuration) {
+                onThinkingDuration(data.duration_ms);
                 continue;
               }
 

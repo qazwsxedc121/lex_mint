@@ -26,7 +26,7 @@ export const defaultChatAPI: ChatAPI = {
     onChunk, onDone, onError,
     abortControllerRef?, reasoningEffort?, onUsage?, onSources?,
     attachments?, onUserMessageId?, onAssistantMessageId?,
-    useWebSearch?, onFollowupQuestions?, onContextInfo?
+    useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?
   ) => {
     return api.sendMessageStream(
       sessionId, message, truncateAfterIndex, skipUserMessage,
@@ -37,7 +37,8 @@ export const defaultChatAPI: ChatAPI = {
       'chat',       // contextType
       undefined,    // projectId
       onFollowupQuestions,
-      onContextInfo
+      onContextInfo,
+      onThinkingDuration
     );
   },
   deleteMessage: api.deleteMessage,

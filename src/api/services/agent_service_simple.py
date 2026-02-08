@@ -410,6 +410,11 @@ class AgentService:
                     yield chunk
                     continue
 
+                # Forward thinking_duration event to frontend
+                if isinstance(chunk, dict) and chunk.get("type") == "thinking_duration":
+                    yield chunk
+                    continue
+
                 full_response += chunk
                 yield chunk
 

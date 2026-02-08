@@ -5,10 +5,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, LightBulbIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
+import { ThinkingBlock } from './ThinkingBlock';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 interface MessageBubbleProps {
@@ -198,7 +199,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [editContent, setEditContent] = useState(message.content);
   const [isCopied, setIsCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showThinking, setShowThinking] = useState(false);
   const [expandedUserBlocks, setExpandedUserBlocks] = useState<Record<string, boolean>>({});
   const [showSummaryContent, setShowSummaryContent] = useState(false);
 
@@ -608,28 +608,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   )}
                   {/* Thinking block (collapsible, auto-expand during streaming) */}
                   {thinking && (
-                    <div className="mb-3 border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => setShowThinking(!showThinking)}
-                        className="w-full flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
-                      >
-                        {(showThinking || isThinkingInProgress) ? (
-                          <ChevronDownIcon className="w-4 h-4" />
-                        ) : (
-                          <ChevronRightIcon className="w-4 h-4" />
-                        )}
-                        <LightBulbIcon className={`w-4 h-4 ${isThinkingInProgress ? 'animate-pulse' : ''}`} />
-                        <span>{isThinkingInProgress ? 'Thinking...' : 'Thinking Process'}</span>
-                        <span className="ml-auto text-amber-500 dark:text-amber-400">
-                          {thinking.length} chars
-                        </span>
-                      </button>
-                      {(showThinking || isThinkingInProgress) && (
-                        <div className="px-3 py-2 bg-amber-50/50 dark:bg-amber-900/20 text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-64 overflow-y-auto">
-                          {thinking}
-                        </div>
-                      )}
-                    </div>
+                    <ThinkingBlock
+                      thinking={thinking}
+                      isThinkingInProgress={isThinkingInProgress}
+                      thinkingDurationMs={message.thinkingDurationMs}
+                    />
                   )}
                   {/* Main content */}
                   <ReactMarkdown

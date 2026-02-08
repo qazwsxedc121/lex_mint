@@ -49,3 +49,6 @@ logs/
 # User data
 conversations/
 attachments/
+
+# Learn Projects
+learn_proj/

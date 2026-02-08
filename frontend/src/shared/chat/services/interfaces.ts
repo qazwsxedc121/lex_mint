@@ -51,7 +51,8 @@ export interface ChatAPI {
     onAssistantMessageId?: (messageId: string) => void,
     useWebSearch?: boolean,
     onFollowupQuestions?: (questions: string[]) => void,
-    onContextInfo?: (info: ContextInfo) => void
+    onContextInfo?: (info: ContextInfo) => void,
+    onThinkingDuration?: (durationMs: number) => void
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   insertSeparator(sessionId: string): Promise<string>;

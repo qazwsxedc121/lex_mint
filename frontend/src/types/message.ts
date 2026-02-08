@@ -49,6 +49,7 @@ export interface Message {
   usage?: TokenUsage;
   cost?: CostInfo;
   sources?: SearchSource[];
+  thinkingDurationMs?: number;
 }
 
 export interface Session {
