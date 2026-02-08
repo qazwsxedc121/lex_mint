@@ -16,8 +16,10 @@ import {
   PlusIcon,
   MagnifyingGlassIcon,
   ChatBubbleLeftRightIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
+import { exportSession } from '../../../services/api';
 
 export const ChatSidebar: React.FC = () => {
   const navigate = useNavigate();
@@ -151,6 +153,18 @@ export const ChatSidebar: React.FC = () => {
     } catch (err) {
       console.error('Failed to duplicate session:', err);
       alert('Failed to duplicate session');
+    }
+  };
+
+  const handleExport = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+
+    try {
+      await exportSession(sessionId);
+    } catch (err) {
+      console.error('Failed to export session:', err);
+      alert('Failed to export session');
     }
   };
 
@@ -292,6 +306,13 @@ export const ChatSidebar: React.FC = () => {
                         >
                           <DocumentDuplicateIcon className="h-4 w-4" />
                           Duplicate
+                        </button>
+                        <button
+                          onClick={(e) => handleExport(e, session.session_id)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <ArrowDownTrayIcon className="h-4 w-4" />
+                          Export
                         </button>
                       </div>
                     )}

@@ -1204,5 +1204,42 @@ export async function generateFollowups(sessionId: string, contextType: string =
   return response.data.questions;
 }
 
+/**
+ * Export a session as a clean Markdown file and trigger browser download.
+ */
+export async function exportSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/export?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Export failed: ${response.status}`);
+  }
+
+  // Extract filename from Content-Disposition header
+  const disposition = response.headers.get('Content-Disposition') || '';
+  let filename = 'conversation.md';
+  const filenameMatch = disposition.match(/filename\*=UTF-8''(.+)/);
+  if (filenameMatch) {
+    filename = decodeURIComponent(filenameMatch[1]);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default api;
 

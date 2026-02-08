@@ -1,9 +1,12 @@
 """Session management API endpoints."""
 
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from fastapi.responses import Response
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 import logging
+import re
+from urllib.parse import quote
 
 from ..services.conversation_storage import ConversationStorage
 from ..config import settings
@@ -618,4 +621,106 @@ async def duplicate_session(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         logger.error(f"❌ 验证错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _format_thinking_block(content: str) -> str:
+    """Extract thinking blocks from content and format as collapsible details."""
+    think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
+    match = think_pattern.search(content)
+    if not match:
+        return content
+
+    thinking_text = match.group(1).strip()
+    # Remove the <think>...</think> from main content
+    main_content = think_pattern.sub('', content).strip()
+
+    # Build collapsible thinking block
+    thinking_html = (
+        '<details>\n'
+        '<summary>Thinking</summary>\n\n'
+        f'{thinking_text}\n\n'
+        '</details>\n'
+    )
+
+    return f'{thinking_html}\n{main_content}'
+
+
+def _build_export_markdown(session: dict) -> str:
+    """Build clean export markdown from a session."""
+    title = session.get('title', 'Untitled')
+    messages = session.get('state', {}).get('messages', [])
+
+    lines = [f'# {title}\n']
+
+    for msg in messages:
+        role = msg.get('role', '')
+        content = msg.get('content', '')
+
+        if role == 'user':
+            lines.append('---')
+            lines.append('## User\n')
+            lines.append(content)
+            lines.append('')
+        elif role == 'assistant':
+            lines.append('---')
+            lines.append('## Assistant\n')
+            formatted = _format_thinking_block(content)
+            lines.append(formatted)
+            lines.append('')
+        # Skip separator and summary messages
+
+    return '\n'.join(lines)
+
+
+@router.get("/{session_id}/export")
+async def export_session(
+    session_id: str,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Export a conversation session as a clean Markdown file.
+
+    Returns a downloadable .md file with user/assistant messages,
+    stripped of internal metadata (usage, cost, message IDs).
+
+    Args:
+        session_id: Session UUID
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Raises:
+        404: Session not found
+        400: Invalid context parameters
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    logger.info(f"Exporting session: {session_id[:16]}...")
+    try:
+        session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
+        markdown_content = _build_export_markdown(session)
+
+        # Build filename from title
+        title = session.get('title', 'conversation')
+        # Sanitize title for filename
+        safe_title = re.sub(r'[\\/*?:"<>|]', '_', title).strip()
+        if not safe_title:
+            safe_title = 'conversation'
+        filename = f'{safe_title}.md'
+        encoded_filename = quote(filename)
+
+        return Response(
+            content=markdown_content.encode('utf-8'),
+            media_type='text/markdown; charset=utf-8',
+            headers={
+                'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
+            }
+        )
+    except FileNotFoundError:
+        logger.error(f"Session not found: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
