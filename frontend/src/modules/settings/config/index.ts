@@ -19,3 +19,4 @@ export { webpageConfig } from './webpage.config';
 export { followupConfig } from './followup.config';
 export { compressionConfig } from './compression.config';
 export { translationConfig } from './translation.config';
+export { ttsConfig } from './tts.config';

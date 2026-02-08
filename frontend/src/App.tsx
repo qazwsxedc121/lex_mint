@@ -23,6 +23,7 @@ import { TitleGenerationSettings } from './modules/settings/TitleGenerationSetti
 import { FollowupSettings } from './modules/settings/FollowupSettings';
 import { CompressionSettings } from './modules/settings/CompressionSettings';
 import { TranslationSettings } from './modules/settings/TranslationSettings';
+import { TTSSettings } from './modules/settings/TTSSettings';
 import './index.css';
 
 function App() {
@@ -56,6 +57,7 @@ function App() {
             <Route path="followup" element={<FollowupSettings />} />
             <Route path="compression" element={<CompressionSettings />} />
             <Route path="translation" element={<TranslationSettings />} />
+            <Route path="tts" element={<TTSSettings />} />
           </Route>
         </Route>
       </Routes>

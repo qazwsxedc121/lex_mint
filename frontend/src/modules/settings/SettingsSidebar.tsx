@@ -16,6 +16,7 @@ import {
   ChatBubbleLeftRightIcon,
   ArchiveBoxArrowDownIcon,
   LanguageIcon,
+  SpeakerWaveIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { path: '/settings/followup', label: 'Follow-up Questions', icon: ChatBubbleLeftRightIcon },
   { path: '/settings/compression', label: 'Compression', icon: ArchiveBoxArrowDownIcon },
   { path: '/settings/translation', label: 'Translation', icon: LanguageIcon },
+  { path: '/settings/tts', label: 'Text-to-Speech', icon: SpeakerWaveIcon },
 ];
 
 export const SettingsSidebar: React.FC = () => {

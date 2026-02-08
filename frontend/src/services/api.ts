@@ -1339,3 +1339,28 @@ export async function exportSession(sessionId: string, contextType: string = 'ch
 
 export default api;
 
+/**
+ * Synthesize text to speech via Edge TTS backend.
+ * Returns audio as a Blob.
+ */
+export async function synthesizeSpeech(
+  text: string,
+  voice?: string,
+  abortControllerRef?: MutableRefObject<AbortController | null>
+): Promise<Blob> {
+  const controller = new AbortController();
+  if (abortControllerRef) abortControllerRef.current = controller;
+
+  const response = await fetch(`${API_BASE}/api/tts/synthesize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice }),
+    signal: controller.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`TTS failed: ${response.status}`);
+  }
+  return response.blob();
+}
+

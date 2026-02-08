@@ -14,7 +14,7 @@ setup_logging()
 
 import logging
 
-from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation
+from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation, tts, tts_config
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,8 @@ app.include_router(followup.router)
 app.include_router(compression_config.router)
 app.include_router(translation_config.router)
 app.include_router(translation.router)
+app.include_router(tts_config.router)
+app.include_router(tts.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")

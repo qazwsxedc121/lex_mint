@@ -5,13 +5,14 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon, LanguageIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon, LanguageIcon, SpeakerWaveIcon, StopCircleIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { TranslationBlock } from './TranslationBlock';
 import { useChatServices } from '../services/ChatServiceProvider';
+import { useTTS } from '../hooks/useTTS';
 
 interface MessageBubbleProps {
   message: Message;
@@ -220,6 +221,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { isPlaying: ttsPlaying, isLoading: ttsLoading, speak: ttsSpeak, stop: ttsStop } = useTTS();
 
   // Parse thinking content from message
   const { thinking, mainContent, isThinkingInProgress } = useMemo(
@@ -851,6 +853,31 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <LanguageIcon className={`w-4 h-4 ${isTranslating ? 'animate-pulse' : ''}`} />
                 <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                   Translate
+                </span>
+              </button>
+            )}
+
+            {/* TTS button (assistant messages only) */}
+            {!isUser && !isStreaming && mainContent.trim() && (
+              <button
+                onClick={() => ttsPlaying ? ttsStop() : ttsSpeak(mainContent)}
+                disabled={ttsLoading}
+                className={`group relative p-1 rounded border transition-colors ${
+                  ttsPlaying
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-200 dark:hover:border-blue-800'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title={ttsLoading ? 'Loading...' : ttsPlaying ? 'Stop' : 'Listen'}
+              >
+                {ttsLoading ? (
+                  <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                ) : ttsPlaying ? (
+                  <StopCircleIcon className="w-4 h-4" />
+                ) : (
+                  <SpeakerWaveIcon className="w-4 h-4" />
+                )}
+                <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  {ttsLoading ? 'Loading...' : ttsPlaying ? 'Stop' : 'Listen'}
                 </span>
               </button>
             )}
