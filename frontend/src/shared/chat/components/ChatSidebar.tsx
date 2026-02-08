@@ -13,7 +13,8 @@ import {
   PencilIcon,
   DocumentDuplicateIcon,
   SparklesIcon,
-  PlusIcon
+  PlusIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
 
@@ -178,6 +179,13 @@ export const ChatSidebar: React.FC = () => {
           title="Temp Chat"
         >
           <PlusIcon className="h-5 w-5" />
+        </button>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+          className="ml-auto p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title="Search (Ctrl+K)"
+        >
+          <MagnifyingGlassIcon className="h-5 w-5" />
         </button>
       </div>
 

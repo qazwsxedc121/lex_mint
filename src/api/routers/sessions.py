@@ -131,6 +131,33 @@ async def list_sessions(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/search", response_model=Dict[str, List[Dict]])
+async def search_sessions(
+    q: str = Query(""),
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Search sessions by title and message content.
+
+    Args:
+        q: Search query string
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Returns:
+        {"results": [...]}
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    try:
+        results = await storage.search_sessions(q, context_type=context_type, project_id=project_id)
+        return {"results": results}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/{session_id}", response_model=Dict)
 async def get_session(
     session_id: str,

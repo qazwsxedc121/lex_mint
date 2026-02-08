@@ -94,6 +94,33 @@ export async function deleteSession(sessionId: string, contextType: string = 'ch
 }
 
 /**
+ * Search result from backend session search.
+ */
+export interface SearchResult {
+  session_id: string;
+  title: string;
+  created_at: string;
+  message_count: number;
+  match_type: 'title' | 'content';
+  match_context: string;
+}
+
+/**
+ * Search sessions by title and message content.
+ */
+export async function searchSessions(query: string, contextType: string = 'chat', projectId?: string): Promise<SearchResult[]> {
+  const params = new URLSearchParams();
+  params.append('q', query);
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  const response = await api.get<{ results: SearchResult[] }>(`/api/sessions/search?${params.toString()}`);
+  return response.data.results;
+}
+
+/**
  * Save a temporary session (convert to permanent).
  */
 export async function saveTemporarySession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {

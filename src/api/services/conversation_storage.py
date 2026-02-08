@@ -451,6 +451,89 @@ class ConversationStorage:
 
         return sessions
 
+    async def search_sessions(self, query: str, context_type: str = "chat", project_id: Optional[str] = None, limit: int = 20) -> List[Dict]:
+        """Search sessions by title and message content.
+
+        Args:
+            query: Search query string (case-insensitive substring match)
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching session summaries with match info
+        """
+        if not query or not query.strip():
+            return []
+
+        query_lower = query.lower().strip()
+
+        conversation_dir = self._get_conversation_dir(context_type, project_id)
+        if not conversation_dir.exists():
+            return []
+
+        results = []
+        for filepath in sorted(conversation_dir.glob("*.md"), reverse=True):
+            if len(results) >= limit:
+                break
+            try:
+                async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+
+                post = frontmatter.loads(content)
+
+                # Skip temporary sessions
+                if post.metadata.get("temporary", False):
+                    continue
+
+                title = post.metadata.get("title", "")
+                session_id = post.metadata.get("session_id", "")
+                created_at = post.metadata.get("created_at", "")
+                body = post.content
+
+                message_count = (
+                    body.count("## User") +
+                    body.count("## Assistant")
+                )
+
+                # Check title match
+                if query_lower in title.lower():
+                    results.append({
+                        "session_id": session_id,
+                        "title": title,
+                        "created_at": created_at,
+                        "message_count": message_count,
+                        "match_type": "title",
+                        "match_context": title,
+                    })
+                    continue
+
+                # Check body content match
+                body_lower = body.lower()
+                idx = body_lower.find(query_lower)
+                if idx != -1:
+                    # Extract snippet around match (~80 chars)
+                    start = max(0, idx - 30)
+                    end = min(len(body), idx + len(query) + 50)
+                    snippet = body[start:end].replace('\n', ' ').strip()
+                    if start > 0:
+                        snippet = "..." + snippet
+                    if end < len(body):
+                        snippet = snippet + "..."
+
+                    results.append({
+                        "session_id": session_id,
+                        "title": title,
+                        "created_at": created_at,
+                        "message_count": message_count,
+                        "match_type": "content",
+                        "match_context": snippet,
+                    })
+            except Exception:
+                continue
+
+        return results
+
     async def truncate_messages_after(self, session_id: str, keep_until_index: int, context_type: str = "chat", project_id: Optional[str] = None):
         """Delete all messages after specified index.
 
