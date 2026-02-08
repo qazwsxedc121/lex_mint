@@ -42,6 +42,7 @@ export const defaultChatAPI: ChatAPI = {
     );
   },
   deleteMessage: api.deleteMessage,
+  updateMessageContent: api.updateMessageContent,
   insertSeparator: api.insertSeparator,
   clearAllMessages: api.clearAllMessages,
   compressContext: async (sessionId, onChunk, onComplete, onError, abortControllerRef?) => {

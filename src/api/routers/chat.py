@@ -70,6 +70,15 @@ class ClearMessagesRequest(BaseModel):
     project_id: Optional[str] = None
 
 
+class UpdateMessageRequest(BaseModel):
+    """Request model for update message content endpoint."""
+    session_id: str
+    message_id: str
+    content: str
+    context_type: str = "chat"
+    project_id: Optional[str] = None
+
+
 class CompressContextRequest(BaseModel):
     """Request model for compress context endpoint."""
     session_id: str
@@ -425,6 +434,34 @@ async def delete_message(
             raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Either message_id or message_index must be provided")
+
+
+@router.put("/chat/message")
+async def update_message(
+    request: UpdateMessageRequest,
+    agent: AgentService = Depends(get_agent_service)
+):
+    """Update the content of a specific message."""
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    logger.info(f"Update message request: session={request.session_id[:16]}..., message_id={request.message_id}")
+    try:
+        await agent.storage.update_message_content(
+            request.session_id,
+            request.message_id,
+            request.content,
+            context_type=request.context_type,
+            project_id=request.project_id
+        )
+        return {"success": True, "message": "Message updated"}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Update message error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
 
 
 @router.post("/chat/separator")

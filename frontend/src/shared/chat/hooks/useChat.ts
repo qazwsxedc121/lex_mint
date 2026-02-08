@@ -254,11 +254,6 @@ export function useChat(sessionId: string | null) {
       return;
     }
 
-    if (messageIndex < messages.length - 1) {
-      const confirmed = window.confirm('Editing this message will delete all subsequent messages. Continue?');
-      if (!confirmed) return;
-    }
-
     isProcessingRef.current = true;
 
     const originalMessages = [...messages];
@@ -374,6 +369,27 @@ export function useChat(sessionId: string | null) {
       setIsStreaming(false);
       isProcessingRef.current = false;
       setMessages(originalMessages);
+    }
+  };
+
+  const saveMessageOnly = async (messageId: string, newContent: string) => {
+    if (!sessionId || isProcessingRef.current) return;
+
+    isProcessingRef.current = true;
+    const originalMessages = [...messages];
+
+    // Optimistically update the message content in UI
+    setMessages(prev => prev.map(m =>
+      m.message_id === messageId ? { ...m, content: newContent } : m
+    ));
+
+    try {
+      await api.updateMessageContent(sessionId, messageId, newContent);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save message');
+      setMessages(originalMessages);
+    } finally {
+      isProcessingRef.current = false;
     }
   };
 
@@ -723,6 +739,7 @@ export function useChat(sessionId: string | null) {
     setIsTemporary,
     sendMessage,
     editMessage,
+    saveMessageOnly,
     regenerateMessage,
     deleteMessage,
     insertSeparator,

@@ -50,6 +50,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     setIsTemporary,
     sendMessage,
     editMessage,
+    saveMessageOnly,
     regenerateMessage,
     deleteMessage,
     insertSeparator,
@@ -195,6 +196,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         isStreaming={isStreaming}
         sessionId={currentSessionId}
         onEditMessage={editMessage}
+        onSaveMessageOnly={saveMessageOnly}
         onRegenerateMessage={regenerateMessage}
         onDeleteMessage={deleteMessage}
         onBranchMessage={handleBranchMessage}

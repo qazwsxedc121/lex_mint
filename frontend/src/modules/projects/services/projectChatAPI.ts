@@ -107,6 +107,10 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.deleteMessage(sessionId, messageId, contextType, projectId);
     },
 
+    updateMessageContent: async (sessionId: string, messageId: string, content: string) => {
+      return api.updateMessageContent(sessionId, messageId, content, contextType, projectId);
+    },
+
     insertSeparator: async (sessionId: string) => {
       return api.insertSeparator(sessionId, contextType, projectId);
     },

@@ -173,6 +173,25 @@ export async function deleteMessage(sessionId: string, messageId: string, contex
 }
 
 /**
+ * Update the content of a specific message (save only, no regeneration).
+ */
+export async function updateMessageContent(
+  sessionId: string,
+  messageId: string,
+  content: string,
+  contextType: string = 'chat',
+  projectId?: string
+): Promise<void> {
+  await api.put('/api/chat/message', {
+    session_id: sessionId,
+    message_id: messageId,
+    content,
+    context_type: contextType,
+    project_id: projectId,
+  });
+}
+
+/**
  * Insert a separator into conversation to clear context
  */
 export async function insertSeparator(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string> {

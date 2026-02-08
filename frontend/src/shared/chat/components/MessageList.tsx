@@ -12,6 +12,7 @@ interface MessageListProps {
   isStreaming?: boolean;
   sessionId?: string;
   onEditMessage?: (messageId: string, content: string) => void;
+  onSaveMessageOnly?: (messageId: string, content: string) => void;
   onRegenerateMessage?: (messageId: string) => void;
   onDeleteMessage?: (messageId: string) => void;
   onBranchMessage?: (messageId: string) => void;
@@ -24,6 +25,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   isStreaming = false,
   sessionId,
   onEditMessage,
+  onSaveMessageOnly,
   onRegenerateMessage,
   onDeleteMessage,
   onBranchMessage,
@@ -53,10 +55,12 @@ export const MessageList: React.FC<MessageListProps> = ({
               isStreaming={isStreaming}
               sessionId={sessionId}
               onEdit={onEditMessage}
+              onSaveOnly={onSaveMessageOnly}
               onRegenerate={onRegenerateMessage}
               onDelete={onDeleteMessage}
               onBranch={onBranchMessage}
               customActions={customMessageActions}
+              hasSubsequentMessages={index < messages.length - 1}
             />
           ))}
           {loading && (

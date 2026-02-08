@@ -641,6 +641,77 @@ class ConversationStorage:
         # Use the existing delete_message method
         await self.delete_message(session_id, message_index, context_type, project_id)
 
+    async def update_message_content(self, session_id: str, message_id: str, new_content: str, context_type: str = "chat", project_id: Optional[str] = None):
+        """Update the content of a specific message by its ID.
+
+        Args:
+            session_id: Session UUID
+            message_id: UUID of the message to update
+            new_content: New content for the message
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If message_id is not found or context parameters are invalid
+        """
+        filepath = await self._find_session_file(session_id, context_type, project_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+        messages = self._parse_messages(post.content, session_id)
+
+        # Find the message with the given ID
+        message_index = None
+        for index, msg in enumerate(messages):
+            if msg.get("message_id") == message_id:
+                message_index = index
+                break
+
+        if message_index is None:
+            raise ValueError(f"Message with ID {message_id} not found")
+
+        # Update the content
+        messages[message_index]["content"] = new_content
+
+        # Rebuild markdown content
+        new_md_content = ""
+        for msg in messages:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if msg["role"] == "user":
+                role_display = "User"
+            elif msg["role"] == "assistant":
+                role_display = "Assistant"
+            elif msg["role"] == "summary":
+                role_display = "Summary"
+            else:
+                role_display = "Separator"
+            new_md_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
+
+            if "message_id" in msg:
+                new_md_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+
+            if "attachments" in msg:
+                for att in msg["attachments"]:
+                    new_md_content += f"<!-- attachment: {json.dumps(att)} -->\n"
+
+            if "usage" in msg:
+                new_md_content += f"<!-- usage: {json.dumps(msg['usage'])} -->\n"
+            if "cost" in msg:
+                new_md_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
+
+            if "compression_meta" in msg:
+                new_md_content += f"<!-- compression_meta: {json.dumps(msg['compression_meta'])} -->\n"
+
+        post.content = new_md_content
+
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
     async def clear_all_messages(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Clear all messages from the conversation.
 

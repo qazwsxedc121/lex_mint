@@ -55,6 +55,7 @@ export interface ChatAPI {
     onThinkingDuration?: (durationMs: number) => void
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
+  updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;
   insertSeparator(sessionId: string): Promise<string>;
   clearAllMessages(sessionId: string): Promise<void>;
   compressContext(

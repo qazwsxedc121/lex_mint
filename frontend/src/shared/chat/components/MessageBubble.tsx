@@ -2,7 +2,7 @@
  * MessageBubble component - displays a single message.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
@@ -19,10 +19,12 @@ interface MessageBubbleProps {
   isStreaming: boolean;
   sessionId?: string;
   onEdit?: (messageId: string, content: string) => void;
+  onSaveOnly?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onBranch?: (messageId: string) => void;
   customActions?: (message: Message, messageId: string) => React.ReactNode;
+  hasSubsequentMessages?: boolean;
 }
 
 interface ParsedUserBlock {
@@ -186,10 +188,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   isStreaming,
   sessionId,
   onEdit,
+  onSaveOnly,
   onRegenerate,
   onDelete,
   onBranch,
   customActions,
+  hasSubsequentMessages,
 }) => {
   const { api } = useChatServices();
   const isUser = message.role === 'user';
@@ -201,6 +205,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedUserBlocks, setExpandedUserBlocks] = useState<Record<string, boolean>>({});
   const [showSummaryContent, setShowSummaryContent] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Parse thinking content from message
   const { thinking, mainContent, isThinkingInProgress } = useMemo(
@@ -219,9 +224,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     setExpandedUserBlocks({});
   }, [message.content]);
 
-  const canEdit = isUser && !isStreaming && onEdit;
+  const canEdit = !isStreaming && !isSeparator && !isSummary && (isUser ? (onEdit || onSaveOnly) : onSaveOnly);
   const canRegenerate = !isStreaming && onRegenerate && message.content.trim() !== '';
   const canDelete = !isStreaming && onDelete;
+
+  // Auto-resize textarea
+  const autoResize = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isEditing) {
+      autoResize();
+    }
+  }, [isEditing, editContent, autoResize]);
 
   const handleDownloadAttachment = async (filename: string) => {
     if (!sessionId) return;
@@ -246,15 +266,31 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
+  const handleSaveOnly = () => {
+    if (editContent.trim() && onSaveOnly) {
+      // For assistant messages, reconstruct full content preserving thinking tags
+      let fullContent = editContent.trim();
+      if (!isUser && thinking) {
+        fullContent = `<think>${thinking}</think>${fullContent}`;
+      }
+      onSaveOnly(messageId, fullContent);
+      setIsEditing(false);
+    }
+  };
+
   const handleCancelEdit = () => {
-    setEditContent(message.content);
+    setEditContent(isUser ? message.content : mainContent);
     setIsEditing(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      handleSaveEdit();
+      if (isUser && onEdit) {
+        handleSaveEdit();
+      } else {
+        handleSaveOnly();
+      }
     }
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -415,30 +451,59 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           {isEditing ? (
             <div className="space-y-2">
               <textarea
+                ref={textareaRef}
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full min-h-[100px] px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full min-h-[60px] px-3 py-2 text-sm rounded-md focus:outline-none focus:ring-2 resize-none ${
+                  isUser
+                    ? 'bg-blue-400/20 text-white placeholder-blue-200 border border-blue-300/40 focus:ring-blue-300'
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-500 focus:ring-blue-500'
+                }`}
                 autoFocus
               />
-              <div className="flex gap-2 justify-end">
+              {isUser && hasSubsequentMessages && onEdit && (
+                <p className={`text-[11px] ${isUser ? 'text-blue-200/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                  "Save & Regenerate" will remove all subsequent messages.
+                </p>
+              )}
+              <div className="flex items-center gap-2 justify-end">
+                <span className={`text-[11px] mr-auto ${isUser ? 'text-blue-200/60' : 'text-gray-400 dark:text-gray-500'}`}>
+                  Ctrl+Enter save, Esc cancel
+                </span>
                 <button
                   onClick={handleCancelEdit}
-                  className="px-3 py-1 text-sm bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-400 dark:hover:bg-gray-500"
+                  className={`px-3 py-1 text-xs rounded transition-colors ${
+                    isUser
+                      ? 'bg-blue-400/30 text-blue-100 hover:bg-blue-400/50'
+                      : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-500'
+                  }`}
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={handleSaveEdit}
-                  disabled={!editContent.trim()}
-                  className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Save & Regenerate
-                </button>
+                {onSaveOnly && (
+                  <button
+                    onClick={handleSaveOnly}
+                    disabled={!editContent.trim() || editContent.trim() === (isUser ? message.content.trim() : mainContent.trim())}
+                    className={`px-3 py-1 text-xs rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                      isUser
+                        ? 'bg-blue-400/30 text-blue-100 hover:bg-blue-400/50'
+                        : 'bg-blue-500 text-white font-medium hover:bg-blue-600'
+                    }`}
+                  >
+                    Save
+                  </button>
+                )}
+                {isUser && onEdit && (
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={!editContent.trim()}
+                    className="px-3 py-1 text-xs bg-white/90 text-blue-600 font-medium rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Save & Regenerate
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Tip: Ctrl+Enter to save, Esc to cancel
-              </p>
             </div>
           ) : (
             <div className="text-sm">
@@ -716,7 +781,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
             {canEdit && (
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  // For assistant messages, edit mainContent only (exclude thinking tags)
+                  setEditContent(isUser ? message.content : mainContent);
+                  setIsEditing(true);
+                }}
                 className="group relative p-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 transition-colors"
                 title="Edit message"
               >
