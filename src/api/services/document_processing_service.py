@@ -1,0 +1,225 @@
+"""
+Document Processing Service
+
+Pipeline: Upload -> Extract Text -> Chunk -> Embed -> Store in ChromaDB
+"""
+import logging
+from pathlib import Path
+from typing import List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class DocumentProcessingService:
+    """Service for processing documents into vector embeddings"""
+
+    def __init__(self):
+        from .rag_config_service import RagConfigService
+        from .embedding_service import EmbeddingService
+        self.rag_config_service = RagConfigService()
+        self.embedding_service = EmbeddingService()
+
+    async def process_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        file_type: str,
+        file_path: str,
+        chunk_size: Optional[int] = None,
+        chunk_overlap: Optional[int] = None,
+    ):
+        """
+        Process a document: extract text, chunk, embed, store in ChromaDB.
+
+        Args:
+            kb_id: Knowledge base ID
+            doc_id: Document ID
+            filename: Original filename
+            file_type: File extension (e.g., .pdf)
+            file_path: Path to the uploaded file
+            chunk_size: Override chunk size (uses KB config or global config)
+            chunk_overlap: Override chunk overlap
+        """
+        from .knowledge_base_service import KnowledgeBaseService
+        kb_service = KnowledgeBaseService()
+
+        try:
+            # Update status to processing
+            await kb_service.update_document_status(kb_id, doc_id, "processing")
+
+            # Get chunk settings from KB override or global config
+            kb = await kb_service.get_knowledge_base(kb_id)
+            effective_chunk_size = chunk_size or (kb.chunk_size if kb and kb.chunk_size else self.rag_config_service.config.chunking.chunk_size)
+            effective_chunk_overlap = chunk_overlap or (kb.chunk_overlap if kb and kb.chunk_overlap else self.rag_config_service.config.chunking.chunk_overlap)
+
+            # Step 1: Extract text
+            logger.info(f"Extracting text from {filename} ({file_type})")
+            text = self._extract_text(file_path, file_type)
+            if not text or not text.strip():
+                raise ValueError("No text content extracted from document")
+            logger.info(f"Extracted {len(text)} characters from {filename}")
+
+            # Step 2: Chunk text
+            logger.info(f"Chunking text with size={effective_chunk_size}, overlap={effective_chunk_overlap}")
+            chunks = self._chunk_text(text, effective_chunk_size, effective_chunk_overlap)
+            logger.info(f"Created {len(chunks)} chunks from {filename}")
+
+            if not chunks:
+                raise ValueError("No chunks created from document text")
+
+            # Step 3: Get embedding function
+            override_model = kb.embedding_model if kb and kb.embedding_model else None
+            embedding_fn = self.embedding_service.get_embedding_function(override_model)
+
+            # Step 4: Store in ChromaDB
+            logger.info(f"Storing {len(chunks)} chunks in ChromaDB collection kb_{kb_id}")
+            self._store_in_chromadb(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=filename,
+                file_type=file_type,
+                chunks=chunks,
+                embedding_fn=embedding_fn,
+            )
+
+            # Step 5: Update document status to ready
+            await kb_service.update_document_status(
+                kb_id, doc_id, "ready",
+                chunk_count=len(chunks)
+            )
+            logger.info(f"Document {doc_id} ({filename}) processed successfully: {len(chunks)} chunks")
+
+        except Exception as e:
+            logger.error(f"Document processing failed for {doc_id} ({filename}): {e}")
+            try:
+                await kb_service.update_document_status(
+                    kb_id, doc_id, "error",
+                    error_message=str(e)
+                )
+            except Exception as e2:
+                logger.error(f"Failed to update document status to error: {e2}")
+            raise
+
+    def _extract_text(self, file_path: str, file_type: str) -> str:
+        """Extract text content from a file based on its type"""
+        file_type = file_type.lower()
+
+        if file_type in ('.txt', '.md'):
+            return self._extract_text_plain(file_path)
+        elif file_type == '.pdf':
+            return self._extract_text_pdf(file_path)
+        elif file_type == '.docx':
+            return self._extract_text_docx(file_path)
+        elif file_type in ('.html', '.htm'):
+            return self._extract_text_html(file_path)
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
+
+    def _extract_text_plain(self, file_path: str) -> str:
+        """Extract text from plain text files (txt, md)"""
+        encodings = ['utf-8', 'utf-8-sig', 'gbk', 'gb2312', 'latin-1']
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                continue
+        # Fallback: read as bytes and decode with errors='replace'
+        with open(file_path, 'rb') as f:
+            return f.read().decode('utf-8', errors='replace')
+
+    def _extract_text_pdf(self, file_path: str) -> str:
+        """Extract text from PDF files"""
+        from pypdf import PdfReader
+        reader = PdfReader(file_path)
+        text_parts = []
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+        return "\n\n".join(text_parts)
+
+    def _extract_text_docx(self, file_path: str) -> str:
+        """Extract text from DOCX files"""
+        from docx import Document
+        doc = Document(file_path)
+        text_parts = []
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip():
+                text_parts.append(paragraph.text)
+        return "\n\n".join(text_parts)
+
+    def _extract_text_html(self, file_path: str) -> str:
+        """Extract text from HTML files using trafilatura"""
+        try:
+            import trafilatura
+            with open(file_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            text = trafilatura.extract(html_content)
+            if text:
+                return text
+        except Exception as e:
+            logger.warning(f"Trafilatura extraction failed: {e}, falling back to plain read")
+
+        # Fallback: read as plain text
+        return self._extract_text_plain(file_path)
+
+    def _chunk_text(self, text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Split text into chunks using RecursiveCharacterTextSplitter"""
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            length_function=len,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+        return splitter.split_text(text)
+
+    def _store_in_chromadb(
+        self,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        file_type: str,
+        chunks: List[str],
+        embedding_fn,
+    ):
+        """Store document chunks in ChromaDB"""
+        from langchain_chroma import Chroma
+
+        persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
+        if not persist_dir.is_absolute():
+            persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+        persist_dir.mkdir(parents=True, exist_ok=True)
+
+        collection_name = f"kb_{kb_id}"
+
+        # Create or get the vector store
+        vectorstore = Chroma(
+            collection_name=collection_name,
+            embedding_function=embedding_fn,
+            persist_directory=str(persist_dir),
+        )
+
+        # Prepare document IDs and metadata
+        ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
+        metadatas = [
+            {
+                "kb_id": kb_id,
+                "doc_id": doc_id,
+                "filename": filename,
+                "file_type": file_type,
+                "chunk_index": i,
+            }
+            for i in range(len(chunks))
+        ]
+
+        # Add documents to the vector store
+        vectorstore.add_texts(
+            texts=chunks,
+            ids=ids,
+            metadatas=metadatas,
+        )
+        logger.info(f"Stored {len(chunks)} chunks in ChromaDB collection '{collection_name}'")

@@ -14,7 +14,7 @@ setup_logging()
 
 import logging
 
-from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation, tts, tts_config
+from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation, tts, tts_config, rag_config, knowledge_base
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,8 @@ app.include_router(translation_config.router)
 app.include_router(translation.router)
 app.include_router(tts_config.router)
 app.include_router(tts.router)
+app.include_router(rag_config.router)
+app.include_router(knowledge_base.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")
@@ -87,6 +89,19 @@ async def startup_event():
     cleaned = await storage.cleanup_temporary_sessions()
     if cleaned:
         logger.info(f"Cleaned up {cleaned} temporary session(s)")
+
+    # Ensure ChromaDB and knowledge base storage directories exist
+    from pathlib import Path
+    from .services.rag_config_service import RagConfigService
+    try:
+        rag_config = RagConfigService()
+        persist_dir = Path(rag_config.config.storage.persist_directory)
+        if not persist_dir.is_absolute():
+            persist_dir = Path(__file__).parent.parent.parent / persist_dir
+        persist_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"ChromaDB storage directory ready: {persist_dir}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize ChromaDB directory: {e}")
 
 
 @app.get("/api/health")

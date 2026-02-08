@@ -138,7 +138,27 @@ class AgentService:
 
         if search_context:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-        print(f"✅ 会话加载完成，当前有 {len(messages)} 条消息，模型: {model_id}")
+
+        # Optional RAG context from knowledge bases
+        rag_sources: List[Dict[str, Any]] = []
+        if assistant_id and not assistant_id.startswith("__legacy_model_"):
+            try:
+                from .assistant_config_service import AssistantConfigService as _ACS
+                from .rag_service import RagService
+                _assistant_svc = _ACS()
+                _assistant_obj = await _assistant_svc.get_assistant(assistant_id)
+                if _assistant_obj and getattr(_assistant_obj, 'knowledge_base_ids', None):
+                    rag_service = RagService()
+                    rag_results = await rag_service.retrieve(raw_user_message, _assistant_obj.knowledge_base_ids)
+                    if rag_results:
+                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
+                        rag_sources = [r.to_dict() for r in rag_results]
+                        if rag_context:
+                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed: {e}")
+
+        print(f"[OK] Session loaded, {len(messages)} messages, model: {model_id}")
 
         print(f"🧠 [步骤 3] 调用 LLM...")
         logger.info(f"🧠 [步骤 3] 调用 LLM")
@@ -163,6 +183,8 @@ class AgentService:
             all_sources.extend(webpage_sources)
         if search_sources:
             all_sources.extend(search_sources)
+        if rag_sources:
+            all_sources.extend(rag_sources)
 
         await self.storage.append_message(
             session_id,
@@ -361,11 +383,35 @@ class AgentService:
         if search_context:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
 
+        # Optional RAG context from knowledge bases
+        rag_sources: List[Dict[str, Any]] = []
+        if assistant_id and not assistant_id.startswith("__legacy_model_"):
+            try:
+                from .rag_service import RagService
+                # Re-use assistant object if already loaded above
+                _rag_assistant = None
+                if assistant_id:
+                    from .assistant_config_service import AssistantConfigService as _ACS2
+                    _rag_svc = _ACS2()
+                    _rag_assistant = await _rag_svc.get_assistant(assistant_id)
+                if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
+                    rag_service = RagService()
+                    rag_results = await rag_service.retrieve(raw_user_message, _rag_assistant.knowledge_base_ids)
+                    if rag_results:
+                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
+                        rag_sources = [r.to_dict() for r in rag_results]
+                        if rag_context:
+                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed: {e}")
+
         all_sources: List[Dict[str, Any]] = []
         if webpage_sources:
             all_sources.extend(webpage_sources)
         if search_sources:
             all_sources.extend(search_sources)
+        if rag_sources:
+            all_sources.extend(rag_sources)
         if all_sources:
             yield {
                 "type": "sources",

@@ -10,12 +10,14 @@ import { CrudSettingsPage } from './components/crud';
 import { assistantsConfig } from './config';
 import { useModels } from './hooks/useModels';
 import { useAssistants } from './hooks/useAssistants';
+import { useKnowledgeBases } from './hooks/useKnowledgeBases';
 import type { CrudHook } from './config/types';
 import type { Assistant } from '../../types/assistant';
 
 export const AssistantsPage: React.FC = () => {
   const modelsHook = useModels();
   const assistantsHook = useAssistants();
+  const kbHook = useKnowledgeBases();
 
   // Adapt useAssistants hook to CrudHook interface
   const crudHook: CrudHook<Assistant> = {
@@ -34,7 +36,7 @@ export const AssistantsPage: React.FC = () => {
     <CrudSettingsPage
       config={assistantsConfig}
       hook={crudHook}
-      context={{ models: modelsHook.models, providers: modelsHook.providers }}
+      context={{ models: modelsHook.models, providers: modelsHook.providers, knowledgeBases: kbHook.knowledgeBases }}
       getItemId={(item) => item.id}
     />
   );

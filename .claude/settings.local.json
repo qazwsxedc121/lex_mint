@@ -59,7 +59,9 @@
       "WebFetch(domain:api.github.com)",
       "Bash(npx vite build)",
       "Bash(node -e:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)"
     ]
   }
 }

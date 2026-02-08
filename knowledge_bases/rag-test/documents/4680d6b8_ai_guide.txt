@@ -1,0 +1,18 @@
+
+Artificial Intelligence and Machine Learning Guide
+
+Chapter 1: What is Deep Learning?
+Deep learning is a subset of machine learning that uses neural networks with multiple layers.
+These networks can learn hierarchical representations of data automatically.
+Common architectures include CNNs for image processing and RNNs for sequential data.
+
+Chapter 2: Transformer Architecture
+The Transformer architecture was introduced in the paper Attention Is All You Need in 2017.
+It relies entirely on self-attention mechanisms, eliminating the need for recurrence.
+Key components include multi-head attention, positional encoding, and feed-forward networks.
+BERT, GPT, and T5 are all based on the Transformer architecture.
+
+Chapter 3: Vector Databases
+Vector databases store high-dimensional embeddings for similarity search.
+ChromaDB, Pinecone, and Weaviate are popular choices.
+They enable semantic search by finding vectors closest to a query embedding.

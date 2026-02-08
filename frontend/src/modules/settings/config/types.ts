@@ -146,6 +146,19 @@ export interface IconPickerFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Multi-select field for selecting multiple values
+ */
+export interface MultiSelectFieldConfig extends BaseFieldConfig {
+  type: 'multi-select';
+  /** Default value */
+  defaultValue?: string[];
+  /** Static options */
+  options?: Array<{ value: string; label: string; disabled?: boolean }>;
+  /** Dynamic options from context */
+  dynamicOptions?: (context: any) => Array<{ value: string; label: string; disabled?: boolean }>;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -155,7 +168,8 @@ export type FieldConfig =
   | CheckboxFieldConfig
   | SliderFieldConfig
   | TextareaFieldConfig
-  | IconPickerFieldConfig;
+  | IconPickerFieldConfig
+  | MultiSelectFieldConfig;
 
 // ==================== Table Configuration ====================
 

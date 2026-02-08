@@ -229,6 +229,45 @@ export const FormField: React.FC<FormFieldProps> = ({
         />;
       }
 
+      case 'multi-select': {
+        const options = config.dynamicOptions
+          ? config.dynamicOptions(context)
+          : config.options || [];
+        const selectedValues: string[] = Array.isArray(value) ? value : [];
+
+        const toggleValue = (val: string) => {
+          if (selectedValues.includes(val)) {
+            onChange(selectedValues.filter((v: string) => v !== val));
+          } else {
+            onChange([...selectedValues, val]);
+          }
+        };
+
+        return (
+          <div className="space-y-1 max-h-48 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md p-2 bg-white dark:bg-gray-700">
+            {options.length === 0 ? (
+              <div className="text-sm text-gray-400 dark:text-gray-500 py-1">No options available</div>
+            ) : (
+              options.map((opt) => (
+                <label
+                  key={opt.value}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedValues.includes(opt.value)}
+                    onChange={() => toggleValue(opt.value)}
+                    disabled={config.disabled || opt.disabled}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{opt.label}</span>
+                </label>
+              ))
+            )}
+          </div>
+        );
+      }
+
       default:
         return <div className="text-red-500">Unknown field type</div>;
     }

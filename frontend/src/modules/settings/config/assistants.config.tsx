@@ -269,6 +269,22 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       name: 'enabled',
       label: 'Enable this assistant',
       defaultValue: true
+    },
+    {
+      type: 'multi-select' as const,
+      name: 'knowledge_base_ids',
+      label: 'Knowledge Bases',
+      defaultValue: [],
+      dynamicOptions: (context: any) => {
+        const kbs = context.knowledgeBases || [];
+        return kbs
+          .filter((kb: any) => kb.enabled)
+          .map((kb: any) => ({
+            value: kb.id,
+            label: `${kb.name}${kb.description ? ` - ${kb.description}` : ''}`,
+          }));
+      },
+      helpText: 'Select knowledge bases to use for RAG with this assistant'
     }
   ],
 
@@ -354,6 +370,22 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       name: 'enabled',
       label: 'Enable this assistant',
       defaultValue: true
+    },
+    {
+      type: 'multi-select' as const,
+      name: 'knowledge_base_ids',
+      label: 'Knowledge Bases',
+      defaultValue: [],
+      dynamicOptions: (context: any) => {
+        const kbs = context.knowledgeBases || [];
+        return kbs
+          .filter((kb: any) => kb.enabled)
+          .map((kb: any) => ({
+            value: kb.id,
+            label: `${kb.name}${kb.description ? ` - ${kb.description}` : ''}`,
+          }));
+      },
+      helpText: 'Select knowledge bases to use for RAG with this assistant'
     }
   ],
 

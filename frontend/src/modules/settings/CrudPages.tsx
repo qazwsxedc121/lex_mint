@@ -4,15 +4,18 @@
 
 import type { Assistant } from '../../types/assistant';
 import type { Model, Provider } from '../../types/model';
+import type { KnowledgeBase } from '../../types/knowledgeBase';
 import type { CrudHook } from './config/types';
-import { assistantsConfig, modelsConfig, providersConfig } from './config';
+import { assistantsConfig, modelsConfig, providersConfig, knowledgeBasesConfig } from './config';
 import { makeCrudPages } from './components/crud';
 import { useAssistants } from './hooks/useAssistants';
 import { useModels } from './hooks/useModels';
+import { useKnowledgeBases } from './hooks/useKnowledgeBases';
 
 const useAssistantsCrud = () => {
   const modelsHook = useModels();
   const assistantsHook = useAssistants();
+  const kbHook = useKnowledgeBases();
 
   const hook: CrudHook<Assistant> = {
     items: assistantsHook.assistants,
@@ -28,7 +31,7 @@ const useAssistantsCrud = () => {
 
   return {
     hook,
-    context: { models: modelsHook.models, providers: modelsHook.providers }
+    context: { models: modelsHook.models, providers: modelsHook.providers, knowledgeBases: kbHook.knowledgeBases }
   };
 };
 
@@ -93,9 +96,35 @@ const providersPages = makeCrudPages<Provider>({
   missingMessage: 'Provider not found'
 });
 
+const useKnowledgeBasesCrud = () => {
+  const kbHook = useKnowledgeBases();
+
+  const hook: CrudHook<KnowledgeBase> = {
+    items: kbHook.knowledgeBases,
+    loading: kbHook.loading,
+    error: kbHook.error,
+    createItem: kbHook.createKnowledgeBase,
+    updateItem: kbHook.updateKnowledgeBase,
+    deleteItem: kbHook.deleteKnowledgeBase,
+    refreshData: kbHook.refreshData
+  };
+
+  return { hook, context: {} };
+};
+
+const knowledgeBasesPages = makeCrudPages<KnowledgeBase>({
+  config: knowledgeBasesConfig,
+  useData: useKnowledgeBasesCrud,
+  backPath: '/settings/knowledge-bases',
+  idParam: 'kbId',
+  missingMessage: 'Knowledge base not found'
+});
+
 export const AssistantsCreatePage = assistantsPages.CreatePage;
 export const AssistantsEditPage = assistantsPages.EditPage;
 export const ModelsCreatePage = modelsPages.CreatePage;
 export const ModelsEditPage = modelsPages.EditPage;
 export const ProvidersCreatePage = providersPages.CreatePage;
 export const ProvidersEditPage = providersPages.EditPage;
+export const KnowledgeBasesCreatePage = knowledgeBasesPages.CreatePage;
+export const KnowledgeBasesEditPage = knowledgeBasesPages.EditPage;

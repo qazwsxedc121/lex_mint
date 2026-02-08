@@ -15,8 +15,10 @@ import {
   ModelsCreatePage,
   ModelsEditPage,
   ProvidersCreatePage,
-  ProvidersEditPage
+  ProvidersEditPage,
+  KnowledgeBasesCreatePage,
 } from './modules/settings/CrudPages';
+import { KnowledgeBaseEditPage } from './modules/settings/KnowledgeBaseEditPage';
 import { SearchSettings } from './modules/settings/SearchSettings';
 import { WebpageSettings } from './modules/settings/WebpageSettings';
 import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
@@ -24,6 +26,8 @@ import { FollowupSettings } from './modules/settings/FollowupSettings';
 import { CompressionSettings } from './modules/settings/CompressionSettings';
 import { TranslationSettings } from './modules/settings/TranslationSettings';
 import { TTSSettings } from './modules/settings/TTSSettings';
+import { KnowledgeBasesPage } from './modules/settings/KnowledgeBasesPage';
+import { RagSettings } from './modules/settings/RagSettings';
 import './index.css';
 
 function App() {
@@ -51,6 +55,10 @@ function App() {
             <Route path="providers" element={<ProvidersPage />} />
             <Route path="providers/new" element={<ProvidersCreatePage />} />
             <Route path="providers/:providerId" element={<ProvidersEditPage />} />
+            <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
+            <Route path="knowledge-bases/new" element={<KnowledgeBasesCreatePage />} />
+            <Route path="knowledge-bases/:kbId" element={<KnowledgeBaseEditPage />} />
+            <Route path="rag" element={<RagSettings />} />
             <Route path="search" element={<SearchSettings />} />
             <Route path="webpage" element={<WebpageSettings />} />
             <Route path="title-generation" element={<TitleGenerationSettings />} />

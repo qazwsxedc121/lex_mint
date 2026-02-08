@@ -7,6 +7,7 @@ import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, Cos
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
+import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, RagConfig } from '../types/knowledgeBase';
 import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -1362,5 +1363,105 @@ export async function synthesizeSpeech(
     throw new Error(`TTS failed: ${response.status}`);
   }
   return response.blob();
+}
+
+// ==================== Knowledge Base API ====================
+
+/**
+ * List all knowledge bases.
+ */
+export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
+  const response = await api.get<KnowledgeBase[]>('/api/knowledge-bases');
+  return response.data;
+}
+
+/**
+ * Get a specific knowledge base.
+ */
+export async function getKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
+  const response = await api.get<KnowledgeBase>(`/api/knowledge-bases/${kbId}`);
+  return response.data;
+}
+
+/**
+ * Create a new knowledge base.
+ */
+export async function createKnowledgeBase(kb: KnowledgeBaseCreate): Promise<KnowledgeBase> {
+  const response = await api.post<KnowledgeBase>('/api/knowledge-bases', kb);
+  return response.data;
+}
+
+/**
+ * Update a knowledge base.
+ */
+export async function updateKnowledgeBase(kbId: string, kb: KnowledgeBaseUpdate): Promise<KnowledgeBase> {
+  const response = await api.put<KnowledgeBase>(`/api/knowledge-bases/${kbId}`, kb);
+  return response.data;
+}
+
+/**
+ * Delete a knowledge base.
+ */
+export async function deleteKnowledgeBase(kbId: string): Promise<void> {
+  await api.delete(`/api/knowledge-bases/${kbId}`);
+}
+
+/**
+ * List documents in a knowledge base.
+ */
+export async function listDocuments(kbId: string): Promise<KnowledgeBaseDocument[]> {
+  const response = await api.get<KnowledgeBaseDocument[]>(`/api/knowledge-bases/${kbId}/documents`);
+  return response.data;
+}
+
+/**
+ * Upload a document to a knowledge base.
+ */
+export async function uploadDocument(kbId: string, file: File): Promise<KnowledgeBaseDocument> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE}/api/knowledge-bases/${kbId}/documents/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Upload failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a document from a knowledge base.
+ */
+export async function deleteDocument(kbId: string, docId: string): Promise<void> {
+  await api.delete(`/api/knowledge-bases/${kbId}/documents/${docId}`);
+}
+
+/**
+ * Reprocess a document.
+ */
+export async function reprocessDocument(kbId: string, docId: string): Promise<void> {
+  await api.post(`/api/knowledge-bases/${kbId}/documents/${docId}/reprocess`);
+}
+
+// ==================== RAG Config API ====================
+
+/**
+ * Get RAG configuration.
+ */
+export async function getRagConfig(): Promise<RagConfig> {
+  const response = await api.get<RagConfig>('/api/rag/config');
+  return response.data;
+}
+
+/**
+ * Update RAG configuration.
+ */
+export async function updateRagConfig(config: Partial<RagConfig>): Promise<void> {
+  await api.put('/api/rag/config', config);
 }
 
