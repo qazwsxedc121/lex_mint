@@ -126,6 +126,13 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       );
     },
 
+    translateText: async (text, onChunk, onComplete, onError, targetLanguage?, modelId?, abortControllerRef?, useInputTargetLanguage?) => {
+      return api.translateText(
+        text, onChunk, onComplete, onError,
+        targetLanguage, modelId, abortControllerRef, useInputTargetLanguage
+      );
+    },
+
     // File operations
     uploadFile: async (sessionId: string, file: File) => {
       return api.uploadFile(sessionId, file, contextType, projectId);

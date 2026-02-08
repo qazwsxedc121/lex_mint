@@ -65,6 +65,16 @@ export interface ChatAPI {
     onError: (error: string) => void,
     abortControllerRef?: MutableRefObject<AbortController | null>
   ): Promise<void>;
+  translateText(
+    text: string,
+    onChunk: (chunk: string) => void,
+    onComplete: () => void,
+    onError: (error: string) => void,
+    targetLanguage?: string,
+    modelId?: string,
+    abortControllerRef?: MutableRefObject<AbortController | null>,
+    useInputTargetLanguage?: boolean
+  ): Promise<void>;
 
   // File operations
   uploadFile(sessionId: string, file: File): Promise<UploadedFile>;

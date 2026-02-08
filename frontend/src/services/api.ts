@@ -354,6 +354,102 @@ export async function compressContext(
 }
 
 /**
+ * Translate text via LLM streaming.
+ * Streams the translation as SSE events.
+ */
+export async function translateText(
+  text: string,
+  onChunk: (chunk: string) => void,
+  onComplete: () => void,
+  onError: (error: string) => void,
+  targetLanguage?: string,
+  modelId?: string,
+  abortControllerRef?: MutableRefObject<AbortController | null>,
+  useInputTargetLanguage?: boolean
+): Promise<void> {
+  const controller = new AbortController();
+  if (abortControllerRef) {
+    abortControllerRef.current = controller;
+  }
+
+  try {
+    const body: any = { text };
+    if (targetLanguage) body.target_language = targetLanguage;
+    if (modelId) body.model_id = modelId;
+    if (useInputTargetLanguage) body.use_input_target_language = true;
+
+    const response = await fetch(`${API_BASE}/api/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.error) {
+                onError(data.error);
+                return;
+              }
+
+              if (data.done) {
+                onComplete();
+                return;
+              }
+
+              if (data.type === 'translation_complete') {
+                continue;
+              }
+
+              if (data.chunk) {
+                onChunk(data.chunk);
+              }
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log('Translation aborted by user');
+      return;
+    }
+    throw error;
+  } finally {
+    if (abortControllerRef) {
+      abortControllerRef.current = null;
+    }
+  }
+}
+
+/**
  * Send a message and receive AI response.
  */
 export async function sendMessage(

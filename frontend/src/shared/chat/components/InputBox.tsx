@@ -14,6 +14,7 @@ import {
   PencilSquareIcon,
   TrashIcon,
   CheckIcon,
+  LanguageIcon,
 } from '@heroicons/react/24/outline';
 import { Brain } from 'lucide-react';
 import { useChatServices } from '../services/ChatServiceProvider';
@@ -115,6 +116,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [blocks, setBlocks] = useState<ChatBlock[]>([]);
+  const [isTranslatingInput, setIsTranslatingInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -392,6 +394,33 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowClearConfirm(false);
   };
 
+  const handleTranslateInput = async () => {
+    if (isTranslatingInput || !input.trim()) return;
+    setIsTranslatingInput(true);
+    let translated = '';
+    try {
+      await api.translateText(
+        input.trim(),
+        (chunk) => {
+          translated += chunk;
+          setInput(translated);
+        },
+        () => setIsTranslatingInput(false),
+        (error) => {
+          console.error('Input translation failed:', error);
+          setIsTranslatingInput(false);
+        },
+        undefined, // targetLanguage
+        undefined, // modelId
+        undefined, // abortControllerRef
+        true,      // useInputTargetLanguage
+      );
+    } catch (err) {
+      console.error('Input translation failed:', err);
+      setIsTranslatingInput(false);
+    }
+  };
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       setShowClearConfirm(false);
@@ -541,6 +570,22 @@ export const InputBox: React.FC<InputBoxProps> = ({
           title={useWebSearch ? 'Web search enabled' : 'Enable web search'}
         >
           <GlobeAltIcon className="h-4 w-4" />
+        </button>
+
+        {/* Translate input button */}
+        <button
+          type="button"
+          onClick={handleTranslateInput}
+          disabled={disabled || isStreaming || isTranslatingInput || !input.trim()}
+          data-name="input-box-translate-toggle"
+          className={`${TOOLBAR_BTN} ${
+            isTranslatingInput
+              ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+              : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          title={isTranslatingInput ? 'Translating...' : 'Translate input'}
+        >
+          <LanguageIcon className={`h-4 w-4 ${isTranslatingInput ? 'animate-pulse' : ''}`} />
         </button>
 
         {/* File upload button */}

@@ -51,6 +51,12 @@ export const defaultChatAPI: ChatAPI = {
       'chat', undefined, abortControllerRef
     );
   },
+  translateText: async (text, onChunk, onComplete, onError, targetLanguage?, modelId?, abortControllerRef?, useInputTargetLanguage?) => {
+    return api.translateText(
+      text, onChunk, onComplete, onError,
+      targetLanguage, modelId, abortControllerRef, useInputTargetLanguage
+    );
+  },
 
   // File operations
   uploadFile: api.uploadFile,

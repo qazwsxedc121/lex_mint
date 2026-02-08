@@ -5,11 +5,12 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon, LanguageIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { ThinkingBlock } from './ThinkingBlock';
+import { TranslationBlock } from './TranslationBlock';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 interface MessageBubbleProps {
@@ -215,6 +216,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedUserBlocks, setExpandedUserBlocks] = useState<Record<string, boolean>>({});
   const [showSummaryContent, setShowSummaryContent] = useState(false);
+  const [translatedText, setTranslatedText] = useState('');
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Parse thinking content from message
@@ -318,6 +322,33 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     } catch (err) {
       console.error('Failed to copy:', err);
     }
+  };
+
+  const handleTranslate = async () => {
+    if (isTranslating) return;
+    setTranslatedText('');
+    setIsTranslating(true);
+    setShowTranslation(true);
+    try {
+      await api.translateText(
+        mainContent,
+        (chunk) => setTranslatedText(prev => prev + chunk),
+        () => setIsTranslating(false),
+        (error) => {
+          console.error('Translation failed:', error);
+          setIsTranslating(false);
+        }
+      );
+    } catch (err) {
+      console.error('Translation failed:', err);
+      setIsTranslating(false);
+    }
+  };
+
+  const handleDismissTranslation = () => {
+    setShowTranslation(false);
+    setTranslatedText('');
+    setIsTranslating(false);
   };
 
   const handleDeleteClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -750,6 +781,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   >
                     {mainContent || '*Generating...*'}
                   </ReactMarkdown>
+                  {/* Translation block */}
+                  {showTranslation && (
+                    <TranslationBlock
+                      translatedText={translatedText}
+                      isTranslating={isTranslating}
+                      onDismiss={handleDismissTranslation}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -796,6 +835,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 {isCopied ? 'Copied' : 'Copy'}
               </span>
             </button>
+
+            {/* Translate button (assistant messages only) */}
+            {!isUser && !isStreaming && mainContent.trim() && (
+              <button
+                onClick={handleTranslate}
+                disabled={isTranslating}
+                className={`group relative p-1 rounded border transition-colors ${
+                  isTranslating
+                    ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Translate"
+              >
+                <LanguageIcon className={`w-4 h-4 ${isTranslating ? 'animate-pulse' : ''}`} />
+                <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Translate
+                </span>
+              </button>
+            )}
 
             {canEdit && (
               <button

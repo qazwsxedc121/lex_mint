@@ -1,0 +1,18 @@
+translation:
+  enabled: true
+  target_language: Chinese
+  input_target_language: English
+  model_id: deepseek:deepseek-chat
+  temperature: 0.3
+  timeout_seconds: 30
+  prompt_template: 'You are a translation expert. Your only task is to translate the
+    following text from its original language to {target_language}. Provide the translation
+    directly without any explanation or commentary. Preserve the original formatting
+    (markdown, code blocks, etc.).
+
+
+    Text to translate:
+
+    {text}
+
+    '
