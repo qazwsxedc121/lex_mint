@@ -75,6 +75,7 @@ export interface ChatAPI {
   getAssistant(assistantId: string): Promise<Assistant>;
   getModelCapabilities(modelId: string): Promise<CapabilitiesResponse>;
   generateTitleManually(sessionId: string): Promise<{ message: string; title: string }>;
+  generateFollowups(sessionId: string): Promise<string[]>;
 }
 
 /**

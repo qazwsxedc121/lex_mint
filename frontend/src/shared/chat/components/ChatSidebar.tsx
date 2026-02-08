@@ -14,7 +14,8 @@ import {
   DocumentDuplicateIcon,
   SparklesIcon,
   PlusIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
 
@@ -243,8 +244,15 @@ export const ChatSidebar: React.FC = () => {
                           session.title
                         )}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {session.message_count || 0} messages
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                        <ChatBubbleLeftRightIcon className="w-3 h-3" />
+                        <span>{session.message_count || 0}</span>
+                        {session.updated_at && (
+                          <>
+                            <span className="mx-0.5">-</span>
+                            <span>{session.updated_at}</span>
+                          </>
+                        )}
                       </p>
                     </>
                   )}

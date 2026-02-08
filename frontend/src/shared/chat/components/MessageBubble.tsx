@@ -181,6 +181,16 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`;
 }
 
+/**
+ * Format a message timestamp for display as YYYY-MM-DD HH:MM:SS.
+ */
+function formatMessageTime(timestamp: string | undefined): string | null {
+  if (!timestamp) return null;
+  // Already in YYYY-MM-DD HH:MM:SS format, return as-is
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(timestamp)) return timestamp;
+  return null;
+}
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   messageId,
@@ -746,16 +756,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
         </div>
 
-        {/* Token usage info for assistant messages */}
-        {!isUser && !isEditing && message.usage && !isStreaming && (
-          <div data-name="message-bubble-usage-info" className="flex items-center gap-2 mt-1 px-1 text-xs text-gray-400 dark:text-gray-500">
-            <span>{message.usage.prompt_tokens} in</span>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
-            <span>{message.usage.completion_tokens} out</span>
-            {message.cost && message.cost.total_cost > 0 && (
+        {/* Message timestamp and usage info */}
+        {!isEditing && (
+          <div className={`flex items-center gap-2 mt-1 px-1 text-xs text-gray-400 dark:text-gray-500 ${isUser ? 'justify-end' : ''}`}>
+            {message.created_at && (
+              <span>{formatMessageTime(message.created_at)}</span>
+            )}
+            {!isUser && message.usage && !isStreaming && (
               <>
+                {message.created_at && <span className="text-gray-300 dark:text-gray-600">|</span>}
+                <span>{message.usage.prompt_tokens} in</span>
                 <span className="text-gray-300 dark:text-gray-600">|</span>
-                <span>{formatCost(message.cost.total_cost)}</span>
+                <span>{message.usage.completion_tokens} out</span>
+                {message.cost && message.cost.total_cost > 0 && (
+                  <>
+                    <span className="text-gray-300 dark:text-gray-600">|</span>
+                    <span>{formatCost(message.cost.total_cost)}</span>
+                  </>
+                )}
               </>
             )}
           </div>

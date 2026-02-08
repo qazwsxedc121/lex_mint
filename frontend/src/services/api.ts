@@ -1190,5 +1190,19 @@ export async function renameProjectPath(id: string, sourcePath: string, targetPa
   return response.data;
 }
 
+/**
+ * Generate follow-up questions for a session on demand
+ */
+export async function generateFollowups(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string[]> {
+  const params = new URLSearchParams();
+  params.append('session_id', sessionId);
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+  const response = await api.post<{ questions: string[] }>(`/api/followup/generate?${params.toString()}`);
+  return response.data.questions;
+}
+
 export default api;
 

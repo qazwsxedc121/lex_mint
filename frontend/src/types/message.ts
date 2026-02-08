@@ -45,6 +45,7 @@ export interface Message {
   message_id?: string;  // UUID for each message (optional for backward compatibility)
   role: 'user' | 'assistant' | 'separator' | 'summary';
   content: string;
+  created_at?: string;  // Timestamp from markdown header (YYYY-MM-DD HH:MM:SS)
   attachments?: FileAttachment[];
   usage?: TokenUsage;
   cost?: CostInfo;
@@ -56,6 +57,7 @@ export interface Session {
   session_id: string;
   title: string;
   created_at: string;
+  updated_at?: string;  // File modification time (YYYY-MM-DD HH:MM:SS)
   message_count?: number;
   temporary?: boolean;
 }

@@ -61,4 +61,5 @@ export const defaultChatAPI: ChatAPI = {
   getAssistant: api.getAssistant,
   getModelCapabilities: api.getModelCapabilities,
   generateTitleManually: api.generateTitleManually,
+  generateFollowups: api.generateFollowups,
 };

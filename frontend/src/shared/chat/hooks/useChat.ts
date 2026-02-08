@@ -8,6 +8,13 @@ import { useChatServices } from '../services/ChatServiceProvider';
 
 export function useChat(sessionId: string | null) {
   const { api } = useChatServices();
+
+  /** Generate current timestamp in YYYY-MM-DD HH:MM:SS format */
+  const nowTimestamp = () => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +51,7 @@ export function useChat(sessionId: string | null) {
     try {
       setLoading(true);
       setError(null);
+      setFollowupQuestions([]);
       const session = await api.getSession(sessionId);
       setMessages(session.state.messages);
       setCurrentModelId(session.model_id || null);
@@ -96,6 +104,7 @@ export function useChat(sessionId: string | null) {
     const userMessage: Message = {
       role: 'user',
       content,
+      created_at: nowTimestamp(),
       attachments: options?.attachments?.map(a => ({
         filename: a.filename,
         size: a.size,
@@ -107,7 +116,8 @@ export function useChat(sessionId: string | null) {
     // Add placeholder for assistant message (without message_id, wait for backend)
     const assistantMessage: Message = {
       role: 'assistant',
-      content: ''
+      content: '',
+      created_at: nowTimestamp(),
     };
     setMessages(prev => [...prev, assistantMessage]);
 
@@ -261,13 +271,15 @@ export function useChat(sessionId: string | null) {
     const updatedUserMessage: Message = {
       message_id: messageId,  // Preserve message_id
       role: 'user',
-      content: newContent
+      content: newContent,
+      created_at: nowTimestamp(),
     };
     setMessages([...truncatedMessages, updatedUserMessage]);
 
     const assistantMessage: Message = {
       role: 'assistant',  // No UUID, wait for backend
-      content: ''
+      content: '',
+      created_at: nowTimestamp(),
     };
     setMessages(prev => [...prev, assistantMessage]);
 
@@ -441,7 +453,8 @@ export function useChat(sessionId: string | null) {
 
     const assistantMessage: Message = {
       role: 'assistant',  // No UUID, wait for backend
-      content: ''
+      content: '',
+      created_at: nowTimestamp(),
     };
     setMessages(prev => [...prev, assistantMessage]);
 
@@ -594,7 +607,8 @@ export function useChat(sessionId: string | null) {
       const separatorMessage: Message = {
         message_id: messageId,
         role: 'separator',
-        content: '--- Context cleared ---'
+        content: '--- Context cleared ---',
+        created_at: nowTimestamp(),
       };
 
       setMessages(prev => [...prev, separatorMessage]);
@@ -656,6 +670,16 @@ export function useChat(sessionId: string | null) {
     setFollowupQuestions([]);
   };
 
+  const generateFollowups = async () => {
+    if (!sessionId) return;
+    try {
+      const questions = await api.generateFollowups(sessionId);
+      setFollowupQuestions(questions);
+    } catch (err) {
+      console.error('Failed to generate follow-ups:', err);
+    }
+  };
+
   const compressContext = async () => {
     if (!sessionId || isProcessingRef.current || isCompressing) return;
 
@@ -667,6 +691,7 @@ export function useChat(sessionId: string | null) {
     const placeholderMessage: Message = {
       role: 'summary',
       content: '',
+      created_at: nowTimestamp(),
     };
     setMessages(prev => [...prev, placeholderMessage]);
 
@@ -749,6 +774,7 @@ export function useChat(sessionId: string | null) {
     updateModelId,
     updateAssistantId,
     clearFollowupQuestions,
+    generateFollowups,
     paramOverrides,
     hasActiveOverrides,
     updateParamOverrides,

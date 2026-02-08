@@ -143,5 +143,9 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
     generateTitleManually: async (sessionId: string) => {
       return api.generateTitleManually(sessionId, contextType, projectId);
     },
+
+    generateFollowups: async (sessionId: string) => {
+      return api.generateFollowups(sessionId, contextType, projectId);
+    },
   };
 };

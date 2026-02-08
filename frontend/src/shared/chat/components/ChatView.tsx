@@ -4,7 +4,7 @@
  * Version 2.0: Uses currentSessionId from service
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { AssistantSelector } from './AssistantSelector';
@@ -15,6 +15,7 @@ import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
 import type { Message } from '../../../types/message';
+import { LightBulbIcon } from '@heroicons/react/24/outline';
 
 export interface ChatViewProps {
   /**
@@ -36,6 +37,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const { onAssistantRefresh } = context || {};
 
   const wasStreamingRef = useRef(false);
+  const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
   const {
     messages,
     loading,
@@ -61,6 +63,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     paramOverrides,
     hasActiveOverrides,
     updateParamOverrides,
+    generateFollowups,
   } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
@@ -139,6 +142,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     compressContext();
   };
 
+  const handleGenerateFollowups = async () => {
+    setIsGeneratingFollowups(true);
+    try {
+      await generateFollowups();
+    } finally {
+      setIsGeneratingFollowups(false);
+    }
+  };
+
   const handleBranchMessage = async (messageId: string) => {
     if (!currentSessionId) return;
     try {
@@ -209,6 +221,20 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         onSelect={(question) => sendMessage(question)}
         disabled={loading || isStreaming}
       />
+
+      {/* Generate follow-ups button */}
+      {messages.length > 0 && followupQuestions.length === 0 && !isStreaming && !loading && (
+        <div data-name="generate-followups" className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={handleGenerateFollowups}
+            disabled={isGeneratingFollowups}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full border border-gray-300 dark:border-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <LightBulbIcon className={`w-3.5 h-3.5 ${isGeneratingFollowups ? 'animate-pulse' : ''}`} />
+            {isGeneratingFollowups ? 'Generating...' : 'Suggest follow-ups'}
+          </button>
+        </div>
+      )}
 
       {/* Error display */}
       {error && (

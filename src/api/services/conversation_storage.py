@@ -3,6 +3,7 @@
 import asyncio
 import frontmatter
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -421,7 +422,7 @@ class ConversationStorage:
             return []
 
         sessions = []
-        for filepath in sorted(conversation_dir.glob("*.md"), reverse=True):
+        for filepath in conversation_dir.glob("*.md"):
             try:
                 async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
                     content = await f.read()
@@ -438,10 +439,15 @@ class ConversationStorage:
                     post.content.count("## Assistant")
                 )
 
+                # Get file modification time as updated_at
+                mtime = os.path.getmtime(filepath)
+                updated_at = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+
                 sessions.append({
                     "session_id": post.metadata["session_id"],
-                    "title": post.metadata.get("title", "未命名对话"),
+                    "title": post.metadata.get("title", "New Chat"),
                     "created_at": post.metadata["created_at"],
+                    "updated_at": updated_at,
                     "message_count": message_count
                 })
             except Exception as e:
@@ -449,6 +455,8 @@ class ConversationStorage:
                 print(f"Warning: Skipping corrupted file {filepath}: {e}")
                 continue
 
+        # Sort by updated_at descending (most recently modified first)
+        sessions.sort(key=lambda s: s["updated_at"], reverse=True)
         return sessions
 
     async def search_sessions(self, query: str, context_type: str = "chat", project_id: Optional[str] = None, limit: int = 20) -> List[Dict]:
@@ -496,12 +504,17 @@ class ConversationStorage:
                     body.count("## Assistant")
                 )
 
+                # Get file modification time as updated_at
+                mtime = os.path.getmtime(filepath)
+                updated_at = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+
                 # Check title match
                 if query_lower in title.lower():
                     results.append({
                         "session_id": session_id,
                         "title": title,
                         "created_at": created_at,
+                        "updated_at": updated_at,
                         "message_count": message_count,
                         "match_type": "title",
                         "match_context": title,
@@ -525,6 +538,7 @@ class ConversationStorage:
                         "session_id": session_id,
                         "title": title,
                         "created_at": created_at,
+                        "updated_at": updated_at,
                         "message_count": message_count,
                         "match_type": "content",
                         "match_context": snippet,
@@ -1198,7 +1212,12 @@ class ConversationStorage:
                     role = "summary"
                 else:  # Separator
                     role = "separator"
-                current_message = {"role": role, "content": ""}
+
+                # Extract timestamp from header
+                ts_match = re.search(r'\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)', line)
+                created_at = ts_match.group(1) if ts_match else None
+
+                current_message = {"role": role, "content": "", "created_at": created_at}
             elif current_message is not None:
                 # Parse usage/cost/attachment/message_id HTML comments
                 usage_match = re.match(r'^<!-- usage: (.+) -->$', line.strip())

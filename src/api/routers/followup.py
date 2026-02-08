@@ -3,15 +3,21 @@ Follow-up Questions API Router
 
 Provides endpoints for configuring follow-up question generation.
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List, Optional
 import logging
 
 from ..services.followup_service import FollowupService
+from ..services.conversation_storage import ConversationStorage
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/followup", tags=["followup"])
+
+
+def get_storage() -> ConversationStorage:
+    return ConversationStorage(settings.conversations_dir)
 
 
 # Pydantic models
@@ -83,4 +89,28 @@ async def update_config(
         raise
     except Exception as e:
         logger.error(f"Failed to update followup config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate", response_model=dict)
+async def generate_followups(
+    session_id: str = Query(..., description="Session ID"),
+    context_type: str = Query("chat", description="Session context"),
+    project_id: Optional[str] = Query(None, description="Project ID"),
+    service: FollowupService = Depends(get_followup_service),
+    storage: ConversationStorage = Depends(get_storage),
+):
+    """Generate follow-up questions for an existing session on demand."""
+    try:
+        session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
+        messages = session['state']['messages']
+        if not messages:
+            return {"questions": []}
+
+        questions = await service.generate_followups_async(messages)
+        return {"questions": questions}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    except Exception as e:
+        logger.error(f"Failed to generate follow-ups: {e}")
         raise HTTPException(status_code=500, detail=str(e))
