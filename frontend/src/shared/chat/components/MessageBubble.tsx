@@ -235,6 +235,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const displayUserMessage = userBlocks.length > 0 ? userMessage : message.content;
   const sources = message.sources || [];
+  const ragSources = sources.filter((source) => source.type === 'rag');
+  const otherSources = sources.filter((source) => source.type !== 'rag');
+  const formatRagSnippet = (content?: string) => {
+    if (!content) return '';
+    const normalized = content.replace(/\s+/g, ' ').trim();
+    return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+  };
 
   useEffect(() => {
     setExpandedUserBlocks({});
@@ -684,26 +691,61 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </>
               ) : (
                 <div className="prose prose-sm max-w-none dark:prose-invert">
-                  {sources.length > 0 && (
+                  {ragSources.length > 0 && (
+                    <div data-name="message-bubble-rag-sources" className="not-prose mb-3 rounded-md border border-emerald-200 dark:border-emerald-700 bg-emerald-50/60 dark:bg-emerald-900/30">
+                      <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                        <span>Knowledge Base</span>
+                        <span>{ragSources.length}</span>
+                      </div>
+                      <div className="px-3 pb-2 space-y-2">
+                        {ragSources.map((source, index) => (
+                          <div key={`rag-${source.kb_id || 'kb'}-${source.doc_id || index}`} className="text-xs">
+                            <div className="font-medium text-emerald-900 dark:text-emerald-100">
+                              {source.filename || source.title || `Chunk ${source.chunk_index ?? index + 1}`}
+                            </div>
+                            <div className="text-[11px] text-emerald-700/90 dark:text-emerald-300/90">
+                              {source.kb_id && `KB: ${source.kb_id}`}
+                              {source.chunk_index != null && ` • Chunk ${source.chunk_index}`}
+                              {source.score != null && ` • Score ${source.score.toFixed(3)}`}
+                            </div>
+                            {source.content && (
+                              <div className="text-[11px] text-emerald-800/90 dark:text-emerald-200/90 mt-1">
+                                {formatRagSnippet(source.content)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {otherSources.length > 0 && (
                     <div data-name="message-bubble-sources" className="not-prose mb-3 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
                       <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300">
                         <span>Sources</span>
-                        <span>{sources.length}</span>
+                        <span>{otherSources.length}</span>
                       </div>
                       <div className="px-3 pb-2 space-y-2">
-                        {sources.map((source, index) => (
-                          <div key={`${source.url}-${index}`} className="text-xs">
-                            <a
-                              href={source.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 dark:text-blue-400 hover:underline break-all"
-                            >
-                              {source.title || source.url}
-                            </a>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
-                              {source.url}
-                            </div>
+                        {otherSources.map((source, index) => (
+                          <div key={`${source.url || source.title || 'source'}-${index}`} className="text-xs">
+                            {source.url ? (
+                              <>
+                                <a
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                                >
+                                  {source.title || source.url}
+                                </a>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
+                                  {source.url}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-slate-700 dark:text-slate-300 break-all">
+                                {source.title || 'Source'}
+                              </div>
+                            )}
                             {source.snippet && (
                               <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
                                 {source.snippet}
@@ -982,4 +1024,3 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     </div>
   );
 };
-

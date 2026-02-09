@@ -14,6 +14,8 @@ assistants:
   max_rounds: null
   icon: Binoculars
   enabled: true
+  knowledge_base_ids:
+  - rag-test
 - id: code-assistant
   name: Code Assistant
   description: Specialized in programming, debugging, and code analysis
@@ -46,6 +48,7 @@ assistants:
   max_rounds: null
   icon: null
   enabled: true
+  knowledge_base_ids: null
 - id: creative-writer
   name: Creative Writer
   description: Specialized in creative writing, storytelling, and imaginative content
@@ -77,3 +80,4 @@ assistants:
   max_rounds: null
   icon: null
   enabled: true
+  knowledge_base_ids: null

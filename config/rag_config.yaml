@@ -9,7 +9,7 @@ embedding:
   local_model: all-MiniLM-L6-v2
   provider: api
 retrieval:
-  score_threshold: 0.3
+  score_threshold: 0.1
   top_k: 5
 storage:
   persist_directory: data/chromadb

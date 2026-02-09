@@ -264,12 +264,12 @@ class WebpageService:
             snippet = result.text.replace("\n", " ").strip()
             if len(snippet) > 200:
                 snippet = snippet[:200] + "..."
-            sources.append(SearchSource(title=label, url=result.final_url, snippet=snippet or None))
+            sources.append(SearchSource(type="webpage", title=label, url=result.final_url, snippet=snippet or None))
         if not sources:
             for result in results:
                 label = self._label_for_result(result)
                 snippet = result.error or None
-                sources.append(SearchSource(title=label, url=result.final_url, snippet=snippet))
+                sources.append(SearchSource(type="webpage", title=label, url=result.final_url, snippet=snippet))
 
         return "\n".join(context_lines).strip(), sources
 

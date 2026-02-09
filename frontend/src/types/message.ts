@@ -28,10 +28,16 @@ export interface FileAttachment {
 }
 
 export interface SearchSource {
-  title: string;
-  url: string;
+  type?: 'search' | 'webpage' | 'rag';
+  title?: string;
+  url?: string;
   snippet?: string;
   score?: number;
+  content?: string;
+  kb_id?: string;
+  doc_id?: string;
+  filename?: string;
+  chunk_index?: number;
 }
 
 export interface UploadedFile {

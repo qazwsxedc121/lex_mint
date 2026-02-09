@@ -67,6 +67,22 @@ class RagService:
         config = self.rag_config_service.config
         effective_top_k = top_k or config.retrieval.top_k
         effective_threshold = score_threshold if score_threshold is not None else config.retrieval.score_threshold
+        short_query = (query or "").strip().replace("\n", " ")
+        if len(short_query) > 120:
+            short_query = f"{short_query[:120]}..."
+        embedding_cfg = config.embedding
+        base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
+        logger.info(
+            "[RAG] retrieve start: query='%s', kb_ids=%s, top_k=%s, threshold=%s, provider=%s, model=%s, base_url=%s",
+            short_query,
+            kb_ids,
+            effective_top_k,
+            effective_threshold,
+            embedding_cfg.provider,
+            embedding_cfg.api_model,
+            base_url or "default",
+        )
+        logger.info("[RAG] storage persist_directory=%s", config.storage.persist_directory)
 
         kb_service = KnowledgeBaseService()
         all_results: List[RagResult] = []
@@ -76,7 +92,15 @@ class RagService:
                 # Check if KB exists and is enabled
                 kb = await kb_service.get_knowledge_base(kb_id)
                 if not kb or not kb.enabled:
+                    logger.info("[RAG] kb=%s skipped (missing or disabled)", kb_id)
                     continue
+                logger.info(
+                    "[RAG] kb=%s enabled=%s embedding_model=%s doc_count=%s",
+                    kb_id,
+                    kb.enabled,
+                    kb.embedding_model,
+                    kb.document_count,
+                )
 
                 results = self._search_collection(
                     kb_id=kb_id,
@@ -85,6 +109,11 @@ class RagService:
                     score_threshold=effective_threshold,
                     override_model=kb.embedding_model,
                 )
+                if results:
+                    best_score = max(r.score for r in results)
+                    logger.info("[RAG] kb=%s results=%d best_score=%.4f", kb_id, len(results), best_score)
+                else:
+                    logger.info("[RAG] kb=%s results=0 (after threshold)", kb_id)
                 all_results.extend(results)
             except Exception as e:
                 logger.warning(f"RAG search failed for KB {kb_id}: {e}")
@@ -92,6 +121,14 @@ class RagService:
 
         # Sort by score (descending) and take top_k
         all_results.sort(key=lambda r: r.score, reverse=True)
+        if all_results:
+            logger.info(
+                "[RAG] retrieve done: total=%d best_score=%.4f",
+                len(all_results),
+                all_results[0].score,
+            )
+        else:
+            logger.info("[RAG] retrieve done: total=0")
         return all_results[:effective_top_k]
 
     def _search_collection(
@@ -119,6 +156,22 @@ class RagService:
                 embedding_function=embedding_fn,
                 persist_directory=str(persist_dir),
             )
+            try:
+                collection_count = vectorstore._collection.count()
+                logger.info(
+                    "[RAG] collection=%s count=%s persist_dir=%s override_model=%s",
+                    collection_name,
+                    collection_count,
+                    str(persist_dir),
+                    override_model,
+                )
+            except Exception:
+                logger.info(
+                    "[RAG] collection=%s persist_dir=%s override_model=%s",
+                    collection_name,
+                    str(persist_dir),
+                    override_model,
+                )
 
             # Search with scores
             results_with_scores = vectorstore.similarity_search_with_relevance_scores(
@@ -127,6 +180,20 @@ class RagService:
         except Exception as e:
             logger.warning(f"ChromaDB search failed for collection {collection_name}: {e}")
             return []
+
+        if not results_with_scores:
+            logger.info("[RAG] collection=%s raw_results=0", collection_name)
+        else:
+            scores = [score for _, score in results_with_scores]
+            best_raw = max(scores)
+            top_scores = sorted(scores, reverse=True)[:5]
+            logger.info(
+                "[RAG] collection=%s raw_results=%d best_raw=%.4f top_scores=%s",
+                collection_name,
+                len(results_with_scores),
+                best_raw,
+                [round(s, 4) for s in top_scores],
+            )
 
         rag_results = []
         for doc, score in results_with_scores:

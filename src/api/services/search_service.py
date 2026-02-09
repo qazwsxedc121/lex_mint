@@ -135,7 +135,7 @@ class SearchService:
             score = result.get("score")
             if not url:
                 continue
-            sources.append(SearchSource(title=title, url=url, snippet=snippet, score=score))
+            sources.append(SearchSource(type="search", title=title, url=url, snippet=snippet, score=score))
 
         return sources
 
@@ -170,7 +170,7 @@ class SearchService:
                             snippet = result.get("body") or result.get("snippet")
                             if not url:
                                 continue
-                            results.append(SearchSource(title=title, url=url, snippet=snippet))
+                            results.append(SearchSource(type="search", title=title, url=url, snippet=snippet))
 
                         if results:
                             return results
