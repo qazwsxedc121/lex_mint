@@ -231,7 +231,7 @@ Supports all modern browsers (Chrome, Firefox, Safari, Edge).
 ### Startup
 ```bash
 # Backend
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8888
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 
 # Frontend
 cd frontend && npm run dev

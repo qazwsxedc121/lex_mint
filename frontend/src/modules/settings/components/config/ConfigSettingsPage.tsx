@@ -35,7 +35,10 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   const [showErrors, setShowErrors] = useState(false);
 
   // Default API client using fetch
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const API_BASE = import.meta.env.VITE_API_URL;
+  if (!API_BASE) {
+    throw new Error('VITE_API_URL is not configured. Set API_PORT in the root .env file.');
+  }
 
   const defaultApiClient = {
     get: async (url: string) => {

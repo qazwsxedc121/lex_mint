@@ -85,7 +85,7 @@ async def test_title_generation():
     print("All tests passed!")
     print("=" * 60)
     print("\nNext steps:")
-    print("1. Start backend: ./venv/Scripts/uvicorn src.api.main:app --reload --port 8888")
+    print("1. Start backend: ./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>")
     print("2. Start frontend: cd frontend && npm run dev")
     print("3. Navigate to Settings > Title Generation")
     print("4. Send a message and watch the title auto-generate")

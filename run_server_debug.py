@@ -26,8 +26,13 @@ def is_port_in_use(port):
         return s.connect_ex(('localhost', port)) == 0
 
 if __name__ == "__main__":
-    # 从环境变量读取端口配置，默认 8888
-    port = int(os.getenv("API_PORT", "8888"))
+    # 从环境变量读取端口配置（必须设置 API_PORT）
+    port_value = os.getenv("API_PORT")
+    if not port_value:
+        print("❌ 未设置 API_PORT，请在根目录 .env 中配置")
+        import sys
+        sys.exit(1)
+    port = int(port_value)
 
     if is_port_in_use(port):
         print(f"⚠️  警告: 端口 {port} 已被占用!")

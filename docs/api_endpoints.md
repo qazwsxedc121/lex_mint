@@ -2,9 +2,9 @@
 
 This document describes all available API endpoints in the FastAPI backend.
 
-**Base URL:** `http://localhost:8888` (configurable via API_PORT in .env)
+**Base URL:** `http://localhost:<API_PORT>` (configurable via API_PORT in .env)
 
-**API Documentation:** `http://localhost:8888/docs` (Swagger UI)
+**API Documentation:** `http://localhost:<API_PORT>/docs` (Swagger UI)
 
 ---
 

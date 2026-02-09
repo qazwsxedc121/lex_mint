@@ -8,14 +8,17 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 
-def test_config_default_port():
-    """Test default port is 8888."""
-    print("[TEST 1] Testing default port from config.py...")
+def test_config_requires_api_port():
+    """Test API_PORT is required."""
+    print("[TEST 1] Testing API_PORT requirement from config.py...")
 
     # Clean environment
     if 'API_PORT' in os.environ:
@@ -24,10 +27,9 @@ def test_config_default_port():
     os.environ['DEEPSEEK_API_KEY'] = 'test_key'
 
     from src.api.config import Settings
-    settings = Settings()
-
-    assert settings.api_port == 8888, f"Expected 8888, got {settings.api_port}"
-    print(f"[OK] Default port is 8888")
+    with pytest.raises(ValidationError):
+        Settings()
+    print("[OK] API_PORT is required")
 
     del os.environ['DEEPSEEK_API_KEY']
 
@@ -40,7 +42,6 @@ def test_config_env_override():
     os.environ['API_PORT'] = str(test_port)
     os.environ['DEEPSEEK_API_KEY'] = 'test_key'
 
-    from src.api.config import Settings
     # Force reload
     import importlib
     import src.api.config as config_module
@@ -75,7 +76,7 @@ def test_dotenv_loading():
                 from dotenv import load_dotenv
                 load_dotenv()
 
-                port_from_env = os.environ.get('API_PORT', '8888')
+                port_from_env = os.environ.get('API_PORT')
                 assert port_from_env == port_from_file, \
                     f"Mismatch: .env has {port_from_file}, env has {port_from_env}"
                 print(f"[OK] .env file loaded correctly")
@@ -90,7 +91,7 @@ if __name__ == "__main__":
     print("=" * 80)
 
     try:
-        test_config_default_port()
+        test_config_requires_api_port()
         test_config_env_override()
         test_dotenv_loading()
 
@@ -98,7 +99,7 @@ if __name__ == "__main__":
         print("ALL TESTS PASSED!")
         print("=" * 80)
         print("\nConclusion:")
-        print("- Config default port: 8888")
+        print("- API_PORT is required (read from .env)")
         print("- Environment variable override: WORKS")
         print("- .env file loading: WORKS")
         print("\nYou can change the port by editing API_PORT in .env file")

@@ -109,8 +109,8 @@ npm install
 
 **Backend API** (Terminal 1):
 ```bash
-# Use venv's uvicorn directly (port configured in .env, default: 8888)
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8888
+# Use venv's uvicorn directly (port configured in .env)
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ```
 
 **Frontend** (Terminal 2):
@@ -171,7 +171,7 @@ DEEPSEEK_API_KEY=your_key_here
 Optional for API configuration:
 ```
 API_HOST=0.0.0.0
-API_PORT=8888          # Backend port (default: 8888, change if port conflicts)
+API_PORT=<API_PORT>    # Backend port (see .env.example for suggested value)
 CORS_ORIGINS=http://localhost:5173
 CONVERSATIONS_DIR=conversations
 LOG_LEVEL=INFO
@@ -183,7 +183,5 @@ LANGCHAIN_API_KEY=your_key_here
 LANGCHAIN_TRACING_V2=true
 ```
 
-Frontend `.env` (optional):
-```
-VITE_API_URL=http://localhost:8888  # Must match backend API_PORT
-```
+Frontend API URL:
+- Derived from `API_PORT` in the root `.env` (single source of truth).

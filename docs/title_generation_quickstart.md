@@ -39,7 +39,7 @@ Expected: All tests pass with green OK messages.
 ### Step 3: Start Backend (1 minute)
 
 ```bash
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8888
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ```
 
 Wait for:
@@ -124,7 +124,7 @@ Check browser console (F12) for error messages.
 Common fixes:
 - Clear browser cache
 - Restart frontend dev server
-- Check API URL in `frontend/.env` (should be http://localhost:8888)
+- Check `API_PORT` in the root `.env` (frontend uses it to build the API URL)
 
 ## Advanced Testing
 

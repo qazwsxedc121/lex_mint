@@ -10,7 +10,10 @@ import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, File
 import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, RagConfig } from '../types/knowledgeBase';
 import type { MutableRefObject } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL;
+if (!API_BASE) {
+  throw new Error('VITE_API_URL is not configured. Set API_PORT in the root .env file.');
+}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -1464,4 +1467,3 @@ export async function getRagConfig(): Promise<RagConfig> {
 export async function updateRagConfig(config: Partial<RagConfig>): Promise<void> {
   await api.put('/api/rag/config', config);
 }
-

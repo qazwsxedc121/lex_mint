@@ -21,7 +21,7 @@
 
 ## API Endpoints
 
-**Base URL:** `http://localhost:8888/api/projects`
+**Base URL:** `http://localhost:<API_PORT>/api/projects`
 
 所有端点都在 `/api/projects` 下。
 
@@ -450,7 +450,7 @@ max_size = 10 * 1024 * 1024  # 10MB
 ```typescript
 // 1. 创建项目
 const createProject = async (name: string, rootPath: string) => {
-  const response = await fetch('http://localhost:8888/api/projects', {
+  const response = await fetch('http://localhost:<API_PORT>/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -464,20 +464,20 @@ const createProject = async (name: string, rootPath: string) => {
 
 // 2. 获取项目列表
 const getProjects = async () => {
-  const response = await fetch('http://localhost:8888/api/projects');
+  const response = await fetch('http://localhost:<API_PORT>/api/projects');
   return await response.json();
 };
 
 // 3. 获取文件树
 const getFileTree = async (projectId: string, path: string = '') => {
-  const url = `http://localhost:8888/api/projects/${projectId}/tree?path=${path}`;
+  const url = `http://localhost:<API_PORT>/api/projects/${projectId}/tree?path=${path}`;
   const response = await fetch(url);
   return await response.json();
 };
 
 // 4. 读取文件
 const readFile = async (projectId: string, filePath: string) => {
-  const url = `http://localhost:8888/api/projects/${projectId}/files?path=${filePath}`;
+  const url = `http://localhost:<API_PORT>/api/projects/${projectId}/files?path=${filePath}`;
   const response = await fetch(url);
   return await response.json();
 };
@@ -487,7 +487,7 @@ const readFile = async (projectId: string, filePath: string) => {
 
 ```bash
 # 创建项目
-curl -X POST http://localhost:8888/api/projects \
+curl -X POST http://localhost:<API_PORT>/api/projects \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Project",
@@ -496,24 +496,24 @@ curl -X POST http://localhost:8888/api/projects \
   }'
 
 # 获取项目列表
-curl http://localhost:8888/api/projects
+curl http://localhost:<API_PORT>/api/projects
 
 # 获取文件树（根目录）
-curl http://localhost:8888/api/projects/proj_abc123/tree
+curl http://localhost:<API_PORT>/api/projects/proj_abc123/tree
 
 # 获取文件树（子目录）
-curl "http://localhost:8888/api/projects/proj_abc123/tree?path=src"
+curl "http://localhost:<API_PORT>/api/projects/proj_abc123/tree?path=src"
 
 # 读取文件
-curl "http://localhost:8888/api/projects/proj_abc123/files?path=README.md"
+curl "http://localhost:<API_PORT>/api/projects/proj_abc123/files?path=README.md"
 
 # 更新项目
-curl -X PUT http://localhost:8888/api/projects/proj_abc123 \
+curl -X PUT http://localhost:<API_PORT>/api/projects/proj_abc123 \
   -H "Content-Type: application/json" \
   -d '{"name": "Updated Name"}'
 
 # 删除项目
-curl -X DELETE http://localhost:8888/api/projects/proj_abc123
+curl -X DELETE http://localhost:<API_PORT>/api/projects/proj_abc123
 ```
 
 ---

@@ -26,11 +26,14 @@ if not exist ".env" (
     pause
 )
 
-REM Read port from .env (default 8888)
-set DEFAULT_PORT=8888
-set API_PORT=%DEFAULT_PORT%
+REM Read port from .env
 if exist .env (
     for /f "tokens=1,2 delims==" %%a in ('findstr /r "^API_PORT=" .env 2^>nul') do set API_PORT=%%b
+)
+if not defined API_PORT (
+    echo [ERROR] API_PORT not set in .env
+    pause
+    exit /b 1
 )
 
 echo [1/3] Starting backend service...

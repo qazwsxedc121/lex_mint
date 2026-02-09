@@ -15,7 +15,7 @@ This repo has a FastAPI backend and a React frontend.
 Backend (always use venv scripts, do not use system python):
 ```
 ./venv/Scripts/pip install -r requirements.txt
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8888
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ./venv/Scripts/python -m src.main
 ```
 UI runs at `http://localhost:5173` after `npm run dev`.
@@ -47,7 +47,7 @@ npm run lint
 
 ## Security and Configuration Tips
 - Do not commit secrets; use `.env` and `.env.example`.
-- Required: `DEEPSEEK_API_KEY`. Optional: `API_PORT`, `CORS_ORIGINS`, `VITE_API_URL`.
+- Required: `DEEPSEEK_API_KEY`. Optional: `API_PORT`, `CORS_ORIGINS`.
 - Conversations and logs may contain user data; handle with care.
 
 ## Platform and Tooling Notes

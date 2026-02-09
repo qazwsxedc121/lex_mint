@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_host: str = "0.0.0.0"
-    api_port: int = 8888
+    api_port: int
 
     # Storage Configuration
     conversations_dir: Path = Path("conversations")
