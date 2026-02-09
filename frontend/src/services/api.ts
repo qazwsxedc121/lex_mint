@@ -7,7 +7,7 @@ import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, Cos
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
-import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, RagConfig } from '../types/knowledgeBase';
+import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, KnowledgeBaseChunk, RagConfig } from '../types/knowledgeBase';
 import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -1414,6 +1414,28 @@ export async function deleteKnowledgeBase(kbId: string): Promise<void> {
  */
 export async function listDocuments(kbId: string): Promise<KnowledgeBaseDocument[]> {
   const response = await api.get<KnowledgeBaseDocument[]>(`/api/knowledge-bases/${kbId}/documents`);
+  return response.data;
+}
+
+/**
+ * List chunks in a knowledge base for developer inspection.
+ */
+export async function listKnowledgeBaseChunks(
+  kbId: string,
+  options?: { docId?: string; limit?: number }
+): Promise<KnowledgeBaseChunk[]> {
+  const params = new URLSearchParams();
+  if (options?.docId) {
+    params.append('doc_id', options.docId);
+  }
+  if (options?.limit) {
+    params.append('limit', options.limit.toString());
+  }
+
+  const suffix = params.toString();
+  const response = await api.get<KnowledgeBaseChunk[]>(
+    `/api/knowledge-bases/${kbId}/chunks${suffix ? `?${suffix}` : ''}`
+  );
   return response.data;
 }
 

@@ -26,6 +26,15 @@ export interface KnowledgeBaseDocument {
   created_at: string;
 }
 
+export interface KnowledgeBaseChunk {
+  id: string;
+  kb_id: string;
+  doc_id?: string;
+  filename?: string;
+  chunk_index: number;
+  content: string;
+}
+
 export interface KnowledgeBaseCreate {
   id: string;
   name: string;

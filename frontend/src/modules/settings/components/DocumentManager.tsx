@@ -48,6 +48,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
   const [documents, setDocuments] = useState<KnowledgeBaseDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [reprocessingAll, setReprocessingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -132,6 +133,31 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
     }
   };
 
+  const handleReprocessAll = async () => {
+    const candidates = documents.filter((doc) => doc.status !== 'processing');
+    if (candidates.length === 0) {
+      setError('No documents available for reprocessing.');
+      return;
+    }
+    if (!confirm('Reprocess all documents? This will rebuild chunks for the current knowledge base.')) {
+      return;
+    }
+
+    setReprocessingAll(true);
+    setError(null);
+    try {
+      for (const doc of candidates) {
+        await api.reprocessDocument(kbId, doc.id);
+      }
+      await loadDocuments();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to reprocess documents';
+      setError(message);
+    } finally {
+      setReprocessingAll(false);
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     handleUpload(e.dataTransfer.files);
@@ -143,9 +169,20 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
 
   return (
     <div data-name="document-manager" className="mt-8">
-      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-        Documents
-      </h3>
+      <div className="mb-4 flex items-center justify-between gap-3" data-name="document-manager-header">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+          Documents
+        </h3>
+        <button
+          type="button"
+          onClick={handleReprocessAll}
+          disabled={reprocessingAll || documents.length === 0}
+          className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60"
+        >
+          <ArrowPathIcon className="h-4 w-4" />
+          {reprocessingAll ? 'Reprocessing...' : 'Reprocess All'}
+        </button>
+      </div>
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">

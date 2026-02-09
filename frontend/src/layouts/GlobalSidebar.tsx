@@ -12,7 +12,9 @@ import {
   Cog6ToothIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
+import { useDeveloperMode } from '../hooks/useDeveloperMode';
 
 interface GlobalSidebarProps {
   collapsed: boolean;
@@ -25,16 +27,18 @@ interface NavItem {
   icon: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement>>;
 }
 
-const navItems: NavItem[] = [
-  { path: '/chat', label: 'Chat', icon: ChatBubbleLeftRightIcon },
-  { path: '/projects', label: 'Projects', icon: FolderIcon },
-  { path: '/settings', label: 'Settings', icon: Cog6ToothIcon },
-];
-
 export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   collapsed,
   onToggle,
 }) => {
+  const { enabled: developerEnabled } = useDeveloperMode();
+  const navItems: NavItem[] = [
+    { path: '/chat', label: 'Chat', icon: ChatBubbleLeftRightIcon },
+    { path: '/projects', label: 'Projects', icon: FolderIcon },
+    ...(developerEnabled ? [{ path: '/developer', label: 'Developer', icon: WrenchScrewdriverIcon }] : []),
+    { path: '/settings', label: 'Settings', icon: Cog6ToothIcon },
+  ];
+
   return (
     <aside
       className={`flex flex-col bg-gray-900 text-white transition-all duration-200 ${

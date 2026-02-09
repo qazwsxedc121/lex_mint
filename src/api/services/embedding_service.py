@@ -38,7 +38,7 @@ class EmbeddingService:
             return self._get_local_embeddings(config.local_model, config.local_device)
         else:
             model = override_model or config.api_model
-            return self._get_api_embeddings(model, config.api_base_url, config.api_key)
+            return self._get_api_embeddings(model, config.api_base_url, config.api_key, config.batch_size)
 
     def _get_provider_base_url_sync(self, provider_id: str) -> Optional[str]:
         """Read provider base_url directly from models_config.yaml (sync)"""
@@ -55,7 +55,13 @@ class EmbeddingService:
             logger.warning(f"Failed to read provider base_url for {provider_id}: {e}")
         return None
 
-    def _get_api_embeddings(self, model_id: str, config_base_url: str = "", config_api_key: str = ""):
+    def _get_api_embeddings(
+        self,
+        model_id: str,
+        config_base_url: str = "",
+        config_api_key: str = "",
+        batch_size: Optional[int] = None,
+    ):
         """
         Get API-based embeddings using OpenAI-compatible endpoint.
 
@@ -79,6 +85,7 @@ class EmbeddingService:
                 api_key=config_api_key,
                 base_url=config_base_url,
                 check_embedding_ctx_length=False,
+                chunk_size=batch_size,
             )
 
         # Fall back: resolve from LLM provider config using provider:model format
@@ -108,6 +115,8 @@ class EmbeddingService:
             kwargs["base_url"] = base_url
 
         kwargs["check_embedding_ctx_length"] = False
+        if batch_size:
+            kwargs["chunk_size"] = batch_size
         return OpenAIEmbeddings(**kwargs)
 
     def _get_local_embeddings(self, model_name: str, device: str = "cpu"):

@@ -21,6 +21,9 @@ class EmbeddingConfig:
     api_key: str = ""
     local_model: str = "all-MiniLM-L6-v2"
     local_device: str = "cpu"
+    batch_size: int = 64
+    batch_delay_seconds: float = 0.5
+    batch_max_retries: int = 3
 
 
 @dataclass
@@ -73,6 +76,9 @@ class RagConfigService:
                     'api_key': '',
                     'local_model': 'all-MiniLM-L6-v2',
                     'local_device': 'cpu',
+                    'batch_size': 64,
+                    'batch_delay_seconds': 0.5,
+                    'batch_max_retries': 3,
                 },
                 'chunking': {
                     'chunk_size': 1000,
@@ -109,6 +115,9 @@ class RagConfigService:
                     api_key=embedding_data.get('api_key', ''),
                     local_model=embedding_data.get('local_model', 'all-MiniLM-L6-v2'),
                     local_device=embedding_data.get('local_device', 'cpu'),
+                    batch_size=embedding_data.get('batch_size', 64),
+                    batch_delay_seconds=embedding_data.get('batch_delay_seconds', 0.5),
+                    batch_max_retries=embedding_data.get('batch_max_retries', 3),
                 ),
                 chunking=ChunkingConfig(
                     chunk_size=chunking_data.get('chunk_size', 1000),

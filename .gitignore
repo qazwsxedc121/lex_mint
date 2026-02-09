@@ -50,6 +50,9 @@ logs/
 # User data
 conversations/
 attachments/
+knowledge_bases/
+data/chromadb/
+config/knowledge_bases_config.yaml
 
 # Learn Projects
 learn_proj/

@@ -155,6 +155,7 @@ class RagService:
                 collection_name=collection_name,
                 embedding_function=embedding_fn,
                 persist_directory=str(persist_dir),
+                collection_metadata={"hnsw:space": "cosine"},
             )
             try:
                 collection_count = vectorstore._collection.count()

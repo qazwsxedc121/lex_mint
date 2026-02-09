@@ -4,6 +4,8 @@ Document Processing Service
 Pipeline: Upload -> Extract Text -> Chunk -> Embed -> Store in ChromaDB
 """
 import logging
+import time
+import random
 from pathlib import Path
 from typing import List, Optional
 
@@ -60,9 +62,9 @@ class DocumentProcessingService:
                 raise ValueError("No text content extracted from document")
             logger.info(f"Extracted {len(text)} characters from {filename}")
 
-            # Step 2: Chunk text
+            # Step 2: Chunk text (semantic-first)
             logger.info(f"Chunking text with size={effective_chunk_size}, overlap={effective_chunk_overlap}")
-            chunks = self._chunk_text(text, effective_chunk_size, effective_chunk_overlap)
+            chunks = self._chunk_text(text, file_type, effective_chunk_size, effective_chunk_overlap)
             logger.info(f"Created {len(chunks)} chunks from {filename}")
 
             if not chunks:
@@ -165,8 +167,102 @@ class DocumentProcessingService:
         # Fallback: read as plain text
         return self._extract_text_plain(file_path)
 
-    def _chunk_text(self, text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
-        """Split text into chunks using RecursiveCharacterTextSplitter"""
+    def _chunk_text(self, text: str, file_type: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Split text into semantic chunks first, then merge into size-limited chunks."""
+        units = self._semantic_units(text, file_type, chunk_size, chunk_overlap)
+        if not units:
+            return self._fallback_recursive_chunks(text, chunk_size, chunk_overlap)
+        return self._merge_units(units, chunk_size, chunk_overlap)
+
+    def _semantic_units(self, text: str, file_type: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Create semantic units (sections/paragraphs) before merging into chunks."""
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not normalized:
+            return []
+
+        file_type = (file_type or "").lower()
+        if file_type in (".md", ".markdown"):
+            units = self._split_markdown_sections(normalized)
+        else:
+            units = self._split_paragraphs(normalized)
+
+        # Split oversized units with a fallback splitter
+        refined_units: List[str] = []
+        for unit in units:
+            if len(unit) <= chunk_size:
+                refined_units.append(unit)
+                continue
+            refined_units.extend(self._fallback_recursive_chunks(unit, chunk_size, chunk_overlap))
+        return refined_units
+
+    def _split_markdown_sections(self, text: str) -> List[str]:
+        """Split markdown into sections by heading, keeping heading with its content."""
+        lines = text.split("\n")
+        sections: List[str] = []
+        current: List[str] = []
+        for line in lines:
+            if line.strip().startswith("#"):
+                if current:
+                    sections.append("\n".join(current).strip())
+                    current = []
+            current.append(line)
+        if current:
+            sections.append("\n".join(current).strip())
+        return [s for s in sections if s]
+
+    def _split_paragraphs(self, text: str) -> List[str]:
+        """Split text into paragraphs (blank-line delimited)."""
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        return paragraphs
+
+    def _merge_units(self, units: List[str], chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Merge semantic units into size-limited chunks with overlap."""
+        chunks: List[str] = []
+        current_units: List[str] = []
+        current_len = 0
+
+        def flush_current() -> None:
+            nonlocal current_units, current_len
+            if not current_units:
+                return
+            chunk = "\n\n".join(current_units).strip()
+            if chunk:
+                chunks.append(chunk)
+            if chunk_overlap <= 0:
+                current_units = []
+                current_len = 0
+                return
+            # Build overlap by keeping trailing units up to overlap size
+            overlap_units: List[str] = []
+            overlap_len = 0
+            for unit in reversed(current_units):
+                overlap_len += len(unit)
+                overlap_units.append(unit)
+                if overlap_len >= chunk_overlap:
+                    break
+            overlap_units.reverse()
+            current_units = overlap_units
+            current_len = sum(len(u) for u in current_units) + max(0, len(current_units) - 1) * 2
+
+        for unit in units:
+            unit = unit.strip()
+            if not unit:
+                continue
+            unit_len = len(unit)
+            # +2 for "\n\n" separator
+            projected = current_len + unit_len + (2 if current_units else 0)
+            if current_units and projected > chunk_size:
+                flush_current()
+                # Recompute projected after flush
+                projected = current_len + unit_len + (2 if current_units else 0)
+            current_units.append(unit)
+            current_len = projected
+
+        flush_current()
+        return [c for c in chunks if c]
+
+    def _fallback_recursive_chunks(self, text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Fallback splitter for oversized units or non-structured text."""
         from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         splitter = RecursiveCharacterTextSplitter(
@@ -188,6 +284,7 @@ class DocumentProcessingService:
     ):
         """Store document chunks in ChromaDB"""
         from langchain_chroma import Chroma
+        from chromadb.errors import InvalidArgumentError
 
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
         if not persist_dir.is_absolute():
@@ -201,6 +298,7 @@ class DocumentProcessingService:
             collection_name=collection_name,
             embedding_function=embedding_fn,
             persist_directory=str(persist_dir),
+            collection_metadata={"hnsw:space": "cosine"},
         )
 
         # Prepare document IDs and metadata
@@ -216,10 +314,56 @@ class DocumentProcessingService:
             for i in range(len(chunks))
         ]
 
-        # Add documents to the vector store
-        vectorstore.add_texts(
-            texts=chunks,
-            ids=ids,
-            metadatas=metadatas,
-        )
-        logger.info(f"Stored {len(chunks)} chunks in ChromaDB collection '{collection_name}'")
+        # Remove existing chunks for this document to allow safe reprocess
+        try:
+            vectorstore._collection.delete(where={"doc_id": doc_id})
+        except Exception:
+            pass
+
+        batch_size = max(1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64))
+        batch_delay = max(0.0, float(getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0))
+        max_retries = int(getattr(self.rag_config_service.config.embedding, "batch_max_retries", 3) or 0)
+        max_delay = 60.0
+
+        total = len(chunks)
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch_texts = chunks[start:end]
+            batch_ids = ids[start:end]
+            batch_metas = metadatas[start:end]
+
+            attempt = 0
+            retry_delay = batch_delay or 0.5
+            while True:
+                try:
+                    vectorstore.add_texts(
+                        texts=batch_texts,
+                        ids=batch_ids,
+                        metadatas=batch_metas,
+                    )
+                    logger.info(f"Stored chunks {start + 1}-{end} of {total} in '{collection_name}'")
+                    break
+                except InvalidArgumentError as e:
+                    raise e
+                except Exception as e:
+                    message = str(e).lower()
+                    is_rate_limit = "rate limit" in message or "429" in message
+                    attempt += 1
+                    enforce_retries = max_retries > 0 and not is_rate_limit
+                    if enforce_retries and attempt > max_retries:
+                        raise e
+
+                    if is_rate_limit:
+                        retry_delay = max(retry_delay, 5.0)
+                    wait_seconds = min(max_delay, max(retry_delay, batch_delay, 0.5))
+                    wait_seconds *= random.uniform(0.8, 1.2)
+                    max_label = "∞" if is_rate_limit or max_retries <= 0 else str(max_retries)
+                    logger.warning(
+                        f"Embedding batch {start + 1}-{end} failed "
+                        f"(attempt {attempt}/{max_label}). Retrying in {wait_seconds:.2f}s: {e}"
+                    )
+                    time.sleep(wait_seconds)
+                    retry_delay = min(max_delay, max(retry_delay * 2, batch_delay, 0.5))
+
+            if batch_delay > 0 and end < total:
+                time.sleep(batch_delay)

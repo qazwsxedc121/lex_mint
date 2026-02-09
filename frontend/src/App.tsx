@@ -28,6 +28,8 @@ import { TranslationSettings } from './modules/settings/TranslationSettings';
 import { TTSSettings } from './modules/settings/TTSSettings';
 import { KnowledgeBasesPage } from './modules/settings/KnowledgeBasesPage';
 import { RagSettings } from './modules/settings/RagSettings';
+import { DeveloperSettings } from './modules/settings/DeveloperSettings';
+import { DeveloperModule } from './modules/developer';
 import './index.css';
 
 function App() {
@@ -44,6 +46,7 @@ function App() {
             <Route index element={<ProjectsWelcome />} />
             <Route path=":projectId" element={<ProjectExplorer />} />
           </Route>
+          <Route path="developer" element={<DeveloperModule />} />
           <Route path="settings" element={<SettingsModule />}>
             <Route index element={<Navigate to="assistants" replace />} />
             <Route path="assistants" element={<AssistantsPage />} />
@@ -66,6 +69,7 @@ function App() {
             <Route path="compression" element={<CompressionSettings />} />
             <Route path="translation" element={<TranslationSettings />} />
             <Route path="tts" element={<TTSSettings />} />
+            <Route path="developer" element={<DeveloperSettings />} />
           </Route>
         </Route>
       </Routes>

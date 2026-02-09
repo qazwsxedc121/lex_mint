@@ -19,6 +19,7 @@ import {
   SpeakerWaveIcon,
   BookOpenIcon,
   CircleStackIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { path: '/settings/compression', label: 'Compression', icon: ArchiveBoxArrowDownIcon },
   { path: '/settings/translation', label: 'Translation', icon: LanguageIcon },
   { path: '/settings/tts', label: 'Text-to-Speech', icon: SpeakerWaveIcon },
+  { path: '/settings/developer', label: 'Developer', icon: WrenchScrewdriverIcon },
 ];
 
 export const SettingsSidebar: React.FC = () => {

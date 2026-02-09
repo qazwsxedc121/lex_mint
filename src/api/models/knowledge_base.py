@@ -59,3 +59,13 @@ class KnowledgeBaseUpdate(BaseModel):
     chunk_size: Optional[int] = Field(None, ge=100, le=10000, description="Override chunk size")
     chunk_overlap: Optional[int] = Field(None, ge=0, le=5000, description="Override chunk overlap")
     enabled: Optional[bool] = Field(None, description="Whether knowledge base is enabled")
+
+
+class KnowledgeBaseChunk(BaseModel):
+    """Chunk entry from a knowledge base collection (developer inspection)"""
+    id: str = Field(..., description="Chunk unique identifier")
+    kb_id: str = Field(..., description="Knowledge base ID")
+    doc_id: Optional[str] = Field(None, description="Document ID")
+    filename: Optional[str] = Field(None, description="Source filename")
+    chunk_index: int = Field(default=0, description="Chunk index within the document")
+    content: str = Field(..., description="Chunk text content")
