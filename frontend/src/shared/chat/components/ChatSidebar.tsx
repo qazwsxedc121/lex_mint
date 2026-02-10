@@ -20,7 +20,7 @@ import {
   ArrowUpTrayIcon,
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
-import { exportSession, importChatGPTConversations } from '../../../services/api';
+import { exportSession, importChatGPTConversations, importMarkdownConversation } from '../../../services/api';
 
 export const ChatSidebar: React.FC = () => {
   const navigate = useNavigate();
@@ -40,7 +40,9 @@ export const ChatSidebar: React.FC = () => {
   const [editTitle, setEditTitle] = useState('');
   const [generatingTitleId, setGeneratingTitleId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const chatgptInputRef = useRef<HTMLInputElement>(null);
+  const markdownInputRef = useRef<HTMLInputElement>(null);
 
   const handleNewSession = async () => {
     try {
@@ -68,7 +70,7 @@ export const ChatSidebar: React.FC = () => {
     }
   };
 
-  const handleImportFile = async (files: FileList | null) => {
+  const handleImportChatGPT = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const [file] = Array.from(files);
     if (!file) return;
@@ -76,13 +78,14 @@ export const ChatSidebar: React.FC = () => {
     const lowerName = file.name.toLowerCase();
     if (!lowerName.endsWith('.json') && !lowerName.endsWith('.zip')) {
       alert('Please select a ChatGPT .json or .zip export file.');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (chatgptInputRef.current) {
+        chatgptInputRef.current.value = '';
       }
       return;
     }
 
     setImporting(true);
+    setImportMenuOpen(false);
     try {
       const result = await importChatGPTConversations(file);
       await refreshSessions();
@@ -101,8 +104,48 @@ export const ChatSidebar: React.FC = () => {
       alert(message);
     } finally {
       setImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (chatgptInputRef.current) {
+        chatgptInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleImportMarkdown = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const [file] = Array.from(files);
+    if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.md') && !lowerName.endsWith('.markdown')) {
+      alert('Please select a Markdown (.md) conversation file.');
+      if (markdownInputRef.current) {
+        markdownInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setImporting(true);
+    setImportMenuOpen(false);
+    try {
+      const result = await importMarkdownConversation(file);
+      await refreshSessions();
+
+      const errorCount = result.errors?.length || 0;
+      const message = `Imported ${result.imported} conversation(s). Skipped ${result.skipped}.` +
+        (errorCount ? ` Errors: ${errorCount}.` : '');
+      alert(message);
+
+      if (errorCount) {
+        console.error('Markdown import errors:', result.errors);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to import Markdown conversation';
+      console.error('Failed to import Markdown conversation:', err);
+      alert(message);
+    } finally {
+      setImporting(false);
+      if (markdownInputRef.current) {
+        markdownInputRef.current.value = '';
       }
     }
   };
@@ -219,6 +262,15 @@ export const ChatSidebar: React.FC = () => {
     }
   }, [openMenuId]);
 
+  // Close import menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = () => setImportMenuOpen(false);
+    if (importMenuOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [importMenuOpen]);
+
   return (
     <div data-name="chat-sidebar" className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
       {/* Toolbar */}
@@ -237,21 +289,57 @@ export const ChatSidebar: React.FC = () => {
         >
           <PlusIcon className="h-5 w-5" />
         </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={importing}
-          className="p-2 rounded-lg text-emerald-500 dark:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
-          title={importing ? 'Importing...' : 'Import ChatGPT .json or .zip'}
-        >
-          <ArrowUpTrayIcon className="h-5 w-5" />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,.zip,application/json,application/zip"
-          className="hidden"
-          onChange={(e) => handleImportFile(e.target.files)}
-        />
+        <div data-name="chat-sidebar-import" className="relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!importing) {
+                setImportMenuOpen(!importMenuOpen);
+              }
+            }}
+            disabled={importing}
+            className="p-2 rounded-lg text-emerald-500 dark:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
+            title={importing ? 'Importing...' : 'Import conversations'}
+          >
+            <ArrowUpTrayIcon className="h-5 w-5" />
+          </button>
+          {importMenuOpen && (
+            <div className="absolute left-0 mt-1 w-56 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-10">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  chatgptInputRef.current?.click();
+                }}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+              >
+                Import ChatGPT (.json/.zip)
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markdownInputRef.current?.click();
+                }}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+              >
+                Import Markdown (.md)
+              </button>
+            </div>
+          )}
+          <input
+            ref={chatgptInputRef}
+            type="file"
+            accept=".json,.zip,application/json,application/zip"
+            className="hidden"
+            onChange={(e) => handleImportChatGPT(e.target.files)}
+          />
+          <input
+            ref={markdownInputRef}
+            type="file"
+            accept=".md,.markdown,text/markdown"
+            className="hidden"
+            onChange={(e) => handleImportMarkdown(e.target.files)}
+          />
+        </div>
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
           className="ml-auto p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"

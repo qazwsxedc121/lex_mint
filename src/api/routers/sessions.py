@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from ..services.conversation_storage import ConversationStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
+from ..services.markdown_import_service import MarkdownImportService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -797,6 +798,37 @@ async def import_chatgpt_conversations(
     importer = ChatGPTImportService(storage)
     result = await importer.import_conversations(
         payload,
+        context_type=context_type,
+        project_id=project_id
+    )
+    return result
+
+
+@router.post("/import/markdown", response_model=ImportChatGPTResponse)
+async def import_markdown_conversation(
+    file: UploadFile = File(...),
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Import a Markdown conversation file."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    filename = (file.filename or "").lower()
+    if filename and not (filename.endswith(".md") or filename.endswith(".markdown")):
+        raise HTTPException(status_code=400, detail="Please upload a Markdown (.md) file")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("utf-8-sig", errors="replace")
+
+    importer = MarkdownImportService(storage)
+    result = await importer.import_markdown(
+        text,
+        filename=file.filename,
         context_type=context_type,
         project_id=project_id
     )
