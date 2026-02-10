@@ -112,3 +112,11 @@ class DirectoryCreate(BaseModel):
     """Directory create request."""
 
     path: str = Field(..., description="Relative path from project root")
+
+
+class DirectoryEntry(BaseModel):
+    """Directory entry for server-side browsing."""
+
+    name: str = Field(..., description="Directory name")
+    path: str = Field(..., description="Absolute directory path on server")
+    is_dir: bool = Field(default=True, description="Whether entry is a directory")

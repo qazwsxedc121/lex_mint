@@ -6,7 +6,7 @@ import axios from 'axios';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
-import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult } from '../types/project';
+import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult, DirectoryEntry } from '../types/project';
 import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, KnowledgeBaseChunk, RagConfig } from '../types/knowledgeBase';
 import type { MutableRefObject } from 'react';
 
@@ -1540,6 +1540,26 @@ export async function deleteDocument(kbId: string, docId: string): Promise<void>
  */
 export async function reprocessDocument(kbId: string, docId: string): Promise<void> {
   await api.post(`/api/knowledge-bases/${kbId}/documents/${docId}/reprocess`);
+}
+
+// ==================== Projects Browse API ====================
+
+/**
+ * List allowed server-side roots for project selection.
+ */
+export async function listProjectBrowseRoots(): Promise<DirectoryEntry[]> {
+  const response = await api.get<DirectoryEntry[]>('/api/projects/browse/roots');
+  return response.data;
+}
+
+/**
+ * List child directories for a server-side path.
+ */
+export async function listProjectDirectories(path: string): Promise<DirectoryEntry[]> {
+  const params = new URLSearchParams();
+  params.append('path', path);
+  const response = await api.get<DirectoryEntry[]>(`/api/projects/browse?${params.toString()}`);
+  return response.data;
 }
 
 // ==================== RAG Config API ====================

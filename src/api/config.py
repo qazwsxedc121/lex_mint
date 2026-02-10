@@ -1,8 +1,10 @@
 """Configuration management using pydantic-settings."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from pathlib import Path
 from typing import List
+import os
 
 
 class Settings(BaseSettings):
@@ -22,6 +24,7 @@ class Settings(BaseSettings):
 
     # Project Configuration
     projects_config_path: Path = Path("config/projects_config.yaml")
+    projects_browse_roots: List[Path] = [Path(".")]
     max_file_read_size_mb: int = 10
     allowed_file_extensions: List[str] = [
         ".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx",
@@ -39,6 +42,18 @@ class Settings(BaseSettings):
         env_file=".env",
         case_sensitive=False
     )
+
+    @field_validator("projects_browse_roots", mode="before")
+    @classmethod
+    def parse_projects_browse_roots(cls, value):
+        if value in (None, ""):
+            return [Path(".")]
+        if isinstance(value, str):
+            parts = [part.strip() for part in value.split(",") if part.strip()]
+            return [Path(os.path.expandvars(part)).expanduser() for part in parts]
+        if isinstance(value, list):
+            return [Path(os.path.expandvars(str(part))).expanduser() for part in value]
+        return value
 
 
 # Global settings instance

@@ -14,8 +14,7 @@ assistants:
   max_rounds: null
   icon: Binoculars
   enabled: true
-  knowledge_base_ids:
-  - rag-test
+  knowledge_base_ids: []
 - id: code-assistant
   name: Code Assistant
   description: Specialized in programming, debugging, and code analysis

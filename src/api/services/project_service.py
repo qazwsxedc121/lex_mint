@@ -2,6 +2,7 @@
 
 import yaml
 import logging
+import os
 import asyncio
 import shutil
 from pathlib import Path
@@ -13,7 +14,8 @@ from src.api.models.project_config import (
     ProjectsConfig,
     FileNode,
     FileContent,
-    FileRenameResult
+    FileRenameResult,
+    DirectoryEntry,
 )
 from src.api.config import settings
 
@@ -57,6 +59,64 @@ class ProjectService:
                     return ProjectsConfig(projects=valid_projects)
             except Exception as e:
                 raise ValueError(f"Failed to load config: {e}")
+
+    def _resolve_browse_roots(self) -> List[Path]:
+        roots = settings.projects_browse_roots or [Path(".")]
+        resolved: List[Path] = []
+        for root in roots:
+            expanded = Path(os.path.expandvars(str(root))).expanduser()
+            if not expanded.is_absolute():
+                expanded = (Path.cwd() / expanded).resolve()
+            else:
+                expanded = expanded.resolve()
+            if expanded.exists() and expanded.is_dir():
+                resolved.append(expanded)
+        if not resolved:
+            resolved = [Path.cwd().resolve()]
+        return resolved
+
+    @staticmethod
+    def _is_within_root(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def list_browse_roots(self) -> List[DirectoryEntry]:
+        roots = self._resolve_browse_roots()
+        entries: List[DirectoryEntry] = []
+        for root in roots:
+            name = root.name or str(root)
+            entries.append(DirectoryEntry(name=name, path=str(root), is_dir=True))
+        return entries
+
+    def list_directories(self, path: str) -> List[DirectoryEntry]:
+        if not path:
+            raise ValueError("Path is required")
+        expanded = Path(os.path.expandvars(path)).expanduser()
+        target = expanded.resolve()
+        if not target.exists():
+            raise ValueError(f"Path does not exist: {path}")
+        if not target.is_dir():
+            raise ValueError(f"Path is not a directory: {path}")
+
+        roots = self._resolve_browse_roots()
+        if not any(self._is_within_root(target, root) for root in roots):
+            raise ValueError("Path is outside allowed roots")
+
+        entries: List[DirectoryEntry] = []
+        try:
+            for child in sorted(target.iterdir(), key=lambda p: p.name.lower()):
+                try:
+                    if child.is_dir():
+                        entries.append(DirectoryEntry(name=child.name, path=str(child), is_dir=True))
+                except PermissionError:
+                    continue
+        except PermissionError as e:
+            raise ValueError(f"Permission denied: {path}") from e
+
+        return entries
 
     async def save_config(self, config: ProjectsConfig) -> None:
         """Save projects configuration to YAML file atomically.

@@ -21,6 +21,12 @@ export interface ProjectUpdate {
   description?: string;
 }
 
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+}
+
 export interface FileNode {
   name: string;
   path: string;

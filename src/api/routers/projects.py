@@ -16,7 +16,8 @@ from ..models.project_config import (
     FileWrite,
     FileRename,
     FileRenameResult,
-    DirectoryCreate
+    DirectoryCreate,
+    DirectoryEntry
 )
 from ..config import settings
 
@@ -49,6 +50,33 @@ async def list_projects():
         return projects
     except Exception as e:
         logger.error(f"Error listing projects: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/browse/roots", response_model=List[DirectoryEntry])
+async def list_browse_roots():
+    """List allowed root directories for server-side project selection."""
+    try:
+        service = get_project_service()
+        return service.list_browse_roots()
+    except Exception as e:
+        logger.error(f"Error listing browse roots: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/browse", response_model=List[DirectoryEntry])
+async def list_directories(
+    path: str = Query(..., description="Absolute directory path on server")
+):
+    """List child directories for a server-side path."""
+    try:
+        service = get_project_service()
+        return service.list_directories(path)
+    except ValueError as e:
+        logger.error(f"Validation error listing directories: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error listing directories: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

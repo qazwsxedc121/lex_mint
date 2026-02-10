@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Project, ProjectCreate, ProjectUpdate } from '../../../types/project';
+import { BackendDirectoryPicker } from './BackendDirectoryPicker';
 
 interface ProjectManagementProps {
   projects: Project[];
@@ -24,6 +25,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState<Partial<ProjectCreate>>({});
+  const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
 
   const handleEdit = (project: Project) => {
     setEditingId(project.id);
@@ -38,6 +40,10 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   const handleCancelEdit = () => {
     setEditingId(null);
     setFormData({});
+  };
+
+  const handleDirectorySelect = (path: string) => {
+    setFormData({ ...formData, root_path: path });
   };
 
   const handleSave = async () => {
@@ -204,14 +210,23 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Root Path *
                       </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.root_path || ''}
-                        onChange={(e) => setFormData({ ...formData, root_path: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="C:\Users\username\project"
-                      />
+                      <div className="flex gap-2" data-name="project-root-path">
+                        <input
+                          type="text"
+                          required
+                          value={formData.root_path || ''}
+                          onChange={(e) => setFormData({ ...formData, root_path: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          placeholder="C:\Users\username\project"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowDirectoryPicker(true)}
+                          className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
+                        >
+                          Browse
+                        </button>
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         Absolute path to project directory
                       </p>
@@ -255,6 +270,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
               </div>
             </div>
           )}
+
+          <BackendDirectoryPicker
+            isOpen={showDirectoryPicker}
+            initialPath={formData.root_path}
+            onClose={() => setShowDirectoryPicker(false)}
+            onSelect={handleDirectorySelect}
+          />
         </div>
       </div>
     </div>
