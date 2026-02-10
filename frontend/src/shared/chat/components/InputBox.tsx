@@ -2,7 +2,7 @@
  * InputBox component - message input field with send button and toolbar.
  */
 
-import React, { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent } from 'react';
 import {
   GlobeAltIcon,
   PaperClipIcon,
@@ -46,6 +46,79 @@ const getReasoningIconColor = (effort: string): string => {
     case 'high':   return 'text-orange-500 dark:text-orange-400';
     default:       return '';
   }
+};
+
+const TEMPLATE_PINNED_STORAGE_KEY = 'lex-mint.prompt-templates.pinned';
+const TEMPLATE_RECENT_STORAGE_KEY = 'lex-mint.prompt-templates.recent';
+const MAX_RECENT_TEMPLATE_COUNT = 12;
+
+interface SlashCommandMatch {
+  query: string;
+  start: number;
+  end: number;
+}
+
+const readStoredTemplateIds = (storageKey: string): string[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((value): value is string => typeof value === 'string');
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredTemplateIds = (storageKey: string, templateIds: string[]) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(templateIds));
+  } catch {
+    // Ignore localStorage write errors (private mode, quota, etc.)
+  }
+};
+
+const matchesTemplateQuery = (template: PromptTemplate, query: string): boolean => {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    return true;
+  }
+
+  return [template.name, template.description || '', template.content]
+    .some((value) => value.toLowerCase().includes(q));
+};
+
+const findSlashCommand = (text: string, cursorPosition: number): SlashCommandMatch | null => {
+  const safeCursor = Math.max(0, Math.min(cursorPosition, text.length));
+  const beforeCursor = text.slice(0, safeCursor);
+  const match = beforeCursor.match(/(^|\s)\/([^\s/]*)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const leading = match[1] || '';
+  const slashStart = safeCursor - match[0].length + leading.length;
+
+  return {
+    query: match[2] || '',
+    start: slashStart,
+    end: safeCursor,
+  };
 };
 
 interface ChatBlock {
@@ -115,9 +188,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateMenuIndex, setTemplateMenuIndex] = useState(0);
+  const [slashCommand, setSlashCommand] = useState<SlashCommandMatch | null>(null);
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templatesFetched, setTemplatesFetched] = useState(false);
+  const [pinnedTemplateIds, setPinnedTemplateIds] = useState<string[]>(() => readStoredTemplateIds(TEMPLATE_PINNED_STORAGE_KEY));
+  const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>(() => readStoredTemplateIds(TEMPLATE_RECENT_STORAGE_KEY));
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -125,18 +205,42 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [isTranslatingInput, setIsTranslatingInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const templateSearchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    writeStoredTemplateIds(TEMPLATE_PINNED_STORAGE_KEY, pinnedTemplateIds);
+  }, [pinnedTemplateIds]);
+
+  useEffect(() => {
+    writeStoredTemplateIds(TEMPLATE_RECENT_STORAGE_KEY, recentTemplateIds);
+  }, [recentTemplateIds]);
+
+  const recordTemplateUsage = useCallback((templateId: string) => {
+    setRecentTemplateIds((prev) => [templateId, ...prev.filter((id) => id !== templateId)].slice(0, MAX_RECENT_TEMPLATE_COUNT));
+  }, []);
+
+  const toggleTemplatePinned = useCallback((templateId: string) => {
+    setPinnedTemplateIds((prev) => {
+      if (prev.includes(templateId)) {
+        return prev.filter((id) => id !== templateId);
+      }
+      return [templateId, ...prev];
+    });
+  }, []);
 
   const insertText = useCallback((text: string) => {
     const textarea = textareaRef.current;
     if (!textarea) {
-      setInput(prev => prev + text);
+      setInput((prev) => prev + text);
       return;
     }
 
     const start = textarea.selectionStart ?? 0;
     const end = textarea.selectionEnd ?? 0;
 
-    setInput(prev => `${prev.slice(0, start)}${text}${prev.slice(end)}`);
+    setInput((prev) => `${prev.slice(0, start)}${text}${prev.slice(end)}`);
+    setSlashCommand(null);
+    setSlashMenuIndex(0);
 
     requestAnimationFrame(() => {
       textarea.focus();
@@ -146,7 +250,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   }, []);
 
   const appendText = useCallback((text: string) => {
-    setInput(prev => (prev ? `${prev}\n\n${text}` : text));
+    setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
+    setSlashCommand(null);
+    setSlashMenuIndex(0);
     requestAnimationFrame(() => {
       const textarea = textareaRef.current;
       if (!textarea) return;
@@ -155,6 +261,67 @@ export const InputBox: React.FC<InputBoxProps> = ({
       textarea.setSelectionRange(cursor, cursor);
     });
   }, []);
+
+  const orderedTemplates = useMemo(() => {
+    const recentIndexById = new Map(recentTemplateIds.map((id, index) => [id, index]));
+    const pinnedTemplateSet = new Set(pinnedTemplateIds);
+
+    return [...promptTemplates].sort((a, b) => {
+      const aPinned = pinnedTemplateSet.has(a.id);
+      const bPinned = pinnedTemplateSet.has(b.id);
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
+
+      const aRecent = recentIndexById.get(a.id);
+      const bRecent = recentIndexById.get(b.id);
+      const aHasRecent = aRecent !== undefined;
+      const bHasRecent = bRecent !== undefined;
+      if (aHasRecent !== bHasRecent) {
+        return aHasRecent ? -1 : 1;
+      }
+      if (aRecent !== undefined && bRecent !== undefined && aRecent !== bRecent) {
+        return aRecent - bRecent;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+  }, [promptTemplates, recentTemplateIds, pinnedTemplateIds]);
+
+  const filteredTemplateMenu = useMemo(() => {
+    return orderedTemplates.filter((template) => matchesTemplateQuery(template, templateSearch));
+  }, [orderedTemplates, templateSearch]);
+
+  const slashMatchedTemplates = useMemo(() => {
+    if (!slashCommand) {
+      return [];
+    }
+
+    const query = slashCommand.query.trim();
+    return orderedTemplates
+      .filter((template) => matchesTemplateQuery(template, query))
+      .slice(0, 8);
+  }, [orderedTemplates, slashCommand]);
+
+  const updateSlashCommandFromText = useCallback((text: string, cursorPosition?: number | null) => {
+    const cursor = cursorPosition ?? text.length;
+    setSlashCommand(findSlashCommand(text, cursor));
+    setSlashMenuIndex(0);
+  }, []);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextInput = e.target.value;
+    setInput(nextInput);
+    updateSlashCommandFromText(nextInput, e.target.selectionStart);
+  }, [updateSlashCommandFromText]);
+
+  const handleTextareaSelectionChange = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    updateSlashCommandFromText(textarea.value, textarea.selectionStart);
+  }, [updateSlashCommandFromText]);
 
   const loadPromptTemplates = useCallback(async () => {
     try {
@@ -167,19 +334,112 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setTemplatesError(message);
     } finally {
       setTemplatesLoading(false);
+      setTemplatesFetched(true);
     }
   }, []);
 
   useEffect(() => {
-    if (showTemplateMenu) {
-      loadPromptTemplates();
+    if (!showTemplateMenu) {
+      return;
     }
+
+    setTemplateSearch('');
+    setTemplateMenuIndex(0);
+    loadPromptTemplates();
+
+    requestAnimationFrame(() => {
+      templateSearchInputRef.current?.focus();
+    });
   }, [showTemplateMenu, loadPromptTemplates]);
 
-  const handleInsertTemplate = (template: PromptTemplate) => {
+  useEffect(() => {
+    if (slashCommand && !templatesFetched && !templatesLoading) {
+      loadPromptTemplates();
+    }
+  }, [slashCommand, templatesFetched, templatesLoading, loadPromptTemplates]);
+
+  useEffect(() => {
+    if (filteredTemplateMenu.length === 0) {
+      setTemplateMenuIndex(0);
+      return;
+    }
+
+    setTemplateMenuIndex((prev) => Math.min(prev, filteredTemplateMenu.length - 1));
+  }, [filteredTemplateMenu.length]);
+
+  useEffect(() => {
+    if (slashMatchedTemplates.length === 0) {
+      setSlashMenuIndex(0);
+      return;
+    }
+
+    setSlashMenuIndex((prev) => Math.min(prev, slashMatchedTemplates.length - 1));
+  }, [slashMatchedTemplates.length]);
+
+  const handleInsertTemplate = useCallback((template: PromptTemplate) => {
     insertText(template.content);
+    recordTemplateUsage(template.id);
     setShowTemplateMenu(false);
-  };
+    setTemplateSearch('');
+    setTemplateMenuIndex(0);
+  }, [insertText, recordTemplateUsage]);
+
+  const handleInsertSlashTemplate = useCallback((template: PromptTemplate) => {
+    if (!slashCommand) {
+      return;
+    }
+
+    const replacementStart = slashCommand.start;
+    const replacementEnd = slashCommand.end;
+
+    setInput((prev) => `${prev.slice(0, replacementStart)}${template.content}${prev.slice(replacementEnd)}`);
+    setSlashCommand(null);
+    setSlashMenuIndex(0);
+    recordTemplateUsage(template.id);
+
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      const cursor = replacementStart + template.content.length;
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  }, [recordTemplateUsage, slashCommand]);
+
+  const handleTemplateSearchKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowTemplateMenu(false);
+      return;
+    }
+
+    if (filteredTemplateMenu.length === 0) {
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setTemplateMenuIndex((prev) => (prev + 1) % filteredTemplateMenu.length);
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setTemplateMenuIndex((prev) => (prev - 1 + filteredTemplateMenu.length) % filteredTemplateMenu.length);
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const selectedTemplate = filteredTemplateMenu[templateMenuIndex];
+      if (selectedTemplate) {
+        handleInsertTemplate(selectedTemplate);
+      }
+    }
+  }, [filteredTemplateMenu, templateMenuIndex, handleInsertTemplate]);
 
   const focusComposer = useCallback(() => {
     textareaRef.current?.focus();
@@ -373,8 +633,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
         uploaded.push(result);
       }
       setAttachments(prev => [...prev, ...uploaded]);
-    } catch (err: any) {
-      alert(`Upload failed: ${err.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Upload failed: ${message}`);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -397,12 +658,46 @@ export const InputBox: React.FC<InputBoxProps> = ({
         useWebSearch,
       });
       setInput('');
+      setSlashCommand(null);
+      setSlashMenuIndex(0);
       setAttachments([]);
       setBlocks([]);
     }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashCommand) {
+      if (e.key === 'ArrowDown' && slashMatchedTemplates.length > 0) {
+        e.preventDefault();
+        setSlashMenuIndex((prev) => (prev + 1) % slashMatchedTemplates.length);
+        return;
+      }
+
+      if (e.key === 'ArrowUp' && slashMatchedTemplates.length > 0) {
+        e.preventDefault();
+        setSlashMenuIndex((prev) => (prev - 1 + slashMatchedTemplates.length) % slashMatchedTemplates.length);
+        return;
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (slashMatchedTemplates.length > 0) {
+          e.preventDefault();
+          const selectedTemplate = slashMatchedTemplates[slashMenuIndex];
+          if (selectedTemplate) {
+            handleInsertSlashTemplate(selectedTemplate);
+          }
+          return;
+        }
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSlashCommand(null);
+        setSlashMenuIndex(0);
+        return;
+      }
+    }
+
     // Send on Enter, new line on Shift+Enter
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -428,6 +723,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const handleTranslateInput = async () => {
     if (isTranslatingInput || !input.trim()) return;
     setIsTranslatingInput(true);
+    setSlashCommand(null);
+    setSlashMenuIndex(0);
     let translated = '';
     try {
       await api.translateText(
@@ -461,6 +758,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const currentOption = REASONING_EFFORT_OPTIONS.find(o => o.value === reasoningEffort) || REASONING_EFFORT_OPTIONS[0];
   const blocksMessage = buildBlocksMessage();
   const canSend = !!input.trim() || !!blocksMessage || attachments.length > 0;
+  const pinnedTemplateSet = useMemo(() => new Set(pinnedTemplateIds), [pinnedTemplateIds]);
+  const recentTemplateSet = useMemo(() => new Set(recentTemplateIds), [recentTemplateIds]);
 
   return (
     <div data-name="input-box-root" className="border-t border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
@@ -622,11 +921,24 @@ export const InputBox: React.FC<InputBoxProps> = ({
           {showTemplateMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowTemplateMenu(false)} />
-              <div className="absolute left-0 bottom-full mb-2 w-72 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700">
-                <div className="p-2 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-                  Prompt Templates
+              <div className="absolute left-0 bottom-full mb-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700" data-name="input-box-template-menu">
+                <div className="p-2 border-b border-gray-200 dark:border-gray-700 space-y-2">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Prompt Templates
+                  </div>
+                  <input
+                    ref={templateSearchInputRef}
+                    value={templateSearch}
+                    onChange={(e) => {
+                      setTemplateSearch(e.target.value);
+                      setTemplateMenuIndex(0);
+                    }}
+                    onKeyDown={handleTemplateSearchKeyDown}
+                    placeholder="Search templates..."
+                    className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-                <div className="max-h-60 overflow-auto">
+                <div className="max-h-72 overflow-auto">
                   {templatesLoading && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
                       Loading templates...
@@ -651,23 +963,73 @@ export const InputBox: React.FC<InputBoxProps> = ({
                       No templates yet. Add some in Settings &gt; Prompt Templates.
                     </div>
                   )}
-                  {!templatesLoading && !templatesError && promptTemplates.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onClick={() => handleInsertTemplate(template)}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {template.name}
+                  {!templatesLoading && !templatesError && promptTemplates.length > 0 && filteredTemplateMenu.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                      No templates match your search.
+                    </div>
+                  )}
+                  {!templatesLoading && !templatesError && filteredTemplateMenu.map((template, index) => {
+                    const isPinned = pinnedTemplateSet.has(template.id);
+                    const isRecent = recentTemplateSet.has(template.id);
+                    const isActive = index === templateMenuIndex;
+
+                    return (
+                      <div
+                        key={template.id}
+                        onMouseEnter={() => setTemplateMenuIndex(index)}
+                        className={`flex items-start gap-2 px-2 py-2 border-b border-gray-100 dark:border-gray-700/60 ${
+                          isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                        }`}
+                        data-name="input-box-template-row"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleInsertTemplate(template)}
+                          className="flex-1 min-w-0 text-left"
+                        >
+                          <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {template.name}
+                          </div>
+                          {template.description && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                              {template.description}
+                            </div>
+                          )}
+                          {(isPinned || isRecent) && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-wide">
+                              {isPinned && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                  Pinned
+                                </span>
+                              )}
+                              {isRecent && (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                                  Recent
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleTemplatePinned(template.id);
+                          }}
+                          className={`px-2 py-1 text-xs rounded border ${
+                            isPinned
+                              ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30'
+                              : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                          title={isPinned ? 'Unpin template' : 'Pin template'}
+                        >
+                          {isPinned ? 'Pinned' : 'Pin'}
+                        </button>
                       </div>
-                      {template.description && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {template.description}
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </>
@@ -869,17 +1231,103 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
       {/* Input area */}
       <div data-name="input-box-input-area" className="p-4">
-        <div data-name="input-box-input-controls" className="flex gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-            disabled={disabled || isStreaming}
-            className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
-            rows={3}
-          />
+        <div data-name="input-box-input-controls" className="flex gap-2 items-end">
+          <div className="relative flex-1" data-name="input-box-textarea-wrap">
+            {slashCommand && (
+              <div className="absolute left-0 right-0 bottom-full mb-2 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 shadow-lg z-20" data-name="input-box-slash-menu">
+                <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+                  Quick insert via / command
+                </div>
+                <div className="max-h-60 overflow-auto">
+                  {templatesLoading && (
+                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                      Loading templates...
+                    </div>
+                  )}
+                  {!templatesLoading && templatesError && (
+                    <div className="px-3 py-2 space-y-2">
+                      <div className="text-sm text-red-600 dark:text-red-400">
+                        {templatesError}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={loadPromptTemplates}
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {!templatesLoading && !templatesError && promptTemplates.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                      No templates yet. Add some in Settings &gt; Prompt Templates.
+                    </div>
+                  )}
+                  {!templatesLoading && !templatesError && promptTemplates.length > 0 && slashMatchedTemplates.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                      No templates match /{slashCommand.query}
+                    </div>
+                  )}
+                  {!templatesLoading && !templatesError && slashMatchedTemplates.map((template, index) => {
+                    const isActive = index === slashMenuIndex;
+                    const isPinned = pinnedTemplateSet.has(template.id);
+                    const isRecent = recentTemplateSet.has(template.id);
+
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onMouseEnter={() => setSlashMenuIndex(index)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleInsertSlashTemplate(template)}
+                        className={`w-full text-left px-3 py-2 border-b border-gray-100 dark:border-gray-700/60 ${
+                          isActive
+                            ? 'bg-blue-50 dark:bg-blue-900/20'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          {template.name}
+                        </div>
+                        {template.description && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {template.description}
+                          </div>
+                        )}
+                        {(isPinned || isRecent) && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-wide">
+                            {isPinned && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                Pinned
+                              </span>
+                            )}
+                            {isRecent && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                                Recent
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={handleInputChange}
+              onSelect={handleTextareaSelectionChange}
+              onClick={handleTextareaSelectionChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+              disabled={disabled || isStreaming}
+              className="w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
+              rows={3}
+            />
+          </div>
           {isStreaming ? (
             <button
               onClick={onStop}

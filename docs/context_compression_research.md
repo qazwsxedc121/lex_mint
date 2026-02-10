@@ -33,39 +33,164 @@ Two context management mechanisms exist in `src/agents/simple_llm.py`:
 
 ## LobeChat Approach
 
-**Multi-layered compression with configurable summarization model.**
+**Prompt-driven structured summarization with reversible compression groups and configurable model.**
 
-### Sliding Window
+> Source: `learn_proj/lobehub/` -- based on direct source code analysis of the monorepo.
 
-- Configurable `historyCount` -- number of recent messages to always keep
-- Messages beyond the window are candidates for compression
+### Complete Pipeline
+
+```
+User sends message
+  -> GeneralChatAgent: user_input phase
+  -> shouldCompress(messages, { maxWindowToken }) checks token threshold
+  -> Exceeds threshold? -> emit 'compress_context' instruction
+  -> createCompressionGroup (DB: create group record, mark messages with messageGroupId)
+  -> chainCompressContext (build compression prompt from system + formatted history)
+  -> Stream LLM call to generate structured summary
+  -> finalizeCompression (save summary content to DB)
+  -> CompressedGroupRoleTransform (wrap summary in XML tag, convert role to 'user' for LLM)
+```
 
 ### Token Counting + Threshold
 
-- Async token counting runs before each LLM call
-- `compressThreshold` triggers compression when token count exceeds limit
+**File:** `packages/agent-runtime/src/utils/tokenCounter.ts`
 
-### Compression Modes
+- Compression check runs **before** each LLM call, not after
+- Default threshold: `128,000 * 0.5 = 64,000 tokens`
+- Configurable via `compressionConfig.maxWindowToken` per agent
 
-**Simple Summary** (default):
-- Summarizes old messages into a single system-level summary
-- Summary capped at ~400 tokens
-- Fast, low cost
+```typescript
+export const DEFAULT_MAX_CONTEXT = 128_000;   // 128k tokens
+export const DEFAULT_THRESHOLD_RATIO = 0.5;    // triggers at 50%
+```
 
-**Structured Compression** (advanced):
-- Targets 60-80% compression ratio
-- Preserves critical content: code snippets, file paths, URLs, error messages
-- Topic-based segmentation -- groups messages by topic, summarizes each separately
-- Per-topic summaries allow selective retention of relevant context
+**Differentiated token counting strategy:**
+- **Assistant messages**: uses exact value from `metadata.usage.totalOutputTokens` (API-reported)
+- **User/System messages**: uses `tokenx` library estimation (no exact value available)
+- This is a practical optimization -- use exact values where available, estimate elsewhere
+
+### Structured Compression via Prompt Engineering
+
+**File:** `packages/prompts/src/prompts/compressContext/index.ts`
+
+LobeChat's "structured compression" is entirely **prompt-driven** -- the LLM is instructed to output a structured summary with fixed sections. There is no code-level topic segmentation or message grouping algorithm.
+
+**Required output sections (omit empty ones):**
+
+| Section | Purpose |
+|---------|---------|
+| Context | Background and setup, 1-2 sentences max |
+| Key Information | Facts, specs, technical details, names, file paths, URLs |
+| Decisions & Conclusions | Agreed solutions, approaches, final conclusions |
+| Action Items | Tasks, next steps, pending items |
+| Code & Technical | Preserved essential code snippets in code blocks |
+
+**Three-tier rule system in the prompt:**
+
+- **MUST**: Same language as conversation; preserve ALL technical terms, code identifiers, file paths, proper nouns exactly; maintain factual accuracy; keep essential code snippets
+- **SHOULD**: 60-80% compression ratio (summary = 20-40% of original); bullet points; chronological order; consolidate repeated info
+- **MAY**: Omit greetings/pleasantries/filler; combine related points; abbreviate obvious context
+
+**Design intent** (stated in prompt): "The summary will be injected into a new conversation as context. Recipient should be able to continue the conversation seamlessly." -- the goal is conversation continuity, not just note-taking.
+
+### Message Formatting Before Compression
+
+**File:** `packages/prompts/src/prompts/chatMessages/index.ts`
+
+Messages are formatted as XML before being sent to the compression LLM:
+
+```xml
+<chat_history>
+<user>How do I set up authentication?</user>
+<assistant>You can use JWT tokens...</assistant>
+</chat_history>
+```
+
+The chain assembly (`packages/prompts/src/chains/compressContext.ts`):
+- System message = structured compression prompt (rules + output format)
+- User message = `<chat_history>...</chat_history>` + "Please compress the above conversation history."
+
+### Three-Layer Important Content Preservation
+
+**Layer 1: LLM judgment (prompt-driven)**
+- The MUST rules in the compression prompt instruct the LLM to preserve technical terms, code, file paths, proper nouns
+- Effectiveness depends entirely on LLM capability -- no programmatic guarantee
+
+**Layer 2: Pinned messages (user-controlled)**
+- Users can mark messages as favorite/pinned
+- Pinned messages are extracted separately and stored in `pinnedMessages` array on the compressedGroup
+- These are NOT fed into the summarization -- they are preserved verbatim alongside the summary
+
+```typescript
+// packages/database/src/models/message.ts (lines 847-870)
+const pinnedMessages = groupMsgIds
+  .filter((id) => favoriteMap.get(id) === true)
+  .map((id) => {
+    const m = messageMap.get(id);
+    return { content: m.content, id: m.id, role: m.role, ... };
+  });
+```
+
+**Layer 3: Original messages retained (reversible compression)**
+- Messages are NOT deleted from the database -- only marked with `messageGroupId`
+- UI shows two tabs: Summary (generated) and History (original conversation)
+- User can **cancel compression** to fully restore original messages
+
+```typescript
+// Mark as compressed (soft, reversible)
+await this.db.update(messages)
+  .set({ messageGroupId: groupId })
+  .where(inArray(messages.id, messageIds));
+
+// Cancel: unmark messages
+await this.db.update(messages)
+  .set({ messageGroupId: null })
+  .where(inArray(messages.id, messageIds));
+```
+
+### Compressed Summary Injection into LLM
+
+**File:** `packages/context-engine/src/processors/CompressedGroupRoleTransform.ts`
+
+The compressedGroup is transformed before sending to the LLM:
+- Role changed from `compressedGroup` to `user` (models don't understand custom roles)
+- Content wrapped in `<compressed_history_summary>` XML tag to distinguish from real user messages
+
+```typescript
+if (msg.role === 'compressedGroup') {
+  return {
+    ...msg,
+    content: `<compressed_history_summary>\n${msg.content}\n</compressed_history_summary>`,
+    role: 'user',
+  };
+}
+```
+
+### Conversation Tree Integrity After Compression
+
+**File:** `packages/conversation-flow/src/indexing.ts`
+
+After compression, new messages need to link correctly in the conversation tree:
+- The compressedGroup stores `lastMessageId` (the last message before compression)
+- New messages whose `parentId` points to `lastMessageId` are automatically redirected to the compressedGroup node
+- This prevents orphaned messages after compression
 
 ### Configurable Summarization Model
 
 - Compression can use a different (cheaper/faster) model than the main chat model
-- Reduces cost for compression operations
+- Configured via `modelRuntimeConfig.compressionModel` with separate `model` and `provider` fields
+- Allows cost optimization: e.g., use GPT-4o-mini for compression while using Claude for main conversation
+
+### What LobeChat Does NOT Have
+
+- **No topic-based segmentation** -- all messages are compressed into a single summary in one pass
+- **No sliding window** -- the current codebase uses threshold-based compression, not `historyCount`-based windowing (this may have existed in older versions)
+- **No incremental/running summary** -- each compression generates a fresh summary from all messages
+- **No per-message importance scoring** -- importance is determined by LLM judgment and user pinning, not algorithmic scoring
 
 ### Key Takeaway
 
-Structured compression with topic segmentation is the most sophisticated approach. Good for long conversations that span multiple topics.
+LobeChat's approach is a well-engineered **prompt-driven structured summarization** system. The sophistication lies in: (1) the carefully designed compression prompt with three-tier rules, (2) the three-layer content preservation mechanism (LLM + pinned + reversible), and (3) production-grade concerns like streaming UI updates, conversation tree integrity, and configurable compression model. However, it does NOT implement topic-based segmentation or algorithmic importance scoring -- these would need to be designed from scratch if desired.
 
 ---
 
@@ -288,4 +413,6 @@ A phased approach, ordered by impact and complexity:
 - [ ] Support configurable summarization model (use cheaper model for compression)
 - [ ] Add tool output pruning for agent workflows
 - [ ] Surface token usage metrics in frontend
-- [ ] Evaluate topic-based segmentation (LobeChat-style) for multi-topic conversations
+- [ ] Evaluate topic-based segmentation (custom design -- LobeChat does NOT implement this despite earlier notes)
+- [ ] Consider three-layer preservation: LLM prompt rules + user pinning + reversible compression
+- [ ] Use XML tag wrapping (`<compressed_history_summary>`) to distinguish summary from real messages
