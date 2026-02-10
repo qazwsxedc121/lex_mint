@@ -1341,6 +1341,47 @@ export async function exportSession(sessionId: string, contextType: string = 'ch
   URL.revokeObjectURL(url);
 }
 
+export interface ChatGPTImportSessionSummary {
+  session_id: string;
+  title: string;
+  message_count: number;
+}
+
+export interface ChatGPTImportResult {
+  imported: number;
+  skipped: number;
+  sessions: ChatGPTImportSessionSummary[];
+  errors: string[];
+}
+
+/**
+ * Import ChatGPT conversations from conversations.json export.
+ */
+export async function importChatGPTConversations(file: File): Promise<ChatGPTImportResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE}/api/sessions/import/chatgpt`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = `Import failed: ${response.status}`;
+    try {
+      const error = await response.json();
+      if (error?.detail) {
+        message = error.detail;
+      }
+    } catch {
+      // Ignore JSON parse error
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
 export default api;
 
 /**

@@ -5,7 +5,7 @@
  * All data and operations from useChatServices
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   EllipsisVerticalIcon,
@@ -17,9 +17,10 @@ import {
   MagnifyingGlassIcon,
   ChatBubbleLeftRightIcon,
   ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
-import { exportSession } from '../../../services/api';
+import { exportSession, importChatGPTConversations } from '../../../services/api';
 
 export const ChatSidebar: React.FC = () => {
   const navigate = useNavigate();
@@ -38,6 +39,8 @@ export const ChatSidebar: React.FC = () => {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [generatingTitleId, setGeneratingTitleId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleNewSession = async () => {
     try {
@@ -62,6 +65,45 @@ export const ChatSidebar: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to create temporary session:', err);
+    }
+  };
+
+  const handleImportFile = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const [file] = Array.from(files);
+    if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.json') && !lowerName.endsWith('.zip')) {
+      alert('Please select a ChatGPT .json or .zip export file.');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const result = await importChatGPTConversations(file);
+      await refreshSessions();
+
+      const errorCount = result.errors?.length || 0;
+      const message = `Imported ${result.imported} conversation(s). Skipped ${result.skipped}.` +
+        (errorCount ? ` Errors: ${errorCount}.` : '');
+      alert(message);
+
+      if (errorCount) {
+        console.error('ChatGPT import errors:', result.errors);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to import ChatGPT conversations';
+      console.error('Failed to import ChatGPT conversations:', err);
+      alert(message);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -195,6 +237,21 @@ export const ChatSidebar: React.FC = () => {
         >
           <PlusIcon className="h-5 w-5" />
         </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className="p-2 rounded-lg text-emerald-500 dark:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
+          title={importing ? 'Importing...' : 'Import ChatGPT .json or .zip'}
+        >
+          <ArrowUpTrayIcon className="h-5 w-5" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,.zip,application/json,application/zip"
+          className="hidden"
+          onChange={(e) => handleImportFile(e.target.files)}
+        />
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
           className="ml-auto p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"

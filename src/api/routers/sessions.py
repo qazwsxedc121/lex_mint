@@ -1,14 +1,18 @@
 """Session management API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from fastapi import APIRouter, HTTPException, Depends, Body, Query, UploadFile, File
 from fastapi.responses import Response
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 import logging
 import re
+import json
+import io
+import zipfile
 from urllib.parse import quote
 
 from ..services.conversation_storage import ConversationStorage
+from ..services.chatgpt_import_service import ChatGPTImportService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -41,6 +45,21 @@ class UpdateTitleRequest(BaseModel):
 class UpdateParamOverridesRequest(BaseModel):
     """更新参数覆盖请求"""
     param_overrides: Dict
+
+
+class ImportChatGPTSession(BaseModel):
+    """Imported session summary."""
+    session_id: str
+    title: str
+    message_count: int
+
+
+class ImportChatGPTResponse(BaseModel):
+    """ChatGPT import response."""
+    imported: int
+    skipped: int
+    sessions: List[ImportChatGPTSession]
+    errors: List[str]
 
 
 def get_storage() -> ConversationStorage:
@@ -724,3 +743,61 @@ async def export_session(
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/import/chatgpt", response_model=ImportChatGPTResponse)
+async def import_chatgpt_conversations(
+    file: UploadFile = File(...),
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Import ChatGPT conversations from exported conversations.json."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    raw = await file.read()
+    filename = (file.filename or "").lower()
+
+    text: str
+    if filename.endswith(".zip") or zipfile.is_zipfile(io.BytesIO(raw)):
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as zip_file:
+                json_name = None
+                for name in zip_file.namelist():
+                    if name.lower().endswith("conversations.json"):
+                        json_name = name
+                        break
+                if not json_name:
+                    raise HTTPException(status_code=400, detail="ZIP does not contain conversations.json")
+                json_bytes = zip_file.read(json_name)
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(status_code=400, detail="Invalid ZIP file") from exc
+
+        try:
+            text = json_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            text = json_bytes.decode("utf-8-sig", errors="replace")
+    else:
+        if filename and not filename.endswith(".json"):
+            raise HTTPException(status_code=400, detail="Please upload a ChatGPT .json or .zip export file")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8-sig", errors="replace")
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON file: {exc}") from exc
+
+    if not isinstance(payload, list):
+        raise HTTPException(status_code=400, detail="Expected a list of conversations in JSON")
+
+    importer = ChatGPTImportService(storage)
+    result = await importer.import_conversations(
+        payload,
+        context_type=context_type,
+        project_id=project_id
+    )
+    return result
