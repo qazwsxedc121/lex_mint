@@ -9,6 +9,12 @@ import yaml
 import httpx
 from ..models.search import SearchSource
 from .model_config_service import ModelConfigService
+from ..paths import (
+    config_defaults_dir,
+    config_local_dir,
+    legacy_config_dir,
+    ensure_local_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +37,17 @@ class SearchService:
     """Service for web search and result normalization."""
 
     def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
+        self.defaults_path: Optional[Path] = None
+        self.legacy_paths: list[Path] = []
+
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "search_config.yaml"
-        self.config_path = config_path
+            self.defaults_path = config_defaults_dir() / "search_config.yaml"
+            self.config_path = config_local_dir() / "search_config.yaml"
+            self.legacy_paths = [legacy_config_dir() / "search_config.yaml"]
+        else:
+            self.config_path = Path(config_path)
+
+        self._ensure_config_exists()
         self.model_config_service = ModelConfigService(keys_path=keys_path)
         self.config = self._load_config()
 
@@ -46,9 +60,13 @@ class SearchService:
                     "timeout_seconds": 10,
                 }
             }
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(default_config, f, allow_unicode=True, sort_keys=False)
+            initial_text = yaml.safe_dump(default_config, allow_unicode=True, sort_keys=False)
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=self.defaults_path,
+                legacy_paths=self.legacy_paths,
+                initial_text=initial_text,
+            )
 
     def _load_config(self) -> SearchConfig:
         self._ensure_config_exists()
@@ -101,7 +119,7 @@ class SearchService:
     async def _search_tavily(self, query: str) -> List[SearchSource]:
         api_key = await self.model_config_service.get_api_key("tavily")
         if not api_key:
-            logger.warning("Tavily API key not found in config/keys_config.yaml")
+            logger.warning("Tavily API key not found in config/local/keys_config.yaml")
             return []
 
         payload = {

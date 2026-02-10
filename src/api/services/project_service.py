@@ -18,6 +18,7 @@ from src.api.models.project_config import (
     DirectoryEntry,
 )
 from src.api.config import settings
+from src.api.paths import ensure_local_file, repo_root
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,17 @@ class ProjectService:
         Args:
             config_path: Path to projects config file (for testing)
         """
+        use_default_path = config_path is None
         self.config_path = config_path or settings.projects_config_path
+        self.legacy_paths: List[Path] = [repo_root() / "config" / "projects_config.yaml"]
+
+        if use_default_path:
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=None,
+                legacy_paths=self.legacy_paths,
+                initial_text=yaml.safe_dump({"projects": []}, allow_unicode=True, sort_keys=False),
+            )
         self._lock = asyncio.Lock()
 
     async def load_config(self) -> ProjectsConfig:

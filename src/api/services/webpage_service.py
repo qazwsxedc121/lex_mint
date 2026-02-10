@@ -21,6 +21,12 @@ import httpx
 import yaml
 
 from ..models.search import SearchSource
+from ..paths import (
+    config_defaults_dir,
+    config_local_dir,
+    legacy_config_dir,
+    ensure_local_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -145,9 +151,15 @@ class WebpageService:
     """Service for fetching and parsing webpage content."""
 
     def __init__(self, config_path: Optional[Path] = None) -> None:
+        self.defaults_path: Optional[Path] = None
+        self.legacy_paths: list[Path] = []
+
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "webpage_config.yaml"
-        self.config_path = config_path
+            self.defaults_path = config_defaults_dir() / "webpage_config.yaml"
+            self.config_path = config_local_dir() / "webpage_config.yaml"
+            self.legacy_paths = [legacy_config_dir() / "webpage_config.yaml"]
+        else:
+            self.config_path = Path(config_path)
         self.config = self._load_config()
 
     def _ensure_config_exists(self) -> None:
@@ -166,9 +178,13 @@ class WebpageService:
                     "diagnostics_timeout_seconds": 2,
                 }
             }
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(default_config, f, allow_unicode=True, sort_keys=False)
+            initial_text = yaml.safe_dump(default_config, allow_unicode=True, sort_keys=False)
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=self.defaults_path,
+                legacy_paths=self.legacy_paths,
+                initial_text=initial_text,
+            )
 
     def _load_config(self) -> WebpageConfig:
         self._ensure_config_exists()

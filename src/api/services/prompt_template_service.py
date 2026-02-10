@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..models.prompt_template import PromptTemplate, PromptTemplatesConfig
+from ..paths import data_state_dir, legacy_config_dir, ensure_local_file
 
 
 class PromptTemplateConfigService:
@@ -14,17 +15,21 @@ class PromptTemplateConfigService:
 
     def __init__(self, config_path: Path = None):
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "prompt_templates_config.yaml"
-        self.config_path = config_path
+            config_path = data_state_dir() / "prompt_templates_config.yaml"
+        self.config_path = Path(config_path)
         self._ensure_config_exists()
 
     def _ensure_config_exists(self):
         """Ensure configuration file exists, create default if not."""
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.config_path.exists():
             default_config = self._get_default_config()
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(default_config, f, allow_unicode=True, sort_keys=False)
+            initial_text = yaml.safe_dump(default_config, allow_unicode=True, sort_keys=False)
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=None,
+                legacy_paths=[legacy_config_dir() / "prompt_templates_config.yaml"],
+                initial_text=initial_text,
+            )
 
     def _get_default_config(self) -> dict:
         return {"templates": []}

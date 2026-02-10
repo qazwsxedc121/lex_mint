@@ -14,6 +14,12 @@ from langchain_openai import ChatOpenAI
 
 from .conversation_storage import ConversationStorage
 from .model_config_service import ModelConfigService
+from ..paths import (
+    config_defaults_dir,
+    config_local_dir,
+    legacy_config_dir,
+    ensure_local_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +40,22 @@ class TitleGenerationService:
 
     def __init__(self, storage: ConversationStorage, config_path: Optional[str] = None):
         self.storage = storage
-        if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "title_generation_config.yaml"
-        else:
-            config_path = Path(config_path)
+        self.defaults_path: Optional[Path] = None
+        self.legacy_paths: list[Path] = []
 
-        self.config_path = config_path
+        if config_path is None:
+            self.defaults_path = config_defaults_dir() / "title_generation_config.yaml"
+            self.config_path = config_local_dir() / "title_generation_config.yaml"
+            self.legacy_paths = [legacy_config_dir() / "title_generation_config.yaml"]
+        else:
+            self.config_path = Path(config_path)
+
+        ensure_local_file(
+            local_path=self.config_path,
+            defaults_path=self.defaults_path,
+            legacy_paths=self.legacy_paths,
+            initial_text=yaml.safe_dump({"title_generation": {}}, allow_unicode=True, sort_keys=False),
+        )
         self.config = self._load_config()
 
     def _load_config(self) -> TitleGenerationConfig:

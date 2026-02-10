@@ -1,0 +1,20 @@
+[X] 分支对话
+[X] Compact context
+[X] 助手icons
+[X] Temp Chat
+[X] 搜索
+[X] 对话时间
+[X] 导出markdown
+[X] 翻译
+[X] Mermaid
+[X] TTS
+[] 多模型对比
+[] 全局记忆
+[] 常用提示词
+[] @文件名
+[] 多参与者
+[X] 导入chatgpt对话
+[] 导出图片
+[] 导出PDF
+[X] 路径选择器
+[X] 对话移动

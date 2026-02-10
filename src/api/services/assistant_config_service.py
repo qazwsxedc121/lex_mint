@@ -11,6 +11,13 @@ from langchain_openai import ChatOpenAI
 
 from ..models.assistant_config import Assistant, AssistantsConfig
 from .model_config_service import ModelConfigService
+from ..paths import (
+    config_defaults_dir,
+    config_local_dir,
+    legacy_config_dir,
+    ensure_local_file,
+    resolve_layered_read_path,
+)
 
 
 class AssistantConfigService:
@@ -24,19 +31,34 @@ class AssistantConfigService:
             config_path: Configuration file path, defaults to project root assistants_config.yaml
             model_service: Model configuration service instance for validation
         """
+        self.defaults_path: Optional[Path] = None
+        self.legacy_paths: list[Path] = []
+
         if config_path is None:
-            # Default config file in project root
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "assistants_config.yaml"
-        self.config_path = config_path
+            self.defaults_path = config_defaults_dir() / "assistants_config.yaml"
+            self.config_path = config_local_dir() / "assistants_config.yaml"
+            self.legacy_paths = [legacy_config_dir() / "assistants_config.yaml"]
+        else:
+            self.config_path = Path(config_path)
         self.model_service = model_service or ModelConfigService()
         self._ensure_config_exists()
 
     def _ensure_config_exists(self):
         """Ensure configuration file exists, create default if not"""
+        if self.defaults_path is not None:
+            default_config = self._get_default_config()
+            initial_text = yaml.safe_dump(default_config, allow_unicode=True, sort_keys=False)
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=self.defaults_path,
+                legacy_paths=self.legacy_paths,
+                initial_text=initial_text,
+            )
+            return
+
         if not self.config_path.exists():
             default_config = self._get_default_config()
-            # Synchronous write for initial config
-            with open(self.config_path, 'w', encoding='utf-8') as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(default_config, f, allow_unicode=True, sort_keys=False)
 
     def _get_default_config(self) -> dict:
@@ -79,7 +101,17 @@ class AssistantConfigService:
 
     async def load_config(self) -> AssistantsConfig:
         """Load configuration file"""
-        async with aiofiles.open(self.config_path, 'r', encoding='utf-8') as f:
+        config_path = (
+            resolve_layered_read_path(
+                local_path=self.config_path,
+                defaults_path=self.defaults_path,
+                legacy_paths=self.legacy_paths,
+            )
+            if self.defaults_path is not None
+            else self.config_path
+        )
+
+        async with aiofiles.open(config_path, 'r', encoding='utf-8') as f:
             content = await f.read()
             data = yaml.safe_load(content)
             return AssistantsConfig(**data)

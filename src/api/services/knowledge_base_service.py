@@ -17,6 +17,8 @@ from ..models.knowledge_base import (
     KnowledgeBasesConfig,
 )
 
+from ..paths import data_state_dir, repo_root
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,9 +27,16 @@ class KnowledgeBaseService:
 
     def __init__(self, config_path: Path = None, storage_dir: Path = None):
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "knowledge_bases_config.yaml"
+            config_path = data_state_dir() / "knowledge_bases_config.yaml"
         if storage_dir is None:
-            storage_dir = Path(__file__).parent.parent.parent.parent / "knowledge_bases"
+            preferred = repo_root() / "data" / "knowledge_bases"
+            legacy = repo_root() / "knowledge_bases"
+            if preferred.exists():
+                storage_dir = preferred
+            elif legacy.exists():
+                storage_dir = legacy
+            else:
+                storage_dir = preferred
 
         self.config_path = config_path
         self.storage_dir = storage_dir

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 10
 
     # Project Configuration
-    projects_config_path: Path = Path("config/projects_config.yaml")
+    projects_config_path: Path = Path("data/state/projects_config.yaml")
     projects_browse_roots: List[Path] = [Path(".")]
     max_file_read_size_mb: int = 10
     allowed_file_extensions: List[str] = [

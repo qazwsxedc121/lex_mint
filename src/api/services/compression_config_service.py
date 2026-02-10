@@ -10,6 +10,13 @@ from dataclasses import dataclass
 
 import yaml
 
+from ..paths import (
+    config_defaults_dir,
+    config_local_dir,
+    legacy_config_dir,
+    ensure_local_file,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROMPT_TEMPLATE = """You are a conversation summarizer. Create a concise but comprehensive summary of the conversation below.
@@ -40,19 +47,21 @@ class CompressionConfigService:
     """Service for managing compression configuration"""
 
     def __init__(self, config_path: Optional[str] = None):
-        if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "compression_config.yaml"
-        else:
-            config_path = Path(config_path)
+        self.defaults_path: Optional[Path] = None
+        self.legacy_paths: list[Path] = []
 
-        self.config_path = config_path
+        if config_path is None:
+            self.defaults_path = config_defaults_dir() / "compression_config.yaml"
+            self.config_path = config_local_dir() / "compression_config.yaml"
+            self.legacy_paths = [legacy_config_dir() / "compression_config.yaml"]
+        else:
+            self.config_path = Path(config_path)
         self._ensure_config_exists()
         self.config = self._load_config()
 
     def _ensure_config_exists(self) -> None:
         """Create default config file if it doesn't exist"""
         if not self.config_path.exists():
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             default_data = {
                 'compression': {
                     'model_id': 'deepseek:deepseek-chat',
@@ -62,8 +71,13 @@ class CompressionConfigService:
                     'prompt_template': DEFAULT_PROMPT_TEMPLATE,
                 }
             }
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(default_data, f, allow_unicode=True, default_flow_style=False)
+            initial_text = yaml.safe_dump(default_data, allow_unicode=True, sort_keys=False)
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=self.defaults_path,
+                legacy_paths=self.legacy_paths,
+                initial_text=initial_text,
+            )
             logger.info(f"Created default compression config at {self.config_path}")
 
     def _load_config(self) -> CompressionConfig:

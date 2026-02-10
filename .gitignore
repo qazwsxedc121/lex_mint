@@ -21,9 +21,13 @@ venv.bak/
 # Environment variables
 .env
 .env.local
+.env.*
+!.env.example
 
-# API Keys Configuration
-config/keys_config.yaml
+# Local config (instance-specific, writable)
+config/local/
+config/*.yaml.tmp
+config/*.tmp
 
 # Testing
 .pytest_cache/
@@ -52,10 +56,10 @@ conversations/
 attachments/
 knowledge_bases/
 data/chromadb/
-config/knowledge_bases_config.yaml
-config/projects_config.yaml
-config/rag_config.yaml
-config/prompt_templates_config.yaml
+data/knowledge_bases/
+
+# State/data files (writable, not tracked)
+data/state/
 
 # Learn Projects
 learn_proj/

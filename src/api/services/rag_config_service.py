@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from ..paths import data_state_dir, legacy_config_dir, ensure_local_file
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ class RagConfigService:
 
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "rag_config.yaml"
+            config_path = data_state_dir() / "rag_config.yaml"
         else:
             config_path = Path(config_path)
 
@@ -67,7 +69,6 @@ class RagConfigService:
     def _ensure_config_exists(self) -> None:
         """Create default config file if it doesn't exist"""
         if not self.config_path.exists():
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             default_data = {
                 'embedding': {
                     'provider': 'api',
@@ -92,8 +93,13 @@ class RagConfigService:
                     'persist_directory': 'data/chromadb',
                 },
             }
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(default_data, f, allow_unicode=True, default_flow_style=False)
+            initial_text = yaml.safe_dump(default_data, allow_unicode=True, sort_keys=False)
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=None,
+                legacy_paths=[legacy_config_dir() / "rag_config.yaml"],
+                initial_text=initial_text,
+            )
             logger.info(f"Created default RAG config at {self.config_path}")
 
     def _load_config(self) -> RagConfig:

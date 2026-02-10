@@ -22,6 +22,13 @@ from src.providers import (
 )
 from src.providers.types import ProviderConfig
 
+from ..paths import (
+    config_defaults_dir,
+    config_local_dir,
+    legacy_config_dir,
+    ensure_local_file,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,12 +43,19 @@ class ModelConfigService:
             config_path: 配置文件路径，默认为项目根目录的 models_config.yaml
             keys_path: 密钥文件路径，默认为项目根目录的 keys_config.yaml
         """
+        self.defaults_path: Optional[Path] = None
+        self.legacy_models_paths: list[Path] = []
+        self.legacy_keys_paths: list[Path] = []
+        self._layered_models = config_path is None
+        self._layered_keys = keys_path is None
+
         if config_path is None:
-            # 默认配置文件在项目根目录
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "models_config.yaml"
+            self.defaults_path = config_defaults_dir() / "models_config.yaml"
+            self.legacy_models_paths = [legacy_config_dir() / "models_config.yaml"]
+            config_path = config_local_dir() / "models_config.yaml"
         if keys_path is None:
-            # 默认密钥文件在项目根目录
-            keys_path = Path(__file__).parent.parent.parent.parent / "config" / "keys_config.yaml"
+            self.legacy_keys_paths = [legacy_config_dir() / "keys_config.yaml"]
+            keys_path = config_local_dir() / "keys_config.yaml"
         self.config_path = config_path
         self.keys_path = keys_path
         self._ensure_config_exists()
@@ -51,9 +65,19 @@ class ModelConfigService:
         """确保配置文件存在，如果不存在则创建默认配置"""
         if not self.config_path.exists():
             default_config = self._get_default_config()
-            # 同步写入初始配置
+            initial_text = yaml.safe_dump(default_config, allow_unicode=True, sort_keys=False)
+
+            if self._layered_models:
+                ensure_local_file(
+                    local_path=self.config_path,
+                    defaults_path=self.defaults_path,
+                    legacy_paths=self.legacy_models_paths,
+                    initial_text=initial_text,
+                )
+                return
+
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(default_config, f, allow_unicode=True, sort_keys=False)
+                f.write(initial_text)
 
     def _get_default_config(self) -> dict:
         """获取默认配置"""
@@ -190,8 +214,19 @@ class ModelConfigService:
         """确保密钥配置文件存在，如果不存在则创建空配置"""
         if not self.keys_path.exists():
             default_keys = {"providers": {}}
+            initial_text = yaml.safe_dump(default_keys, allow_unicode=True, sort_keys=False)
+
+            if self._layered_keys:
+                ensure_local_file(
+                    local_path=self.keys_path,
+                    defaults_path=None,
+                    legacy_paths=self.legacy_keys_paths,
+                    initial_text=initial_text,
+                )
+                return
+
             with open(self.keys_path, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(default_keys, f, allow_unicode=True, sort_keys=False)
+                f.write(initial_text)
 
     async def load_keys_config(self) -> dict:
         """加载密钥配置文件"""
