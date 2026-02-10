@@ -20,6 +20,7 @@ import {
   BookOpenIcon,
   CircleStackIcon,
   WrenchScrewdriverIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   { path: '/settings/models', label: 'Models', icon: CpuChipIcon },
   { path: '/settings/providers', label: 'Providers', icon: ServerIcon },
   { path: '/settings/knowledge-bases', label: 'Knowledge Bases', icon: BookOpenIcon },
+  { path: '/settings/prompt-templates', label: 'Prompt Templates', icon: DocumentTextIcon },
   { path: '/settings/rag', label: 'RAG Settings', icon: CircleStackIcon },
   { path: '/settings/search', label: 'Search', icon: MagnifyingGlassIcon },
   { path: '/settings/webpage', label: 'Webpage', icon: GlobeAltIcon },

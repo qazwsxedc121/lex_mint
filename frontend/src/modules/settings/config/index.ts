@@ -12,6 +12,7 @@ export { assistantsConfig } from './assistants.config.tsx';
 export { modelsConfig } from './models.config.tsx';
 export { providersConfig } from './providers.config.tsx';
 export { knowledgeBasesConfig } from './knowledgeBases.config.tsx';
+export { promptTemplatesConfig } from './promptTemplates.config.tsx';
 
 // Simple Config Configs
 export { searchConfig } from './search.config';

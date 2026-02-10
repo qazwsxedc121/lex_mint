@@ -55,6 +55,7 @@ data/chromadb/
 config/knowledge_bases_config.yaml
 config/projects_config.yaml
 config/rag_config.yaml
+config/prompt_templates_config.yaml
 
 # Learn Projects
 learn_proj/

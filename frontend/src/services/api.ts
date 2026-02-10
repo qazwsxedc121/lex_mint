@@ -8,6 +8,7 @@ import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult, DirectoryEntry } from '../types/project';
 import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, KnowledgeBaseChunk, RagConfig } from '../types/knowledgeBase';
+import type { PromptTemplate, PromptTemplateCreate, PromptTemplateUpdate } from '../types/promptTemplate';
 import type { MutableRefObject } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -237,6 +238,31 @@ export async function branchSession(sessionId: string, messageId: string, contex
     { message_id: messageId }
   );
   return response.data.session_id;
+}
+
+/**
+ * Prompt templates CRUD
+ */
+export async function listPromptTemplates(): Promise<PromptTemplate[]> {
+  const response = await api.get<PromptTemplate[]>('/api/prompt-templates');
+  return response.data;
+}
+
+export async function getPromptTemplate(templateId: string): Promise<PromptTemplate> {
+  const response = await api.get<PromptTemplate>(`/api/prompt-templates/${templateId}`);
+  return response.data;
+}
+
+export async function createPromptTemplate(template: PromptTemplateCreate): Promise<void> {
+  await api.post('/api/prompt-templates', template);
+}
+
+export async function updatePromptTemplate(templateId: string, template: PromptTemplateUpdate): Promise<void> {
+  await api.put(`/api/prompt-templates/${templateId}`, template);
+}
+
+export async function deletePromptTemplate(templateId: string): Promise<void> {
+  await api.delete(`/api/prompt-templates/${templateId}`);
 }
 
 /**
