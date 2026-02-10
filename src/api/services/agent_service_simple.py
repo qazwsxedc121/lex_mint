@@ -5,7 +5,7 @@ from pathlib import Path
 import logging
 import asyncio
 
-from src.agents.simple_llm import call_llm, call_llm_stream
+from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
 from src.providers.types import TokenUsage, CostInfo
 from .conversation_storage import ConversationStorage
 from .pricing_service import PricingService
@@ -417,6 +417,57 @@ class AgentService:
                 "type": "sources",
                 "sources": all_sources
             }
+
+        # === Auto-compression check ===
+        try:
+            from .compression_config_service import CompressionConfigService
+            compression_config_svc = CompressionConfigService()
+            comp_config = compression_config_svc.config
+
+            if comp_config.auto_compress_enabled:
+                from .model_config_service import ModelConfigService
+                model_service = ModelConfigService()
+                model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
+
+                context_length = (
+                    getattr(model_cfg.capabilities, 'context_length', None)
+                    or getattr(provider_cfg.default_capabilities, 'context_length', None)
+                    or 64000
+                )
+                threshold_tokens = int(context_length * comp_config.auto_compress_threshold)
+                estimated_tokens = _estimate_total_tokens(messages)
+
+                if estimated_tokens > threshold_tokens:
+                    print(f"[AUTO-COMPRESS] Token estimate {estimated_tokens} > threshold {threshold_tokens}, compressing...")
+                    logger.info(f"Auto-compression triggered: {estimated_tokens} tokens > {threshold_tokens} threshold")
+
+                    from .compression_service import CompressionService
+                    compression_service = CompressionService(self.storage)
+                    result = await compression_service.compress_context(
+                        session_id=session_id,
+                        context_type=context_type,
+                        project_id=project_id,
+                    )
+
+                    if result:
+                        compress_msg_id, compressed_count = result
+                        # Reload messages after compression
+                        session = await self.storage.get_session(
+                            session_id, context_type=context_type, project_id=project_id
+                        )
+                        messages = session["state"]["messages"]
+                        yield {
+                            "type": "auto_compressed",
+                            "compressed_count": compressed_count,
+                            "message_id": compress_msg_id,
+                        }
+                        print(f"[AUTO-COMPRESS] Done, compressed {compressed_count} messages")
+                    else:
+                        print(f"[AUTO-COMPRESS] Compression returned no result, continuing without compression")
+        except Exception as e:
+            # Auto-compression failure should not block the LLM call
+            print(f"[AUTO-COMPRESS] Error (non-fatal): {str(e)}")
+            logger.warning(f"Auto-compression failed (non-fatal): {str(e)}", exc_info=True)
 
         print(f"[Step 3] Streaming LLM call...")
         logger.info(f"[Step 3] Streaming LLM call")

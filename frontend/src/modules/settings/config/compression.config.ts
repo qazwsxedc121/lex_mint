@@ -18,6 +18,23 @@ export const compressionConfig: SimpleConfigSettingsConfig = {
 
   fields: [
     {
+      type: 'checkbox',
+      name: 'auto_compress_enabled',
+      label: 'Enable Auto-Compression',
+      defaultValue: false
+    },
+    {
+      type: 'slider',
+      name: 'auto_compress_threshold',
+      label: 'Auto-Compression Threshold',
+      min: 0.1,
+      max: 0.9,
+      step: 0.05,
+      defaultValue: 0.5,
+      helpText: 'Compression triggers when token usage exceeds this ratio of the context window (e.g. 0.5 = 50%)',
+      condition: (formData) => formData.auto_compress_enabled === true
+    },
+    {
       type: 'select',
       name: 'model_id',
       label: 'Compression Model',

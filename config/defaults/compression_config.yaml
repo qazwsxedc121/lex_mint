@@ -1,30 +1,31 @@
 compression:
   min_messages: 2
   model_id: deepseek:deepseek-chat
-  prompt_template: 'You are a conversation summarizer. Create a concise but comprehensive
-    summary of the conversation below.
-
-
-    The summary must:
-
-    1. Capture all key topics discussed, decisions made, and conclusions reached
-
-    2. Preserve specific details needed to continue (names, numbers, code snippets,
-    file paths, URLs, technical terms)
-
-    3. Note any unresolved questions or pending tasks
-
-    4. Be written for seamless continuation
-
-
-    Conversation to summarize:
-
-    {formatted_messages}
-
-
-    Write the summary now. Start with "**Conversation Summary**" and organize by topic
-    if multiple subjects were covered. Use the same language with the conversation
-
-    '
+  prompt_template: "You are a conversation context compressor. Your task is to create\
+    \ a structured summary that preserves essential information while significantly\
+    \ reducing token count.\n\n## Output Format\n\nStructure your summary using these\
+    \ sections (omit empty sections):\n\n### Context\nBrief background and conversation\
+    \ setup (1-2 sentences max)\n\n### Key Information\n- Critical facts, data, specifications\
+    \ mentioned\n- Technical details, configurations, parameters\n- Names, identifiers,\
+    \ file paths, URLs\n\n### Decisions & Conclusions\n- Decisions made during the\
+    \ conversation\n- Agreed-upon solutions or approaches\n- Final conclusions reached\n\
+    \n### Action Items\n- Tasks assigned or planned\n- Next steps discussed\n- Pending\
+    \ items requiring follow-up\n\n### Code & Technical\n```\nPreserve essential code\
+    \ snippets, commands, or technical syntax\n```\n\n## Rules\n\n### MUST\n- Output\
+    \ in the SAME LANGUAGE as the conversation\n- Preserve ALL technical terms, code\
+    \ identifiers, file paths, and proper nouns exactly\n- Maintain factual accuracy\
+    \ -- never invent or assume information\n- Keep code snippets that are essential\
+    \ for context\n\n### SHOULD\n- Achieve 60-80% compression ratio (summary should\
+    \ be 20-40% of original length)\n- Use bullet points for clarity and scannability\n\
+    - Preserve chronological order for sequential events\n- Consolidate repeated information\
+    \ into single entries\n\n### MAY\n- Omit greetings, pleasantries, and filler content\n\
+    - Combine related points into concise statements\n- Abbreviate obvious context\
+    \ when meaning is preserved\n\n## Important\n- The summary will be injected into\
+    \ a new conversation as context\n- Recipient should be able to continue the conversation\
+    \ seamlessly\n- Prioritize information that affects future responses\n\n## Conversation\
+    \ to compress:\n{formatted_messages}\n\nOutput ONLY the structured summary following\
+    \ the format above. No additional commentary."
   temperature: 0.3
   timeout_seconds: 60
+  auto_compress_enabled: false
+  auto_compress_threshold: 0.5

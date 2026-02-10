@@ -22,6 +22,8 @@ class CompressionConfigResponse(BaseModel):
     min_messages: int
     timeout_seconds: int
     prompt_template: str
+    auto_compress_enabled: bool
+    auto_compress_threshold: float
 
 
 class CompressionConfigUpdate(BaseModel):
@@ -31,6 +33,8 @@ class CompressionConfigUpdate(BaseModel):
     min_messages: Optional[int] = Field(None, ge=1, le=50)
     timeout_seconds: Optional[int] = Field(None, ge=10, le=300)
     prompt_template: Optional[str] = None
+    auto_compress_enabled: Optional[bool] = None
+    auto_compress_threshold: Optional[float] = Field(None, ge=0.1, le=0.9)
 
 
 # Dependency
@@ -53,6 +57,8 @@ async def get_config(
             min_messages=config.min_messages,
             timeout_seconds=config.timeout_seconds,
             prompt_template=config.prompt_template,
+            auto_compress_enabled=config.auto_compress_enabled,
+            auto_compress_threshold=config.auto_compress_threshold,
         )
     except Exception as e:
         logger.error(f"Failed to get compression config: {e}")

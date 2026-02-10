@@ -125,6 +125,44 @@ def _trim_to_context_limit(
     return trimmed
 
 
+# Approximate tokens per character ratio (rough heuristic: ~4 chars per token)
+_APPROX_CHARS_PER_TOKEN = 4
+
+
+def _estimate_total_tokens(messages: List[Dict]) -> int:
+    """Estimate total token count for raw message dicts.
+
+    Uses actual completion_tokens from assistant message metadata when available,
+    falls back to approximate character-based estimation for other messages.
+
+    Args:
+        messages: Raw message dicts with role, content, and optional usage metadata.
+
+    Returns:
+        Estimated total token count.
+    """
+    total = 0
+    for msg in messages:
+        role = msg.get("role", "")
+        if role not in ("user", "assistant"):
+            continue
+
+        # For assistant messages, prefer recorded token count from usage metadata
+        if role == "assistant":
+            usage = msg.get("usage")
+            if usage and isinstance(usage, dict):
+                completion_tokens = usage.get("completion_tokens")
+                if completion_tokens and completion_tokens > 0:
+                    total += completion_tokens
+                    continue
+
+        # Fallback: approximate from content length
+        content = msg.get("content", "")
+        total += max(1, len(content) // _APPROX_CHARS_PER_TOKEN)
+
+    return total
+
+
 def _build_llm_request_params(
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -284,7 +322,7 @@ def call_llm(
     if system_prompt:
         langchain_messages.append(SystemMessage(content=system_prompt))
     if summary_content:
-        langchain_messages.append(SystemMessage(content=f"The following is a summary of the prior conversation:\n\n{summary_content}"))
+        langchain_messages.append(SystemMessage(content=f"<compressed_history_summary>\n{summary_content}\n</compressed_history_summary>"))
     for i, msg in enumerate(filtered_messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
@@ -458,7 +496,7 @@ async def call_llm_stream(
 
     # Inject summary context as a system message (if previous context was compressed)
     if summary_content:
-        langchain_messages.append(SystemMessage(content=f"The following is a summary of the prior conversation:\n\n{summary_content}"))
+        langchain_messages.append(SystemMessage(content=f"<compressed_history_summary>\n{summary_content}\n</compressed_history_summary>"))
 
     # Use multimodal conversion if file_service is available
     if file_service:

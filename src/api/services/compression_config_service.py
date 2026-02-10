@@ -19,18 +19,63 @@ from ..paths import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROMPT_TEMPLATE = """You are a conversation summarizer. Create a concise but comprehensive summary of the conversation below.
+DEFAULT_PROMPT_TEMPLATE = """You are a conversation context compressor. Your task is to create a structured summary that preserves essential information while significantly reducing token count.
 
-The summary must:
-1. Capture all key topics discussed, decisions made, and conclusions reached
-2. Preserve specific details needed to continue (names, numbers, code snippets, file paths, URLs, technical terms)
-3. Note any unresolved questions or pending tasks
-4. Be written for seamless continuation
+## Output Format
 
-Conversation to summarize:
+Structure your summary using these sections (omit empty sections):
+
+### Context
+Brief background and conversation setup (1-2 sentences max)
+
+### Key Information
+- Critical facts, data, specifications mentioned
+- Technical details, configurations, parameters
+- Names, identifiers, file paths, URLs
+
+### Decisions & Conclusions
+- Decisions made during the conversation
+- Agreed-upon solutions or approaches
+- Final conclusions reached
+
+### Action Items
+- Tasks assigned or planned
+- Next steps discussed
+- Pending items requiring follow-up
+
+### Code & Technical
+```
+Preserve essential code snippets, commands, or technical syntax
+```
+
+## Rules
+
+### MUST
+- Output in the SAME LANGUAGE as the conversation
+- Preserve ALL technical terms, code identifiers, file paths, and proper nouns exactly
+- Maintain factual accuracy -- never invent or assume information
+- Keep code snippets that are essential for context
+
+### SHOULD
+- Achieve 60-80% compression ratio (summary should be 20-40% of original length)
+- Use bullet points for clarity and scannability
+- Preserve chronological order for sequential events
+- Consolidate repeated information into single entries
+
+### MAY
+- Omit greetings, pleasantries, and filler content
+- Combine related points into concise statements
+- Abbreviate obvious context when meaning is preserved
+
+## Important
+- The summary will be injected into a new conversation as context
+- Recipient should be able to continue the conversation seamlessly
+- Prioritize information that affects future responses
+
+## Conversation to compress:
 {formatted_messages}
 
-Write the summary now. Start with "**Conversation Summary**" and organize by topic if multiple subjects were covered."""
+Output ONLY the structured summary following the format above. No additional commentary."""
 
 
 @dataclass
@@ -41,6 +86,8 @@ class CompressionConfig:
     min_messages: int
     timeout_seconds: int
     prompt_template: str
+    auto_compress_enabled: bool
+    auto_compress_threshold: float
 
 
 class CompressionConfigService:
@@ -68,6 +115,8 @@ class CompressionConfigService:
                     'temperature': 0.3,
                     'min_messages': 2,
                     'timeout_seconds': 60,
+                    'auto_compress_enabled': False,
+                    'auto_compress_threshold': 0.5,
                     'prompt_template': DEFAULT_PROMPT_TEMPLATE,
                 }
             }
@@ -93,6 +142,8 @@ class CompressionConfigService:
                 min_messages=config_data.get('min_messages', 2),
                 timeout_seconds=config_data.get('timeout_seconds', 60),
                 prompt_template=config_data.get('prompt_template', DEFAULT_PROMPT_TEMPLATE),
+                auto_compress_enabled=config_data.get('auto_compress_enabled', False),
+                auto_compress_threshold=config_data.get('auto_compress_threshold', 0.5),
             )
         except Exception as e:
             logger.error(f"Failed to load compression config: {e}")
@@ -102,6 +153,8 @@ class CompressionConfigService:
                 min_messages=2,
                 timeout_seconds=60,
                 prompt_template=DEFAULT_PROMPT_TEMPLATE,
+                auto_compress_enabled=False,
+                auto_compress_threshold=0.5,
             )
 
     def reload_config(self):
