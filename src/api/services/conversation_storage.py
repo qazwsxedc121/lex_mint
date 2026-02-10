@@ -4,6 +4,7 @@ import asyncio
 import frontmatter
 import json
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -975,6 +976,109 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         filepath.unlink()
+
+    async def move_session(
+        self,
+        session_id: str,
+        source_context_type: str = "chat",
+        source_project_id: Optional[str] = None,
+        target_context_type: str = "chat",
+        target_project_id: Optional[str] = None
+    ) -> str:
+        """Move a session file between contexts (chat/projects).
+
+        Args:
+            session_id: Session UUID to move
+            source_context_type: Source context type ("chat" or "project")
+            source_project_id: Source project ID (required for project context)
+            target_context_type: Target context type ("chat" or "project")
+            target_project_id: Target project ID (required for project context)
+
+        Returns:
+            session_id: Same session ID after move
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid or target is same as source
+            FileExistsError: If target already has a session file with same name
+        """
+        if source_context_type == target_context_type and (source_project_id or None) == (target_project_id or None):
+            raise ValueError("Target context is the same as source context")
+
+        source_path = await self._find_session_file(session_id, source_context_type, source_project_id)
+        if not source_path:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        target_dir = self._get_conversation_dir(target_context_type, target_project_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        target_path = target_dir / source_path.name
+        if target_path.exists():
+            raise FileExistsError(f"Target session file already exists: {target_path}")
+
+        shutil.move(str(source_path), str(target_path))
+
+        # Move lock reference to new path if present
+        old_key = str(source_path)
+        if old_key in self._file_locks:
+            self._file_locks[str(target_path)] = self._file_locks.pop(old_key)
+
+        return session_id
+
+    async def copy_session(
+        self,
+        session_id: str,
+        source_context_type: str = "chat",
+        source_project_id: Optional[str] = None,
+        target_context_type: str = "chat",
+        target_project_id: Optional[str] = None,
+        title_suffix: str = " (Copy)"
+    ) -> str:
+        """Copy a session file to another context with a new session ID.
+
+        Args:
+            session_id: Session UUID to copy
+            source_context_type: Source context type ("chat" or "project")
+            source_project_id: Source project ID (required for project context)
+            target_context_type: Target context type ("chat" or "project")
+            target_project_id: Target project ID (required for project context)
+            title_suffix: Suffix to append to the copied session title
+
+        Returns:
+            new_session_id: New session UUID for the copied session
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
+        """
+        source_path = await self._find_session_file(session_id, source_context_type, source_project_id)
+        if not source_path:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        target_dir = self._get_conversation_dir(target_context_type, target_project_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        async with aiofiles.open(source_path, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+
+        post = frontmatter.loads(file_content)
+        new_session_id = str(uuid.uuid4())
+        post.metadata["session_id"] = new_session_id
+        post.metadata["created_at"] = datetime.now().isoformat()
+        original_title = post.metadata.get("title", "New Chat")
+        post.metadata["title"] = f"{original_title}{title_suffix}"
+        # Copied sessions should be permanent
+        if "temporary" in post.metadata:
+            post.metadata["temporary"] = False
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"{timestamp}_{new_session_id[:8]}.md"
+        target_path = target_dir / filename
+
+        async with aiofiles.open(target_path, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
+        return new_session_id
 
     async def cleanup_temporary_sessions(self):
         """Delete all temporary session files across all contexts.

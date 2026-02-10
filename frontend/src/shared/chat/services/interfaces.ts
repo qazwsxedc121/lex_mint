@@ -29,6 +29,8 @@ export interface ChatAPI {
   saveTemporarySession(sessionId: string): Promise<void>;
   updateSessionTitle(sessionId: string, title: string): Promise<void>;
   duplicateSession(sessionId: string): Promise<string>;
+  moveSession(sessionId: string, targetContextType: string, targetProjectId?: string): Promise<void>;
+  copySession(sessionId: string, targetContextType: string, targetProjectId?: string): Promise<string>;
   branchSession(sessionId: string, messageId: string): Promise<string>;
   updateSessionAssistant(sessionId: string, assistantId: string): Promise<void>;
   updateSessionParamOverrides(sessionId: string, paramOverrides: ParamOverrides): Promise<void>;

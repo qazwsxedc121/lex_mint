@@ -18,9 +18,12 @@ import {
   ChatBubbleLeftRightIcon,
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
+  ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
-import { exportSession, importChatGPTConversations, importMarkdownConversation } from '../../../services/api';
+import { exportSession, importChatGPTConversations, importMarkdownConversation, listProjects } from '../../../services/api';
+import type { Project } from '../../../types/project';
+import { SessionTransferModal } from './SessionTransferModal';
 
 export const ChatSidebar: React.FC = () => {
   const navigate = useNavigate();
@@ -41,8 +44,33 @@ export const ChatSidebar: React.FC = () => {
   const [generatingTitleId, setGeneratingTitleId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [transferState, setTransferState] = useState<{ sessionId: string; mode: 'move' | 'copy' } | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
   const chatgptInputRef = useRef<HTMLInputElement>(null);
   const markdownInputRef = useRef<HTMLInputElement>(null);
+
+  const loadProjects = React.useCallback(async () => {
+    try {
+      setProjectsLoading(true);
+      setProjectsError(null);
+      const data = await listProjects();
+      setProjects(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load projects';
+      setProjectsError(message);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (transferState) {
+      loadProjects();
+    }
+  }, [transferState, loadProjects]);
 
   const handleNewSession = async () => {
     try {
@@ -238,6 +266,40 @@ export const ChatSidebar: React.FC = () => {
     } catch (err) {
       console.error('Failed to duplicate session:', err);
       alert('Failed to duplicate session');
+    }
+  };
+
+  const handleOpenTransfer = (e: React.MouseEvent, sessionId: string, mode: 'move' | 'copy') => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    setTransferState({ sessionId, mode });
+  };
+
+  const handleSelectTransferTarget = async (targetContextType: 'chat' | 'project', targetProjectId?: string) => {
+    if (!transferState) return;
+
+    try {
+      setTransferBusy(true);
+      if (transferState.mode === 'move') {
+        await api.moveSession(transferState.sessionId, targetContextType, targetProjectId);
+        await refreshSessions();
+        if (currentSessionId === transferState.sessionId && targetContextType !== 'chat') {
+          if (navigation) {
+            navigation.navigateToRoot();
+          } else {
+            navigate('/chat');
+          }
+        }
+      } else {
+        await api.copySession(transferState.sessionId, targetContextType, targetProjectId);
+        await refreshSessions();
+      }
+    } catch (err) {
+      console.error('Failed to transfer session:', err);
+      alert('Failed to transfer conversation');
+    } finally {
+      setTransferBusy(false);
+      setTransferState(null);
     }
   };
 
@@ -453,6 +515,20 @@ export const ChatSidebar: React.FC = () => {
                           Duplicate
                         </button>
                         <button
+                          onClick={(e) => handleOpenTransfer(e, session.session_id, 'move')}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <ArrowRightOnRectangleIcon className="h-4 w-4" />
+                          Move to Project
+                        </button>
+                        <button
+                          onClick={(e) => handleOpenTransfer(e, session.session_id, 'copy')}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <DocumentDuplicateIcon className="h-4 w-4" />
+                          Copy to Project
+                        </button>
+                        <button
                           onClick={(e) => handleExport(e, session.session_id)}
                           className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                         >
@@ -477,6 +553,19 @@ export const ChatSidebar: React.FC = () => {
           ))
         )}
       </div>
+
+      <SessionTransferModal
+        isOpen={Boolean(transferState)}
+        mode={transferState?.mode || 'move'}
+        projects={projects}
+        loading={projectsLoading}
+        error={projectsError}
+        busy={transferBusy}
+        showChatOption={false}
+        onClose={() => setTransferState(null)}
+        onSelectTarget={handleSelectTransferTarget}
+        onRetry={loadProjects}
+      />
     </div>
   );
 };

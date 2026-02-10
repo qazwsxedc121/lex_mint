@@ -167,6 +167,62 @@ export async function duplicateSession(sessionId: string, contextType: string = 
 }
 
 /**
+ * Move a session between contexts (chat/projects).
+ */
+export async function moveSession(
+  sessionId: string,
+  sourceContextType: string = 'chat',
+  sourceProjectId?: string,
+  targetContextType: string = 'chat',
+  targetProjectId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', sourceContextType);
+  if (sourceProjectId) {
+    params.append('project_id', sourceProjectId);
+  }
+
+  const body: { target_context_type: string; target_project_id?: string } = {
+    target_context_type: targetContextType,
+  };
+  if (targetProjectId) {
+    body.target_project_id = targetProjectId;
+  }
+
+  await api.post(`/api/sessions/${sessionId}/move?${params.toString()}`, body);
+}
+
+/**
+ * Copy a session between contexts (chat/projects).
+ */
+export async function copySession(
+  sessionId: string,
+  sourceContextType: string = 'chat',
+  sourceProjectId?: string,
+  targetContextType: string = 'chat',
+  targetProjectId?: string
+): Promise<string> {
+  const params = new URLSearchParams();
+  params.append('context_type', sourceContextType);
+  if (sourceProjectId) {
+    params.append('project_id', sourceProjectId);
+  }
+
+  const body: { target_context_type: string; target_project_id?: string } = {
+    target_context_type: targetContextType,
+  };
+  if (targetProjectId) {
+    body.target_project_id = targetProjectId;
+  }
+
+  const response = await api.post<{ session_id: string; message: string }>(
+    `/api/sessions/${sessionId}/copy?${params.toString()}`,
+    body
+  );
+  return response.data.session_id;
+}
+
+/**
  * Branch a session from a specific message
  */
 export async function branchSession(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<string> {

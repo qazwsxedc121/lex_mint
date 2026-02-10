@@ -16,6 +16,10 @@ export const defaultChatAPI: ChatAPI = {
   saveTemporarySession: api.saveTemporarySession,
   updateSessionTitle: api.updateSessionTitle,
   duplicateSession: api.duplicateSession,
+  moveSession: (sessionId: string, targetContextType: string, targetProjectId?: string) =>
+    api.moveSession(sessionId, 'chat', undefined, targetContextType, targetProjectId),
+  copySession: (sessionId: string, targetContextType: string, targetProjectId?: string) =>
+    api.copySession(sessionId, 'chat', undefined, targetContextType, targetProjectId),
   branchSession: api.branchSession,
   updateSessionAssistant: api.updateSessionAssistant,
   updateSessionParamOverrides: api.updateSessionParamOverrides,

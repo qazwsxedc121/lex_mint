@@ -9,6 +9,7 @@ import re
 import json
 import io
 import zipfile
+import shutil
 from urllib.parse import quote
 
 from ..services.conversation_storage import ConversationStorage
@@ -46,6 +47,12 @@ class UpdateTitleRequest(BaseModel):
 class UpdateParamOverridesRequest(BaseModel):
     """更新参数覆盖请求"""
     param_overrides: Dict
+
+
+class TransferSessionRequest(BaseModel):
+    """Move or copy session request."""
+    target_context_type: str
+    target_project_id: Optional[str] = None
 
 
 class ImportChatGPTSession(BaseModel):
@@ -636,6 +643,106 @@ async def duplicate_session(
 
         logger.info(f"✅ 会话复制成功: {new_session_id}")
         return {"session_id": new_session_id, "message": "Session duplicated successfully"}
+    except FileNotFoundError:
+        logger.error(f"❌ 会话未找到: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        logger.error(f"❌ 验证错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _copy_session_attachments(source_session_id: str, target_session_id: str) -> None:
+    """Copy attachment files for a session to a new session ID."""
+    source_dir = settings.attachments_dir / source_session_id
+    if not source_dir.exists():
+        return
+
+    target_dir = settings.attachments_dir / target_session_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    for entry in source_dir.iterdir():
+        if entry.name == "temp":
+            continue
+        destination = target_dir / entry.name
+        if entry.is_dir():
+            shutil.copytree(entry, destination, dirs_exist_ok=True)
+        else:
+            shutil.copy2(entry, destination)
+
+
+@router.post("/{session_id}/move", response_model=Dict[str, str])
+async def move_session(
+    session_id: str,
+    request: TransferSessionRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Move a session between chat/projects context."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    if request.target_context_type == "project" and not request.target_project_id:
+        raise HTTPException(status_code=400, detail="target_project_id is required for project context")
+
+    if request.target_context_type not in ["chat", "project"]:
+        raise HTTPException(status_code=400, detail="Invalid target_context_type")
+
+    logger.info(f"📦 移动会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}")
+    try:
+        await storage.move_session(
+            session_id,
+            source_context_type=context_type,
+            source_project_id=project_id,
+            target_context_type=request.target_context_type,
+            target_project_id=request.target_project_id
+        )
+        return {"session_id": session_id, "message": "Session moved successfully"}
+    except FileNotFoundError:
+        logger.error(f"❌ 会话未找到: {session_id}")
+        raise HTTPException(status_code=404, detail="Session not found")
+    except FileExistsError as e:
+        logger.error(f"❌ 目标已存在: {str(e)}")
+        raise HTTPException(status_code=409, detail="Target session already exists")
+    except ValueError as e:
+        logger.error(f"❌ 验证错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{session_id}/copy", response_model=Dict[str, str])
+async def copy_session(
+    session_id: str,
+    request: TransferSessionRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Copy a session between chat/projects context."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    if request.target_context_type == "project" and not request.target_project_id:
+        raise HTTPException(status_code=400, detail="target_project_id is required for project context")
+
+    if request.target_context_type not in ["chat", "project"]:
+        raise HTTPException(status_code=400, detail="Invalid target_context_type")
+
+    logger.info(f"📄 复制会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}")
+    try:
+        new_session_id = await storage.copy_session(
+            session_id,
+            source_context_type=context_type,
+            source_project_id=project_id,
+            target_context_type=request.target_context_type,
+            target_project_id=request.target_project_id
+        )
+
+        try:
+            _copy_session_attachments(session_id, new_session_id)
+        except Exception as e:
+            logger.warning(f"⚠️ 附件复制失败: {session_id} -> {new_session_id}: {e}")
+
+        return {"session_id": new_session_id, "message": "Session copied successfully"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")

@@ -5,7 +5,7 @@
 
 import { Fragment } from 'react';
 import { Menu, Transition } from '@headlessui/react';
-import { ChevronDownIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, PlusIcon, TrashIcon, ArrowRightOnRectangleIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import type { Session } from '../../../types/message';
 
 interface SessionSelectorProps {
@@ -14,6 +14,7 @@ interface SessionSelectorProps {
   onSelectSession: (sessionId: string) => void;  // Switch session
   onCreateSession: () => void;   // Create new session
   onDeleteSession: (sessionId: string) => void;  // Delete session
+  onOpenTransfer: (sessionId: string, mode: 'move' | 'copy') => void; // Move/Copy session
 }
 
 export default function SessionSelector({
@@ -22,6 +23,7 @@ export default function SessionSelector({
   onSelectSession,
   onCreateSession,
   onDeleteSession,
+  onOpenTransfer,
 }: SessionSelectorProps) {
   const currentSession = sessions.find((s) => s.session_id === currentSessionId);
   const currentTitle = currentSession?.title || 'New Conversation';
@@ -34,7 +36,7 @@ export default function SessionSelector({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div data-name="session-selector-root" className="flex items-center gap-2">
       {/* Session Dropdown */}
       <Menu as="div" className="relative flex-1">
         <Menu.Button className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -74,6 +76,26 @@ export default function SessionSelector({
                       onClick={() => onSelectSession(session.session_id)}
                     >
                       <span className="truncate flex-1">{session.title || 'New Conversation'}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenTransfer(session.session_id, 'move');
+                        }}
+                        className="ml-2 p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/20 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                        title="Move conversation"
+                      >
+                        <ArrowRightOnRectangleIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenTransfer(session.session_id, 'copy');
+                        }}
+                        className="ml-1 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                        title="Copy conversation"
+                      >
+                        <DocumentDuplicateIcon className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={(e) => handleDeleteClick(e, session.session_id)}
                         className="ml-2 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"

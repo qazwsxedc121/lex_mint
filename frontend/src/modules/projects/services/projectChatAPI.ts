@@ -46,6 +46,14 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.duplicateSession(sessionId, contextType, projectId);
     },
 
+    moveSession: async (sessionId: string, targetContextType: string, targetProjectId?: string) => {
+      return api.moveSession(sessionId, contextType, projectId, targetContextType, targetProjectId);
+    },
+
+    copySession: async (sessionId: string, targetContextType: string, targetProjectId?: string) => {
+      return api.copySession(sessionId, contextType, projectId, targetContextType, targetProjectId);
+    },
+
     branchSession: async (sessionId: string, messageId: string) => {
       return api.branchSession(sessionId, messageId, contextType, projectId);
     },

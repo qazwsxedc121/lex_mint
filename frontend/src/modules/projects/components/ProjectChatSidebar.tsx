@@ -6,8 +6,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ChatView, useChatServices } from '../../../shared/chat';
 import type { Message } from '../../../types/message';
+import type { Project } from '../../../types/project';
 import SessionSelector from './SessionSelector';
 import { InsertToEditorButton } from './InsertToEditorButton';
+import { listProjects } from '../../../services/api';
+import { SessionTransferModal } from '../../../shared/chat/components/SessionTransferModal';
 
 interface ProjectChatSidebarProps {
   projectId: string;  // Current project ID
@@ -58,9 +61,14 @@ function ChatServiceConsumer({
   onSelectSession,
   onSetCurrentSessionId,
 }: ChatServiceConsumerProps) {
-  const { sessions, createSession, deleteSession, sessionsLoading } = useChatServices();
+  const { api, sessions, createSession, deleteSession, sessionsLoading, refreshSessions } = useChatServices();
   const [initialized, setInitialized] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [transferState, setTransferState] = useState<{ sessionId: string; mode: 'move' | 'copy' } | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
 
   // Track when sessions have been loaded at least once
   useEffect(() => {
@@ -74,6 +82,26 @@ function ChatServiceConsumer({
     setInitialized(false);
     setSessionsLoaded(false);
   }, [projectId]);
+
+  const loadProjects = useCallback(async () => {
+    try {
+      setProjectsLoading(true);
+      setProjectsError(null);
+      const data = await listProjects();
+      setProjects(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load projects';
+      setProjectsError(message);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (transferState) {
+      loadProjects();
+    }
+  }, [transferState, loadProjects]);
 
   // Initialize: Restore saved session or auto-select first session
   useEffect(() => {
@@ -139,6 +167,39 @@ function ChatServiceConsumer({
     }
   };
 
+  const handleOpenTransfer = (sessionId: string, mode: 'move' | 'copy') => {
+    setTransferState({ sessionId, mode });
+  };
+
+  const handleSelectTransferTarget = async (targetContextType: 'chat' | 'project', targetProjectId?: string) => {
+    if (!transferState) return;
+
+    try {
+      setTransferBusy(true);
+      if (transferState.mode === 'move') {
+        await api.moveSession(transferState.sessionId, targetContextType, targetProjectId);
+        if (transferState.sessionId === currentSessionId) {
+          const remaining = sessions.filter((s) => s.session_id !== transferState.sessionId);
+          if (remaining.length > 0) {
+            onSetCurrentSessionId(remaining[0].session_id);
+          } else {
+            onSetCurrentSessionId(null);
+          }
+        }
+        await refreshSessions();
+      } else {
+        await api.copySession(transferState.sessionId, targetContextType, targetProjectId);
+        await refreshSessions();
+      }
+    } catch (error) {
+      console.error('Failed to transfer session:', error);
+      alert('Failed to transfer conversation. Please try again.');
+    } finally {
+      setTransferBusy(false);
+      setTransferState(null);
+    }
+  };
+
   // Custom message actions for ChatView
   const customMessageActions = useCallback((message: Message, messageId: string) => (
     <InsertToEditorButton content={message.content} messageRole={message.role} />
@@ -162,6 +223,7 @@ function ChatServiceConsumer({
           onSelectSession={onSelectSession}
           onCreateSession={handleCreateSession}
           onDeleteSession={handleDeleteSession}
+          onOpenTransfer={handleOpenTransfer}
         />
       </div>
 
@@ -172,6 +234,20 @@ function ChatServiceConsumer({
           customMessageActions={customMessageActions}
         />
       </div>
+
+      <SessionTransferModal
+        isOpen={Boolean(transferState)}
+        mode={transferState?.mode || 'move'}
+        projects={projects}
+        loading={projectsLoading}
+        error={projectsError}
+        busy={transferBusy}
+        showChatOption={true}
+        excludeProjectId={projectId}
+        onClose={() => setTransferState(null)}
+        onSelectTarget={handleSelectTransferTarget}
+        onRetry={loadProjects}
+      />
     </div>
   );
 }
