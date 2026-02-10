@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from pathlib import Path
+import os
 from datetime import datetime
 
 
@@ -20,7 +21,8 @@ class Project(BaseModel):
     @classmethod
     def validate_root_path(cls, v: str) -> str:
         """Validate that root_path is an absolute path to an existing directory."""
-        path = Path(v)
+        expanded = os.path.expandvars(v)
+        path = Path(expanded).expanduser()
         if not path.is_absolute():
             raise ValueError("root_path must be absolute path")
         if not path.exists():

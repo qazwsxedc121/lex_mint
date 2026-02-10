@@ -1,6 +1,7 @@
 """Service for managing projects and file operations."""
 
 import yaml
+import logging
 import asyncio
 import shutil
 from pathlib import Path
@@ -16,6 +17,7 @@ from src.api.models.project_config import (
 )
 from src.api.config import settings
 
+logger = logging.getLogger(__name__)
 
 class ProjectService:
     """Service for managing projects and file operations."""
@@ -44,7 +46,15 @@ class ProjectService:
                     data = yaml.safe_load(f)
                     if data is None:
                         return ProjectsConfig(projects=[])
-                    return ProjectsConfig(**data)
+                    raw_projects = data.get('projects', [])
+                    valid_projects: List[Project] = []
+                    if isinstance(raw_projects, list):
+                        for index, raw in enumerate(raw_projects):
+                            try:
+                                valid_projects.append(Project.model_validate(raw))
+                            except Exception as e:
+                                logger.warning(f"Skipping invalid project entry at index {index}: {e}")
+                    return ProjectsConfig(projects=valid_projects)
             except Exception as e:
                 raise ValueError(f"Failed to load config: {e}")
 
