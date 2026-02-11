@@ -203,3 +203,50 @@ class FolderService:
             folder.order = i
 
         await self._save_config(config)
+
+    async def reorder_folder(self, folder_id: str, new_order: int) -> Folder:
+        """
+        Reorder a folder to a new position
+
+        Args:
+            folder_id: Folder ID
+            new_order: New order position (0-based index)
+
+        Returns:
+            Updated folder
+
+        Raises:
+            ValueError: If folder not found or new_order is invalid
+        """
+        config = await self._load_config()
+
+        # Find the folder
+        folder = next((f for f in config.folders if f.id == folder_id), None)
+        if folder is None:
+            raise ValueError(f"Folder '{folder_id}' not found")
+
+        # Validate new_order
+        if new_order < 0 or new_order >= len(config.folders):
+            raise ValueError(f"Invalid order: {new_order}. Must be between 0 and {len(config.folders) - 1}")
+
+        old_order = folder.order
+
+        # If order hasn't changed, just return the folder
+        if old_order == new_order:
+            return folder
+
+        # Shift other folders
+        for f in config.folders:
+            if f.id == folder_id:
+                f.order = new_order
+            elif old_order < new_order:
+                # Moving down: shift folders between old and new positions up
+                if old_order < f.order <= new_order:
+                    f.order -= 1
+            else:
+                # Moving up: shift folders between new and old positions down
+                if new_order <= f.order < old_order:
+                    f.order += 1
+
+        await self._save_config(config)
+        return folder

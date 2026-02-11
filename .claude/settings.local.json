@@ -63,7 +63,8 @@
       "Bash(tasklist:*)",
       "Bash(taskkill:*)",
       "Bash(timeout 5 venv/bin/python:*)",
-      "Bash(venv/bin/python:*)"
+      "Bash(venv/bin/python:*)",
+      "Bash(chmod:*)"
     ]
   }
 }

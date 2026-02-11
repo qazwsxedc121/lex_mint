@@ -9,6 +9,7 @@ import {
   createChatFolder,
   updateChatFolder,
   deleteChatFolder,
+  reorderChatFolder,
   updateSessionFolder as apiUpdateSessionFolder,
 } from '../../../services/api';
 
@@ -115,6 +116,19 @@ export function useFolders() {
     }
   };
 
+  const reorderFolder = async (folderId: string, newOrder: number): Promise<boolean> => {
+    try {
+      setError(null);
+      await reorderChatFolder(folderId, newOrder);
+      await loadFolders(); // Refresh to get all updated orders
+      return true;
+    } catch (err) {
+      console.error('Failed to reorder folder:', err);
+      setError(err instanceof Error ? err.message : 'Failed to reorder folder');
+      return false;
+    }
+  };
+
   const toggleFolder = (folderId: string) => {
     setCollapsedFolders((prev) => {
       const next = new Set(prev);
@@ -137,6 +151,7 @@ export function useFolders() {
     updateFolder,
     deleteFolder,
     moveSessionToFolder,
+    reorderFolder,
     toggleFolder,
   };
 }

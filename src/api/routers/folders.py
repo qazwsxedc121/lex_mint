@@ -29,6 +29,11 @@ class UpdateSessionFolderRequest(BaseModel):
     folder_id: Optional[str] = None  # None to remove from folder
 
 
+class ReorderFolderRequest(BaseModel):
+    """Reorder folder request"""
+    order: int
+
+
 def get_folder_service() -> FolderService:
     """Dependency injection for FolderService."""
     return FolderService()
@@ -148,4 +153,39 @@ async def delete_folder(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{folder_id}/order", response_model=Folder)
+async def reorder_folder(
+    folder_id: str,
+    request: ReorderFolderRequest,
+    service: FolderService = Depends(get_folder_service)
+):
+    """
+    Reorder a folder to a new position.
+
+    Args:
+        folder_id: Folder ID
+        request: Reorder data containing new order position
+
+    Returns:
+        Updated folder
+
+    Raises:
+        404: Folder not found
+        400: Invalid order value
+    """
+    try:
+        folder = await service.reorder_folder(folder_id=folder_id, new_order=request.order)
+        return folder
+    except ValueError as e:
+        # Check if it's a "not found" error or "invalid order" error
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        else:
+            raise HTTPException(status_code=400, detail=error_msg)
+    except Exception as e:
+        logger.error(f"Error reordering folder: {e}")
         raise HTTPException(status_code=500, detail=str(e))

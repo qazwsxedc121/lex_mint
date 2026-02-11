@@ -1708,6 +1708,14 @@ export async function deleteChatFolder(folderId: string): Promise<void> {
 }
 
 /**
+ * Reorder a chat folder to a new position.
+ */
+export async function reorderChatFolder(folderId: string, newOrder: number): Promise<Folder> {
+  const response = await api.patch<Folder>(`/api/folders/${folderId}/order`, { order: newOrder });
+  return response.data;
+}
+
+/**
  * Update session's folder assignment.
  */
 export async function updateSessionFolder(
