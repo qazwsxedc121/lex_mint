@@ -25,8 +25,8 @@
 [] RAG by tool use
 [] RAG word search (BM25)
 [] conversation in Project path
-[] 数学公式
+[X] 数学公式
 [] SVG渲染
 [] Docker file
 [] 完善话题分支
-[] 对话文件夹组织
+[X] 对话文件夹组织

@@ -13,6 +13,7 @@ import {
   ArrowDownTrayIcon,
   ArrowRightOnRectangleIcon,
   FolderIcon,
+  Bars2Icon,
 } from '@heroicons/react/24/outline';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -39,6 +40,32 @@ interface DraggableSessionProps {
   onExport: (e: React.MouseEvent, sessionId: string) => void;
   onMoveToFolder: (sessionId: string, folderId: string | null) => void;
   setEditTitle: (title: string) => void;
+}
+
+/**
+ * Format a "YYYY-MM-DD HH:MM:SS" timestamp for compact sidebar display.
+ *  - Today        → "HH:MM"
+ *  - This year    → "MM-DD HH:MM"
+ *  - Other years  → "YY-MM-DD HH:MM"
+ */
+function formatShortTime(raw: string): string {
+  const now = new Date();
+  const date = new Date(raw.replace(' ', 'T'));
+  if (isNaN(date.getTime())) return raw;
+
+  const hhmm = raw.slice(11, 16); // "HH:MM"
+
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (isToday) return hhmm;
+
+  const mmdd = raw.slice(5, 10); // "MM-DD"
+  if (date.getFullYear() === now.getFullYear()) return `${mmdd} ${hhmm}`;
+
+  const yy = raw.slice(2, 4); // "YY"
+  return `${yy}-${mmdd} ${hhmm}`;
 }
 
 export const DraggableSession: React.FC<DraggableSessionProps> = ({
@@ -89,7 +116,15 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
       onClick={() => onSelect(session.session_id)}
     >
       <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0 pr-2" {...attributes} {...listeners}>
+        <div
+          className="flex-shrink-0 flex items-center mr-1.5 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Bars2Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0 pr-2">
           {editingSessionId === session.session_id ? (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <input
@@ -131,7 +166,7 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
                 {session.updated_at && (
                   <>
                     <span className="mx-0.5">-</span>
-                    <span>{session.updated_at}</span>
+                    <span>{formatShortTime(session.updated_at)}</span>
                   </>
                 )}
               </p>

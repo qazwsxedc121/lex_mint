@@ -15,6 +15,7 @@ import {
   ArrowUpTrayIcon,
   FolderIcon,
   FolderOpenIcon,
+  EllipsisHorizontalIcon,
 } from '@heroicons/react/24/outline';
 import {
   DndContext,
@@ -109,7 +110,10 @@ export const ChatSidebar: React.FC = () => {
   const [editTitle, setEditTitle] = useState('');
   const [generatingTitleId, setGeneratingTitleId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [showTimeGroups, setShowTimeGroups] = useState(() => {
+    return localStorage.getItem('chat-show-time-groups') === 'true';
+  });
   const [transferState, setTransferState] = useState<{ sessionId: string; mode: 'move' | 'copy' } | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -196,7 +200,6 @@ export const ChatSidebar: React.FC = () => {
     }
 
     setImporting(true);
-    setImportMenuOpen(false);
     try {
       const result = await importChatGPTConversations(file);
       await refreshSessions();
@@ -236,7 +239,6 @@ export const ChatSidebar: React.FC = () => {
     }
 
     setImporting(true);
-    setImportMenuOpen(false);
     try {
       const result = await importMarkdownConversation(file);
       await refreshSessions();
@@ -407,14 +409,19 @@ export const ChatSidebar: React.FC = () => {
     }
   }, [openMenuId]);
 
-  // Close import menu when clicking outside
+  // Close "More" menu when clicking outside
   React.useEffect(() => {
-    const handleClickOutside = () => setImportMenuOpen(false);
-    if (importMenuOpen) {
+    const handleClickOutside = () => setMoreMenuOpen(false);
+    if (moreMenuOpen) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [importMenuOpen]);
+  }, [moreMenuOpen]);
+
+  // Persist time groups preference
+  React.useEffect(() => {
+    localStorage.setItem('chat-show-time-groups', showTimeGroups.toString());
+  }, [showTimeGroups]);
 
   // Group sessions by folder
   const { folderGroups, ungroupedSessions } = useMemo(() => {
@@ -566,42 +573,78 @@ export const ChatSidebar: React.FC = () => {
         >
           <PlusIcon className="h-5 w-5" />
         </button>
-        <div data-name="chat-sidebar-import" className="relative">
+
+        {/* "More" dropdown menu */}
+        <div data-name="chat-sidebar-more-menu" className="relative">
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (!importing) {
-                setImportMenuOpen(!importMenuOpen);
-              }
+              setMoreMenuOpen(!moreMenuOpen);
             }}
-            disabled={importing}
-            className="p-2 rounded-lg text-emerald-500 dark:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
-            title={importing ? 'Importing...' : 'Import conversations'}
+            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            title="More options"
           >
-            <ArrowUpTrayIcon className="h-5 w-5" />
+            <EllipsisHorizontalIcon className="h-5 w-5" />
           </button>
-          {importMenuOpen && (
+
+          {moreMenuOpen && (
             <div className="absolute left-0 mt-1 w-56 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-10">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   chatgptInputRef.current?.click();
+                  setMoreMenuOpen(false);
                 }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                disabled={importing}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2 disabled:opacity-60"
               >
+                <ArrowUpTrayIcon className="h-4 w-4 text-emerald-500" />
                 Import ChatGPT (.json/.zip)
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   markdownInputRef.current?.click();
+                  setMoreMenuOpen(false);
                 }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                disabled={importing}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2 disabled:opacity-60"
               >
+                <ArrowUpTrayIcon className="h-4 w-4 text-emerald-500" />
                 Import Markdown (.md)
               </button>
+
+              <div className="border-t border-gray-200 dark:border-gray-600 my-1" />
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFolderModalState({ open: true, mode: 'create' });
+                  setMoreMenuOpen(false);
+                }}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+              >
+                <FolderIcon className="h-4 w-4 text-amber-500" />
+                New Folder
+              </button>
+
+              <div className="border-t border-gray-200 dark:border-gray-600 my-1" />
+
+              <label
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2 cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={showTimeGroups}
+                  onChange={(e) => setShowTimeGroups(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                Show time groups
+              </label>
             </div>
           )}
+
           <input
             ref={chatgptInputRef}
             type="file"
@@ -617,13 +660,7 @@ export const ChatSidebar: React.FC = () => {
             onChange={(e) => handleImportMarkdown(e.target.files)}
           />
         </div>
-        <button
-          onClick={() => setFolderModalState({ open: true, mode: 'create' })}
-          className="p-2 rounded-lg text-amber-500 dark:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title="New Folder"
-        >
-          <FolderIcon className="h-5 w-5" />
-        </button>
+
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
           className="ml-auto p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -694,7 +731,7 @@ export const ChatSidebar: React.FC = () => {
                 );
               })}
 
-              {/* Ungrouped Sessions (Time-based grouping) */}
+              {/* Ungrouped Sessions */}
               {ungroupedSessions.length > 0 && (
                 <div>
                   <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
@@ -705,37 +742,64 @@ export const ChatSidebar: React.FC = () => {
                     </div>
                   </div>
 
-                  {groupedUngrouped.map((group) => (
-                    <div key={group.label}>
-                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-[1]">
-                        {group.label}
+                  {showTimeGroups ? (
+                    groupedUngrouped.map((group) => (
+                      <div key={group.label}>
+                        <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-[1]">
+                          {group.label}
+                        </div>
+                        {group.sessions.map((session, sessionIndex) => (
+                          <DraggableSession
+                            key={`ungrouped-session-${session.session_id}-${sessionIndex}`}
+                            session={session}
+                            currentSessionId={currentSessionId}
+                            editingSessionId={editingSessionId}
+                            editTitle={editTitle}
+                            generatingTitleId={generatingTitleId}
+                            openMenuId={openMenuId}
+                            folders={folders}
+                            onSelect={handleSelectSession}
+                            onDelete={handleDeleteSession}
+                            onMenuClick={handleMenuClick}
+                            onGenerateTitle={handleGenerateTitle}
+                            onStartEdit={handleStartEdit}
+                            onSaveEdit={handleSaveEdit}
+                            onCancelEdit={handleCancelEdit}
+                            onDuplicate={handleDuplicate}
+                            onOpenTransfer={handleOpenTransfer}
+                            onExport={handleExport}
+                            onMoveToFolder={handleMoveToFolder}
+                            setEditTitle={setEditTitle}
+                          />
+                        ))}
                       </div>
-                      {group.sessions.map((session, sessionIndex) => (
-                        <DraggableSession
-                          key={`ungrouped-session-${session.session_id}-${sessionIndex}`}
-                          session={session}
-                          currentSessionId={currentSessionId}
-                          editingSessionId={editingSessionId}
-                          editTitle={editTitle}
-                          generatingTitleId={generatingTitleId}
-                          openMenuId={openMenuId}
-                          folders={folders}
-                          onSelect={handleSelectSession}
-                          onDelete={handleDeleteSession}
-                          onMenuClick={handleMenuClick}
-                          onGenerateTitle={handleGenerateTitle}
-                          onStartEdit={handleStartEdit}
-                          onSaveEdit={handleSaveEdit}
-                          onCancelEdit={handleCancelEdit}
-                          onDuplicate={handleDuplicate}
-                          onOpenTransfer={handleOpenTransfer}
-                          onExport={handleExport}
-                          onMoveToFolder={handleMoveToFolder}
-                          setEditTitle={setEditTitle}
-                        />
-                      ))}
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    ungroupedSessions.map((session, sessionIndex) => (
+                      <DraggableSession
+                        key={`ungrouped-session-${session.session_id}-${sessionIndex}`}
+                        session={session}
+                        currentSessionId={currentSessionId}
+                        editingSessionId={editingSessionId}
+                        editTitle={editTitle}
+                        generatingTitleId={generatingTitleId}
+                        openMenuId={openMenuId}
+                        folders={folders}
+                        onSelect={handleSelectSession}
+                        onDelete={handleDeleteSession}
+                        onMenuClick={handleMenuClick}
+                        onGenerateTitle={handleGenerateTitle}
+                        onStartEdit={handleStartEdit}
+                        onSaveEdit={handleSaveEdit}
+                        onCancelEdit={handleCancelEdit}
+                        onDuplicate={handleDuplicate}
+                        onOpenTransfer={handleOpenTransfer}
+                        onExport={handleExport}
+                        onMoveToFolder={handleMoveToFolder}
+                        setEditTitle={setEditTitle}
+                      />
+                    ))
+                  )}
                 </div>
               )}
             </>
