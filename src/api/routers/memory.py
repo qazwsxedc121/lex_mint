@@ -50,7 +50,7 @@ class MemorySettingsUpdate(BaseModel):
 class MemoryCreateRequest(BaseModel):
     content: str = Field(..., min_length=1)
     scope: Literal["global", "assistant"] = "global"
-    layer: str = Field(default="preference")
+    layer: str = Field(default="fact")
     assistant_id: Optional[str] = None
     profile_id: Optional[str] = None
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)

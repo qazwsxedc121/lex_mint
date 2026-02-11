@@ -1,4 +1,4 @@
-﻿"""Unit tests for MemoryService."""
+"""Unit tests for MemoryService."""
 
 import asyncio
 
@@ -16,14 +16,12 @@ def memory_service(temp_config_dir):
     return MemoryService(memory_config_service=cfg)
 
 
-def test_extract_memory_candidates_detects_identity_and_preference(memory_service):
-    text = "我是一名后端工程师。以后请用中文回答，尽量简短。"
+def test_extract_memory_candidates_returns_empty(memory_service):
+    text = "I am a backend engineer. Please respond in Chinese."
 
     items = memory_service.extract_memory_candidates(text)
 
-    layers = {item["layer"] for item in items}
-    assert "identity" in layers
-    assert "preference" in layers
+    assert items == []
 
 
 def test_search_memories_for_scopes_merges_and_dedups(memory_service, monkeypatch):
@@ -35,13 +33,13 @@ def test_search_memories_for_scopes_merges_and_dedups(memory_service, monkeypatc
                     id="mem_same",
                     content="Use concise replies.",
                     score=0.6,
-                    metadata={"scope": "global", "layer": "preference", "hash": "h1"},
+                    metadata={"scope": "global", "layer": "fact", "hash": "h1"},
                 ),
                 MemoryResult(
                     id="mem_global",
                     content="User is an engineer.",
                     score=0.7,
-                    metadata={"scope": "global", "layer": "identity", "hash": "h2"},
+                    metadata={"scope": "global", "layer": "fact", "hash": "h2"},
                 ),
             ]
 
@@ -50,7 +48,7 @@ def test_search_memories_for_scopes_merges_and_dedups(memory_service, monkeypatc
                 id="mem_same",
                 content="Use concise replies.",
                 score=0.9,
-                metadata={"scope": "assistant", "layer": "preference", "hash": "h1"},
+                metadata={"scope": "assistant", "layer": "fact", "hash": "h1"},
             )
         ]
 
@@ -70,19 +68,11 @@ def test_search_memories_for_scopes_merges_and_dedups(memory_service, monkeypatc
     assert items[0]["score"] == pytest.approx(0.9)
 
 
-def test_extract_and_persist_from_turn_assigns_scope(memory_service, monkeypatch):
-    captured = []
-
-    def fake_upsert_memory(**kwargs):
-        captured.append(kwargs)
-        return {"id": f"mem_{len(captured)}", **kwargs}
-
-    monkeypatch.setattr(memory_service, "upsert_memory", fake_upsert_memory)
-
-    asyncio.run(
+def test_extract_and_persist_from_turn_returns_empty(memory_service):
+    result = asyncio.run(
         memory_service.extract_and_persist_from_turn(
-            user_message="我是一名数据分析师。以后请用中文回答。",
-            assistant_message="收到",
+            user_message="I am a data analyst. Please respond in Chinese.",
+            assistant_message="OK",
             assistant_id="assistant-a",
             source_session_id="s1",
             source_message_id="m1",
@@ -90,10 +80,4 @@ def test_extract_and_persist_from_turn_assigns_scope(memory_service, monkeypatch
         )
     )
 
-    assert len(captured) >= 2
-    identity_item = next(item for item in captured if item["layer"] == "identity")
-    preference_item = next(item for item in captured if item["layer"] == "preference")
-
-    assert identity_item["scope"] == "global"
-    assert preference_item["scope"] == "assistant"
-    assert preference_item["assistant_id"] == "assistant-a"
+    assert result == []

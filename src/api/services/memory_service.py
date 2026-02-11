@@ -5,7 +5,6 @@ Provides CRUD, retrieval and lightweight extraction utilities for global/assista
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import re
@@ -43,52 +42,7 @@ class MemoryService:
     """Service for long-term memory operations."""
 
     VALID_SCOPES = {"global", "assistant"}
-    VALID_LAYERS = {"identity", "preference", "context", "experience", "activity"}
-
-    IDENTITY_KEYWORDS = (
-        "我是",
-        "我叫",
-        "我的名字",
-        "我在",
-        "我住",
-        "我的职业",
-        "我工作",
-        "i am",
-        "i'm",
-        "my name",
-        "i work",
-        "i live",
-    )
-
-    PREFERENCE_KEYWORDS = (
-        "我喜欢",
-        "我不喜欢",
-        "请用",
-        "请不要",
-        "以后",
-        "回答时",
-        "输出",
-        "尽量",
-        "优先",
-        "偏好",
-        "prefer",
-        "please",
-        "use ",
-        "respond",
-        "answer in",
-        "call me",
-        "don't",
-    )
-
-    GLOBAL_HINTS = (
-        "所有对话",
-        "所有助手",
-        "全局",
-        "一直",
-        "always",
-        "in every chat",
-        "for all",
-    )
+    VALID_LAYERS = {"fact", "instruction"}
 
     def __init__(
         self,
@@ -402,7 +356,7 @@ class MemoryService:
         current_meta = (current.get("metadatas") or [{}])[0] or {}
 
         next_scope = scope or current_meta.get("scope") or "global"
-        next_layer = layer or current_meta.get("layer") or "preference"
+        next_layer = layer or current_meta.get("layer") or "fact"
         next_assistant_id = assistant_id if assistant_id is not None else current_meta.get("assistant_id")
         next_content = self._clean_text(content) if content is not None else current_doc
         if not next_content:
@@ -626,6 +580,57 @@ class MemoryService:
         merged.sort(key=lambda x: x.score or 0.0, reverse=True)
         return [item.to_dict() for item in merged[: max(1, effective_limit)]]
 
+    def _load_instruction_memories(
+        self,
+        *,
+        profile_id: str,
+        assistant_id: Optional[str],
+        include_global: bool = True,
+        include_assistant: bool = True,
+        max_items: int = 15,
+    ) -> List[MemoryResult]:
+        """Load ALL active instruction-layer memories (no vector search)."""
+        cfg = self.memory_config_service.config
+        vectorstore = self._get_vectorstore()
+
+        all_results: List[MemoryResult] = []
+
+        scopes_to_query: List[Tuple[str, Optional[str]]] = []
+        if include_global and cfg.scopes.global_enabled:
+            scopes_to_query.append(("global", None))
+        if include_assistant and cfg.scopes.assistant_enabled and assistant_id:
+            scopes_to_query.append(("assistant", assistant_id))
+
+        for scope, aid in scopes_to_query:
+            filters: List[Dict[str, Any]] = [
+                {"profile_id": profile_id},
+                {"scope": scope},
+                {"layer": "instruction"},
+                {"is_active": True},
+            ]
+            if aid:
+                filters.append({"assistant_id": aid})
+
+            where = self._build_where(filters)
+            response = vectorstore._collection.get(
+                where=where,
+                limit=max(1, max_items),
+                include=["documents", "metadatas"],
+            )
+
+            ids = response.get("ids") or []
+            docs = response.get("documents") or []
+            metas = response.get("metadatas") or []
+
+            for idx, memory_id in enumerate(ids):
+                content = docs[idx] if idx < len(docs) else ""
+                metadata = metas[idx] if idx < len(metas) else {}
+                all_results.append(
+                    self._metadata_to_result(memory_id, content, metadata)
+                )
+
+        return all_results[:max_items]
+
     def build_memory_context(
         self,
         *,
@@ -639,119 +644,75 @@ class MemoryService:
         if not cfg.enabled:
             return "", []
 
-        results = self.search_memories_for_scopes(
+        resolved_profile = self._resolve_profile_id(profile_id)
+        lines: List[str] = []
+        sources: List[Dict[str, Any]] = []
+
+        # Phase 1: instruction layer - load ALL active items (always apply)
+        instructions = self._load_instruction_memories(
+            profile_id=resolved_profile,
+            assistant_id=assistant_id,
+            include_global=include_global,
+            include_assistant=include_assistant,
+        )
+        if instructions:
+            lines.append("## User instructions (always apply):")
+            for item in instructions:
+                content = self._clean_text(item.content)
+                if len(content) > cfg.retrieval.max_item_length:
+                    content = f"{content[:cfg.retrieval.max_item_length]}..."
+                lines.append(f"- {content}")
+                sources.append(
+                    {
+                        "type": "memory",
+                        "id": item.id,
+                        "scope": item.metadata.get("scope") or "global",
+                        "layer": "instruction",
+                        "score": None,
+                        "content": content,
+                    }
+                )
+
+        # Phase 2: fact layer - vector similarity search (inject when relevant)
+        fact_results = self.search_memories_for_scopes(
             query=query,
             assistant_id=assistant_id,
             profile_id=profile_id,
             include_global=include_global,
             include_assistant=include_assistant,
+            layer="fact",
             limit=cfg.retrieval.max_injected_items,
         )
-        if not results:
+        if fact_results:
+            if lines:
+                lines.append("")
+            lines.append("## User context (relevant background):")
+            for idx, item in enumerate(fact_results, start=1):
+                content = self._clean_text(item.get("content", ""))
+                if len(content) > cfg.retrieval.max_item_length:
+                    content = f"{content[:cfg.retrieval.max_item_length]}..."
+                score = self._safe_float(item.get("score"), 0.0)
+                lines.append(f"[{idx}] (score={score:.2f}) {content}")
+                sources.append(
+                    {
+                        "type": "memory",
+                        "id": item.get("id"),
+                        "scope": item.get("scope") or "global",
+                        "layer": "fact",
+                        "score": score,
+                        "content": content,
+                    }
+                )
+
+        if not lines:
             return "", []
 
-        lines = [
-            "User memory context (long-term identity and preferences):",
-            "Use when relevant. Do not expose memory metadata in your answer.",
-        ]
-
-        sources: List[Dict[str, Any]] = []
-        for idx, item in enumerate(results, start=1):
-            content = self._clean_text(item.get("content", ""))
-            if len(content) > cfg.retrieval.max_item_length:
-                content = f"{content[:cfg.retrieval.max_item_length]}..."
-
-            scope = item.get("scope") or "global"
-            layer = item.get("layer") or "preference"
-            score = self._safe_float(item.get("score"), 0.0)
-            lines.append(f"[{idx}] ({scope}/{layer}, score={score:.2f}) {content}")
-
-            sources.append(
-                {
-                    "type": "memory",
-                    "id": item.get("id"),
-                    "scope": scope,
-                    "layer": layer,
-                    "score": score,
-                    "content": content,
-                }
-            )
-
-        return "\n".join(lines), sources
-
-    def _split_sentences(self, text: str) -> List[str]:
-        chunks = re.split(r"[\n\r。！？!?]+|(?<=[.])\s+", text)
-        return [self._clean_text(chunk) for chunk in chunks if self._clean_text(chunk)]
-
-    def _is_identity_sentence(self, sentence: str) -> bool:
-        lower = sentence.lower()
-        return any(keyword in sentence for keyword in self.IDENTITY_KEYWORDS) or any(
-            keyword in lower for keyword in self.IDENTITY_KEYWORDS
-        )
-
-    def _is_preference_sentence(self, sentence: str) -> bool:
-        lower = sentence.lower()
-        return any(keyword in sentence for keyword in self.PREFERENCE_KEYWORDS) or any(
-            keyword in lower for keyword in self.PREFERENCE_KEYWORDS
-        )
-
-    def _is_global_hint(self, sentence: str) -> bool:
-        lower = sentence.lower()
-        return any(keyword in sentence for keyword in self.GLOBAL_HINTS) or any(
-            keyword in lower for keyword in self.GLOBAL_HINTS
-        )
+        header = "Do not expose memory metadata in your answer.\n"
+        return header + "\n".join(lines), sources
 
     def extract_memory_candidates(self, text: str) -> List[Dict[str, Any]]:
-        cfg = self.memory_config_service.config
-        sentences = self._split_sentences(text)
-        if not sentences:
-            return []
-
-        max_items = max(1, cfg.extraction.max_items_per_turn)
-        min_len = max(1, cfg.extraction.min_text_length)
-        enabled_layers = set(cfg.enabled_layers or [])
-
-        candidates: List[Dict[str, Any]] = []
-        seen = set()
-
-        for sentence in sentences:
-            if len(sentence) < min_len:
-                continue
-
-            layer = None
-            confidence = 0.0
-            importance = 0.0
-
-            if "identity" in enabled_layers and self._is_identity_sentence(sentence):
-                layer = "identity"
-                confidence = 0.9
-                importance = 0.75
-            elif "preference" in enabled_layers and self._is_preference_sentence(sentence):
-                layer = "preference"
-                confidence = 0.82
-                importance = 0.68
-
-            if not layer:
-                continue
-
-            key = sentence.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-
-            candidates.append(
-                {
-                    "content": sentence,
-                    "layer": layer,
-                    "confidence": confidence,
-                    "importance": importance,
-                    "prefer_global": self._is_global_hint(sentence),
-                }
-            )
-            if len(candidates) >= max_items:
-                break
-
-        return candidates
+        # Extraction disabled — placeholder for future LLM-based extraction.
+        return []
 
     async def extract_and_persist_from_turn(
         self,
@@ -764,57 +725,5 @@ class MemoryService:
         source_message_id: Optional[str] = None,
         assistant_memory_enabled: bool = True,
     ) -> List[Dict[str, Any]]:
-        cfg = self.memory_config_service.config
-        if not cfg.enabled or not cfg.extraction.enabled:
-            return []
-
-        candidates = self.extract_memory_candidates(user_message)
-        if not candidates:
-            return []
-
-        stored: List[Dict[str, Any]] = []
-        for candidate in candidates:
-            layer = candidate["layer"]
-            scope = "global"
-
-            if layer != "identity" and assistant_memory_enabled and assistant_id and cfg.scopes.assistant_enabled:
-                scope = "assistant"
-
-            if candidate.get("prefer_global"):
-                scope = "global"
-
-            if scope == "global" and not cfg.scopes.global_enabled:
-                if assistant_memory_enabled and assistant_id and cfg.scopes.assistant_enabled:
-                    scope = "assistant"
-                else:
-                    continue
-
-            if scope == "assistant" and (not assistant_id or not assistant_memory_enabled or not cfg.scopes.assistant_enabled):
-                if cfg.scopes.global_enabled:
-                    scope = "global"
-                else:
-                    continue
-
-            try:
-                item = await asyncio.to_thread(
-                    self.upsert_memory,
-                    content=candidate["content"],
-                    scope=scope,
-                    layer=layer,
-                    assistant_id=assistant_id if scope == "assistant" else None,
-                    profile_id=profile_id,
-                    confidence=candidate["confidence"],
-                    importance=candidate["importance"],
-                    source_session_id=source_session_id,
-                    source_message_id=source_message_id,
-                    pinned=False,
-                    is_active=True,
-                )
-                if item:
-                    stored.append(item)
-            except Exception as e:
-                logger.warning("Failed to upsert memory item: %s", e)
-
-        if stored:
-            logger.info("Stored %d memory item(s) from latest turn", len(stored))
-        return stored
+        # Extraction disabled — placeholder for future LLM-based extraction.
+        return []

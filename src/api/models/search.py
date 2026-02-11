@@ -19,7 +19,7 @@ class SearchSource(BaseModel):
     # Memory-specific fields (optional)
     id: Optional[str] = Field(None, description="Memory item ID")
     scope: Optional[Literal["global", "assistant"]] = Field(None, description="Memory scope")
-    layer: Optional[Literal["identity", "preference", "context", "experience", "activity"]] = Field(None, description="Memory layer")
+    layer: Optional[Literal["fact", "instruction"]] = Field(None, description="Memory layer")
 
     # RAG-specific fields (optional)
     content: Optional[str] = Field(None, description="RAG chunk content")

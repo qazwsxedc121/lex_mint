@@ -12,14 +12,14 @@ import type {
 } from '../../types/memory';
 import type { Assistant } from '../../types/assistant';
 
-const LAYERS = ['identity', 'preference', 'context', 'experience', 'activity'];
+const LAYERS = ['fact', 'instruction'];
 type ScopeFilter = 'all' | MemoryScope;
 type SortMode = 'updated' | 'created' | 'score' | 'importance' | 'confidence' | 'hit';
 
 const DEFAULT_CREATE_FORM: MemoryCreateRequest = {
   content: '',
   scope: 'global',
-  layer: 'preference',
+  layer: 'fact',
   confidence: 0.8,
   importance: 0.6,
   pinned: false,

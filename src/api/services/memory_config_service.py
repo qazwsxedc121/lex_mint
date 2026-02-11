@@ -43,7 +43,7 @@ class MemoryConfig:
     enabled: bool = False
     profile_id: str = "local-default"
     collection_name: str = "memory_main"
-    enabled_layers: List[str] = field(default_factory=lambda: ["identity", "preference"])
+    enabled_layers: List[str] = field(default_factory=lambda: ["fact", "instruction"])
     retrieval: MemoryRetrievalConfig = field(default_factory=MemoryRetrievalConfig)
     extraction: MemoryExtractionConfig = field(default_factory=MemoryExtractionConfig)
     scopes: MemoryScopeConfig = field(default_factory=MemoryScopeConfig)
@@ -71,7 +71,7 @@ class MemoryConfigService:
                 "enabled": False,
                 "profile_id": "local-default",
                 "collection_name": "memory_main",
-                "enabled_layers": ["identity", "preference"],
+                "enabled_layers": ["fact", "instruction"],
                 "retrieval": {
                     "top_k": 8,
                     "score_threshold": 0.35,
@@ -112,7 +112,7 @@ class MemoryConfigService:
                 enabled=bool(memory_data.get("enabled", False)),
                 profile_id=memory_data.get("profile_id", "local-default"),
                 collection_name=memory_data.get("collection_name", "memory_main"),
-                enabled_layers=list(memory_data.get("enabled_layers", ["identity", "preference"])),
+                enabled_layers=list(memory_data.get("enabled_layers", ["fact", "instruction"])),
                 retrieval=MemoryRetrievalConfig(
                     top_k=int(retrieval.get("top_k", 8)),
                     score_threshold=float(retrieval.get("score_threshold", 0.35)),
