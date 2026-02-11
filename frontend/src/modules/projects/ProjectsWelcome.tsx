@@ -11,10 +11,11 @@ import type { Project } from '../../types/project';
 interface ProjectsOutletContext {
   projects: Project[];
   onManageClick: () => void;
+  onAddProjectClick: () => void;
 }
 
 export const ProjectsWelcome: React.FC = () => {
-  const { projects, onManageClick } = useOutletContext<ProjectsOutletContext>();
+  const { projects, onManageClick, onAddProjectClick } = useOutletContext<ProjectsOutletContext>();
   const navigate = useNavigate();
   const { currentProjectId, setCurrentProject } = useProjectWorkspaceStore();
 
@@ -69,13 +70,20 @@ export const ProjectsWelcome: React.FC = () => {
         </p>
       )}
 
-      {/* Manage Projects Button */}
-      <button
-        onClick={onManageClick}
-        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-      >
-        Manage Projects
-      </button>
+      <div data-name="projects-welcome-actions" className="flex items-center gap-3">
+        <button
+          onClick={onAddProjectClick}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Add Project
+        </button>
+        <button
+          onClick={onManageClick}
+          className="px-6 py-3 bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+        >
+          Manage Projects
+        </button>
+      </div>
     </div>
   );
 };

@@ -120,3 +120,10 @@ class DirectoryEntry(BaseModel):
     name: str = Field(..., description="Directory name")
     path: str = Field(..., description="Absolute directory path on server")
     is_dir: bool = Field(default=True, description="Whether entry is a directory")
+
+
+class BrowseDirectoryCreate(BaseModel):
+    """Request model for creating a directory while browsing server paths."""
+
+    parent_path: str = Field(..., description="Absolute parent directory path on server")
+    name: str = Field(..., min_length=1, max_length=255, description="New directory name")

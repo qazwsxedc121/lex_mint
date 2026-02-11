@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDownIcon, CogIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, CogIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import type { Project } from '../../../types/project';
 
@@ -12,12 +12,14 @@ interface ProjectSelectorProps {
   projects: Project[];
   currentProject: Project | undefined;
   onManageClick: () => void;
+  onCloseProject: () => void;
 }
 
 export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   projects,
   currentProject,
   onManageClick,
+  onCloseProject,
 }) => {
   const navigate = useNavigate();
   const { setCurrentProject } = useProjectWorkspaceStore();
@@ -92,8 +94,19 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
           onClick={onManageClick}
           className="px-3 py-2 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
           title="Manage Projects"
+          aria-label="Manage Projects"
         >
           <CogIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+        </button>
+
+        {/* Close Current Project Button */}
+        <button
+          onClick={onCloseProject}
+          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          title="Close Current Project"
+          aria-label="Close current project"
+        >
+          <XMarkIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
         </button>
       </div>
 

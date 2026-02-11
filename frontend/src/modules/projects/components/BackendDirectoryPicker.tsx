@@ -4,9 +4,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../settings/components/common/Modal';
-import { FolderIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import { FolderIcon, ArrowUturnLeftIcon, PlusIcon } from '@heroicons/react/24/outline';
 import type { DirectoryEntry } from '../../../types/project';
-import { listProjectBrowseRoots, listProjectDirectories } from '../../../services/api';
+import { createProjectBrowseDirectory, listProjectBrowseRoots, listProjectDirectories } from '../../../services/api';
 
 interface BackendDirectoryPickerProps {
   isOpen: boolean;
@@ -35,7 +35,9 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
   const [currentRoot, setCurrentRoot] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canGoUp = useMemo(() => {
@@ -78,6 +80,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
     setEntries([]);
     setCurrentRoot(null);
     setCurrentPath(null);
+    setNewFolderName('');
     void loadRoots();
   }, [isOpen]);
 
@@ -94,6 +97,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
 
   const handleRootSelect = (path: string) => {
     setCurrentRoot(path);
+    setNewFolderName('');
     void loadDirectories(path);
   };
 
@@ -103,12 +107,39 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
     if (parent === currentPath || parent.length < currentRoot.length) {
       return;
     }
+    setNewFolderName('');
     void loadDirectories(parent);
   };
 
   const handleEnter = (entry: DirectoryEntry) => {
     if (!entry.is_dir) return;
+    setNewFolderName('');
     void loadDirectories(entry.path);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!currentPath || loading || creatingFolder) {
+      return;
+    }
+
+    const trimmedName = newFolderName.trim();
+    if (!trimmedName) {
+      setError('Folder name is required');
+      return;
+    }
+
+    setCreatingFolder(true);
+    setError(null);
+    try {
+      const created = await createProjectBrowseDirectory(currentPath, trimmedName);
+      setNewFolderName('');
+      await loadDirectories(created.path);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create folder';
+      setError(message);
+    } finally {
+      setCreatingFolder(false);
+    }
   };
 
   const handleChoose = () => {
@@ -141,11 +172,39 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
               <button
                 type="button"
                 onClick={handleUp}
-                disabled={!canGoUp || loading}
+                disabled={!canGoUp || loading || creatingFolder}
                 className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
               >
                 <ArrowUturnLeftIcon className="h-4 w-4" />
                 Up
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2" data-name="backend-directory-create">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void handleCreateFolder();
+                  }
+                }}
+                disabled={loading || creatingFolder}
+                placeholder="New folder name"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  void handleCreateFolder();
+                }}
+                disabled={!currentPath || loading || creatingFolder || newFolderName.trim().length === 0}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60"
+              >
+                <PlusIcon className="h-4 w-4" />
+                {creatingFolder ? 'Creating...' : 'Create'}
               </button>
             </div>
 

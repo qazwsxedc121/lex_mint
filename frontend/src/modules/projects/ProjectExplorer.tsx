@@ -2,7 +2,7 @@
  * ProjectExplorer - Main project view with file tree and viewer
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { ProjectSelector } from './components/ProjectSelector';
 import { FileTree } from './components/FileTree';
@@ -52,6 +52,7 @@ export const ProjectExplorer: React.FC = () => {
   // State for editor actions (used by context)
   const [editorActions, setEditorActions] = useState<{ insertContent: (text: string) => void } | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const closingProjectRef = useRef(false);
 
   // Find current project
   const currentProject = projects.find(p => p.id === projectId);
@@ -65,6 +66,10 @@ export const ProjectExplorer: React.FC = () => {
 
   // When projectId changes, update the store and clear selection
   useEffect(() => {
+    if (closingProjectRef.current) {
+      return;
+    }
+
     if (projectId && projectId !== currentProjectId) {
       setCurrentProject(projectId);
       setSelectedFilePath(null);
@@ -202,6 +207,14 @@ export const ProjectExplorer: React.FC = () => {
     }
   }, [projectId, setProjectSession]);
 
+  const handleCloseProject = useCallback(() => {
+    closingProjectRef.current = true;
+    setCurrentProject(null);
+    setSelectedFilePath(null);
+    setCurrentSessionId(null);
+    navigate('/projects', { replace: true });
+  }, [navigate, setCurrentProject]);
+
   const projectChatAPI = useMemo(() => {
     return projectId ? createProjectChatAPI(projectId) : null;
   }, [projectId]);
@@ -232,6 +245,7 @@ export const ProjectExplorer: React.FC = () => {
           projects={projects}
           currentProject={currentProject}
           onManageClick={onManageClick}
+          onCloseProject={handleCloseProject}
         />
         <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
           <p className="text-gray-500 dark:text-gray-400">Loading project...</p>
@@ -247,6 +261,7 @@ export const ProjectExplorer: React.FC = () => {
           projects={projects}
           currentProject={currentProject}
           onManageClick={onManageClick}
+          onCloseProject={handleCloseProject}
         />
         <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
           <div className="text-center">
@@ -265,6 +280,7 @@ export const ProjectExplorer: React.FC = () => {
           projects={projects}
           currentProject={currentProject}
           onManageClick={onManageClick}
+          onCloseProject={handleCloseProject}
         />
         <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
           <p className="text-gray-500 dark:text-gray-400">No files found</p>
@@ -289,6 +305,7 @@ export const ProjectExplorer: React.FC = () => {
                   projects={projects}
                   currentProject={currentProject}
                   onManageClick={onManageClick}
+                  onCloseProject={handleCloseProject}
                 />
                 <div className="flex-1 overflow-hidden">
                 <FileTree

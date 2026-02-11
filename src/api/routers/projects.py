@@ -17,7 +17,8 @@ from ..models.project_config import (
     FileRename,
     FileRenameResult,
     DirectoryCreate,
-    DirectoryEntry
+    DirectoryEntry,
+    BrowseDirectoryCreate
 )
 from ..config import settings
 
@@ -77,6 +78,20 @@ async def list_directories(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error listing directories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/browse/directories", response_model=DirectoryEntry, status_code=201)
+async def create_browse_directory(directory_data: BrowseDirectoryCreate):
+    """Create a new directory under an allowed server-side browse path."""
+    try:
+        service = get_project_service()
+        return service.create_browse_directory(directory_data.parent_path, directory_data.name)
+    except ValueError as e:
+        logger.error(f"Validation error creating browse directory: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating browse directory: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

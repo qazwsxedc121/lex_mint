@@ -129,6 +129,48 @@ class ProjectService:
 
         return entries
 
+    def create_browse_directory(self, parent_path: str, name: str) -> DirectoryEntry:
+        """Create a directory under an allowed browse root path."""
+        if not parent_path:
+            raise ValueError("Parent path is required")
+
+        folder_name = name.strip()
+        if not folder_name:
+            raise ValueError("Folder name is required")
+        if folder_name in {".", ".."}:
+            raise ValueError("Invalid folder name")
+        if any(sep in folder_name for sep in ("/", "\\")):
+            raise ValueError("Folder name cannot contain path separators")
+
+        expanded_parent = Path(os.path.expandvars(parent_path)).expanduser()
+        parent = expanded_parent.resolve()
+
+        if not parent.exists():
+            raise ValueError(f"Parent path does not exist: {parent_path}")
+        if not parent.is_dir():
+            raise ValueError(f"Parent path is not a directory: {parent_path}")
+
+        roots = self._resolve_browse_roots()
+        if not any(self._is_within_root(parent, root) for root in roots):
+            raise ValueError("Path is outside allowed roots")
+
+        target = (parent / folder_name).resolve()
+        if not any(self._is_within_root(target, root) for root in roots):
+            raise ValueError("Path is outside allowed roots")
+        if target.exists():
+            raise ValueError(f"Directory already exists: {folder_name}")
+
+        try:
+            target.mkdir()
+        except FileExistsError:
+            raise ValueError(f"Directory already exists: {folder_name}")
+        except PermissionError as e:
+            raise ValueError(f"Permission denied: {parent_path}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to create directory: {e}")
+
+        return DirectoryEntry(name=target.name, path=str(target), is_dir=True)
+
     async def save_config(self, config: ProjectsConfig) -> None:
         """Save projects configuration to YAML file atomically.
 

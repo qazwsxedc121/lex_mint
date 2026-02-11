@@ -12,6 +12,7 @@ interface ProjectManagementProps {
   onCreateProject: (project: ProjectCreate) => Promise<void>;
   onUpdateProject: (id: string, project: ProjectUpdate) => Promise<void>;
   onDeleteProject: (id: string) => Promise<void>;
+  initialCreateForm?: boolean;
   onClose: () => void;
 }
 
@@ -20,10 +21,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   onCreateProject,
   onUpdateProject,
   onDeleteProject,
+  initialCreateForm = false,
   onClose,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(initialCreateForm);
   const [formData, setFormData] = useState<Partial<ProjectCreate>>({});
   const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
 
@@ -43,7 +45,15 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   };
 
   const handleDirectorySelect = (path: string) => {
-    setFormData({ ...formData, root_path: path });
+    const trimmedName = (formData.name || '').trim();
+    const normalizedPath = path.replace(/[/\\]+$/, '');
+    const defaultName = normalizedPath.split(/[/\\]/).pop() || '';
+
+    setFormData({
+      ...formData,
+      root_path: path,
+      name: trimmedName ? formData.name : defaultName,
+    });
   };
 
   const handleSave = async () => {

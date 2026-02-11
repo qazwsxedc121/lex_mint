@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 from src.api.services.project_service import ProjectService
 from src.api.models.project_config import Project, ProjectCreate
+from src.api.config import settings
 
 
 @pytest.fixture
@@ -38,6 +39,52 @@ def test_project_path_2(tmp_path):
     project_dir.mkdir()
     (project_dir / "readme.md").write_text("# Test", encoding='utf-8')
     return project_dir
+
+
+
+
+class TestProjectBrowseDirectoryCreation:
+    """Tests for creating directories in browse mode."""
+
+    def test_create_browse_directory_success(self, project_service, tmp_path, monkeypatch):
+        browse_root = tmp_path / "browse_root"
+        browse_root.mkdir()
+        monkeypatch.setattr(settings, "projects_browse_roots", [browse_root])
+
+        created = project_service.create_browse_directory(str(browse_root), "new_project")
+
+        assert created.name == "new_project"
+        assert created.is_dir is True
+        assert Path(created.path).exists()
+        assert Path(created.path).is_dir()
+
+    def test_create_browse_directory_rejects_path_separator(self, project_service, tmp_path, monkeypatch):
+        browse_root = tmp_path / "browse_root"
+        browse_root.mkdir()
+        monkeypatch.setattr(settings, "projects_browse_roots", [browse_root])
+
+        with pytest.raises(ValueError, match="path separators"):
+            project_service.create_browse_directory(str(browse_root), "foo/bar")
+
+    def test_create_browse_directory_rejects_outside_root(self, project_service, tmp_path, monkeypatch):
+        browse_root = tmp_path / "browse_root"
+        outside_root = tmp_path / "outside_root"
+        browse_root.mkdir()
+        outside_root.mkdir()
+        monkeypatch.setattr(settings, "projects_browse_roots", [browse_root])
+
+        with pytest.raises(ValueError, match="outside allowed roots"):
+            project_service.create_browse_directory(str(outside_root), "new_project")
+
+    def test_create_browse_directory_rejects_existing(self, project_service, tmp_path, monkeypatch):
+        browse_root = tmp_path / "browse_root"
+        existing_dir = browse_root / "existing"
+        browse_root.mkdir()
+        existing_dir.mkdir()
+        monkeypatch.setattr(settings, "projects_browse_roots", [browse_root])
+
+        with pytest.raises(ValueError, match="already exists"):
+            project_service.create_browse_directory(str(browse_root), "existing")
 
 
 # =============================================================================

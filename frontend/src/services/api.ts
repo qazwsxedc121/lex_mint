@@ -1644,6 +1644,17 @@ export async function listProjectDirectories(path: string): Promise<DirectoryEnt
   return response.data;
 }
 
+/**
+ * Create a new directory in a server-side parent path while browsing.
+ */
+export async function createProjectBrowseDirectory(parentPath: string, name: string): Promise<DirectoryEntry> {
+  const response = await api.post<DirectoryEntry>('/api/projects/browse/directories', {
+    parent_path: parentPath,
+    name,
+  });
+  return response.data;
+}
+
 // ==================== RAG Config API ====================
 
 /**
