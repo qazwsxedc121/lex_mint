@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   GlobeAltIcon,
   PaperClipIcon,
@@ -28,10 +29,10 @@ import { ParamOverridePopover } from './ParamOverridePopover';
 
 // Reasoning effort options for supported models
 const REASONING_EFFORT_OPTIONS = [
-  { value: '', label: 'Off', description: 'No extended reasoning' },
-  { value: 'low', label: 'Low', description: 'Quick reasoning' },
-  { value: 'medium', label: 'Medium', description: 'Balanced reasoning' },
-  { value: 'high', label: 'High', description: 'Deep reasoning' },
+  { value: '', labelKey: 'input.reasoning.off', descKey: 'input.reasoning.offDesc' },
+  { value: 'low', labelKey: 'input.reasoning.low', descKey: 'input.reasoning.lowDesc' },
+  { value: 'medium', labelKey: 'input.reasoning.medium', descKey: 'input.reasoning.mediumDesc' },
+  { value: 'high', labelKey: 'input.reasoning.high', descKey: 'input.reasoning.highDesc' },
 ];
 
 // Shared toolbar button classes
@@ -182,6 +183,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   onParamOverridesChange,
 }) => {
   const { api } = useChatServices();
+  const { t } = useTranslation('chat');
   const { registerComposer } = useChatComposer();
   const [input, setInput] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState('');
@@ -618,14 +620,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
       for (const file of Array.from(files)) {
         // Validate size on client side (10MB limit)
         if (file.size > 10 * 1024 * 1024) {
-          alert(`File ${file.name} exceeds 10MB limit`);
+          alert(t('input.fileSizeExceeded', { name: file.name }));
           continue;
         }
 
         // Check if file is an image
         const isImage = file.type.startsWith('image/');
         if (isImage && !supportsVision) {
-          alert(`Current model does not support image input. Please use a vision-capable model like GPT-4V or Claude 3.`);
+          alert(t('input.noVisionSupport'));
           continue;
         }
 
@@ -635,7 +637,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setAttachments(prev => [...prev, ...uploaded]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Upload failed: ${message}`);
+      alert(t('input.uploadFailed', { message }));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -787,7 +789,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <button
           onClick={handleCreateBlock}
           className={TOOLBAR_BTN_DEFAULT}
-          title="Create block"
+          title={t('input.createBlock')}
         >
           <PlusIcon className="h-4 w-4" />
         </button>
@@ -798,7 +800,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             onClick={onInsertSeparator}
             disabled={isStreaming}
             className="flex items-center justify-center p-1.5 rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-200 dark:hover:border-amber-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Clear context (insert separator)"
+            title={t('input.clearContext')}
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -816,7 +818,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                 ? 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
                 : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 hover:text-violet-700 dark:hover:text-violet-300 hover:border-violet-200 dark:hover:border-violet-800'
             }`}
-            title="Compress context (summarize conversation)"
+            title={t('input.compressContext')}
           >
             <svg className={`h-4 w-4 ${isCompressing ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -830,7 +832,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             onClick={handleClearClick}
             disabled={isStreaming}
             className="flex items-center justify-center p-1.5 rounded-md border bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 hover:border-red-200 dark:hover:border-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Clear all messages"
+            title={t('input.clearAllMessages')}
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -852,7 +854,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                   ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                   : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
-              title={`Reasoning: ${currentOption.label}`}
+              title={`${t('input.reasoning.prefix', { defaultValue: 'Reasoning' })}: ${t(currentOption.labelKey)}`}
             >
               <Brain className={`h-4 w-4 ${getReasoningIconColor(reasoningEffort)}`} />
             </button>
@@ -875,8 +877,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
                             : 'text-gray-700 dark:text-gray-300'
                         }`}
                       >
-                        <div className="font-medium">{option.label}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{option.description}</div>
+                        <div className="font-medium">{t(option.labelKey)}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{t(option.descKey)}</div>
                       </button>
                     ))}
                   </div>
@@ -897,7 +899,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
           }`}
-          title={useWebSearch ? 'Web search enabled' : 'Enable web search'}
+          title={useWebSearch ? t('input.webSearchEnabled') : t('input.enableWebSearch')}
         >
           <GlobeAltIcon className="h-4 w-4" />
         </button>
@@ -913,7 +915,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                 ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
                 : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
             }`}
-            title="Insert prompt template"
+            title={t('input.insertTemplate')}
           >
             <DocumentTextIcon className="h-4 w-4" />
           </button>
@@ -924,7 +926,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               <div className="absolute left-0 bottom-full mb-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700" data-name="input-box-template-menu">
                 <div className="p-2 border-b border-gray-200 dark:border-gray-700 space-y-2">
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Prompt Templates
+                    {t('input.promptTemplates')}
                   </div>
                   <input
                     ref={templateSearchInputRef}
@@ -934,14 +936,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
                       setTemplateMenuIndex(0);
                     }}
                     onKeyDown={handleTemplateSearchKeyDown}
-                    placeholder="Search templates..."
+                    placeholder={t('input.searchTemplates')}
                     className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div className="max-h-72 overflow-auto">
                   {templatesLoading && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      Loading templates...
+                      {t('input.loadingTemplates')}
                     </div>
                   )}
                   {!templatesLoading && templatesError && (
@@ -954,18 +956,18 @@ export const InputBox: React.FC<InputBoxProps> = ({
                         onClick={loadPromptTemplates}
                         className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                       >
-                        Retry
+                        {t('common:retry')}
                       </button>
                     </div>
                   )}
                   {!templatesLoading && !templatesError && promptTemplates.length === 0 && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      No templates yet. Add some in Settings &gt; Prompt Templates.
+                      {t('input.noTemplates')}
                     </div>
                   )}
                   {!templatesLoading && !templatesError && promptTemplates.length > 0 && filteredTemplateMenu.length === 0 && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      No templates match your search.
+                      {t('input.noMatchingTemplates')}
                     </div>
                   )}
                   {!templatesLoading && !templatesError && filteredTemplateMenu.map((template, index) => {
@@ -999,12 +1001,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
                             <div className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-wide">
                               {isPinned && (
                                 <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                  Pinned
+                                  {t('input.pinned')}
                                 </span>
                               )}
                               {isRecent && (
                                 <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                                  Recent
+                                  {t('input.recent')}
                                 </span>
                               )}
                             </div>
@@ -1023,9 +1025,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
                               ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30'
                               : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                           }`}
-                          title={isPinned ? 'Unpin template' : 'Pin template'}
+                          title={isPinned ? t('input.unpinTemplate') : t('input.pinTemplate')}
                         >
-                          {isPinned ? 'Pinned' : 'Pin'}
+                          {isPinned ? t('input.pinned') : t('input.pin')}
                         </button>
                       </div>
                     );
@@ -1047,7 +1049,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
-          title={isTranslatingInput ? 'Translating...' : 'Translate input'}
+          title={isTranslatingInput ? t('input.translating') : t('input.translateInput')}
         >
           <LanguageIcon className={`h-4 w-4 ${isTranslatingInput ? 'animate-pulse' : ''}`} />
         </button>
@@ -1061,7 +1063,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 animate-pulse'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
           }`}
-          title={uploading ? 'Uploading...' : supportsVision ? 'Attach file or image (max 10MB)' : 'Attach text file (max 10MB)'}
+          title={uploading ? t('input.uploading') : supportsVision ? t('input.attachFileImage') : t('input.attachTextFile')}
         >
           <PaperClipIcon className="h-4 w-4" />
         </button>
@@ -1088,9 +1090,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
             const contentLength = block.isEditing
               ? (draftContent?.length || 0)
               : block.content.length;
-            const metaLabel = block.isAttachmentNote
-              ? 'Attachment'
-              : `${contentLength} chars`;
+              const metaLabel = block.isAttachmentNote
+              ? t('input.block.attachment')
+              : t('input.block.chars', { count: contentLength });
             const collapseDisabled = block.isEditing;
             return (
               <div
@@ -1107,7 +1109,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                         ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         : 'hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
-                    title={collapseDisabled ? 'Finish editing to collapse' : block.collapsed ? 'Expand block' : 'Collapse block'}
+                    title={collapseDisabled ? t('input.block.finishEditing') : block.collapsed ? t('input.block.expandBlock') : t('input.block.collapseBlock')}
                   >
                     {block.collapsed ? (
                       <PlusIcon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
@@ -1120,7 +1122,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                       value={draftTitle}
                       onChange={(e) => updateBlockDraft(block.id, { draftTitle: e.target.value })}
                       className="flex-1 min-w-0 text-sm font-medium px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                      placeholder="Block title"
+                      placeholder={t('input.block.blockTitle')}
                     />
                   ) : (
                     <div className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
@@ -1133,14 +1135,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
                       <button
                         onClick={() => saveBlockEdit(block.id)}
                         className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-700 dark:text-green-300"
-                        title="Save block"
+                        title={t('input.block.saveBlock')}
                       >
                         <CheckIcon className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => cancelBlockEdit(block.id)}
                         className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"
-                        title="Cancel edit"
+                        title={t('input.block.cancelEdit')}
                       >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
@@ -1150,14 +1152,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
                       <button
                         onClick={() => startEditBlock(block.id)}
                         className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"
-                        title="Edit block"
+                        title={t('input.block.editBlock')}
                       >
                         <PencilSquareIcon className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => removeBlock(block.id)}
                         className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400"
-                        title="Remove block"
+                        title={t('input.block.removeBlock')}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>
@@ -1178,7 +1180,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                             value={draftContent}
                             onChange={(e) => updateBlockDraft(block.id, { draftContent: e.target.value })}
                             className="w-full min-h-[120px] max-h-64 resize-none rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-2 py-2 overflow-auto"
-                            placeholder="Block content"
+                            placeholder={t('input.block.blockContent')}
                           />
                         )}
                       </div>
@@ -1219,7 +1221,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                 <button
                   onClick={() => handleRemoveAttachment(idx)}
                   className="flex-shrink-0 hover:text-red-600 dark:hover:text-red-400"
-                  title="Remove file"
+                  title={t('input.removeFile')}
                 >
                   <XMarkIcon className="h-4 w-4" />
                 </button>
@@ -1236,12 +1238,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
             {slashCommand && (
               <div className="absolute left-0 right-0 bottom-full mb-2 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 shadow-lg z-20" data-name="input-box-slash-menu">
                 <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-                  Quick insert via / command
+                  {t('input.slashHint')}
                 </div>
                 <div className="max-h-60 overflow-auto">
                   {templatesLoading && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      Loading templates...
+                      {t('input.loadingTemplates')}
                     </div>
                   )}
                   {!templatesLoading && templatesError && (
@@ -1254,18 +1256,18 @@ export const InputBox: React.FC<InputBoxProps> = ({
                         onClick={loadPromptTemplates}
                         className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                       >
-                        Retry
+                        {t('common:retry')}
                       </button>
                     </div>
                   )}
                   {!templatesLoading && !templatesError && promptTemplates.length === 0 && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      No templates yet. Add some in Settings &gt; Prompt Templates.
+                      {t('input.noTemplates')}
                     </div>
                   )}
                   {!templatesLoading && !templatesError && promptTemplates.length > 0 && slashMatchedTemplates.length === 0 && (
                     <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                      No templates match /{slashCommand.query}
+                      {t('input.noMatchingSlash', { query: slashCommand.query })}
                     </div>
                   )}
                   {!templatesLoading && !templatesError && slashMatchedTemplates.map((template, index) => {
@@ -1298,12 +1300,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
                           <div className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-wide">
                             {isPinned && (
                               <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                Pinned
+                                {t('input.pinned')}
                               </span>
                             )}
                             {isRecent && (
                               <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                                Recent
+                                {t('input.recent')}
                               </span>
                             )}
                           </div>
@@ -1322,7 +1324,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               onSelect={handleTextareaSelectionChange}
               onClick={handleTextareaSelectionChange}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+              placeholder={t('input.placeholder')}
               disabled={disabled || isStreaming}
               className="w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
               rows={3}
@@ -1333,7 +1335,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               onClick={onStop}
               className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
             >
-              Stop
+              {t('input.stop')}
             </button>
           ) : (
             <button
@@ -1341,7 +1343,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               disabled={disabled || !canSend}
               className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              Send
+              {t('input.send')}
             </button>
           )}
         </div>
@@ -1356,23 +1358,23 @@ export const InputBox: React.FC<InputBoxProps> = ({
         >
           <div data-name="input-box-clear-confirm-modal" className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-              Clear All Messages
+              {t('input.clearConfirmTitle')}
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Are you sure you want to clear all messages? This action cannot be undone and will delete the entire conversation history.
+              {t('input.clearConfirmMessage')}
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={handleClearCancel}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
-                Cancel
+                {t('common:cancel')}
               </button>
               <button
                 onClick={handleClearConfirm}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
               >
-                Clear All
+                {t('common:clearAll')}
               </button>
             </div>
           </div>

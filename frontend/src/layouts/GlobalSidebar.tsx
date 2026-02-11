@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ChatBubbleLeftRightIcon,
   FolderIcon,
@@ -15,6 +16,7 @@ import {
   WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import { useDeveloperMode } from '../hooks/useDeveloperMode';
+import { LanguageSwitcher } from '../i18n/components/LanguageSwitcher';
 
 interface GlobalSidebarProps {
   collapsed: boolean;
@@ -23,7 +25,7 @@ interface GlobalSidebarProps {
 
 interface NavItem {
   path: string;
-  label: string;
+  labelKey: string;
   icon: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement>>;
 }
 
@@ -31,12 +33,13 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   collapsed,
   onToggle,
 }) => {
+  const { t } = useTranslation('common');
   const { enabled: developerEnabled } = useDeveloperMode();
   const navItems: NavItem[] = [
-    { path: '/chat', label: 'Chat', icon: ChatBubbleLeftRightIcon },
-    { path: '/projects', label: 'Projects', icon: FolderIcon },
-    ...(developerEnabled ? [{ path: '/developer', label: 'Developer', icon: WrenchScrewdriverIcon }] : []),
-    { path: '/settings', label: 'Settings', icon: Cog6ToothIcon },
+    { path: '/chat', labelKey: 'nav.chat', icon: ChatBubbleLeftRightIcon },
+    { path: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
+    ...(developerEnabled ? [{ path: '/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon }] : []),
+    { path: '/settings', labelKey: 'nav.settings', icon: Cog6ToothIcon },
   ];
 
   return (
@@ -59,6 +62,7 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         <ul className="space-y-1 px-2">
           {navItems.map((item) => {
             const Icon = item.icon;
+            const label = t(item.labelKey);
             return (
               <li key={item.path}>
                 <NavLink
@@ -70,11 +74,11 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                         : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                     }`
                   }
-                  title={collapsed ? item.label : undefined}
+                  title={collapsed ? label : undefined}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   {!collapsed && (
-                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className="text-sm font-medium">{label}</span>
                   )}
                 </NavLink>
               </li>
@@ -83,19 +87,20 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </ul>
       </nav>
 
-      {/* Collapse Toggle */}
-      <div className="border-t border-gray-700 p-2">
+      {/* Language Switcher + Collapse Toggle */}
+      <div className="border-t border-gray-700 p-2 space-y-1">
+        <LanguageSwitcher collapsed={collapsed} />
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          title={collapsed ? 'Expand' : 'Collapse'}
+          title={collapsed ? t('expand') : t('collapse')}
         >
           {collapsed ? (
             <ChevronRightIcon className="h-5 w-5" />
           ) : (
             <>
               <ChevronLeftIcon className="h-5 w-5" />
-              <span className="text-sm">Collapse</span>
+              <span className="text-sm">{t('collapse')}</span>
             </>
           )}
         </button>

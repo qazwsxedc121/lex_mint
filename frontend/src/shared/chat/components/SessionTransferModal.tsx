@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal } from '../../../modules/settings/components/common/Modal';
 import type { Project } from '../../../types/project';
 
@@ -33,19 +34,20 @@ export const SessionTransferModal: React.FC<SessionTransferModalProps> = ({
   onSelectTarget,
   onRetry,
 }) => {
+  const { t } = useTranslation('chat');
   const filteredProjects = projects.filter((project) => project.id !== excludeProjectId);
-  const title = mode === 'move' ? 'Move Conversation' : 'Copy Conversation';
+  const title = mode === 'move' ? t('transfer.moveConversation') : t('transfer.copyConversation');
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
       <div data-name="session-transfer-modal" className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Choose a destination for this conversation.
+          {t('transfer.chooseDestination')}
         </p>
 
         {loading && (
           <div data-name="session-transfer-loading" className="text-sm text-gray-500 dark:text-gray-400">
-            Loading projects...
+            {t('transfer.loadingProjects')}
           </div>
         )}
 
@@ -59,7 +61,7 @@ export const SessionTransferModal: React.FC<SessionTransferModalProps> = ({
                 onClick={onRetry}
                 className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
               >
-                Retry
+                {t('common:retry')}
               </button>
             )}
           </div>
@@ -73,17 +75,17 @@ export const SessionTransferModal: React.FC<SessionTransferModalProps> = ({
                 disabled={busy}
                 className="w-full text-left px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-60"
               >
-                Chat (Global)
+                {t('transfer.chatGlobal')}
               </button>
             )}
 
             <div data-name="session-transfer-projects" className="space-y-2">
               <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Projects
+                {t('transfer.projects')}
               </div>
               {filteredProjects.length === 0 ? (
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  No available projects.
+                  {t('transfer.noProjects')}
                 </div>
               ) : (
                 filteredProjects.map((project) => (
@@ -111,7 +113,7 @@ export const SessionTransferModal: React.FC<SessionTransferModalProps> = ({
             onClick={onClose}
             className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white"
           >
-            Cancel
+            {t('common:cancel')}
           </button>
         </div>
       </div>

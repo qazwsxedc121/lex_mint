@@ -25,6 +25,7 @@ import {
   type DragStartEvent,
   type DragOverEvent,
 } from '@dnd-kit/core';
+import { useTranslation } from 'react-i18next';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useFolders } from '../hooks/useFolders';
 import { exportSession, importChatGPTConversations, importMarkdownConversation, listProjects } from '../../../services/api';
@@ -50,11 +51,11 @@ function groupSessionsByTime(sessions: Session[]): { label: string; sessions: Se
   monthAgo.setMonth(monthAgo.getMonth() - 1);
 
   const groups: Record<string, Session[]> = {
-    Today: [],
-    Yesterday: [],
-    'This Week': [],
-    'This Month': [],
-    Older: [],
+    today: [],
+    yesterday: [],
+    thisWeek: [],
+    thisMonth: [],
+    older: [],
   };
 
   for (const session of sessions) {
@@ -62,19 +63,19 @@ function groupSessionsByTime(sessions: Session[]): { label: string; sessions: Se
     const date = raw ? new Date(raw.replace(' ', 'T')) : new Date(0);
 
     if (date >= today) {
-      groups['Today'].push(session);
+      groups['today'].push(session);
     } else if (date >= yesterday) {
-      groups['Yesterday'].push(session);
+      groups['yesterday'].push(session);
     } else if (date >= weekAgo) {
-      groups['This Week'].push(session);
+      groups['thisWeek'].push(session);
     } else if (date >= monthAgo) {
-      groups['This Month'].push(session);
+      groups['thisMonth'].push(session);
     } else {
-      groups['Older'].push(session);
+      groups['older'].push(session);
     }
   }
 
-  const orderedLabels = ['Today', 'Yesterday', 'This Week', 'This Month', 'Older'];
+  const orderedLabels = ['today', 'yesterday', 'thisWeek', 'thisMonth', 'older'];
   return orderedLabels
     .filter((label) => groups[label].length > 0)
     .map((label) => ({ label, sessions: groups[label] }));
@@ -93,7 +94,7 @@ export const ChatSidebar: React.FC = () => {
     refreshSessions,
   } = useChatServices();
 
-  // Folder management
+  const { t } = useTranslation('chat');
   const {
     folders,
     collapsedFolders,
@@ -192,7 +193,7 @@ export const ChatSidebar: React.FC = () => {
 
     const lowerName = file.name.toLowerCase();
     if (!lowerName.endsWith('.json') && !lowerName.endsWith('.zip')) {
-      alert('Please select a ChatGPT .json or .zip export file.');
+      alert(t('sidebar.importAlertJson'));
       if (chatgptInputRef.current) {
         chatgptInputRef.current.value = '';
       }
@@ -205,8 +206,8 @@ export const ChatSidebar: React.FC = () => {
       await refreshSessions();
 
       const errorCount = result.errors?.length || 0;
-      const message = `Imported ${result.imported} conversation(s). Skipped ${result.skipped}.` +
-        (errorCount ? ` Errors: ${errorCount}.` : '');
+      const message = t('sidebar.importResult', { imported: result.imported, skipped: result.skipped }) +
+        (errorCount ? t('sidebar.importErrors', { count: errorCount }) : '');
       alert(message);
 
       if (errorCount) {
@@ -231,7 +232,7 @@ export const ChatSidebar: React.FC = () => {
 
     const lowerName = file.name.toLowerCase();
     if (!lowerName.endsWith('.md') && !lowerName.endsWith('.markdown')) {
-      alert('Please select a Markdown (.md) conversation file.');
+      alert(t('sidebar.importAlertMd'));
       if (markdownInputRef.current) {
         markdownInputRef.current.value = '';
       }
@@ -244,8 +245,8 @@ export const ChatSidebar: React.FC = () => {
       await refreshSessions();
 
       const errorCount = result.errors?.length || 0;
-      const message = `Imported ${result.imported} conversation(s). Skipped ${result.skipped}.` +
-        (errorCount ? ` Errors: ${errorCount}.` : '');
+      const message = t('sidebar.importResult', { imported: result.imported, skipped: result.skipped }) +
+        (errorCount ? t('sidebar.importErrors', { count: errorCount }) : '');
       alert(message);
 
       if (errorCount) {
@@ -273,7 +274,7 @@ export const ChatSidebar: React.FC = () => {
 
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this conversation?')) {
+    if (confirm(t('sidebar.deleteConfirm'))) {
       try {
         await deleteSession(sessionId);
         // If deleted session was active, navigate to chat root
@@ -305,7 +306,7 @@ export const ChatSidebar: React.FC = () => {
       await refreshSessions();
     } catch (err) {
       console.error('Failed to generate title:', err);
-      alert('Failed to generate title');
+      alert(t('sidebar.failedGenerateTitle'));
     } finally {
       setGeneratingTitleId(null);
     }
@@ -327,7 +328,7 @@ export const ChatSidebar: React.FC = () => {
       await refreshSessions();
     } catch (err) {
       console.error('Failed to update title:', err);
-      alert('Failed to update title');
+      alert(t('sidebar.failedUpdateTitle'));
     }
   };
 
@@ -350,7 +351,7 @@ export const ChatSidebar: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to duplicate session:', err);
-      alert('Failed to duplicate session');
+      alert(t('sidebar.failedDuplicate'));
     }
   };
 
@@ -381,7 +382,7 @@ export const ChatSidebar: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to transfer session:', err);
-      alert('Failed to transfer conversation');
+      alert(t('sidebar.failedTransfer'));
     } finally {
       setTransferBusy(false);
       setTransferState(null);
@@ -396,7 +397,7 @@ export const ChatSidebar: React.FC = () => {
       await exportSession(sessionId);
     } catch (err) {
       console.error('Failed to export session:', err);
-      alert('Failed to export session');
+      alert(t('sidebar.failedExport'));
     }
   };
 
@@ -457,7 +458,7 @@ export const ChatSidebar: React.FC = () => {
   };
 
   const handleDeleteFolder = async (folderId: string) => {
-    if (!confirm('Delete this folder? Sessions will be moved to ungrouped.')) return;
+    if (!confirm(t('sidebar.deleteFolderConfirm'))) return;
     const success = await apiDeleteFolder(folderId);
     if (success) {
       await refreshSessions();
@@ -562,14 +563,14 @@ export const ChatSidebar: React.FC = () => {
         <button
           onClick={handleNewSession}
           className="p-2 rounded-lg text-blue-500 dark:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title="New Chat"
+          title={t('sidebar.newChat')}
         >
           <PlusIcon className="h-5 w-5" />
         </button>
         <button
           onClick={handleNewTemporarySession}
           className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title="Temp Chat"
+          title={t('sidebar.tempChat')}
         >
           <PlusIcon className="h-5 w-5" />
         </button>
@@ -582,7 +583,7 @@ export const ChatSidebar: React.FC = () => {
               setMoreMenuOpen(!moreMenuOpen);
             }}
             className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            title="More options"
+            title={t('sidebar.moreOptions')}
           >
             <EllipsisHorizontalIcon className="h-5 w-5" />
           </button>
@@ -599,7 +600,7 @@ export const ChatSidebar: React.FC = () => {
                 className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2 disabled:opacity-60"
               >
                 <ArrowUpTrayIcon className="h-4 w-4 text-emerald-500" />
-                Import ChatGPT (.json/.zip)
+                {t('sidebar.importChatGPT')}
               </button>
               <button
                 onClick={(e) => {
@@ -611,7 +612,7 @@ export const ChatSidebar: React.FC = () => {
                 className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2 disabled:opacity-60"
               >
                 <ArrowUpTrayIcon className="h-4 w-4 text-emerald-500" />
-                Import Markdown (.md)
+                {t('sidebar.importMarkdown')}
               </button>
 
               <div className="border-t border-gray-200 dark:border-gray-600 my-1" />
@@ -625,7 +626,7 @@ export const ChatSidebar: React.FC = () => {
                 className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
               >
                 <FolderIcon className="h-4 w-4 text-amber-500" />
-                New Folder
+                {t('sidebar.newFolder')}
               </button>
 
               <div className="border-t border-gray-200 dark:border-gray-600 my-1" />
@@ -640,7 +641,7 @@ export const ChatSidebar: React.FC = () => {
                   onChange={(e) => setShowTimeGroups(e.target.checked)}
                   className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                Show time groups
+                {t('sidebar.showTimeGroups')}
               </label>
             </div>
           )}
@@ -664,7 +665,7 @@ export const ChatSidebar: React.FC = () => {
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
           className="ml-auto p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title="Search (Ctrl+K)"
+          title={t('sidebar.searchCtrlK')}
         >
           <MagnifyingGlassIcon className="h-5 w-5" />
         </button>
@@ -680,7 +681,7 @@ export const ChatSidebar: React.FC = () => {
         >
           {sessions.length === 0 ? (
             <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-              No conversations
+              {t('sidebar.noConversations')}
             </div>
           ) : (
             <>
@@ -737,7 +738,7 @@ export const ChatSidebar: React.FC = () => {
                   <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
                       <FolderOpenIcon className="h-4 w-4 text-gray-500" />
-                      <span>Ungrouped</span>
+                      <span>{t('sidebar.ungrouped')}</span>
                       <span className="text-xs text-gray-500">({ungroupedSessions.length})</span>
                     </div>
                   </div>
@@ -746,7 +747,7 @@ export const ChatSidebar: React.FC = () => {
                     groupedUngrouped.map((group) => (
                       <div key={group.label}>
                         <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-[1]">
-                          {group.label}
+                          {t('timeGroup.' + group.label)}
                         </div>
                         {group.sessions.map((session, sessionIndex) => (
                           <DraggableSession

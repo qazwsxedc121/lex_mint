@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   UserGroupIcon,
   CpuChipIcon,
@@ -25,33 +26,35 @@ import {
 
 interface NavItem {
   path: string;
-  label: string;
+  labelKey: string;
   icon: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement>>;
 }
 
-const navItems: NavItem[] = [
-  { path: '/settings/assistants', label: 'Assistants', icon: UserGroupIcon },
-  { path: '/settings/models', label: 'Models', icon: CpuChipIcon },
-  { path: '/settings/providers', label: 'Providers', icon: ServerIcon },
-  { path: '/settings/knowledge-bases', label: 'Knowledge Bases', icon: BookOpenIcon },
-  { path: '/settings/prompt-templates', label: 'Prompt Templates', icon: DocumentTextIcon },
-  { path: '/settings/rag', label: 'RAG Settings', icon: CircleStackIcon },
-  { path: '/settings/search', label: 'Search', icon: MagnifyingGlassIcon },
-  { path: '/settings/webpage', label: 'Webpage', icon: GlobeAltIcon },
-  { path: '/settings/title-generation', label: 'Title Generation', icon: SparklesIcon },
-  { path: '/settings/followup', label: 'Follow-up Questions', icon: ChatBubbleLeftRightIcon },
-  { path: '/settings/compression', label: 'Compression', icon: ArchiveBoxArrowDownIcon },
-  { path: '/settings/translation', label: 'Translation', icon: LanguageIcon },
-  { path: '/settings/tts', label: 'Text-to-Speech', icon: SpeakerWaveIcon },
-  { path: '/settings/developer', label: 'Developer', icon: WrenchScrewdriverIcon },
-];
-
 export const SettingsSidebar: React.FC = () => {
+  const { t } = useTranslation('settings');
+
+  const navItems: NavItem[] = [
+    { path: '/settings/assistants', labelKey: 'nav.assistants', icon: UserGroupIcon },
+    { path: '/settings/models', labelKey: 'nav.models', icon: CpuChipIcon },
+    { path: '/settings/providers', labelKey: 'nav.providers', icon: ServerIcon },
+    { path: '/settings/knowledge-bases', labelKey: 'nav.knowledgeBases', icon: BookOpenIcon },
+    { path: '/settings/prompt-templates', labelKey: 'nav.promptTemplates', icon: DocumentTextIcon },
+    { path: '/settings/rag', labelKey: 'nav.ragSettings', icon: CircleStackIcon },
+    { path: '/settings/search', labelKey: 'nav.search', icon: MagnifyingGlassIcon },
+    { path: '/settings/webpage', labelKey: 'nav.webpage', icon: GlobeAltIcon },
+    { path: '/settings/title-generation', labelKey: 'nav.titleGeneration', icon: SparklesIcon },
+    { path: '/settings/followup', labelKey: 'nav.followup', icon: ChatBubbleLeftRightIcon },
+    { path: '/settings/compression', labelKey: 'nav.compression', icon: ArchiveBoxArrowDownIcon },
+    { path: '/settings/translation', labelKey: 'nav.translation', icon: LanguageIcon },
+    { path: '/settings/tts', labelKey: 'nav.tts', icon: SpeakerWaveIcon },
+    { path: '/settings/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon },
+  ];
+
   return (
     <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       {/* Sidebar Header */}
       <div className="h-14 flex items-center px-6 border-b border-gray-200 dark:border-gray-700">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Settings</h1>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{t('title')}</h1>
       </div>
 
       {/* Navigation */}
@@ -72,7 +75,7 @@ export const SettingsSidebar: React.FC = () => {
                   }
                 >
                   <Icon className="h-5 w-5 mr-3" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </NavLink>
               </li>
             );

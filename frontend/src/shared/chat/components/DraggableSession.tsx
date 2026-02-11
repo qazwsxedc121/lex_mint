@@ -15,6 +15,7 @@ import {
   FolderIcon,
   Bars2Icon,
 } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { Session } from '../../../types/message';
@@ -89,6 +90,7 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
   onMoveToFolder,
   setEditTitle,
 }) => {
+  const { t } = useTranslation('chat');
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: session.session_id,
     data: {
@@ -155,7 +157,7 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
             <>
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                 {generatingTitleId === session.session_id ? (
-                  <span className="text-gray-500 dark:text-gray-400">Generating...</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t('session.generating')}</span>
                 ) : (
                   session.title
                 )}
@@ -183,7 +185,7 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
             <button
               onClick={(e) => onMenuClick(e, session.session_id)}
               className="p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-              title="More options"
+              title={t('session.moreOptions')}
             >
               <EllipsisVerticalIcon className="h-4 w-4" />
             </button>
@@ -195,52 +197,52 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                 >
                   <SparklesIcon className="h-4 w-4" />
-                  Generate Title
+                  {t('session.generateTitle')}
                 </button>
                 <button
                   onClick={(e) => onStartEdit(e, session.session_id, session.title)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                 >
                   <PencilIcon className="h-4 w-4" />
-                  Rename
+                  {t('session.rename')}
                 </button>
                 <button
                   onClick={(e) => onDuplicate(e, session.session_id)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                 >
                   <DocumentDuplicateIcon className="h-4 w-4" />
-                  Duplicate
+                  {t('session.duplicate')}
                 </button>
                 <button
                   onClick={(e) => onOpenTransfer(e, session.session_id, 'move')}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                 >
                   <ArrowRightOnRectangleIcon className="h-4 w-4" />
-                  Move to Project
+                  {t('session.moveToProject')}
                 </button>
                 <button
                   onClick={(e) => onOpenTransfer(e, session.session_id, 'copy')}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                 >
                   <DocumentDuplicateIcon className="h-4 w-4" />
-                  Copy to Project
+                  {t('session.copyToProject')}
                 </button>
                 <button
                   onClick={(e) => onExport(e, session.session_id)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                 >
                   <ArrowDownTrayIcon className="h-4 w-4" />
-                  Export
+                  {t('session.export')}
                 </button>
                 <div className="border-t border-gray-300 dark:border-gray-600 my-1"></div>
                 <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 uppercase">
-                  Move to Folder
+                  {t('session.moveToFolder')}
                 </div>
                 <button
                   onClick={() => onMoveToFolder(session.session_id, null)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
                 >
-                  Ungrouped
+                  {t('session.ungrouped')}
                 </button>
                 {folders.map((f) => (
                   <button
@@ -259,7 +261,7 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
           <button
             onClick={(e) => onDelete(session.session_id, e)}
             className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-            title="Delete conversation"
+            title={t('session.deleteConversation')}
           >
             <TrashIcon className="h-4 w-4" />
           </button>

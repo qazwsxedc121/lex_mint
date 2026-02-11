@@ -1,0 +1,17 @@
+{
+  "title": "Settings",
+  "nav.assistants": "Assistants",
+  "nav.models": "Models",
+  "nav.providers": "Providers",
+  "nav.knowledgeBases": "Knowledge Bases",
+  "nav.promptTemplates": "Prompt Templates",
+  "nav.ragSettings": "RAG Settings",
+  "nav.search": "Search",
+  "nav.webpage": "Webpage",
+  "nav.titleGeneration": "Title Generation",
+  "nav.followup": "Follow-up Questions",
+  "nav.compression": "Compression",
+  "nav.translation": "Translation",
+  "nav.tts": "Text-to-Speech",
+  "nav.developer": "Developer"
+}

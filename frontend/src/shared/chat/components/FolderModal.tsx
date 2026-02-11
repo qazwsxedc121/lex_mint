@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface FolderModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export const FolderModal: React.FC<FolderModalProps> = ({
 }) => {
   const [name, setName] = useState(initialName);
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useTranslation('chat');
 
   useEffect(() => {
     setName(initialName);
@@ -53,7 +55,7 @@ export const FolderModal: React.FC<FolderModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-96">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          {mode === 'create' ? 'Create Folder' : 'Rename Folder'}
+          {mode === 'create' ? t('folder.createFolder') : t('folder.renameFolder')}
         </h2>
 
         <form onSubmit={handleSubmit}>
@@ -61,7 +63,7 @@ export const FolderModal: React.FC<FolderModalProps> = ({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Folder name"
+            placeholder={t('folder.folderName')}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
             disabled={submitting}
@@ -74,14 +76,14 @@ export const FolderModal: React.FC<FolderModalProps> = ({
               disabled={submitting}
               className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
             >
-              Cancel
+              {t('common:cancel')}
             </button>
             <button
               type="submit"
               disabled={!name.trim() || submitting}
               className="px-4 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Saving...' : mode === 'create' ? 'Create' : 'Save'}
+              {submitting ? t('common:saving') : mode === 'create' ? t('common:create') : t('common:save')}
             </button>
           </div>
         </form>

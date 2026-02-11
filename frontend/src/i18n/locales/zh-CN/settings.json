@@ -1,0 +1,17 @@
+{
+  "title": "设置",
+  "nav.assistants": "助手",
+  "nav.models": "模型",
+  "nav.providers": "服务商",
+  "nav.knowledgeBases": "知识库",
+  "nav.promptTemplates": "提示词模板",
+  "nav.ragSettings": "RAG 设置",
+  "nav.search": "搜索",
+  "nav.webpage": "网页",
+  "nav.titleGeneration": "标题生成",
+  "nav.followup": "后续问题",
+  "nav.compression": "压缩",
+  "nav.translation": "翻译",
+  "nav.tts": "文字转语音",
+  "nav.developer": "开发者"
+}

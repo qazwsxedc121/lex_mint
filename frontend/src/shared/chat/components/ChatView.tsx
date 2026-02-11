@@ -16,6 +16,7 @@ import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
 import type { Message } from '../../../types/message';
 import { LightBulbIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 
 export interface ChatViewProps {
   /**
@@ -32,6 +33,7 @@ export interface ChatViewProps {
 
 export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMessageActions }) => {
   const { api, navigation, currentSessionId, currentSession, refreshSessions, context, saveTemporarySession } = useChatServices();
+  const { t } = useTranslation('chat');
 
   // Use onAssistantRefresh from service context if available
   const { onAssistantRefresh } = context || {};
@@ -168,8 +170,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     return (
       <div data-name="chat-view-welcome" className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
         <div className="text-center">
-          <p className="text-lg mb-4">Welcome to LangGraph AI Agent</p>
-          <p className="text-sm">Select a conversation or create a new one to start</p>
+          <p className="text-lg mb-4">{t('view.welcome')}</p>
+          <p className="text-sm">{t('view.welcomeSubtitle')}</p>
         </div>
       </div>
     );
@@ -187,13 +189,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
             {isTemporary && (
               <>
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                  Temporary
+                  {t('view.temporary')}
                 </span>
                 <button
                   onClick={handleSaveTemporary}
                   className="inline-flex items-center px-3 py-1 rounded text-xs font-medium bg-green-500 text-white hover:bg-green-600 transition-colors"
                 >
-                  Save
+                  {t('view.save')}
                 </button>
               </>
             )}
@@ -231,7 +233,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full border border-gray-300 dark:border-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <LightBulbIcon className={`w-3.5 h-3.5 ${isGeneratingFollowups ? 'animate-pulse' : ''}`} />
-            {isGeneratingFollowups ? 'Generating...' : 'Suggest follow-ups'}
+            {isGeneratingFollowups ? t('view.generatingFollowups') : t('view.suggestFollowups')}
           </button>
         </div>
       )}
