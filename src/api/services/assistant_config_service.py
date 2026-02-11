@@ -74,7 +74,8 @@ class AssistantConfigService:
                     "system_prompt": "You are a helpful AI assistant. Provide clear, accurate, and friendly responses.",
                     "temperature": 0.7,
                     "max_tokens": 4000,
-                    "enabled": True
+                    "enabled": True,
+                    "memory_enabled": False
                 },
                 {
                     "id": "code-assistant",
@@ -84,7 +85,8 @@ class AssistantConfigService:
                     "system_prompt": "You are an expert programming assistant. Help users with code, debugging, and technical questions. Provide clear explanations and working code examples.",
                     "temperature": 0.3,
                     "max_tokens": 8000,
-                    "enabled": True
+                    "enabled": True,
+                    "memory_enabled": False
                 },
                 {
                     "id": "creative-writer",
@@ -94,7 +96,8 @@ class AssistantConfigService:
                     "system_prompt": "You are a creative writing assistant. Help users with storytelling, creative writing, and imaginative content. Be creative and engaging.",
                     "temperature": 0.9,
                     "max_tokens": 4000,
-                    "enabled": True
+                    "enabled": True,
+                    "memory_enabled": False
                 }
             ]
         }

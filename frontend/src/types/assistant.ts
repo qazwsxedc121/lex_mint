@@ -17,6 +17,7 @@ export interface Assistant {
   max_rounds?: number;  // Maximum conversation rounds (-1 = unlimited, null/undefined = unlimited)
   icon?: string;  // Lucide icon key for the assistant avatar
   enabled: boolean;
+  memory_enabled: boolean;
   knowledge_base_ids?: string[];  // Bound knowledge base IDs
 }
 
@@ -35,6 +36,7 @@ export interface AssistantCreate {
   max_rounds?: number;  // -1 = unlimited
   icon?: string;
   enabled?: boolean;
+  memory_enabled?: boolean;
   knowledge_base_ids?: string[];
 }
 
@@ -52,6 +54,7 @@ export interface AssistantUpdate {
   max_rounds?: number;  // -1 = unlimited
   icon?: string;
   enabled?: boolean;
+  memory_enabled?: boolean;
   knowledge_base_ids?: string[];
 }
 

@@ -728,34 +728,59 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         <span>{otherSources.length}</span>
                       </div>
                       <div className="px-3 pb-2 space-y-2">
-                        {otherSources.map((source, index) => (
-                          <div key={`${source.url || source.title || 'source'}-${index}`} className="text-xs">
-                            {source.url ? (
-                              <>
-                                <a
-                                  href={source.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-blue-600 dark:text-blue-400 hover:underline break-all"
-                                >
-                                  {source.title || source.url}
-                                </a>
-                                <div className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
-                                  {source.url}
+                        {otherSources.map((source, index) => {
+                          const isMemorySource = source.type === 'memory';
+                          const memoryScope = source.scope || 'global';
+                          const memoryLayer = source.layer || 'preference';
+
+                          return (
+                            <div key={`${source.id || source.url || source.title || 'source'}-${index}`} className="text-xs">
+                              {isMemorySource ? (
+                                <>
+                                  <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                    <span className="rounded border border-violet-200 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/30 px-1.5 py-0.5 text-[11px] font-medium text-violet-700 dark:text-violet-300">
+                                      Memory
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                      {memoryScope}/{memoryLayer}
+                                    </span>
+                                    {source.score != null && (
+                                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                        Score {source.score.toFixed(3)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap break-all">
+                                    {source.content || source.snippet || source.title || 'Memory entry'}
+                                  </div>
+                                </>
+                              ) : source.url ? (
+                                <>
+                                  <a
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                                  >
+                                    {source.title || source.url}
+                                  </a>
+                                  <div className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
+                                    {source.url}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="text-slate-700 dark:text-slate-300 break-all">
+                                  {source.title || 'Source'}
                                 </div>
-                              </>
-                            ) : (
-                              <div className="text-slate-700 dark:text-slate-300 break-all">
-                                {source.title || 'Source'}
-                              </div>
-                            )}
-                            {source.snippet && (
-                              <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                                {source.snippet}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                              )}
+                              {!isMemorySource && source.snippet && (
+                                <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                                  {source.snippet}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

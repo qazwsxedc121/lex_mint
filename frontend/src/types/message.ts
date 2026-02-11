@@ -28,12 +28,15 @@ export interface FileAttachment {
 }
 
 export interface SearchSource {
-  type?: 'search' | 'webpage' | 'rag';
+  type?: 'search' | 'webpage' | 'rag' | 'memory';
+  id?: string;
   title?: string;
   url?: string;
   snippet?: string;
   score?: number;
   content?: string;
+  scope?: 'global' | 'assistant';
+  layer?: 'identity' | 'preference' | 'context' | 'experience' | 'activity';
   kb_id?: string;
   doc_id?: string;
   filename?: string;

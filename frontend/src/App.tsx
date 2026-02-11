@@ -30,6 +30,7 @@ import { KnowledgeBasesPage } from './modules/settings/KnowledgeBasesPage';
 import { RagSettings } from './modules/settings/RagSettings';
 import { DeveloperSettings } from './modules/settings/DeveloperSettings';
 import { PromptTemplatesPage } from './modules/settings/PromptTemplatesPage';
+import { MemorySettings } from './modules/settings/MemorySettings';
 import { DeveloperModule } from './modules/developer';
 import './index.css';
 
@@ -63,6 +64,7 @@ function App() {
             <Route path="knowledge-bases/new" element={<KnowledgeBasesCreatePage />} />
             <Route path="knowledge-bases/:kbId" element={<KnowledgeBaseEditPage />} />
             <Route path="prompt-templates" element={<PromptTemplatesPage />} />
+            <Route path="memory" element={<MemorySettings />} />
             <Route path="rag" element={<RagSettings />} />
             <Route path="search" element={<SearchSettings />} />
             <Route path="webpage" element={<WebpageSettings />} />

@@ -35,6 +35,7 @@ export const SettingsSidebar: React.FC = () => {
 
   const navItems: NavItem[] = [
     { path: '/settings/assistants', labelKey: 'nav.assistants', icon: UserGroupIcon },
+    { path: '/settings/memory', labelKey: 'nav.memory', icon: CircleStackIcon },
     { path: '/settings/models', labelKey: 'nav.models', icon: CpuChipIcon },
     { path: '/settings/providers', labelKey: 'nav.providers', icon: ServerIcon },
     { path: '/settings/knowledge-bases', labelKey: 'nav.knowledgeBases', icon: BookOpenIcon },

@@ -177,6 +177,13 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
         }
         return value;
       }
+    },
+    {
+      key: 'memory_enabled',
+      label: 'Memory',
+      sortable: true,
+      hideOnMobile: true,
+      render: (value) => (value === true ? 'On' : 'Off')
     }
   ],
 
@@ -269,6 +276,12 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       name: 'enabled',
       label: 'Enable this assistant',
       defaultValue: true
+    },
+    {
+      type: 'checkbox',
+      name: 'memory_enabled',
+      label: 'Enable assistant memory',
+      defaultValue: false
     },
     {
       type: 'multi-select' as const,
@@ -370,6 +383,12 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       name: 'enabled',
       label: 'Enable this assistant',
       defaultValue: true
+    },
+    {
+      type: 'checkbox',
+      name: 'memory_enabled',
+      label: 'Enable assistant memory',
+      defaultValue: false
     },
     {
       type: 'multi-select' as const,

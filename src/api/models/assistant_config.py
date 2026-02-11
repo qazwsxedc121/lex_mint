@@ -23,6 +23,7 @@ class Assistant(BaseModel):
     max_rounds: Optional[int] = Field(None, description="Maximum conversation rounds to keep (-1 = unlimited, None = unlimited)")
     icon: Optional[str] = Field(None, description="Lucide icon key for the assistant avatar")
     enabled: bool = Field(default=True, description="Whether assistant is enabled")
+    memory_enabled: bool = Field(default=False, description="Whether assistant-scoped memory is enabled")
     knowledge_base_ids: Optional[List[str]] = Field(default=None, description="Bound knowledge base IDs")
 
 
@@ -48,6 +49,7 @@ class AssistantCreate(BaseModel):
     max_rounds: Optional[int] = Field(None, description="Maximum conversation rounds (-1 = unlimited)")
     icon: Optional[str] = Field(None, description="Lucide icon key for the assistant avatar")
     enabled: bool = Field(default=True, description="Whether assistant is enabled")
+    memory_enabled: bool = Field(default=False, description="Whether assistant-scoped memory is enabled")
     knowledge_base_ids: Optional[List[str]] = Field(default=None, description="Bound knowledge base IDs")
 
 
@@ -66,4 +68,5 @@ class AssistantUpdate(BaseModel):
     max_rounds: Optional[int] = Field(None, description="Maximum conversation rounds (-1 = unlimited)")
     icon: Optional[str] = Field(None, description="Lucide icon key for the assistant avatar")
     enabled: Optional[bool] = Field(None, description="Whether assistant is enabled")
+    memory_enabled: Optional[bool] = Field(None, description="Whether assistant-scoped memory is enabled")
     knowledge_base_ids: Optional[List[str]] = Field(None, description="Bound knowledge base IDs")

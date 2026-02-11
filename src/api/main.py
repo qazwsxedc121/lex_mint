@@ -1,28 +1,49 @@
-"""FastAPI application entry point."""
+﻿"""FastAPI application entry point."""
 
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-import os
 
-# 1. 最先加载环境变量
+# Load environment variables before importing runtime config/services.
 load_dotenv()
 
-# 2. 立即初始化日志系统 (在导入其他模块之前)
 from .logging_config import setup_logging
+
 setup_logging()
 
 import logging
 
-from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation, tts, tts_config, rag_config, knowledge_base, prompt_templates, folders
 from .config import settings
+from .routers import (
+    assistants,
+    chat,
+    compression_config,
+    followup,
+    folders,
+    knowledge_base,
+    memory,
+    models,
+    projects,
+    prompt_templates,
+    rag_config,
+    search_config,
+    sessions,
+    title_generation,
+    translation,
+    translation_config,
+    tts,
+    tts_config,
+    webpage_config,
+)
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="LangGraph Agent API",
     description="Web API for LangGraph-based AI agent with conversation persistence",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Configure CORS
@@ -54,87 +75,69 @@ app.include_router(rag_config.router)
 app.include_router(knowledge_base.router)
 app.include_router(prompt_templates.router)
 app.include_router(folders.router)
+app.include_router(memory.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")
-logger.info(f"CORS Origins: {settings.cors_origins}")
-logger.info(f"Conversations Dir: {settings.conversations_dir}")
+logger.info("CORS Origins: %s", settings.cors_origins)
+logger.info("Conversations Dir: %s", settings.conversations_dir)
 logger.info("=" * 80)
 
 
 @app.on_event("startup")
 async def startup_event():
-    """应用启动时的初始化"""
-    logger.info("=== 应用启动初始化 ===")
+    """Initialize runtime config/state files and storage directories on startup."""
+    logger.info("=== Application startup initialization ===")
 
-    # 确保配置目录存在
     settings.projects_config_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"✅ 项目配置目录已就绪: {settings.projects_config_path.parent}")
 
-    # 初始化模型配置（如果不存在则创建默认配置）
+    # Initialize model/assistant configuration files if missing.
     from .services.model_config_service import ModelConfigService
-    model_service = ModelConfigService()
-    # 构造函数中已经调用 _ensure_config_exists()
-
-    logger.info("✅ 模型配置初始化完成")
-
-    # 初始化助手配置（如果不存在则创建默认配置）
     from .services.assistant_config_service import AssistantConfigService
-    assistant_service = AssistantConfigService()
-    # 构造函数中已经调用 _ensure_config_exists()
 
-    logger.info("✅ 助手配置初始化完成")
+    ModelConfigService()
+    AssistantConfigService()
 
-    # Initialize prompt templates config (if missing)
+    # Initialize prompt templates and chat folders configs if missing.
     from .services.prompt_template_service import PromptTemplateConfigService
-    PromptTemplateConfigService()
-    logger.info("✅ 提示词模板配置初始化完成")
-
-    # Initialize chat folders config (if missing)
     from .services.folder_service import FolderService
-    FolderService()
-    logger.info("✅ 聊天文件夹配置初始化完成")
 
-    # Clean up leftover temporary sessions from previous runs
+    PromptTemplateConfigService()
+    FolderService()
+
+    # Clean temporary sessions from previous runs.
     from .services.conversation_storage import ConversationStorage
+
     storage = ConversationStorage(settings.conversations_dir)
     cleaned = await storage.cleanup_temporary_sessions()
     if cleaned:
-        logger.info(f"Cleaned up {cleaned} temporary session(s)")
+        logger.info("Cleaned up %s temporary session(s)", cleaned)
 
-    # Ensure ChromaDB and knowledge base storage directories exist
-    from pathlib import Path
+    # Ensure ChromaDB persist directory exists.
     from .services.rag_config_service import RagConfigService
+
     try:
-        rag_config = RagConfigService()
-        persist_dir = Path(rag_config.config.storage.persist_directory)
+        rag_cfg = RagConfigService()
+        persist_dir = Path(rag_cfg.config.storage.persist_directory)
         if not persist_dir.is_absolute():
             persist_dir = Path(__file__).parent.parent.parent / persist_dir
         persist_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"ChromaDB storage directory ready: {persist_dir}")
+        logger.info("ChromaDB storage directory ready: %s", persist_dir)
     except Exception as e:
-        logger.warning(f"Failed to initialize ChromaDB directory: {e}")
+        logger.warning("Failed to initialize ChromaDB directory: %s", e)
 
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint.
-
-    Returns:
-        {"status": "ok"}
-    """
+    """Health check endpoint."""
     return {"status": "ok"}
 
 
 @app.get("/")
 async def root():
-    """Root endpoint with API information.
-
-    Returns:
-        API welcome message and documentation link
-    """
+    """Root endpoint with API information."""
     return {
         "message": "LangGraph Agent API",
         "docs": "/docs",
-        "health": "/api/health"
+        "health": "/api/health",
     }

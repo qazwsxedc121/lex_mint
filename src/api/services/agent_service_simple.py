@@ -1,7 +1,6 @@
 """Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
 from typing import Dict, AsyncIterator, Optional, Any, List
-from pathlib import Path
 import logging
 import asyncio
 
@@ -12,6 +11,7 @@ from .pricing_service import PricingService
 from .file_service import FileService
 from .search_service import SearchService
 from .webpage_service import WebpageService
+from .memory_service import MemoryService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ class AgentService:
         self.file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
         self.search_service = SearchService()
         self.webpage_service = WebpageService()
+        self.memory_service = MemoryService()
         logger.info("AgentService initialized (simplified version)")
 
     async def process_message(
@@ -77,7 +78,13 @@ class AgentService:
 
         print(f"📝 [步骤 1] 保存用户消息到文件...")
         logger.info(f"📝 [步骤 1] 保存用户消息")
-        await self.storage.append_message(session_id, "user", user_message, context_type=context_type, project_id=project_id)
+        user_message_id = await self.storage.append_message(
+            session_id,
+            "user",
+            user_message,
+            context_type=context_type,
+            project_id=project_id,
+        )
         print(f"✅ 用户消息已保存")
 
         print(f"📂 [步骤 2] 加载会话状态...")
@@ -90,12 +97,14 @@ class AgentService:
         # Get assistant config (system prompt)
         system_prompt = None
         assistant_params = {}
+        assistant_obj = None
         if assistant_id and not assistant_id.startswith("__legacy_model_"):
             from .assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             try:
                 assistant = await assistant_service.get_assistant(assistant_id)
                 if assistant:
+                    assistant_obj = assistant
                     system_prompt = assistant.system_prompt
                     assistant_params = {
                         "temperature": assistant.temperature,
@@ -116,6 +125,25 @@ class AgentService:
             for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
                 if key in param_overrides:
                     assistant_params[key] = param_overrides[key]
+
+        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
+        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
+
+        memory_sources: List[Dict[str, Any]] = []
+        try:
+            include_assistant_memory = bool(
+                assistant_id and not is_legacy_assistant and assistant_memory_enabled
+            )
+            memory_context, memory_sources = self.memory_service.build_memory_context(
+                query=raw_user_message,
+                assistant_id=assistant_id if include_assistant_memory else None,
+                include_global=True,
+                include_assistant=include_assistant_memory,
+            )
+            if memory_context:
+                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
+        except Exception as e:
+            logger.warning(f"Memory retrieval failed: {e}")
 
         # Optional web page parsing context
         if webpage_context:
@@ -179,6 +207,8 @@ class AgentService:
         print(f"📝 [步骤 4] 保存 AI 回复到文件...")
         logger.info(f"📝 [步骤 4] 保存 AI 回复")
         all_sources: List[Dict[str, Any]] = []
+        if memory_sources:
+            all_sources.extend(memory_sources)
         if webpage_sources:
             all_sources.extend(webpage_sources)
         if search_sources:
@@ -195,6 +225,20 @@ class AgentService:
             project_id=project_id
         )
         print(f"✅ AI 回复已保存")
+
+        try:
+            asyncio.create_task(
+                self.memory_service.extract_and_persist_from_turn(
+                    user_message=raw_user_message,
+                    assistant_message=assistant_message,
+                    assistant_id=assistant_id if not is_legacy_assistant else None,
+                    source_session_id=session_id,
+                    source_message_id=user_message_id,
+                    assistant_memory_enabled=assistant_memory_enabled,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule memory extraction: {e}")
 
         return assistant_message, all_sources
 
@@ -318,6 +362,7 @@ class AgentService:
         system_prompt = None
         max_rounds = None
         assistant_params = {}
+        assistant_obj = None
 
         # Check for legacy session identifier
         if assistant_id and assistant_id.startswith("__legacy_model_"):
@@ -328,6 +373,7 @@ class AgentService:
             try:
                 assistant = await assistant_service.get_assistant(assistant_id)
                 if assistant:
+                    assistant_obj = assistant
                     system_prompt = assistant.system_prompt
                     max_rounds = assistant.max_rounds
                     assistant_params = {
@@ -360,6 +406,25 @@ class AgentService:
                 if key in param_overrides:
                     assistant_params[key] = param_overrides[key]
             print(f"   Applied param overrides: {param_overrides}")
+
+        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
+        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
+
+        memory_sources: List[Dict[str, Any]] = []
+        try:
+            include_assistant_memory = bool(
+                assistant_id and not is_legacy_assistant and assistant_memory_enabled
+            )
+            memory_context, memory_sources = self.memory_service.build_memory_context(
+                query=raw_user_message,
+                assistant_id=assistant_id if include_assistant_memory else None,
+                include_global=True,
+                include_assistant=include_assistant_memory,
+            )
+            if memory_context:
+                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
+        except Exception as e:
+            logger.warning(f"Memory retrieval failed: {e}")
 
         # Optional web page parsing context
         if webpage_context:
@@ -406,6 +471,8 @@ class AgentService:
                 logger.warning(f"RAG retrieval failed: {e}")
 
         all_sources: List[Dict[str, Any]] = []
+        if memory_sources:
+            all_sources.extend(memory_sources)
         if webpage_sources:
             all_sources.extend(webpage_sources)
         if search_sources:
@@ -541,6 +608,23 @@ class AgentService:
             project_id=project_id
         )
         print(f"[OK] AI response saved with ID: {assistant_message_id}")
+
+        # Update memory in background. Keep this enabled for regeneration/edit flows
+        # (skip_user_append=True) so edited user messages can still refresh memory.
+        try:
+            if raw_user_message and full_response:
+                asyncio.create_task(
+                    self.memory_service.extract_and_persist_from_turn(
+                        user_message=raw_user_message,
+                        assistant_message=full_response,
+                        assistant_id=assistant_id if not is_legacy_assistant else None,
+                        source_session_id=session_id,
+                        source_message_id=user_message_id,
+                        assistant_memory_enabled=assistant_memory_enabled,
+                    )
+                )
+        except Exception as e:
+            logger.warning(f"Failed to schedule memory extraction: {e}")
 
         # Trigger title generation in background (do not await)
         # Skip for temporary sessions to save API cost

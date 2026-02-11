@@ -9,7 +9,7 @@
 [X] Mermaid
 [X] TTS
 [] 多模型对比
-[] 全局记忆
+[X] 全局记忆
 [X] 常用提示词
 [] @文件名
 [] 多参与者
@@ -20,7 +20,7 @@
 [X] 对话移动
 [X] 配置路径分离
 [X] Prompt Template搜索和/触发
-[] i18n
+[X] i18n
 [] RAG Reorder
 [] RAG by tool use
 [] RAG word search (BM25)

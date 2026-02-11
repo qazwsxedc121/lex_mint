@@ -77,6 +77,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Use descriptive names: `data-name="chat-view-root"`, `data-name="file-tree-panel"`
    - Helps identify elements in Chrome DevTools during layout debugging
 
+5. **i18n (Internationalization) - All UI Text Must Use react-i18next**
+   - **NEVER hardcode user-facing strings** in components (no raw English/Chinese text in JSX)
+   - **ALWAYS use `useTranslation` hook** and `t()` function for all visible text
+   - This applies to: button labels, titles, placeholders, tooltips, alerts, confirms, error messages, headings, descriptions
+
+   **Namespaces** (3 total, match module structure):
+   - `common` — shared strings: OK, Cancel, Save, Delete, nav labels, etc.
+   - `chat` — chat module: sidebar, session, view, input, folder, transfer
+   - `settings` — settings module: nav labels, section titles
+
+   **Translation files location**:
+   ```
+   frontend/src/i18n/locales/
+   ├── en/          # English (fallback language)
+   │   ├── common.json
+   │   ├── chat.json
+   │   └── settings.json
+   └── zh-CN/       # Simplified Chinese
+       ├── common.json
+       ├── chat.json
+       └── settings.json
+   ```
+
+   **Key naming convention**: flat dot-separated `section.element`
+   - Examples: `sidebar.newChat`, `input.send`, `session.rename`, `view.welcome`
+   - Group by UI area: `sidebar.*`, `session.*`, `view.*`, `input.*`, `folder.*`, `transfer.*`
+
+   **Usage patterns**:
+   ```tsx
+   // 1. Import and use hook with the appropriate namespace
+   import { useTranslation } from 'react-i18next';
+   const { t } = useTranslation('chat');
+
+   // 2. Simple string
+   <button title={t('sidebar.newChat')}>...</button>
+
+   // 3. Cross-namespace reference (prefix with namespace:)
+   <button>{t('common:cancel')}</button>
+
+   // 4. Interpolation with variables
+   t('sidebar.importResult', { imported: 5, skipped: 2 })
+   // Key: "Imported {{imported}} conversation(s). Skipped {{skipped}}."
+
+   // 5. Conditional text
+   {isLoading ? t('common:saving') : t('common:save')}
+   ```
+
+   **When adding new strings**:
+   1. Add the key to the correct English JSON file first (`en/*.json`)
+   2. Add the corresponding Chinese translation (`zh-CN/*.json`)
+   3. Use the key in the component via `t()`
+   4. Choose the right namespace — use `common` only for truly shared strings
+
+   **When adding a new language**:
+   1. Create a new folder under `frontend/src/i18n/locales/` (e.g., `ja/`)
+   2. Copy all 3 JSON files from `en/` and translate the values
+   3. Add the new resource in `frontend/src/i18n/index.ts`
+   4. Add the language option in `frontend/src/i18n/components/LanguageSwitcher.tsx`
+
+   **Rules**:
+   - Backend API responses stay in English — only the frontend translates for display
+   - `alert()` and `confirm()` strings must also use `t()`
+   - Data keys (object keys used for logic, not display) stay in English (e.g., time group keys like `'today'` are translated only at render time via `t('timeGroup.today')`)
+   - Do NOT use nested JSON objects — keep keys flat with dot-separated naming
+
 ## Project Overview
 
 LangGraph-based AI agent system with web interface using FastAPI backend and React frontend. The system uses DeepSeek as the LLM provider and stores conversations in Markdown format for easy cross-device synchronization.
