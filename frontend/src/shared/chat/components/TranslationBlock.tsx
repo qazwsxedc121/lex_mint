@@ -3,9 +3,11 @@
  * Features: collapsible, streaming support, markdown rendering, copy and dismiss buttons.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import {
   ChevronDownIcon,
   LanguageIcon,
@@ -13,6 +15,7 @@ import {
   ClipboardDocumentCheckIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { normalizeMathDelimiters } from '../utils/markdownMath';
 
 interface TranslationBlockProps {
   translatedText: string;
@@ -29,6 +32,7 @@ export const TranslationBlock: React.FC<TranslationBlockProps> = ({
   const [isCopied, setIsCopied] = useState(false);
 
   const headerText = isTranslating ? 'Translating...' : 'Translation';
+  const normalizedTranslatedText = useMemo(() => normalizeMathDelimiters(translatedText), [translatedText]);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -82,8 +86,8 @@ export const TranslationBlock: React.FC<TranslationBlockProps> = ({
       {isExpanded && (
         <div className="px-3 py-2 bg-teal-50/50 dark:bg-teal-900/20 text-sm text-gray-700 dark:text-gray-300 max-h-96 overflow-y-auto prose prose-sm dark:prose-invert max-w-none">
           {translatedText ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {translatedText}
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+              {normalizedTranslatedText}
             </ReactMarkdown>
           ) : isTranslating ? (
             <span className="text-xs text-teal-500 dark:text-teal-400 animate-pulse">Translating...</span>

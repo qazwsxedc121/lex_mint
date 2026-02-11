@@ -5,7 +5,7 @@
  * All data and operations from useChatServices
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   EllipsisVerticalIcon,
@@ -22,8 +22,54 @@ import {
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { exportSession, importChatGPTConversations, importMarkdownConversation, listProjects } from '../../../services/api';
+import type { Session } from '../../../types/message';
 import type { Project } from '../../../types/project';
 import { SessionTransferModal } from './SessionTransferModal';
+
+/**
+ * Group sessions by time period based on updated_at (or created_at fallback).
+ * Returns an ordered array of { label, sessions } groups.
+ */
+function groupSessionsByTime(sessions: Session[]): { label: string; sessions: Session[] }[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const monthAgo = new Date(today);
+  monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+  const groups: Record<string, Session[]> = {
+    Today: [],
+    Yesterday: [],
+    'This Week': [],
+    'This Month': [],
+    Older: [],
+  };
+
+  for (const session of sessions) {
+    const raw = session.updated_at || session.created_at;
+    const date = raw ? new Date(raw.replace(' ', 'T')) : new Date(0);
+
+    if (date >= today) {
+      groups['Today'].push(session);
+    } else if (date >= yesterday) {
+      groups['Yesterday'].push(session);
+    } else if (date >= weekAgo) {
+      groups['This Week'].push(session);
+    } else if (date >= monthAgo) {
+      groups['This Month'].push(session);
+    } else {
+      groups['Older'].push(session);
+    }
+  }
+
+  const orderedLabels = ['Today', 'Yesterday', 'This Week', 'This Month', 'Older'];
+  return orderedLabels
+    .filter((label) => groups[label].length > 0)
+    .map((label) => ({ label, sessions: groups[label] }));
+}
 
 export const ChatSidebar: React.FC = () => {
   const navigate = useNavigate();
@@ -333,6 +379,8 @@ export const ChatSidebar: React.FC = () => {
     }
   }, [importMenuOpen]);
 
+  const groupedSessions = useMemo(() => groupSessionsByTime(sessions), [sessions]);
+
   return (
     <div data-name="chat-sidebar" className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
       {/* Toolbar */}
@@ -418,7 +466,12 @@ export const ChatSidebar: React.FC = () => {
             No conversations
           </div>
         ) : (
-          sessions.map((session) => (
+          groupedSessions.map((group) => (
+            <div key={group.label}>
+              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-[1]">
+                {group.label}
+              </div>
+              {group.sessions.map((session) => (
             <div
               key={session.session_id}
               className={`group relative p-3 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${
@@ -549,6 +602,8 @@ export const ChatSidebar: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          ))}
             </div>
           ))
         )}

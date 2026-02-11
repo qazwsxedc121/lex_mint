@@ -5,6 +5,8 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon, LanguageIcon, SpeakerWaveIcon, StopCircleIcon } from '@heroicons/react/24/outline';
 import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
@@ -13,6 +15,7 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { TranslationBlock } from './TranslationBlock';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
+import { normalizeMathDelimiters } from '../utils/markdownMath';
 
 interface MessageBubbleProps {
   message: Message;
@@ -462,8 +465,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           {showSummaryContent && message.content && (
             <div className="mt-2 px-4 py-3 bg-violet-50/50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg text-sm text-gray-700 dark:text-gray-300 max-h-96 overflow-y-auto">
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message.content}
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  {normalizeMathDelimiters(message.content)}
                 </ReactMarkdown>
               </div>
             </div>
@@ -650,7 +653,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                   ) : (
                                     <div className="prose prose-sm max-w-none prose-invert">
                                       <ReactMarkdown
-                                        remarkPlugins={[remarkGfm]}
+                                        remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
                                         components={{
                                           code({ className, children, ...props }: any) {
                                             const match = /language-(\w+)/.exec(className || '');
@@ -670,7 +673,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                           },
                                         }}
                                       >
-                                        {block.content || '_Empty block_'}
+                                        {normalizeMathDelimiters(block.content || '_Empty block_')}
                                       </ReactMarkdown>
                                     </div>
                                   )}
@@ -766,7 +769,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   )}
                   {/* Main content */}
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
+                    remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
                     components={{
                       code({ className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '');
@@ -823,7 +826,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       },
                     }}
                   >
-                    {mainContent || '*Generating...*'}
+                    {normalizeMathDelimiters(mainContent || '*Generating...*')}
                   </ReactMarkdown>
                   {/* Translation block */}
                   {showTranslation && (

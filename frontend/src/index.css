@@ -44,3 +44,13 @@ body {
     background-color: #64748b;
   }
 }
+
+.katex {
+  position: relative;
+}
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}

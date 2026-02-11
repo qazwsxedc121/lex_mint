@@ -22,6 +22,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@uiw/react-codemirror": "^4.25.4",
     "axios": "^1.13.2",
+    "katex": "^0.16.28",
     "lucide-react": "^0.563.0",
     "mermaid": "^11.12.2",
     "prismjs": "^1.30.0",
@@ -30,7 +31,9 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.0",
     "react-syntax-highlighter": "^16.1.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "zustand": "^5.0.10"
   },
   "devDependencies": {

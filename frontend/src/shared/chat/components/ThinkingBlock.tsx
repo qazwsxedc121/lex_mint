@@ -6,12 +6,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import {
   ChevronDownIcon,
   LightBulbIcon,
   ClipboardDocumentIcon,
   ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
+import { normalizeMathDelimiters } from '../utils/markdownMath';
 
 interface ThinkingBlockProps {
   thinking: string;
@@ -63,6 +66,8 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     const lines = thinking.split('\n').filter(l => l.trim());
     return lines.slice(-3);
   }, [thinking]);
+
+  const normalizedThinking = useMemo(() => normalizeMathDelimiters(thinking), [thinking]);
 
   const displayDuration = isThinkingInProgress
     ? formatDuration(elapsedMs)
@@ -144,8 +149,8 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
       {/* Expanded content */}
       {isOpen && (
         <div className="px-3 py-2 bg-amber-50/50 dark:bg-amber-900/20 text-xs text-gray-600 dark:text-gray-400 max-h-64 overflow-y-auto prose prose-xs dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-1">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {thinking}
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            {normalizedThinking}
           </ReactMarkdown>
         </div>
       )}
