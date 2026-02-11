@@ -14,7 +14,7 @@ setup_logging()
 
 import logging
 
-from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation, tts, tts_config, rag_config, knowledge_base, prompt_templates
+from .routers import sessions, chat, models, assistants, title_generation, projects, search_config, webpage_config, followup, compression_config, translation_config, translation, tts, tts_config, rag_config, knowledge_base, prompt_templates, folders
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ app.include_router(tts.router)
 app.include_router(rag_config.router)
 app.include_router(knowledge_base.router)
 app.include_router(prompt_templates.router)
+app.include_router(folders.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")
@@ -88,6 +89,11 @@ async def startup_event():
     from .services.prompt_template_service import PromptTemplateConfigService
     PromptTemplateConfigService()
     logger.info("✅ 提示词模板配置初始化完成")
+
+    # Initialize chat folders config (if missing)
+    from .services.folder_service import FolderService
+    FolderService()
+    logger.info("✅ 聊天文件夹配置初始化完成")
 
     # Clean up leftover temporary sessions from previous runs
     from .services.conversation_storage import ConversationStorage

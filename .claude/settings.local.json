@@ -61,7 +61,9 @@
       "Bash(node -e:*)",
       "Bash(npm ls:*)",
       "Bash(tasklist:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(timeout 5 venv/bin/python:*)",
+      "Bash(venv/bin/python:*)"
     ]
   }
 }

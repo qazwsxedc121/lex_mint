@@ -1,0 +1,5 @@
+# Chat folders configuration (default)
+# This file is tracked in git and provides default values
+# User-specific overrides go to config/local/chat_folders.yaml
+
+folders: []

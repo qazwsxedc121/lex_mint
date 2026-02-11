@@ -940,3 +940,41 @@ async def import_markdown_conversation(
         project_id=project_id
     )
     return result
+
+
+@router.put("/{session_id}/folder", status_code=204)
+async def update_session_folder(
+    session_id: str,
+    request: Dict = Body(...),
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """
+    Update session's folder assignment.
+
+    Args:
+        session_id: Session UUID
+        request: { folder_id: str | null }
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Raises:
+        404: Session not found
+        400: Invalid context parameters
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    try:
+        folder_id = request.get("folder_id")
+        await storage.update_session_folder(
+            session_id=session_id,
+            folder_id=folder_id,
+            context_type=context_type,
+            project_id=project_id
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

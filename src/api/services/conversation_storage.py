@@ -449,7 +449,8 @@ class ConversationStorage:
                     "title": post.metadata.get("title", "New Chat"),
                     "created_at": post.metadata["created_at"],
                     "updated_at": updated_at,
-                    "message_count": message_count
+                    "message_count": message_count,
+                    "folder_id": post.metadata.get("folder_id")  # Chat folder ID (optional)
                 })
             except Exception as e:
                 # Skip corrupted files
@@ -1207,6 +1208,26 @@ class ConversationStorage:
         # 写回文件
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
+
+    async def update_session_folder(self, session_id: str, folder_id: Optional[str], context_type: str = "chat", project_id: Optional[str] = None):
+        """Update session's folder assignment.
+
+        Args:
+            session_id: Session UUID
+            folder_id: Folder ID to assign (None to remove from folder)
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If context parameters are invalid
+        """
+        await self.update_session_metadata(
+            session_id=session_id,
+            metadata_updates={"folder_id": folder_id},
+            context_type=context_type,
+            project_id=project_id
+        )
 
     def _get_conversation_dir(self, context_type: str = "chat", project_id: Optional[str] = None) -> Path:
         """Get the conversation directory for a specific context.

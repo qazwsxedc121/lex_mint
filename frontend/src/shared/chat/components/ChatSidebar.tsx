@@ -3,6 +3,7 @@
  *
  * Version 2.0: Self-contained, no external props needed
  * All data and operations from useChatServices
+ * Version 2.1: Added folder organization support
  */
 
 import React, { useState, useRef, useMemo } from 'react';
@@ -19,12 +20,18 @@ import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
   ArrowRightOnRectangleIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { useChatServices } from '../services/ChatServiceProvider';
+import { useFolders } from '../hooks/useFolders';
 import { exportSession, importChatGPTConversations, importMarkdownConversation, listProjects } from '../../../services/api';
 import type { Session } from '../../../types/message';
 import type { Project } from '../../../types/project';
 import { SessionTransferModal } from './SessionTransferModal';
+import { FolderModal } from './FolderModal';
 
 /**
  * Group sessions by time period based on updated_at (or created_at fallback).
@@ -84,6 +91,17 @@ export const ChatSidebar: React.FC = () => {
     refreshSessions,
   } = useChatServices();
 
+  // Folder management
+  const {
+    folders,
+    collapsedFolders,
+    createFolder: apiCreateFolder,
+    updateFolder: apiUpdateFolder,
+    deleteFolder: apiDeleteFolder,
+    moveSessionToFolder,
+    toggleFolder,
+  } = useFolders();
+
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -95,6 +113,15 @@ export const ChatSidebar: React.FC = () => {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [transferBusy, setTransferBusy] = useState(false);
+
+  // Folder UI states
+  const [folderModalState, setFolderModalState] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit';
+    folderId?: string;
+    initialName?: string;
+  }>({ open: false, mode: 'create' });
+
   const chatgptInputRef = useRef<HTMLInputElement>(null);
   const markdownInputRef = useRef<HTMLInputElement>(null);
 
@@ -379,7 +406,54 @@ export const ChatSidebar: React.FC = () => {
     }
   }, [importMenuOpen]);
 
-  const groupedSessions = useMemo(() => groupSessionsByTime(sessions), [sessions]);
+  // Group sessions by folder
+  const { folderGroups, ungroupedSessions } = useMemo(() => {
+    const grouped: Record<string, Session[]> = {};
+    const ungrouped: Session[] = [];
+
+    sessions.forEach((session) => {
+      if (session.folder_id) {
+        if (!grouped[session.folder_id]) {
+          grouped[session.folder_id] = [];
+        }
+        grouped[session.folder_id].push(session);
+      } else {
+        ungrouped.push(session);
+      }
+    });
+
+    return { folderGroups: grouped, ungroupedSessions: ungrouped };
+  }, [sessions]);
+
+  // Time-based grouping for ungrouped sessions
+  const groupedUngrouped = useMemo(() => groupSessionsByTime(ungroupedSessions), [ungroupedSessions]);
+
+  // Folder CRUD handlers
+  const handleCreateFolder = async (name: string): Promise<boolean> => {
+    const folder = await apiCreateFolder(name);
+    return folder !== null;
+  };
+
+  const handleRenameFolder = async (name: string): Promise<boolean> => {
+    if (!folderModalState.folderId) return false;
+    return await apiUpdateFolder(folderModalState.folderId, name);
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    if (!confirm('Delete this folder? Sessions will be moved to ungrouped.')) return;
+    const success = await apiDeleteFolder(folderId);
+    if (success) {
+      await refreshSessions();
+    }
+  };
+
+  const handleMoveToFolder = async (sessionId: string, folderId: string | null) => {
+    const success = await moveSessionToFolder(sessionId, folderId);
+    if (success) {
+      await refreshSessions();
+    }
+    setOpenMenuId(null);
+  };
 
   return (
     <div data-name="chat-sidebar" className="w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col">
@@ -451,6 +525,13 @@ export const ChatSidebar: React.FC = () => {
           />
         </div>
         <button
+          onClick={() => setFolderModalState({ open: true, mode: 'create' })}
+          className="p-2 rounded-lg text-amber-500 dark:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title="New Folder"
+        >
+          <FolderIcon className="h-5 w-5" />
+        </button>
+        <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
           className="ml-auto p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           title="Search (Ctrl+K)"
@@ -466,12 +547,50 @@ export const ChatSidebar: React.FC = () => {
             No conversations
           </div>
         ) : (
-          groupedSessions.map((group) => (
-            <div key={group.label}>
-              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-[1]">
-                {group.label}
-              </div>
-              {group.sessions.map((session) => (
+          <>
+            {/* Render Folders */}
+            {folders.map((folder) => {
+              const folderSessions = folderGroups[folder.id] || [];
+              const isCollapsed = collapsedFolders.has(folder.id);
+
+              return (
+                <div key={folder.id}>
+                  {/* Folder Header */}
+                  <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between group">
+                    <button
+                      onClick={() => toggleFolder(folder.id)}
+                      className="flex-1 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRightIcon className="h-4 w-4" />
+                      ) : (
+                        <ChevronDownIcon className="h-4 w-4" />
+                      )}
+                      <FolderIcon className="h-4 w-4 text-amber-500" />
+                      <span className="truncate">{folder.name}</span>
+                      <span className="text-xs text-gray-500">({folderSessions.length})</span>
+                    </button>
+
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+                      <button
+                        onClick={() => setFolderModalState({ open: true, mode: 'edit', folderId: folder.id, initialName: folder.name })}
+                        className="p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                        title="Rename"
+                      >
+                        <PencilIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFolder(folder.id)}
+                        className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                        title="Delete"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Folder Sessions */}
+                  {!isCollapsed && folderSessions.map((session) => (
             <div
               key={session.session_id}
               className={`group relative p-3 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${
@@ -588,6 +707,27 @@ export const ChatSidebar: React.FC = () => {
                           <ArrowDownTrayIcon className="h-4 w-4" />
                           Export
                         </button>
+                        <div className="border-t border-gray-300 dark:border-gray-600 my-1"></div>
+                        {/* Move to Folder Submenu */}
+                        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 uppercase">
+                          Move to Folder
+                        </div>
+                        <button
+                          onClick={() => handleMoveToFolder(session.session_id, null)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                        >
+                          Ungrouped
+                        </button>
+                        {folders.map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => handleMoveToFolder(session.session_id, f.id)}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                          >
+                            <FolderIcon className="h-4 w-4 text-amber-500" />
+                            {f.name}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -604,10 +744,208 @@ export const ChatSidebar: React.FC = () => {
               </div>
             </div>
           ))}
+                </div>
+              );
+            })}
+
+            {/* Ungrouped Sessions (Time-based grouping) */}
+            {ungroupedSessions.length > 0 && (
+              <div>
+                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    <FolderOpenIcon className="h-4 w-4 text-gray-500" />
+                    <span>Ungrouped</span>
+                    <span className="text-xs text-gray-500">({ungroupedSessions.length})</span>
+                  </div>
+                </div>
+
+                {groupedUngrouped.map((group) => (
+                  <div key={group.label}>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-[1]">
+                      {group.label}
+                    </div>
+                    {group.sessions.map((session) => (
+            <div
+              key={session.session_id}
+              className={`group relative p-3 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${
+                currentSessionId === session.session_id
+                  ? 'bg-gray-200 dark:bg-gray-700'
+                  : ''
+              }`}
+              onClick={() => handleSelectSession(session.session_id)}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  {editingSessionId === session.session_id ? (
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveEdit(session.session_id);
+                          if (e.key === 'Escape') handleCancelEdit();
+                        }}
+                        className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSaveEdit(session.session_id)}
+                        className="text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 text-xs px-1"
+                      >
+                        OK
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 text-xs px-1"
+                      >
+                        X
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {generatingTitleId === session.session_id ? (
+                          <span className="text-gray-500 dark:text-gray-400">Generating...</span>
+                        ) : (
+                          session.title
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                        <ChatBubbleLeftRightIcon className="w-3 h-3" />
+                        <span>{session.message_count || 0}</span>
+                        {session.updated_at && (
+                          <>
+                            <span className="mx-0.5">-</span>
+                            <span>{session.updated_at}</span>
+                          </>
+                        )}
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Menu Button */}
+                  <div className="relative">
+                    <button
+                      onClick={(e) => handleMenuClick(e, session.session_id)}
+                      className="p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                      title="More options"
+                    >
+                      <EllipsisVerticalIcon className="h-4 w-4" />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {openMenuId === session.session_id && (
+                      <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-10">
+                        <button
+                          onClick={(e) => handleGenerateTitle(e, session.session_id)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <SparklesIcon className="h-4 w-4" />
+                          Generate Title
+                        </button>
+                        <button
+                          onClick={(e) => handleStartEdit(e, session.session_id, session.title)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                          Rename
+                        </button>
+                        <button
+                          onClick={(e) => handleDuplicate(e, session.session_id)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <DocumentDuplicateIcon className="h-4 w-4" />
+                          Duplicate
+                        </button>
+                        <button
+                          onClick={(e) => handleOpenTransfer(e, session.session_id, 'move')}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <ArrowRightOnRectangleIcon className="h-4 w-4" />
+                          Move to Project
+                        </button>
+                        <button
+                          onClick={(e) => handleOpenTransfer(e, session.session_id, 'copy')}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <DocumentDuplicateIcon className="h-4 w-4" />
+                          Copy to Project
+                        </button>
+                        <button
+                          onClick={(e) => handleExport(e, session.session_id)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                        >
+                          <ArrowDownTrayIcon className="h-4 w-4" />
+                          Export
+                        </button>
+                        <div className="border-t border-gray-300 dark:border-gray-600 my-1"></div>
+                        {/* Move to Folder Submenu */}
+                        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 uppercase">
+                          Move to Folder
+                        </div>
+                        <button
+                          onClick={() => handleMoveToFolder(session.session_id, null)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                        >
+                          Ungrouped
+                        </button>
+                        {folders.map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => handleMoveToFolder(session.session_id, f.id)}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                          >
+                            <FolderIcon className="h-4 w-4 text-amber-500" />
+                            {f.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={(e) => handleDeleteSession(session.session_id, e)}
+                    className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                    title="Delete conversation"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </div>
-          ))
+          ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
+
+      <SessionTransferModal
+        isOpen={Boolean(transferState)}
+        mode={transferState?.mode || 'move'}
+        projects={projects}
+        loading={projectsLoading}
+        error={projectsError}
+        busy={transferBusy}
+        showChatOption={false}
+        onClose={() => setTransferState(null)}
+        onSelectTarget={handleSelectTransferTarget}
+        onRetry={loadProjects}
+      />
+
+      <FolderModal
+        isOpen={folderModalState.open}
+        mode={folderModalState.mode}
+        initialName={folderModalState.initialName}
+        onConfirm={folderModalState.mode === 'create' ? handleCreateFolder : handleRenameFolder}
+        onClose={() => setFolderModalState({ open: false, mode: 'create' })}
+      />
 
       <SessionTransferModal
         isOpen={Boolean(transferState)}

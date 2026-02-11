@@ -66,6 +66,7 @@ export interface Session {
   updated_at?: string;  // File modification time (YYYY-MM-DD HH:MM:SS)
   message_count?: number;
   temporary?: boolean;
+  folder_id?: string;  // Chat folder ID (optional)
 }
 
 export interface ParamOverrides {
