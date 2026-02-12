@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { FormField } from '../common';
 import type { FieldConfig, ConfigContext } from '../../config/types';
 
@@ -37,9 +38,11 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({
   showErrors = false,
   onSubmit,
   isSubmitting = false,
-  submitLabel = 'Save Settings',
+  submitLabel,
   customActions
 }) => {
+  const { t } = useTranslation('settings');
+  const resolvedSubmitLabel = submitLabel ?? t('config.saveSettings');
   const handleFieldChange = (fieldName: string, value: any) => {
     onChange({ ...formData, [fieldName]: value });
   };
@@ -66,7 +69,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({
           disabled={isSubmitting}
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? 'Saving...' : submitLabel}
+          {isSubmitting ? t('common:saving') : resolvedSubmitLabel}
         </button>
 
         {customActions}

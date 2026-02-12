@@ -7,6 +7,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { CrudTable } from './CrudTable';
@@ -37,6 +38,7 @@ export function CrudSettingsPage<T = any>({
   const [showErrors, setShowErrors] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { t } = useTranslation('settings');
 
   const isEdit = editingItem !== null;
   const fields = isEdit && config.editFields ? config.editFields : config.createFields;
@@ -89,13 +91,13 @@ export function CrudSettingsPage<T = any>({
     const itemId = getItemId(item);
     const itemName = (item as any).name || itemId;
 
-    if (!confirm(`Are you sure you want to delete "${itemName}"?`)) {
+    if (!confirm(t('crud.confirmDelete', { name: itemName }))) {
       return;
     }
 
     try {
       await hook.deleteItem(itemId);
-      setSuccessMessage(`${config.itemName} deleted successfully`);
+      setSuccessMessage(t('crud.deletedSuccess', { item: config.itemName }));
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       // Error is handled by the hook
@@ -109,7 +111,7 @@ export function CrudSettingsPage<T = any>({
 
     try {
       await hook.setDefault(getItemId(item));
-      setSuccessMessage(`Default ${config.itemName} updated`);
+      setSuccessMessage(t('crud.defaultUpdated', { item: config.itemName }));
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error('Set default error:', err);
@@ -133,7 +135,7 @@ export function CrudSettingsPage<T = any>({
     // Check required fields
     for (const field of fields) {
       if (field.required && !formData[field.name]) {
-        alert(`Please fill in required field: ${field.label}`);
+        alert(t('crud.requiredField', { field: field.label }));
         return;
       }
 
@@ -141,7 +143,7 @@ export function CrudSettingsPage<T = any>({
       if (field.validate) {
         const error = field.validate(formData[field.name]);
         if (error) {
-          alert(`${field.label}: ${error}`);
+          alert(t('crud.fieldError', { field: field.label, error }));
           return;
         }
       }
@@ -152,10 +154,10 @@ export function CrudSettingsPage<T = any>({
 
       if (isEdit) {
         await hook.updateItem(getItemId(editingItem!), formData);
-        setSuccessMessage(`${config.itemName} updated successfully`);
+        setSuccessMessage(t('crud.updatedSuccess', { item: config.itemName }));
       } else {
         await hook.createItem(formData);
-        setSuccessMessage(`${config.itemName} created successfully`);
+        setSuccessMessage(t('crud.createdSuccess', { item: config.itemName }));
       }
 
       setShowCreateModal(false);
@@ -184,7 +186,7 @@ export function CrudSettingsPage<T = any>({
   // Render loading state
   if (hook.loading) {
     return config.loadingState || (
-      <LoadingSpinner message={`Loading ${config.itemNamePlural || config.itemName + 's'}...`} />
+      <LoadingSpinner message={t('crud.loadingItems', { items: config.itemNamePlural || config.itemName + 's' })} />
     );
   }
 
@@ -262,7 +264,7 @@ export function CrudSettingsPage<T = any>({
       <CrudModal
         isOpen={showCreateModal}
         onClose={handleCloseModal}
-        title={isEdit ? `Edit ${config.itemName}` : `Add ${config.itemName}`}
+        title={isEdit ? t('crud.editItem', { item: config.itemName }) : t('crud.addItem', { item: config.itemName })}
         fields={fields}
         formData={formData}
         onChange={setFormData}

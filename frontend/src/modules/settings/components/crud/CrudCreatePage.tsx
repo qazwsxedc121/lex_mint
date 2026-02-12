@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { CrudForm } from './CrudForm';
@@ -46,6 +47,7 @@ export function CrudCreatePage<T = any>({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const pageMeta = config.createPage;
+  const { t } = useTranslation('settings');
 
   const fields = useMemo(() => config.createFields, [config.createFields]);
 
@@ -72,14 +74,14 @@ export function CrudCreatePage<T = any>({
 
     for (const field of fields) {
       if (field.required && !formData[field.name]) {
-        alert(`Please fill in required field: ${field.label}`);
+        alert(t('crud.requiredField', { field: field.label }));
         return;
       }
 
       if (field.validate) {
         const error = field.validate(formData[field.name]);
         if (error) {
-          alert(`${field.label}: ${error}`);
+          alert(t('crud.fieldError', { field: field.label, error }));
           return;
         }
       }
@@ -88,7 +90,7 @@ export function CrudCreatePage<T = any>({
     try {
       setIsSubmitting(true);
       await hook.createItem(formData);
-      setSuccessMessage(pageMeta?.successMessage || `${config.itemName} created successfully`);
+      setSuccessMessage(pageMeta?.successMessage || t('crud.createdSuccess', { item: config.itemName }));
       setFormData(initialFormData);
       setShowErrors(false);
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -101,7 +103,7 @@ export function CrudCreatePage<T = any>({
 
   if (hook.loading) {
     return config.loadingState || (
-      <LoadingSpinner message={`Loading ${config.itemName}...`} />
+      <LoadingSpinner message={t('crud.loadingItems', { items: config.itemName })} />
     );
   }
 
@@ -117,7 +119,7 @@ export function CrudCreatePage<T = any>({
   return (
     <div className="space-y-4" data-name="crud-create-page">
       <PageHeader
-        title={pageMeta?.title || `Add ${config.itemName}`}
+        title={pageMeta?.title || t('crud.addItem', { item: config.itemName })}
         description={pageMeta?.description || config.description}
         actions={(
           <button
@@ -127,7 +129,7 @@ export function CrudCreatePage<T = any>({
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
           >
             <ArrowLeftIcon className="h-4 w-4" />
-            {pageMeta?.backLabel || 'Back'}
+            {pageMeta?.backLabel || t('common:back')}
           </button>
         )}
       />

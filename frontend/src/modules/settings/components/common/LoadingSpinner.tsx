@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface LoadingSpinnerProps {
   /** Loading message to display */
@@ -14,9 +15,11 @@ interface LoadingSpinnerProps {
 }
 
 export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
-  message = 'Loading...',
+  message,
   size = 'md'
 }) => {
+  const { t } = useTranslation('common');
+  const resolvedMessage = message ?? t('loading');
   const sizeClasses = {
     sm: 'h-4 w-4',
     md: 'h-8 w-8',
@@ -36,7 +39,7 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
           className={`animate-spin rounded-full border-4 border-gray-200 border-t-blue-600 dark:border-gray-700 dark:border-t-blue-400 ${sizeClasses[size]}`}
         />
         <div className={`text-gray-500 dark:text-gray-400 ${textSizeClasses[size]}`}>
-          {message}
+          {resolvedMessage}
         </div>
       </div>
     </div>

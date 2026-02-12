@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const ttsConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'Text-to-Speech Settings',
-  description: 'Configure text-to-speech synthesis using Edge TTS (Microsoft neural voices)',
+  get title() { return i18n.t('settings:tts.title'); },
+  get description() { return i18n.t('settings:tts.description'); },
 
   apiEndpoint: {
     get: '/api/tts/config',
@@ -20,46 +21,46 @@ export const ttsConfig: SimpleConfigSettingsConfig = {
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable TTS',
-      helpText: 'Enable or disable the text-to-speech feature'
+      get label() { return i18n.t('settings:tts.field.enabled'); },
+      get helpText() { return i18n.t('settings:tts.field.enabled.help'); }
     },
     {
       type: 'text',
       name: 'voice',
-      label: 'Default Voice',
+      get label() { return i18n.t('settings:tts.field.voice'); },
       required: true,
-      helpText: 'Edge TTS voice for English and other languages (e.g., en-US-AriaNeural, en-US-GuyNeural)'
+      get helpText() { return i18n.t('settings:tts.field.voice.help'); }
     },
     {
       type: 'text',
       name: 'voice_zh',
-      label: 'Chinese Voice',
+      get label() { return i18n.t('settings:tts.field.voiceZh'); },
       required: true,
-      helpText: 'Edge TTS voice for Chinese text (e.g., zh-CN-XiaoxiaoNeural, zh-CN-YunxiNeural). Auto-selected when Chinese text is detected.'
+      get helpText() { return i18n.t('settings:tts.field.voiceZh.help'); }
     },
     {
       type: 'text',
       name: 'rate',
-      label: 'Speech Rate',
+      get label() { return i18n.t('settings:tts.field.rate'); },
       required: true,
-      helpText: 'Speech rate adjustment (e.g., +0%, +20%, -10%)'
+      get helpText() { return i18n.t('settings:tts.field.rate.help'); }
     },
     {
       type: 'text',
       name: 'volume',
-      label: 'Volume',
+      get label() { return i18n.t('settings:tts.field.volume'); },
       required: true,
-      helpText: 'Volume adjustment (e.g., +0%, +50%, -20%)'
+      get helpText() { return i18n.t('settings:tts.field.volume.help'); }
     },
     {
       type: 'number',
       name: 'max_text_length',
-      label: 'Max Text Length',
+      get label() { return i18n.t('settings:tts.field.maxTextLength'); },
       min: 100,
       max: 100000,
       defaultValue: 10000,
       required: true,
-      helpText: 'Maximum number of characters to synthesize. Longer text will be truncated.'
+      get helpText() { return i18n.t('settings:tts.field.maxTextLength.help'); }
     }
   ]
 };

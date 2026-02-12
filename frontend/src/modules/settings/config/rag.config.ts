@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const ragConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'RAG Settings',
-  description: 'Configure Retrieval-Augmented Generation (embedding, chunking, and retrieval)',
+  get title() { return i18n.t('settings:rag.title'); },
+  get description() { return i18n.t('settings:rag.description'); },
 
   apiEndpoint: {
     get: '/api/rag/config',
@@ -20,109 +21,105 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     {
       type: 'select',
       name: 'embedding_provider',
-      label: 'Embedding Provider',
+      get label() { return i18n.t('settings:rag.field.embeddingProvider'); },
       required: true,
       defaultValue: 'api',
-      options: [
-        {
-          value: 'api',
-          label: 'API-based (uses configured LLM provider)'
-        },
-        {
-          value: 'local',
-          label: 'Local (sentence-transformers, requires install)'
-        }
-      ],
-      helpText: 'Select the embedding provider for vector generation'
+      get options() {
+        return [
+          { value: 'api', label: i18n.t('settings:rag.opt.api') },
+          { value: 'local', label: i18n.t('settings:rag.opt.local') }
+        ];
+      },
+      get helpText() { return i18n.t('settings:rag.field.embeddingProvider.help'); }
     },
     {
       type: 'text',
       name: 'embedding_api_model',
-      label: 'API Embedding Model',
-      placeholder: 'e.g., jina-embeddings-v3 or provider:model',
+      get label() { return i18n.t('settings:rag.field.embeddingApiModel'); },
+      get placeholder() { return i18n.t('settings:rag.field.embeddingApiModel.placeholder'); },
       defaultValue: 'jina-embeddings-v3',
-      helpText: 'Model name for embeddings. Use provider:model format to fall back to LLM provider config.',
+      get helpText() { return i18n.t('settings:rag.field.embeddingApiModel.help'); },
       condition: (formData) => formData.embedding_provider === 'api',
     },
     {
       type: 'text',
       name: 'embedding_api_base_url',
-      label: 'Embedding API Base URL',
-      placeholder: 'e.g., https://api.jina.ai/v1',
+      get label() { return i18n.t('settings:rag.field.embeddingApiBaseUrl'); },
+      get placeholder() { return i18n.t('settings:rag.field.embeddingApiBaseUrl.placeholder'); },
       defaultValue: '',
-      helpText: 'Base URL for the embedding API. Leave empty to use LLM provider base URL.',
+      get helpText() { return i18n.t('settings:rag.field.embeddingApiBaseUrl.help'); },
       condition: (formData) => formData.embedding_provider === 'api',
     },
     {
       type: 'password',
       name: 'embedding_api_key',
-      label: 'Embedding API Key',
-      placeholder: 'Enter API key for embedding service',
+      get label() { return i18n.t('settings:rag.field.embeddingApiKey'); },
+      get placeholder() { return i18n.t('settings:rag.field.embeddingApiKey.placeholder'); },
       defaultValue: '',
-      helpText: 'API key for the embedding service. Leave empty to use LLM provider API key.',
+      get helpText() { return i18n.t('settings:rag.field.embeddingApiKey.help'); },
       condition: (formData) => formData.embedding_provider === 'api',
     },
     {
       type: 'text',
       name: 'embedding_local_model',
-      label: 'Local Model Name',
-      placeholder: 'e.g., all-MiniLM-L6-v2',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalModel'); },
+      get placeholder() { return i18n.t('settings:rag.field.embeddingLocalModel.placeholder'); },
       defaultValue: 'all-MiniLM-L6-v2',
-      helpText: 'HuggingFace model name for local embeddings',
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalModel.help'); },
       condition: (formData) => formData.embedding_provider === 'local',
     },
     {
       type: 'select',
       name: 'embedding_local_device',
-      label: 'Local Device',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalDevice'); },
       defaultValue: 'cpu',
       options: [
         { value: 'cpu', label: 'CPU' },
         { value: 'cuda', label: 'CUDA (GPU)' }
       ],
-      helpText: 'Device for running local embedding model',
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalDevice.help'); },
       condition: (formData) => formData.embedding_provider === 'local',
     },
     {
       type: 'number',
       name: 'chunk_size',
-      label: 'Default Chunk Size',
+      get label() { return i18n.t('settings:rag.field.chunkSize'); },
       min: 100,
       max: 10000,
       defaultValue: 1000,
       required: true,
-      helpText: 'Default size for text chunks (characters)'
+      get helpText() { return i18n.t('settings:rag.field.chunkSize.help'); }
     },
     {
       type: 'number',
       name: 'chunk_overlap',
-      label: 'Default Chunk Overlap',
+      get label() { return i18n.t('settings:rag.field.chunkOverlap'); },
       min: 0,
       max: 5000,
       defaultValue: 200,
       required: true,
-      helpText: 'Default overlap between adjacent chunks (characters)'
+      get helpText() { return i18n.t('settings:rag.field.chunkOverlap.help'); }
     },
     {
       type: 'number',
       name: 'top_k',
-      label: 'Top K Results',
+      get label() { return i18n.t('settings:rag.field.topK'); },
       min: 1,
       max: 50,
       defaultValue: 5,
       required: true,
-      helpText: 'Number of top results to retrieve from knowledge base'
+      get helpText() { return i18n.t('settings:rag.field.topK.help'); }
     },
     {
       type: 'number',
       name: 'score_threshold',
-      label: 'Score Threshold',
+      get label() { return i18n.t('settings:rag.field.scoreThreshold'); },
       min: 0,
       max: 1,
       step: 0.05,
       defaultValue: 0.3,
       required: true,
-      helpText: 'Minimum similarity score for results (0-1)'
+      get helpText() { return i18n.t('settings:rag.field.scoreThreshold.help'); }
     }
   ]
 };

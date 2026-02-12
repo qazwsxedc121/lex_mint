@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TableColumnConfig } from '../../config/types';
 
 interface TableProps<T> {
@@ -28,8 +29,10 @@ export function Table<T = any>({
   context = {},
   getRowKey,
   onRowClick,
-  emptyMessage = 'No data available'
+  emptyMessage
 }: TableProps<T>) {
+  const { t } = useTranslation('common');
+  const resolvedEmptyMessage = emptyMessage ?? t('noData');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -79,7 +82,7 @@ export function Table<T = any>({
   if (data.length === 0) {
     return (
       <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-        {emptyMessage}
+        {resolvedEmptyMessage}
       </div>
     );
   }

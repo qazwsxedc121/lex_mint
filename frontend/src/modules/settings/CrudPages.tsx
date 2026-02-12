@@ -76,7 +76,6 @@ const assistantsPages = makeCrudPages<Assistant>({
   useData: useAssistantsCrud,
   backPath: '/settings/assistants',
   idParam: 'assistantId',
-  missingMessage: 'Assistant not found'
 });
 
 const modelsPages = makeCrudPages<Model>({
@@ -85,7 +84,6 @@ const modelsPages = makeCrudPages<Model>({
   backPath: '/settings/models',
   idParam: 'modelId',
   decodeId: (value) => decodeURIComponent(value),
-  missingMessage: 'Model not found'
 });
 
 const providersPages = makeCrudPages<Provider>({
@@ -93,7 +91,6 @@ const providersPages = makeCrudPages<Provider>({
   useData: useProvidersCrud,
   backPath: '/settings/providers',
   idParam: 'providerId',
-  missingMessage: 'Provider not found'
 });
 
 const useKnowledgeBasesCrud = () => {
@@ -117,7 +114,6 @@ const knowledgeBasesPages = makeCrudPages<KnowledgeBase>({
   useData: useKnowledgeBasesCrud,
   backPath: '/settings/knowledge-bases',
   idParam: 'kbId',
-  missingMessage: 'Knowledge base not found'
 });
 
 export const AssistantsCreatePage = assistantsPages.CreatePage;

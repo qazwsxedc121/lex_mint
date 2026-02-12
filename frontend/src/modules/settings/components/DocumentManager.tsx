@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowPathIcon,
   TrashIcon,
@@ -19,21 +20,21 @@ interface DocumentManagerProps {
   kbId: string;
 }
 
-const statusConfig: Record<string, { label: string; className: string }> = {
+const statusConfig: Record<string, { labelKey: string; className: string }> = {
   pending: {
-    label: 'Pending',
+    labelKey: 'documents.pending',
     className: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
   },
   processing: {
-    label: 'Processing',
+    labelKey: 'documents.processing',
     className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
   },
   ready: {
-    label: 'Ready',
+    labelKey: 'documents.ready',
     className: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
   },
   error: {
-    label: 'Error',
+    labelKey: 'documents.error',
     className: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
   },
 };
@@ -45,6 +46,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
+  const { t } = useTranslation('settings');
   const [documents, setDocuments] = useState<KnowledgeBaseDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -76,7 +78,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
         }, 3000);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load documents';
+      const message = err instanceof Error ? err.message : t('documents.failedToLoad');
       setError(message);
     }
   }, [kbId]);
@@ -102,7 +104,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
       }
       await loadDocuments();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Upload failed';
+      const message = err instanceof Error ? err.message : t('documents.uploadFailed');
       setError(message);
     } finally {
       setUploading(false);
@@ -113,12 +115,12 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
   };
 
   const handleDelete = async (docId: string) => {
-    if (!confirm('Delete this document? This will also remove its chunks from the vector store.')) return;
+    if (!confirm(t('documents.confirmDelete'))) return;
     try {
       await api.deleteDocument(kbId, docId);
       await loadDocuments();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete document';
+      const message = err instanceof Error ? err.message : t('documents.failedToDelete');
       setError(message);
     }
   };
@@ -128,7 +130,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
       await api.reprocessDocument(kbId, docId);
       await loadDocuments();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to reprocess document';
+      const message = err instanceof Error ? err.message : t('documents.failedToReprocess');
       setError(message);
     }
   };
@@ -136,10 +138,10 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
   const handleReprocessAll = async () => {
     const candidates = documents.filter((doc) => doc.status !== 'processing');
     if (candidates.length === 0) {
-      setError('No documents available for reprocessing.');
+      setError(t('documents.noDocsForReprocess'));
       return;
     }
-    if (!confirm('Reprocess all documents? This will rebuild chunks for the current knowledge base.')) {
+    if (!confirm(t('documents.confirmReprocessAll'))) {
       return;
     }
 
@@ -151,7 +153,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
       }
       await loadDocuments();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to reprocess documents';
+      const message = err instanceof Error ? err.message : t('documents.failedToReprocessAll');
       setError(message);
     } finally {
       setReprocessingAll(false);
@@ -171,7 +173,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
     <div data-name="document-manager" className="mt-8">
       <div className="mb-4 flex items-center justify-between gap-3" data-name="document-manager-header">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-          Documents
+          {t('documents.title')}
         </h3>
         <button
           type="button"
@@ -180,7 +182,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
           className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60"
         >
           <ArrowPathIcon className="h-4 w-4" />
-          {reprocessingAll ? 'Reprocessing...' : 'Reprocess All'}
+          {reprocessingAll ? t('documents.reprocessing') : t('documents.reprocessAll')}
         </button>
       </div>
 
@@ -199,10 +201,10 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
       >
         <DocumentArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 dark:text-gray-500 mb-2" />
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
+          {uploading ? t('documents.uploading') : t('documents.dropOrClick')}
         </p>
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-          Supported: TXT, MD, PDF, DOCX, HTML
+          {t('documents.supportedTypes')}
         </p>
         <input
           ref={fileInputRef}
@@ -216,10 +218,10 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
 
       {/* Documents table */}
       {loading ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">Loading documents...</div>
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">{t('documents.loadingDocs')}</div>
       ) : documents.length === 0 ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          No documents uploaded yet
+          {t('documents.noDocuments')}
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -227,22 +229,22 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
             <thead className="bg-gray-50 dark:bg-gray-800">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Filename
+                  {t('documents.filename')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">
-                  Type
+                  {t('documents.type')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">
-                  Size
+                  {t('documents.size')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Status
+                  {t('common:status')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">
-                  Chunks
+                  {t('documents.chunks')}
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
+                  {t('common:actions')}
                 </th>
               </tr>
             </thead>
@@ -275,7 +277,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
                         )}
-                        {status.label}
+                        {t(status.labelKey)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 hidden sm:table-cell">
@@ -286,7 +288,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                         <button
                           onClick={() => handleReprocess(doc.id)}
                           className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                          title="Reprocess"
+                          title={t('documents.reprocess')}
                           disabled={doc.status === 'processing'}
                         >
                           <ArrowPathIcon className="h-4 w-4" />
@@ -294,7 +296,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                         <button
                           onClick={() => handleDelete(doc.id)}
                           className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title="Delete"
+                          title={t('common:delete')}
                         >
                           <TrashIcon className="h-4 w-4" />
                         </button>

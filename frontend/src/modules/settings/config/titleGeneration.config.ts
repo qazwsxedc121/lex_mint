@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const titleGenerationConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'Title Generation Settings',
-  description: 'Configure automatic conversation title generation using a small language model',
+  get title() { return i18n.t('settings:titleGen.title'); },
+  get description() { return i18n.t('settings:titleGen.description'); },
 
   apiEndpoint: {
     get: '/api/title-generation/config',
@@ -20,24 +21,24 @@ export const titleGenerationConfig: SimpleConfigSettingsConfig = {
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable automatic title generation',
+      get label() { return i18n.t('settings:titleGen.field.enabled'); },
       defaultValue: true
     },
     {
       type: 'number',
       name: 'trigger_threshold',
-      label: 'Trigger Threshold (conversation rounds)',
+      get label() { return i18n.t('settings:titleGen.field.triggerThreshold'); },
       min: 1,
       max: 10,
       defaultValue: 1,
       required: true,
-      helpText: 'Generate title after this many conversation rounds (1 round = user message + assistant response)',
+      get helpText() { return i18n.t('settings:titleGen.field.triggerThreshold.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'select',
       name: 'model_id',
-      label: 'Small Model for Title Generation',
+      get label() { return i18n.t('settings:titleGen.field.modelId'); },
       required: true,
       dynamicOptions: (context) => {
         const models = context.models || [];
@@ -46,39 +47,39 @@ export const titleGenerationConfig: SimpleConfigSettingsConfig = {
           label: m.name || m.id
         }));
       },
-      helpText: 'Recommended: Use a small, fast model like GPT-4o-mini to minimize cost',
+      get helpText() { return i18n.t('settings:titleGen.field.modelId.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'number',
       name: 'max_context_rounds',
-      label: 'Max Context Rounds',
+      get label() { return i18n.t('settings:titleGen.field.maxContextRounds'); },
       min: 1,
       max: 10,
       defaultValue: 3,
       required: true,
-      helpText: 'Maximum number of recent conversation rounds to use as context',
+      get helpText() { return i18n.t('settings:titleGen.field.maxContextRounds.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'number',
       name: 'timeout_seconds',
-      label: 'Timeout (seconds)',
+      get label() { return i18n.t('settings:titleGen.field.timeout'); },
       min: 5,
       max: 60,
       defaultValue: 10,
       required: true,
-      helpText: 'Maximum time to wait for title generation',
+      get helpText() { return i18n.t('settings:titleGen.field.timeout.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'textarea',
       name: 'prompt_template',
-      label: 'Prompt Template',
+      get label() { return i18n.t('settings:titleGen.field.promptTemplate'); },
       rows: 6,
       monospace: true,
-      placeholder: 'Enter prompt template. Use {conversation_text} as placeholder for conversation content.',
-      helpText: 'Use {conversation_text} as a placeholder for the actual conversation content',
+      get placeholder() { return i18n.t('settings:titleGen.field.promptTemplate.placeholder'); },
+      get helpText() { return i18n.t('settings:titleGen.field.promptTemplate.help'); },
       condition: (formData) => formData.enabled !== false
     }
   ]

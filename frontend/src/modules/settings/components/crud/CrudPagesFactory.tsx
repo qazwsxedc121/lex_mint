@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { CrudCreatePage } from './CrudCreatePage';
 import { CrudEditPage } from './CrudEditPage';
 import { ErrorMessage } from '../common';
@@ -41,11 +42,12 @@ export function makeCrudPages<T>(options: CrudPagesFactoryOptions<T>) {
     const { hook, context, getItemId } = options.useData();
     const params = useParams();
     const rawId = params[options.idParam];
+    const { t } = useTranslation('settings');
 
     if (!rawId) {
       return (
         <ErrorMessage
-          message={options.missingMessage || `${options.config.itemName} not found`}
+          message={options.missingMessage || t('crud.notFound', { item: options.config.itemName })}
           onRetry={hook.refreshData}
         />
       );

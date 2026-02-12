@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { CrudForm } from './CrudForm';
@@ -40,6 +41,7 @@ export function CrudEditPage<T = any>({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const pageMeta = config.editPage;
+  const { t } = useTranslation('settings');
 
   const fields = config.editFields ? config.editFields : config.createFields;
 
@@ -90,14 +92,14 @@ export function CrudEditPage<T = any>({
 
     for (const field of fields) {
       if (field.required && !formData[field.name]) {
-        alert(`Please fill in required field: ${field.label}`);
+        alert(t('crud.requiredField', { field: field.label }));
         return;
       }
 
       if (field.validate) {
         const error = field.validate(formData[field.name]);
         if (error) {
-          alert(`${field.label}: ${error}`);
+          alert(t('crud.fieldError', { field: field.label, error }));
           return;
         }
       }
@@ -110,7 +112,7 @@ export function CrudEditPage<T = any>({
       setSuccessMessage(
         typeof successText === 'function'
           ? successText(item)
-          : (successText || `${config.itemName} updated successfully`)
+          : (successText || t('crud.updatedSuccess', { item: config.itemName }))
       );
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -122,7 +124,7 @@ export function CrudEditPage<T = any>({
 
   if (hook.loading) {
     return config.loadingState || (
-      <LoadingSpinner message={`Loading ${config.itemName}...`} />
+      <LoadingSpinner message={t('crud.loadingItems', { items: config.itemName })} />
     );
   }
 
@@ -138,7 +140,7 @@ export function CrudEditPage<T = any>({
   if (!item) {
     return (
       <ErrorMessage
-        message={`${config.itemName} not found`}
+        message={t('crud.notFound', { item: config.itemName })}
         onRetry={hook.refreshData}
       />
     );
@@ -150,12 +152,12 @@ export function CrudEditPage<T = any>({
         title={
           typeof pageMeta?.title === 'function'
             ? pageMeta.title(item)
-            : (pageMeta?.title || `Edit ${config.itemName}`)
+            : (pageMeta?.title || t('crud.editItem', { item: config.itemName }))
         }
         description={
           typeof pageMeta?.description === 'function'
             ? pageMeta.description(item)
-            : (pageMeta?.description || ((item as any)?.name ? `Editing ${(item as any).name}` : undefined))
+            : (pageMeta?.description || ((item as any)?.name ? t('crud.editingItem', { name: (item as any).name }) : undefined))
         }
         actions={(
           <button
@@ -165,7 +167,7 @@ export function CrudEditPage<T = any>({
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
           >
             <ArrowLeftIcon className="h-4 w-4" />
-            {pageMeta?.backLabel || 'Back'}
+            {pageMeta?.backLabel || t('common:back')}
           </button>
         )}
       />

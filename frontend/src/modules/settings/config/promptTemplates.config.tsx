@@ -4,6 +4,7 @@
 
 import type { CrudSettingsConfig } from './types';
 import type { PromptTemplate } from '../../../types/promptTemplate';
+import i18n from '../../../i18n';
 
 export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
   type: 'crud',
@@ -46,7 +47,7 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
       label: 'Enabled',
       sortable: true,
       hideOnMobile: true,
-      render: (value) => (value ? 'Yes' : 'No')
+      render: (value) => (value ? i18n.t('common:yes') : i18n.t('common:no'))
     }
   ],
 

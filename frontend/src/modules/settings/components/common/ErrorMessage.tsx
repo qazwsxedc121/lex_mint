@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { XCircleIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 
 interface ErrorMessageProps {
   /** Error message to display */
@@ -19,8 +20,10 @@ interface ErrorMessageProps {
 export const ErrorMessage: React.FC<ErrorMessageProps> = ({
   message,
   onRetry,
-  retryLabel = 'Retry'
+  retryLabel
 }) => {
+  const { t } = useTranslation('common');
+  const resolvedRetryLabel = retryLabel ?? t('retry');
   return (
     <div
       data-name="error-message"
@@ -39,7 +42,7 @@ export const ErrorMessage: React.FC<ErrorMessageProps> = ({
               onClick={onRetry}
               className="text-sm font-medium text-red-800 dark:text-red-200 hover:text-red-600 dark:hover:text-red-100 underline"
             >
-              {retryLabel}
+              {resolvedRetryLabel}
             </button>
           </div>
         )}

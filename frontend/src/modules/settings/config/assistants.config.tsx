@@ -8,6 +8,7 @@ import type { CrudSettingsConfig } from './types';
 import type { Assistant } from '../../../types/assistant';
 import { PARAM_SUPPORT } from '../../../shared/constants/paramSupport';
 import { getAssistantIcon } from '../../../shared/constants/assistantIcons';
+import i18n from '../../../i18n';
 
 // === Provider-aware parameter visibility ===
 
@@ -173,7 +174,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       hideOnMobile: true,
       render: (value) => {
         if (value === -1 || value === null || value === undefined) {
-          return 'Unlimited';
+          return i18n.t('settings:configField.unlimited');
         }
         return value;
       }
@@ -183,7 +184,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       label: 'Memory',
       sortable: true,
       hideOnMobile: true,
-      render: (value) => (value === true ? 'On' : 'Off')
+      render: (value) => (value === true ? i18n.t('settings:configField.on') : i18n.t('settings:configField.off'))
     }
   ],
 

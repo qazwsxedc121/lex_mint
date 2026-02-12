@@ -5,6 +5,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PencilIcon, TrashIcon, StarIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { Table, StatusBadge } from '../common';
@@ -40,6 +41,7 @@ export function CrudTable<T = any>({
   getItemId
 }: CrudTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
+  const { t } = useTranslation('settings');
 
   // Filter items based on search
   const filteredItems = useMemo(() => {
@@ -66,7 +68,7 @@ export function CrudTable<T = any>({
       if (!hasStatusColumn) {
         cols.push({
           key: config.statusKey,
-          label: 'Status',
+          label: t('common:status'),
           render: (value) => <StatusBadge enabled={value} />
         });
       }
@@ -81,7 +83,7 @@ export function CrudTable<T = any>({
     if (showEdit || showDelete || showSetDefault || config.rowActions) {
       cols.push({
         key: '__actions',
-        label: 'Actions',
+        label: t('common:actions'),
         render: (_, item) => {
           const itemId = getItemId(item);
           const isDefault = !!(config.defaultKey && (item as any)[config.defaultKey] === true);
@@ -96,7 +98,7 @@ export function CrudTable<T = any>({
                   onClick={() => onSetDefault(item)}
                   disabled={isItemDefault}
                   className="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isItemDefault ? 'Already default' : 'Set as default'}
+                  title={isItemDefault ? t('crud.alreadyDefault') : t('crud.setAsDefault')}
                 >
                   {isItemDefault ? (
                     <StarIconSolid className="h-4 w-4" />
@@ -111,7 +113,7 @@ export function CrudTable<T = any>({
                 <button
                   onClick={() => onEdit(item)}
                   className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                  title="Edit"
+                  title={t('common:edit')}
                 >
                   <PencilIcon className="h-4 w-4" />
                 </button>
@@ -123,7 +125,7 @@ export function CrudTable<T = any>({
                   onClick={() => onDelete(item)}
                   disabled={isItemDefault}
                   className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isItemDefault ? 'Cannot delete default item' : 'Delete'}
+                  title={isItemDefault ? t('crud.cannotDeleteDefault') : t('common:delete')}
                 >
                   <TrashIcon className="h-4 w-4" />
                 </button>
@@ -184,7 +186,7 @@ export function CrudTable<T = any>({
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={config.searchPlaceholder || `Search ${config.itemNamePlural || config.itemName + 's'}...`}
+            placeholder={config.searchPlaceholder || t('crud.searchItems', { items: config.itemNamePlural || config.itemName + 's' })}
             className="w-full max-w-md px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
           />
         </div>
@@ -196,7 +198,7 @@ export function CrudTable<T = any>({
         data={filteredItems}
         context={context}
         getRowKey={getItemId}
-        emptyMessage={`No ${config.itemNamePlural || config.itemName + 's'} found`}
+        emptyMessage={t('crud.noItemsFound', { items: config.itemNamePlural || config.itemName + 's' })}
       />
     </div>
   );

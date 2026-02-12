@@ -8,6 +8,7 @@
 
 import type { CrudSettingsConfig } from './types';
 import type { Provider } from '../../../types/model';
+import i18n from '../../../i18n';
 
 export const providersConfig: CrudSettingsConfig<Provider> = {
   type: 'crud',
@@ -32,7 +33,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
             {row.name}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {row.type === 'builtin' ? 'Builtin' : 'Custom'} - {row.protocol || 'openai'}
+            {row.type === 'builtin' ? i18n.t('settings:configField.builtin') : i18n.t('settings:configField.custom')} - {row.protocol || 'openai'}
           </div>
         </div>
       )
@@ -49,7 +50,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       hideOnMobile: true,
       render: (_value, row) => (
         <span className="text-gray-500 dark:text-gray-400">
-          {row.has_api_key ? '••••••••' : 'Not set'}
+          {row.has_api_key ? '••••••••' : i18n.t('settings:configField.notSet')}
         </span>
       )
     },

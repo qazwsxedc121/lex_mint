@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const searchConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'Search Settings',
-  description: 'Choose a search provider for the chat web search toggle',
+  get title() { return i18n.t('settings:search.title'); },
+  get description() { return i18n.t('settings:search.description'); },
 
   apiEndpoint: {
     get: '/api/search/config',
@@ -20,40 +21,36 @@ export const searchConfig: SimpleConfigSettingsConfig = {
     {
       type: 'select',
       name: 'provider',
-      label: 'Search Provider',
+      get label() { return i18n.t('settings:search.field.provider'); },
       required: true,
       defaultValue: 'duckduckgo',
-      options: [
-        {
-          value: 'duckduckgo',
-          label: 'DuckDuckGo (Free, no API key required)'
-        },
-        {
-          value: 'tavily',
-          label: 'Tavily (Higher quality, requires API key)'
-        }
-      ],
-      helpText: 'Select the search provider for web searches'
+      get options() {
+        return [
+          { value: 'duckduckgo', label: i18n.t('settings:search.opt.duckduckgo') },
+          { value: 'tavily', label: i18n.t('settings:search.opt.tavily') }
+        ];
+      },
+      get helpText() { return i18n.t('settings:search.field.provider.help'); }
     },
     {
       type: 'number',
       name: 'max_results',
-      label: 'Max Results',
+      get label() { return i18n.t('settings:search.field.maxResults'); },
       min: 1,
       max: 20,
       defaultValue: 6,
       required: true,
-      helpText: 'Maximum number of search results to return'
+      get helpText() { return i18n.t('settings:search.field.maxResults.help'); }
     },
     {
       type: 'number',
       name: 'timeout_seconds',
-      label: 'Timeout (seconds)',
+      get label() { return i18n.t('settings:search.field.timeout'); },
       min: 5,
       max: 60,
       defaultValue: 10,
       required: true,
-      helpText: 'Maximum time to wait for search results'
+      get helpText() { return i18n.t('settings:search.field.timeout.help'); }
     }
   ]
 };

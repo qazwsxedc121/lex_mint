@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { FormField } from '../common';
 import type { FieldConfig, ConfigContext } from '../../config/types';
 
@@ -43,9 +44,12 @@ export const CrudForm: React.FC<CrudFormProps> = ({
   onSubmit,
   onCancel,
   submitLabel,
-  cancelLabel = 'Cancel',
+  cancelLabel,
   isSubmitting = false
 }) => {
+  const { t } = useTranslation('common');
+  const resolvedCancelLabel = cancelLabel ?? t('cancel');
+
   const handleFieldChange = (fieldName: string, value: any) => {
     onChange({ ...formData, [fieldName]: value });
   };
@@ -73,14 +77,14 @@ export const CrudForm: React.FC<CrudFormProps> = ({
           disabled={isSubmitting}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
         >
-          {cancelLabel}
+          {resolvedCancelLabel}
         </button>
         <button
           type="submit"
           disabled={isSubmitting}
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? 'Saving...' : (submitLabel || (isEdit ? 'Save' : 'Create'))}
+          {isSubmitting ? t('saving') : (submitLabel || (isEdit ? t('save') : t('create')))}
         </button>
       </div>
     </form>

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { FieldConfig, ConfigContext } from '../../config/types';
 import {
   ASSISTANT_ICONS,
@@ -35,6 +36,7 @@ export const FormField: React.FC<FormFieldProps> = ({
   context,
   showErrors = false
 }) => {
+  const { t } = useTranslation('settings');
   // Check conditional rendering
   if (config.condition && !config.condition(formData, context)) {
     return null;
@@ -106,7 +108,7 @@ export const FormField: React.FC<FormFieldProps> = ({
             className={inputClasses}
           >
             {(config.allowEmpty !== false) && (
-              <option value="">{config.emptyLabel || 'Select...'}</option>
+              <option value="">{config.emptyLabel || t('common:select')}</option>
             )}
             {options.map((opt) => (
               <option key={opt.value} value={opt.value} disabled={opt.disabled}>
@@ -145,7 +147,7 @@ export const FormField: React.FC<FormFieldProps> = ({
             ? (config.defaultValue ?? config.min)
             : (value ?? config.defaultValue ?? config.min);
           const displayValue = isDefault
-            ? (config.emptyLabel || 'Default')
+            ? (config.emptyLabel || t('common:default'))
             : (config.formatValue ? config.formatValue(effectiveValue) : effectiveValue);
 
         return (
@@ -170,7 +172,7 @@ export const FormField: React.FC<FormFieldProps> = ({
                   htmlFor={`slider-default-${config.name}`}
                   className="text-xs text-gray-600 dark:text-gray-300"
                 >
-                  Use default
+                  {t('common:useDefault')}
                 </label>
               </div>
             )}
@@ -246,7 +248,7 @@ export const FormField: React.FC<FormFieldProps> = ({
         return (
           <div className="space-y-1 max-h-48 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md p-2 bg-white dark:bg-gray-700">
             {options.length === 0 ? (
-              <div className="text-sm text-gray-400 dark:text-gray-500 py-1">No options available</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 py-1">{t('common:noOptions')}</div>
             ) : (
               options.map((opt) => (
                 <label
@@ -269,7 +271,7 @@ export const FormField: React.FC<FormFieldProps> = ({
       }
 
       default:
-        return <div className="text-red-500">Unknown field type</div>;
+        return <div className="text-red-500">{t('formField.unknownType')}</div>;
     }
   };
 
@@ -324,6 +326,7 @@ const IconPickerField: React.FC<{
   columns: number;
   onChange: (key: string) => void;
 }> = ({ selectedKey, SelectedIcon, columns, onChange }) => {
+  const { t } = useTranslation('settings');
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -357,7 +360,7 @@ const IconPickerField: React.FC<{
           )}
         </div>
         <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 text-left">
-          {selectedKey || 'Click to choose an icon'}
+          {selectedKey || t('formField.clickToChooseIcon')}
         </span>
         <svg
           className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -379,11 +382,11 @@ const IconPickerField: React.FC<{
               type="text"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Search icons..."
+              placeholder={t('formField.searchIcons')}
               className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white placeholder-gray-400"
             />
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              {filteredKeys.length} icons{search.trim() ? ' found' : ' available'}
+              {search.trim() ? t('formField.iconsFound', { count: filteredKeys.length }) : t('formField.iconsAvailable', { count: filteredKeys.length })}
             </div>
           </div>
 
@@ -421,7 +424,7 @@ const IconPickerField: React.FC<{
                 onClick={() => setPage((p) => p + 1)}
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
               >
-                Load more ({filteredKeys.length - visibleKeys.length} remaining)
+                {t('formField.loadMore', { count: filteredKeys.length - visibleKeys.length })}
               </button>
             </div>
           )}

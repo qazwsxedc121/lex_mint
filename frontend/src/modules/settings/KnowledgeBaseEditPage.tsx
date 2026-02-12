@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useKnowledgeBases } from './hooks/useKnowledgeBases';
 import { knowledgeBasesConfig } from './config';
@@ -23,6 +24,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { t } = useTranslation('settings');
 
   const fields = knowledgeBasesConfig.editFields || knowledgeBasesConfig.createFields;
 
@@ -56,7 +58,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
 
     for (const field of fields) {
       if (field.required && !formData[field.name]) {
-        alert(`Please fill in required field: ${field.label}`);
+        alert(t('crud.requiredField', { field: field.label }));
         return;
       }
     }
@@ -64,7 +66,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
     try {
       setIsSubmitting(true);
       await kbHook.updateKnowledgeBase(kbId!, formData);
-      setSuccessMessage('Knowledge base updated successfully');
+      setSuccessMessage(t('knowledgeBase.updatedSuccess'));
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error('Submit error:', err);
@@ -76,7 +78,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
   if (kbHook.loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500 dark:text-gray-400">Loading knowledge base...</div>
+        <div className="text-gray-500 dark:text-gray-400">{t('knowledgeBase.loading')}</div>
       </div>
     );
   }
@@ -92,7 +94,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
   if (!item || !kbId) {
     return (
       <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-yellow-700 dark:text-yellow-300">
-        Knowledge base not found
+        {t('knowledgeBase.notFound')}
       </div>
     );
   }
@@ -103,10 +105,10 @@ export const KnowledgeBaseEditPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Edit Knowledge Base
+            {t('knowledgeBase.editTitle')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Editing {item.name}
+            {t('knowledgeBase.editingName', { name: item.name })}
           </p>
         </div>
         <button
@@ -116,7 +118,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
           className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
         >
           <ArrowLeftIcon className="h-4 w-4" />
-          Back
+          {t('common:back')}
         </button>
       </div>
 

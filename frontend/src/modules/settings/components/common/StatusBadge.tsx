@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface StatusBadgeProps {
   /** Whether the item is enabled */
@@ -17,9 +18,12 @@ interface StatusBadgeProps {
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({
   enabled,
-  enabledLabel = 'Enabled',
-  disabledLabel = 'Disabled'
+  enabledLabel,
+  disabledLabel
 }) => {
+  const { t } = useTranslation('common');
+  const resolvedEnabledLabel = enabledLabel ?? t('enabled');
+  const resolvedDisabledLabel = disabledLabel ?? t('disabled');
   return (
     <span
       data-name="status-badge"
@@ -29,7 +33,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
       }`}
     >
-      {enabled ? enabledLabel : disabledLabel}
+      {enabled ? resolvedEnabledLabel : resolvedDisabledLabel}
     </span>
   );
 };

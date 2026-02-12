@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { ConfigForm } from './ConfigForm';
 import type { SimpleConfigSettingsConfig, ConfigContext } from '../../config/types';
@@ -33,6 +34,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const { t } = useTranslation('settings');
 
   // Default API client using fetch
   const API_BASE = import.meta.env.VITE_API_URL;
@@ -84,7 +86,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
 
       setFormData(initialData);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load configuration';
+      const message = err instanceof Error ? err.message : t('config.failedToLoad');
       setError(message);
       console.error('Failed to load config:', err);
     } finally {
@@ -114,7 +116,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
     // Check required fields
     for (const field of config.fields) {
       if (field.required && !formData[field.name]) {
-        alert(`Please fill in required field: ${field.label}`);
+        alert(t('crud.requiredField', { field: field.label }));
         return;
       }
 
@@ -122,7 +124,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
       if (field.validate) {
         const error = field.validate(formData[field.name]);
         if (error) {
-          alert(`${field.label}: ${error}`);
+          alert(t('crud.fieldError', { field: field.label, error }));
           return;
         }
       }
@@ -138,14 +140,14 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
 
       await api.post(config.apiEndpoint.update, dataToSave);
 
-      setSuccessMessage('Settings saved successfully!');
+      setSuccessMessage(t('config.savedSuccess'));
       setTimeout(() => setSuccessMessage(null), 3000);
 
       // Reload to confirm
       await loadConfig();
       setShowErrors(false);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save configuration';
+      const message = err instanceof Error ? err.message : t('config.failedToSave');
       setError(message);
       console.error('Failed to save config:', err);
     } finally {
@@ -156,7 +158,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   // Render loading state
   if (loading) {
     return config.loadingState || (
-      <LoadingSpinner message="Loading settings..." />
+      <LoadingSpinner message={t('config.loadingSettings')} />
     );
   }
 
