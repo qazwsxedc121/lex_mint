@@ -112,5 +112,16 @@
   "transfer.loadingProjects": "加载项目中...",
   "transfer.chatGlobal": "聊天（全局）",
   "transfer.projects": "项目",
-  "transfer.noProjects": "没有可用的项目。"
+  "transfer.noProjects": "没有可用的项目。",
+
+  "input.compareModels": "对比模型",
+  "input.compareActive": "正在对比 {{count}} 个模型",
+  "input.compareSelectModels": "选择要对比的模型",
+  "input.compareMinModels": "至少选择 2 个模型",
+  "input.compareConfirm": "对比",
+  "input.compareCancel": "取消",
+  "compare.sideBySide": "并排显示",
+  "compare.tabs": "标签页",
+  "compare.modelError": "错误：{{error}}",
+  "compare.generating": "生成中..."
 }

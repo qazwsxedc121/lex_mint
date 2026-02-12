@@ -8,6 +8,7 @@ from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tok
 from src.providers.types import TokenUsage, CostInfo
 from .conversation_storage import ConversationStorage
 from .pricing_service import PricingService
+from .comparison_storage import ComparisonStorage
 from .file_service import FileService
 from .search_service import SearchService
 from .webpage_service import WebpageService
@@ -40,6 +41,7 @@ class AgentService:
         self.search_service = SearchService()
         self.webpage_service = WebpageService()
         self.memory_service = MemoryService()
+        self.comparison_storage = ComparisonStorage(settings.conversations_dir)
         logger.info("AgentService initialized (simplified version)")
 
     async def process_message(
@@ -680,4 +682,347 @@ class AgentService:
                     yield {"type": "followup_questions", "questions": questions}
         except Exception as e:
             logger.warning(f"Failed to generate follow-up questions: {e}")
+
+    async def _prepare_context(
+        self,
+        session_id: str,
+        raw_user_message: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Prepare shared context for LLM calls.
+
+        Returns a dict with keys: messages, system_prompt, assistant_params,
+        all_sources, model_id, assistant_id, is_legacy_assistant, assistant_memory_enabled, max_rounds
+        """
+        session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+        messages = session["state"]["messages"]
+        assistant_id = session.get("assistant_id")
+        model_id = session.get("model_id")
+
+        system_prompt = None
+        max_rounds = None
+        assistant_params = {}
+        assistant_obj = None
+
+        if assistant_id and assistant_id.startswith("__legacy_model_"):
+            pass
+        elif assistant_id:
+            from .assistant_config_service import AssistantConfigService
+            assistant_service = AssistantConfigService()
+            try:
+                assistant = await assistant_service.get_assistant(assistant_id)
+                if assistant:
+                    assistant_obj = assistant
+                    system_prompt = assistant.system_prompt
+                    max_rounds = assistant.max_rounds
+                    assistant_params = {
+                        "temperature": assistant.temperature,
+                        "max_tokens": assistant.max_tokens,
+                        "top_p": assistant.top_p,
+                        "top_k": assistant.top_k,
+                        "frequency_penalty": assistant.frequency_penalty,
+                        "presence_penalty": assistant.presence_penalty,
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to load assistant config: {e}, using defaults")
+
+        param_overrides = session.get("param_overrides", {})
+        if param_overrides:
+            if "model_id" in param_overrides:
+                model_id = param_overrides["model_id"]
+            if "max_rounds" in param_overrides:
+                max_rounds = param_overrides["max_rounds"]
+            for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
+                if key in param_overrides:
+                    assistant_params[key] = param_overrides[key]
+
+        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
+        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
+
+        # Build context: memory, webpage, search, RAG
+        memory_sources: List[Dict[str, Any]] = []
+        try:
+            include_assistant_memory = bool(
+                assistant_id and not is_legacy_assistant and assistant_memory_enabled
+            )
+            memory_context, memory_sources = self.memory_service.build_memory_context(
+                query=raw_user_message,
+                assistant_id=assistant_id if include_assistant_memory else None,
+                include_global=True,
+                include_assistant=include_assistant_memory,
+            )
+            if memory_context:
+                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
+        except Exception as e:
+            logger.warning(f"Memory retrieval failed: {e}")
+
+        webpage_sources: List[Dict[str, Any]] = []
+        try:
+            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
+            if webpage_source_models:
+                webpage_sources = [s.model_dump() for s in webpage_source_models]
+            if webpage_context:
+                system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
+        except Exception as e:
+            logger.warning(f"Webpage parsing failed: {e}")
+
+        search_sources: List[Dict[str, Any]] = []
+        if use_web_search:
+            query = (search_query or raw_user_message).strip()
+            if len(query) > 200:
+                query = query[:200]
+            try:
+                sources = await self.search_service.search(query)
+                search_sources = [s.model_dump() for s in sources]
+                if sources:
+                    search_context = self.search_service.build_search_context(query, sources)
+                    if search_context:
+                        system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
+            except Exception as e:
+                logger.warning(f"Web search failed: {e}")
+
+        rag_sources: List[Dict[str, Any]] = []
+        if assistant_id and not assistant_id.startswith("__legacy_model_"):
+            try:
+                from .rag_service import RagService
+                from .assistant_config_service import AssistantConfigService as _ACS2
+                _rag_svc = _ACS2()
+                _rag_assistant = await _rag_svc.get_assistant(assistant_id)
+                if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
+                    rag_service = RagService()
+                    rag_results = await rag_service.retrieve(raw_user_message, _rag_assistant.knowledge_base_ids)
+                    if rag_results:
+                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
+                        rag_sources = [r.to_dict() for r in rag_results]
+                        if rag_context:
+                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed: {e}")
+
+        all_sources: List[Dict[str, Any]] = []
+        if memory_sources:
+            all_sources.extend(memory_sources)
+        if webpage_sources:
+            all_sources.extend(webpage_sources)
+        if search_sources:
+            all_sources.extend(search_sources)
+        if rag_sources:
+            all_sources.extend(rag_sources)
+
+        return {
+            "messages": messages,
+            "system_prompt": system_prompt,
+            "assistant_params": assistant_params,
+            "all_sources": all_sources,
+            "model_id": model_id,
+            "assistant_id": assistant_id,
+            "is_legacy_assistant": is_legacy_assistant,
+            "assistant_memory_enabled": assistant_memory_enabled,
+            "max_rounds": max_rounds,
+        }
+
+    async def process_compare_stream(
+        self,
+        session_id: str,
+        user_message: str,
+        model_ids: List[str],
+        reasoning_effort: str = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None,
+    ) -> AsyncIterator[Any]:
+        """Stream compare responses from multiple models.
+
+        Yields SSE events tagged by model_id.
+        """
+        raw_user_message = user_message
+
+        # Process attachments (same as process_message_stream)
+        attachment_metadata = []
+        full_message_content = user_message
+
+        if attachments:
+            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+            message_index = len(session["state"]["messages"])
+
+            for idx, att in enumerate(attachments):
+                filename = att["filename"]
+                temp_path = att["temp_path"]
+                mime_type = att["mime_type"]
+                is_image = mime_type.startswith("image/")
+
+                attachment_metadata.append({
+                    "filename": filename,
+                    "size": att["size"],
+                    "mime_type": mime_type,
+                })
+
+                if not is_image:
+                    temp_file_path = self.file_service.attachments_dir / temp_path
+                    content = await self.file_service.get_file_content(temp_file_path)
+                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
+
+                await self.file_service.move_to_permanent(
+                    session_id, message_index, temp_path, filename
+                )
+
+        # Append user message
+        user_message_id = await self.storage.append_message(
+            session_id, "user", full_message_content,
+            attachments=attachment_metadata if attachment_metadata else None,
+            context_type=context_type,
+            project_id=project_id,
+        )
+        yield {"type": "user_message_id", "message_id": user_message_id}
+
+        # Prepare context
+        ctx = await self._prepare_context(
+            session_id, raw_user_message,
+            context_type=context_type, project_id=project_id,
+            use_web_search=use_web_search, search_query=search_query,
+        )
+
+        if ctx["all_sources"]:
+            yield {"type": "sources", "sources": ctx["all_sources"]}
+
+        # Multiplexed streaming from multiple models
+        queue: asyncio.Queue = asyncio.Queue()
+        model_count = len(model_ids)
+        done_count = 0
+
+        async def stream_model(mid: str):
+            """Stream a single model's response and put events into queue."""
+            full_response = ""
+            usage_data = None
+            cost_data = None
+            try:
+                # Get model display name
+                try:
+                    from .model_config_service import ModelConfigService
+                    model_service = ModelConfigService()
+                    parts = mid.split(":", 1)
+                    simple_id = parts[1] if len(parts) > 1 else mid
+                    model_cfg, _ = model_service.get_model_and_provider_sync(mid)
+                    model_name = getattr(model_cfg, 'name', simple_id) if model_cfg else simple_id
+                except Exception:
+                    model_name = mid
+
+                await queue.put({"type": "model_start", "model_id": mid, "model_name": model_name})
+
+                async for chunk in call_llm_stream(
+                    ctx["messages"],
+                    session_id=session_id,
+                    model_id=mid,
+                    system_prompt=ctx["system_prompt"],
+                    max_rounds=ctx["max_rounds"],
+                    reasoning_effort=reasoning_effort,
+                    file_service=self.file_service,
+                    **ctx["assistant_params"],
+                ):
+                    if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                        usage_data = chunk["usage"]
+                        parts = mid.split(":", 1)
+                        provider_id = parts[0] if len(parts) > 1 else ""
+                        simple_model_id = parts[1] if len(parts) > 1 else mid
+                        cost_data = self.pricing_service.calculate_cost(
+                            provider_id, simple_model_id, usage_data
+                        )
+                        continue
+
+                    if isinstance(chunk, dict):
+                        # Skip other dict events for comparison
+                        continue
+
+                    full_response += chunk
+                    await queue.put({"type": "model_chunk", "model_id": mid, "chunk": chunk})
+
+                await queue.put({
+                    "type": "model_done",
+                    "model_id": mid,
+                    "model_name": model_name,
+                    "content": full_response,
+                    "usage": usage_data.model_dump() if usage_data else None,
+                    "cost": cost_data.model_dump() if cost_data else None,
+                })
+            except Exception as e:
+                logger.error(f"Compare model {mid} error: {e}", exc_info=True)
+                await queue.put({
+                    "type": "model_error",
+                    "model_id": mid,
+                    "error": str(e),
+                })
+
+        # Spawn tasks for all models
+        tasks = [asyncio.create_task(stream_model(mid)) for mid in model_ids]
+
+        # Read from queue until all models are done
+        model_results = {}
+        try:
+            while done_count < model_count:
+                event = await queue.get()
+                yield event
+
+                if event["type"] in ("model_done", "model_error"):
+                    done_count += 1
+                    mid = event["model_id"]
+                    if event["type"] == "model_done":
+                        model_results[mid] = {
+                            "model_id": mid,
+                            "model_name": event.get("model_name", mid),
+                            "content": event["content"],
+                            "usage": event.get("usage"),
+                            "cost": event.get("cost"),
+                            "thinking_content": "",
+                            "error": None,
+                        }
+                    else:
+                        model_results[mid] = {
+                            "model_id": mid,
+                            "model_name": mid,
+                            "content": "",
+                            "usage": None,
+                            "cost": None,
+                            "thinking_content": "",
+                            "error": event.get("error", "Unknown error"),
+                        }
+        finally:
+            # Ensure all tasks complete
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Save the first model's response as the normal assistant message
+        first_model_id = model_ids[0]
+        first_result = model_results.get(first_model_id, {})
+        first_content = first_result.get("content", "")
+        first_usage = None
+        first_cost = None
+        if first_result.get("usage"):
+            first_usage = TokenUsage(**first_result["usage"])
+        if first_result.get("cost"):
+            first_cost = CostInfo(**first_result["cost"])
+
+        assistant_message_id = await self.storage.append_message(
+            session_id, "assistant", first_content,
+            usage=first_usage, cost=first_cost,
+            sources=ctx["all_sources"] if ctx["all_sources"] else None,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+        # Save ALL responses to comparison storage
+        responses_list = [model_results[mid] for mid in model_ids if mid in model_results]
+        await self.comparison_storage.save(
+            session_id, assistant_message_id, responses_list,
+            context_type=context_type, project_id=project_id,
+        )
+
+        yield {"type": "assistant_message_id", "message_id": assistant_message_id}
+
 

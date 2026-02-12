@@ -72,4 +72,12 @@ export const defaultChatAPI: ChatAPI = {
   getModelCapabilities: api.getModelCapabilities,
   generateTitleManually: api.generateTitleManually,
   generateFollowups: api.generateFollowups,
+
+  // Compare operations
+  sendCompareStream: async (sessionId, message, modelIds, callbacks, abortControllerRef?, options?) => {
+    return api.sendCompareStream(
+      sessionId, message, modelIds, callbacks, abortControllerRef,
+      { ...options, contextType: 'chat', projectId: undefined }
+    );
+  },
 };

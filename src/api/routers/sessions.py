@@ -13,6 +13,7 @@ import shutil
 from urllib.parse import quote
 
 from ..services.conversation_storage import ConversationStorage
+from ..services.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
 from ..config import settings
@@ -224,6 +225,16 @@ async def get_session(
     logger.info(f"📂 获取会话: {session_id[:16]}...")
     try:
         session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
+
+        # Load comparison data if it exists
+        try:
+            comparison_storage = ComparisonStorage(settings.conversations_dir)
+            compare_data = await comparison_storage.load(session_id, context_type=context_type, project_id=project_id)
+            if compare_data:
+                session["compare_data"] = compare_data
+        except Exception as e:
+            logger.warning(f"Failed to load comparison data: {e}")
+
         msg_count = len(session.get('state', {}).get('messages', []))
         logger.info(f"✅ 会话加载成功，包含 {msg_count} 条消息")
         return session

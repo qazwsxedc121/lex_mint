@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo } from '../../../types/message';
+import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo, CompareModelResponse } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 export function useChat(sessionId: string | null) {
@@ -20,6 +20,7 @@ export function useChat(sessionId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
@@ -53,7 +54,22 @@ export function useChat(sessionId: string | null) {
       setError(null);
       setFollowupQuestions([]);
       const session = await api.getSession(sessionId);
-      setMessages(session.state.messages);
+      let loadedMessages = session.state.messages;
+
+      // Merge comparison data into messages
+      if (session.compare_data) {
+        loadedMessages = loadedMessages.map(msg => {
+          if (msg.role === 'assistant' && msg.message_id && session.compare_data![msg.message_id]) {
+            return {
+              ...msg,
+              compareResponses: session.compare_data![msg.message_id].responses,
+            };
+          }
+          return msg;
+        });
+      }
+
+      setMessages(loadedMessages);
       setCurrentModelId(session.model_id || null);
       setCurrentAssistantId(session.assistant_id || null);
       setTotalUsage(session.total_usage || null);
@@ -244,6 +260,175 @@ export function useChat(sessionId: string | null) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
       setLoading(false);
       setIsStreaming(false);
+      isProcessingRef.current = false;
+      setMessages(prev => prev.slice(0, -2));
+    }
+  };
+
+  const sendCompareMessage = async (content: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
+    if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
+
+    isProcessingRef.current = true;
+    setFollowupQuestions([]);
+    setIsComparing(true);
+
+    // Optimistically add user message
+    const userMessage: Message = {
+      role: 'user',
+      content,
+      created_at: nowTimestamp(),
+      attachments: options?.attachments?.map(a => ({
+        filename: a.filename,
+        size: a.size,
+        mime_type: a.mime_type,
+      })),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    // Add placeholder assistant message with empty compareResponses
+    const assistantMessage: Message = {
+      role: 'assistant',
+      content: '',
+      created_at: nowTimestamp(),
+      compareResponses: [],
+    };
+    setMessages(prev => [...prev, assistantMessage]);
+
+    setLoading(true);
+    setError(null);
+
+    // Track accumulated content per model
+    const modelContentMap = new Map<string, string>();
+    const modelNameMap = new Map<string, string>();
+
+    try {
+      await api.sendCompareStream(
+        sessionId,
+        content,
+        modelIds,
+        {
+          onModelStart: (modelId: string, modelName: string) => {
+            modelNameMap.set(modelId, modelName);
+            modelContentMap.set(modelId, '');
+            // Add initial empty entry
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastIndex = newMessages.length - 1;
+              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+                const responses = [...(newMessages[lastIndex].compareResponses || [])];
+                responses.push({
+                  model_id: modelId,
+                  model_name: modelName,
+                  content: '',
+                });
+                newMessages[lastIndex] = { ...newMessages[lastIndex], compareResponses: responses };
+              }
+              return newMessages;
+            });
+          },
+          onModelChunk: (modelId: string, chunk: string) => {
+            const current = modelContentMap.get(modelId) || '';
+            modelContentMap.set(modelId, current + chunk);
+            const updatedContent = current + chunk;
+
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastIndex = newMessages.length - 1;
+              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+                const responses = (newMessages[lastIndex].compareResponses || []).map(r =>
+                  r.model_id === modelId ? { ...r, content: updatedContent } : r
+                );
+                // Also set content to first model's content for display purposes
+                const firstContent = modelContentMap.get(modelIds[0]) || '';
+                newMessages[lastIndex] = { ...newMessages[lastIndex], content: firstContent, compareResponses: responses };
+              }
+              return newMessages;
+            });
+          },
+          onModelDone: (modelId: string, fullContent: string, usage?: TokenUsage, cost?: CostInfo) => {
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastIndex = newMessages.length - 1;
+              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+                const responses = (newMessages[lastIndex].compareResponses || []).map(r =>
+                  r.model_id === modelId ? { ...r, content: fullContent, usage, cost } : r
+                );
+                newMessages[lastIndex] = { ...newMessages[lastIndex], compareResponses: responses };
+              }
+              return newMessages;
+            });
+          },
+          onModelError: (modelId: string, error: string) => {
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastIndex = newMessages.length - 1;
+              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+                const responses = (newMessages[lastIndex].compareResponses || []).map(r =>
+                  r.model_id === modelId ? { ...r, error } : r
+                );
+                newMessages[lastIndex] = { ...newMessages[lastIndex], compareResponses: responses };
+              }
+              return newMessages;
+            });
+          },
+          onUserMessageId: (messageId: string) => {
+            setMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages.length >= 2) {
+                newMessages[newMessages.length - 2] = {
+                  ...newMessages[newMessages.length - 2],
+                  message_id: messageId,
+                };
+              }
+              return newMessages;
+            });
+          },
+          onAssistantMessageId: (messageId: string) => {
+            setMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages.length >= 1) {
+                newMessages[newMessages.length - 1] = {
+                  ...newMessages[newMessages.length - 1],
+                  message_id: messageId,
+                };
+              }
+              return newMessages;
+            });
+          },
+          onSources: (sources) => {
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastIndex = newMessages.length - 1;
+              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
+                newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
+              }
+              return newMessages;
+            });
+          },
+          onDone: () => {
+            setLoading(false);
+            setIsComparing(false);
+            isProcessingRef.current = false;
+          },
+          onError: (error: string) => {
+            setError(error);
+            setLoading(false);
+            setIsComparing(false);
+            isProcessingRef.current = false;
+            setMessages(prev => prev.slice(0, -2));
+          },
+        },
+        abortControllerRef,
+        {
+          reasoningEffort: options?.reasoningEffort,
+          attachments: options?.attachments,
+          useWebSearch: options?.useWebSearch,
+        }
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to compare models');
+      setLoading(false);
+      setIsComparing(false);
       isProcessingRef.current = false;
       setMessages(prev => prev.slice(0, -2));
     }
@@ -753,6 +938,7 @@ export function useChat(sessionId: string | null) {
     error,
     isStreaming,
     isCompressing,
+    isComparing,
     currentModelId,
     currentAssistantId,
     totalUsage,
@@ -763,6 +949,7 @@ export function useChat(sessionId: string | null) {
     isTemporary,
     setIsTemporary,
     sendMessage,
+    sendCompareMessage,
     editMessage,
     saveMessageOnly,
     regenerateMessage,

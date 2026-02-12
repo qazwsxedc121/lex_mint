@@ -50,6 +50,16 @@ export interface UploadedFile {
   temp_path: string;
 }
 
+export interface CompareModelResponse {
+  model_id: string;
+  model_name: string;
+  content: string;
+  usage?: TokenUsage;
+  cost?: CostInfo;
+  thinking_content?: string;
+  error?: string;
+}
+
 export interface Message {
   message_id?: string;  // UUID for each message (optional for backward compatibility)
   role: 'user' | 'assistant' | 'separator' | 'summary';
@@ -60,6 +70,7 @@ export interface Message {
   cost?: CostInfo;
   sources?: SearchSource[];
   thinkingDurationMs?: number;
+  compareResponses?: CompareModelResponse[];
 }
 
 export interface Session {
@@ -93,6 +104,7 @@ export interface SessionDetail {
   total_usage?: TokenUsage;
   total_cost?: CostInfo;
   temporary?: boolean;
+  compare_data?: Record<string, { responses: CompareModelResponse[] }>;
   state: {
     messages: Message[];
     current_step: number;

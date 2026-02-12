@@ -86,6 +86,19 @@ class CompressContextRequest(BaseModel):
     project_id: Optional[str] = None
 
 
+class CompareRequest(BaseModel):
+    """Request model for compare endpoint."""
+    session_id: str
+    message: str
+    model_ids: List[str]  # composite IDs like "deepseek:deepseek-chat"
+    attachments: Optional[List[Dict[str, Any]]] = None
+    reasoning_effort: Optional[str] = None
+    context_type: str = "chat"
+    project_id: Optional[str] = None
+    use_web_search: bool = False
+    search_query: Optional[str] = None
+
+
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
     storage = ConversationStorage(settings.conversations_dir)
@@ -612,3 +625,74 @@ async def compress_context(
     )
 
 
+@router.post("/chat/compare")
+async def chat_compare(
+    request: CompareRequest,
+    agent: AgentService = Depends(get_agent_service)
+):
+    """Stream compare responses from multiple models.
+
+    Sends the same context to all specified models simultaneously
+    and returns a multiplexed SSE stream with model-tagged events.
+
+    Args:
+        request: CompareRequest with session_id, message, model_ids, etc.
+
+    Returns:
+        StreamingResponse with Server-Sent Events
+
+    Raises:
+        400: Invalid request (< 2 model_ids, invalid context params)
+        404: Session not found
+        500: Internal server error
+    """
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    if len(request.model_ids) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 model_ids are required for comparison")
+
+    logger.info(f"Compare request: session={request.session_id[:16]}..., models={request.model_ids}")
+
+    async def event_generator():
+        try:
+            async for event in agent.process_compare_stream(
+                request.session_id,
+                request.message,
+                request.model_ids,
+                reasoning_effort=request.reasoning_effort,
+                attachments=request.attachments,
+                context_type=request.context_type,
+                project_id=request.project_id,
+                use_web_search=request.use_web_search,
+                search_query=request.search_query,
+            ):
+                if isinstance(event, dict):
+                    data = json.dumps(event, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                else:
+                    data = json.dumps({"chunk": event}, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+        except FileNotFoundError:
+            error_data = json.dumps({"error": "Session not found"})
+            yield f"data: {error_data}\n\n"
+        except ValueError as e:
+            error_data = json.dumps({"error": str(e)})
+            yield f"data: {error_data}\n\n"
+        except Exception as e:
+            logger.error(f"Compare error: {str(e)}", exc_info=True)
+            error_data = json.dumps({"error": str(e)})
+            yield f"data: {error_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )

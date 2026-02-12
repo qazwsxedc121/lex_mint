@@ -978,6 +978,11 @@ class ConversationStorage:
 
         filepath.unlink()
 
+        # Also delete sidecar .compare.json if it exists
+        compare_path = filepath.with_suffix(".compare.json")
+        if compare_path.exists():
+            compare_path.unlink()
+
     async def move_session(
         self,
         session_id: str,

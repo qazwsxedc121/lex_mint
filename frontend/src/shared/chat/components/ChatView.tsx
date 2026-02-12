@@ -46,6 +46,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     error,
     isStreaming,
     isCompressing,
+    isComparing,
     currentAssistantId,
     followupQuestions,
     contextInfo,
@@ -53,6 +54,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     isTemporary,
     setIsTemporary,
     sendMessage,
+    sendCompareMessage,
     editMessage,
     saveMessageOnly,
     regenerateMessage,
@@ -130,6 +132,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
     sendMessage(message, options);
+  };
+
+  const handleCompare = (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
+    sendCompareMessage(message, modelIds, options);
   };
 
   const handleInsertSeparator = () => {
@@ -255,12 +261,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       {/* Input with toolbar */}
       <InputBox
         onSend={handleSendMessage}
+        onCompare={handleCompare}
         onStop={stopGeneration}
         onInsertSeparator={handleInsertSeparator}
         onCompressContext={handleCompressContext}
         isCompressing={isCompressing}
         onClearAllMessages={handleClearAllMessages}
-        disabled={loading}
+        disabled={loading || isComparing}
         isStreaming={isStreaming}
         supportsReasoning={supportsReasoning}
         supportsVision={supportsVision}

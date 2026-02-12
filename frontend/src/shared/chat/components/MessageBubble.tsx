@@ -13,6 +13,7 @@ import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { TranslationBlock } from './TranslationBlock';
+import { CompareResponseView } from './CompareResponseView';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
@@ -692,6 +693,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   )}
                   <p className="whitespace-pre-wrap m-0">{displayUserMessage}</p>
                 </>
+              ) : message.compareResponses && message.compareResponses.length > 0 ? (
+                <CompareResponseView
+                  responses={message.compareResponses}
+                  isStreaming={isStreaming && !message.message_id}
+                />
               ) : (
                 <div className="prose prose-sm max-w-none dark:prose-invert">
                   {ragSources.length > 0 && (

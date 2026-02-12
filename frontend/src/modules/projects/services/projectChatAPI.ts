@@ -162,5 +162,13 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
     generateFollowups: async (sessionId: string) => {
       return api.generateFollowups(sessionId, contextType, projectId);
     },
+
+    // Compare operations
+    sendCompareStream: async (sessionId, message, modelIds, callbacks, abortControllerRef?, options?) => {
+      return api.sendCompareStream(
+        sessionId, message, modelIds, callbacks, abortControllerRef,
+        { ...options, contextType, projectId }
+      );
+    },
   };
 };

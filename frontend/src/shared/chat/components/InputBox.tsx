@@ -26,6 +26,7 @@ import type { ParamOverrides } from '../../../types/message';
 import type { PromptTemplate } from '../../../types/promptTemplate';
 import { listPromptTemplates } from '../../../services/api';
 import { ParamOverridePopover } from './ParamOverridePopover';
+import { CompareModelButton } from './CompareModelButton';
 
 // Reasoning effort options for supported models
 const REASONING_EFFORT_OPTIONS = [
@@ -146,6 +147,7 @@ const createBlockId = () => {
 
 interface InputBoxProps {
   onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => void;
+  onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
   onCompressContext?: () => void;
@@ -166,6 +168,7 @@ interface InputBoxProps {
 
 export const InputBox: React.FC<InputBoxProps> = ({
   onSend,
+  onCompare,
   onStop,
   onInsertSeparator,
   onCompressContext,
@@ -205,6 +208,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [blocks, setBlocks] = useState<ChatBlock[]>([]);
   const [isTranslatingInput, setIsTranslatingInput] = useState(false);
+  const [pendingCompareModelIds, setPendingCompareModelIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const templateSearchInputRef = useRef<HTMLInputElement>(null);
@@ -654,11 +658,19 @@ export const InputBox: React.FC<InputBoxProps> = ({
     const message = messageParts.join('\n\n');
 
     if (message || attachments.length > 0) {
-      onSend(message, {
+      const sendOptions = {
         reasoningEffort: reasoningEffort || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
         useWebSearch,
-      });
+      };
+
+      if (pendingCompareModelIds.length >= 2 && onCompare) {
+        onCompare(message, pendingCompareModelIds, sendOptions);
+        setPendingCompareModelIds([]);
+      } else {
+        onSend(message, sendOptions);
+      }
+
       setInput('');
       setSlashCommand(null);
       setSlashMenuIndex(0);
@@ -903,6 +915,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
         >
           <GlobeAltIcon className="h-4 w-4" />
         </button>
+
+        {/* Compare models button */}
+        <CompareModelButton
+          disabled={disabled}
+          isStreaming={isStreaming}
+          onCompareActivate={(modelIds) => setPendingCompareModelIds(modelIds)}
+        />
 
         {/* Prompt templates */}
         <div className="relative" data-name="input-box-prompt-templates">
@@ -1338,13 +1357,36 @@ export const InputBox: React.FC<InputBoxProps> = ({
               {t('input.stop')}
             </button>
           ) : (
-            <button
-              onClick={handleSend}
-              disabled={disabled || !canSend}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {t('input.send')}
-            </button>
+            <div className="flex flex-col items-center gap-1">
+              {pendingCompareModelIds.length >= 2 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                    {t('input.compareActive', { count: pendingCompareModelIds.length })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingCompareModelIds([])}
+                    className="text-[10px] text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+                    title={t('input.compareCancel')}
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={handleSend}
+                disabled={disabled || !canSend}
+                className={`px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                  pendingCompareModelIds.length >= 2
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-blue-500 hover:bg-blue-600'
+                }`}
+              >
+                {pendingCompareModelIds.length >= 2
+                  ? t('input.compareConfirm')
+                  : t('input.send')}
+              </button>
+            </div>
           )}
         </div>
       </div>

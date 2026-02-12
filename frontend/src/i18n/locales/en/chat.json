@@ -112,5 +112,16 @@
   "transfer.loadingProjects": "Loading projects...",
   "transfer.chatGlobal": "Chat (Global)",
   "transfer.projects": "Projects",
-  "transfer.noProjects": "No available projects."
+  "transfer.noProjects": "No available projects.",
+
+  "input.compareModels": "Compare models",
+  "input.compareActive": "Comparing {{count}} models",
+  "input.compareSelectModels": "Select models to compare",
+  "input.compareMinModels": "Select at least 2 models",
+  "input.compareConfirm": "Compare",
+  "input.compareCancel": "Cancel",
+  "compare.sideBySide": "Side by side",
+  "compare.tabs": "Tabs",
+  "compare.modelError": "Error: {{error}}",
+  "compare.generating": "Generating..."
 }

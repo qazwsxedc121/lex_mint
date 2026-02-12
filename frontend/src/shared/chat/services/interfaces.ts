@@ -10,7 +10,8 @@ import type {
   SearchSource,
   UploadedFile,
   ParamOverrides,
-  ContextInfo
+  ContextInfo,
+  CompareModelResponse
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
@@ -88,6 +89,30 @@ export interface ChatAPI {
   getModelCapabilities(modelId: string): Promise<CapabilitiesResponse>;
   generateTitleManually(sessionId: string): Promise<{ message: string; title: string }>;
   generateFollowups(sessionId: string): Promise<string[]>;
+
+  // Compare operations
+  sendCompareStream(
+    sessionId: string,
+    message: string,
+    modelIds: string[],
+    callbacks: {
+      onModelChunk: (modelId: string, chunk: string) => void;
+      onModelStart: (modelId: string, modelName: string) => void;
+      onModelDone: (modelId: string, content: string, usage?: TokenUsage, cost?: CostInfo) => void;
+      onModelError: (modelId: string, error: string) => void;
+      onUserMessageId: (messageId: string) => void;
+      onAssistantMessageId: (messageId: string) => void;
+      onSources?: (sources: SearchSource[]) => void;
+      onDone: () => void;
+      onError: (error: string) => void;
+    },
+    abortControllerRef?: MutableRefObject<AbortController | null>,
+    options?: {
+      reasoningEffort?: string;
+      attachments?: UploadedFile[];
+      useWebSearch?: boolean;
+    }
+  ): Promise<void>;
 }
 
 /**

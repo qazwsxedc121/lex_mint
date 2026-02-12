@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
+import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo, CompareModelResponse } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult, DirectoryEntry } from '../types/project';
@@ -754,6 +754,160 @@ export async function sendMessageStream(
     throw error;
   } finally {
     // Clear the controller reference
+    if (abortControllerRef) {
+      abortControllerRef.current = null;
+    }
+  }
+}
+
+/**
+ * Send a compare request to stream responses from multiple models.
+ */
+export async function sendCompareStream(
+  sessionId: string,
+  message: string,
+  modelIds: string[],
+  callbacks: {
+    onModelChunk: (modelId: string, chunk: string) => void;
+    onModelStart: (modelId: string, modelName: string) => void;
+    onModelDone: (modelId: string, content: string, usage?: TokenUsage, cost?: CostInfo) => void;
+    onModelError: (modelId: string, error: string) => void;
+    onUserMessageId: (messageId: string) => void;
+    onAssistantMessageId: (messageId: string) => void;
+    onSources?: (sources: SearchSource[]) => void;
+    onDone: () => void;
+    onError: (error: string) => void;
+  },
+  abortControllerRef?: MutableRefObject<AbortController | null>,
+  options?: {
+    reasoningEffort?: string;
+    attachments?: UploadedFile[];
+    useWebSearch?: boolean;
+    contextType?: string;
+    projectId?: string;
+  }
+): Promise<void> {
+  const controller = new AbortController();
+  if (abortControllerRef) {
+    abortControllerRef.current = controller;
+  }
+
+  try {
+    const requestBody: any = {
+      session_id: sessionId,
+      message,
+      model_ids: modelIds,
+      reasoning_effort: options?.reasoningEffort || null,
+      context_type: options?.contextType || 'chat',
+      use_web_search: options?.useWebSearch || false,
+    };
+
+    if (options?.projectId) {
+      requestBody.project_id = options.projectId;
+    }
+
+    if (options?.attachments && options.attachments.length > 0) {
+      requestBody.attachments = options.attachments.map(a => ({
+        filename: a.filename,
+        size: a.size,
+        mime_type: a.mime_type,
+        temp_path: a.temp_path,
+      }));
+    }
+
+    const response = await fetch(`${API_BASE}/api/chat/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.error) {
+                callbacks.onError(data.error);
+                return;
+              }
+
+              if (data.done) {
+                callbacks.onDone();
+                return;
+              }
+
+              if (data.type === 'model_start') {
+                callbacks.onModelStart(data.model_id, data.model_name);
+                continue;
+              }
+
+              if (data.type === 'model_chunk') {
+                callbacks.onModelChunk(data.model_id, data.chunk);
+                continue;
+              }
+
+              if (data.type === 'model_done') {
+                callbacks.onModelDone(data.model_id, data.content, data.usage, data.cost);
+                continue;
+              }
+
+              if (data.type === 'model_error') {
+                callbacks.onModelError(data.model_id, data.error);
+                continue;
+              }
+
+              if (data.type === 'user_message_id' && data.message_id) {
+                callbacks.onUserMessageId(data.message_id);
+                continue;
+              }
+
+              if (data.type === 'assistant_message_id' && data.message_id) {
+                callbacks.onAssistantMessageId(data.message_id);
+                continue;
+              }
+
+              if (data.type === 'sources' && data.sources && callbacks.onSources) {
+                callbacks.onSources(data.sources);
+                continue;
+              }
+            } catch (e) {
+              // ignore parse errors
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log('Compare stream aborted by user');
+      callbacks.onDone();
+      return;
+    }
+    throw error;
+  } finally {
     if (abortControllerRef) {
       abortControllerRef.current = null;
     }
