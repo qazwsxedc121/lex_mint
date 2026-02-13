@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const compressionConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'Context Compression Settings',
-  description: 'Configure how conversation context is compressed (summarized) to free up the context window',
+  get title() { return i18n.t('settings:compression.title'); },
+  get description() { return i18n.t('settings:compression.description'); },
 
   apiEndpoint: {
     get: '/api/compression/config',
@@ -20,24 +21,24 @@ export const compressionConfig: SimpleConfigSettingsConfig = {
     {
       type: 'checkbox',
       name: 'auto_compress_enabled',
-      label: 'Enable Auto-Compression',
+      get label() { return i18n.t('settings:compression.field.autoCompress'); },
       defaultValue: false
     },
     {
       type: 'slider',
       name: 'auto_compress_threshold',
-      label: 'Auto-Compression Threshold',
+      get label() { return i18n.t('settings:compression.field.threshold'); },
       min: 0.1,
       max: 0.9,
       step: 0.05,
       defaultValue: 0.5,
-      helpText: 'Compression triggers when token usage exceeds this ratio of the context window (e.g. 0.5 = 50%)',
+      get helpText() { return i18n.t('settings:compression.field.threshold.help'); },
       condition: (formData) => formData.auto_compress_enabled === true
     },
     {
       type: 'select',
       name: 'model_id',
-      label: 'Compression Model',
+      get label() { return i18n.t('settings:compression.field.modelId'); },
       required: true,
       dynamicOptions: (context) => {
         const models = context.models || [];
@@ -46,46 +47,46 @@ export const compressionConfig: SimpleConfigSettingsConfig = {
           label: m.name || m.id
         }));
       },
-      helpText: 'Model used to generate the conversation summary. A fast model is recommended.'
+      get helpText() { return i18n.t('settings:compression.field.modelId.help'); }
     },
     {
       type: 'slider',
       name: 'temperature',
-      label: 'Temperature',
+      get label() { return i18n.t('settings:compression.field.temperature'); },
       min: 0,
       max: 2,
       step: 0.1,
       defaultValue: 0.3,
-      helpText: 'Lower values produce more factual summaries. Recommended: 0.2 - 0.5'
+      get helpText() { return i18n.t('settings:compression.field.temperature.help'); }
     },
     {
       type: 'number',
       name: 'min_messages',
-      label: 'Minimum Messages to Compress',
+      get label() { return i18n.t('settings:compression.field.minMessages'); },
       min: 1,
       max: 50,
       defaultValue: 2,
       required: true,
-      helpText: 'Minimum number of messages required before compression is allowed'
+      get helpText() { return i18n.t('settings:compression.field.minMessages.help'); }
     },
     {
       type: 'number',
       name: 'timeout_seconds',
-      label: 'Timeout (seconds)',
+      get label() { return i18n.t('settings:compression.field.timeout'); },
       min: 10,
       max: 300,
       defaultValue: 60,
       required: true,
-      helpText: 'Maximum time to wait for the compression LLM call'
+      get helpText() { return i18n.t('settings:compression.field.timeout.help'); }
     },
     {
       type: 'textarea',
       name: 'prompt_template',
-      label: 'Summarization Prompt',
+      get label() { return i18n.t('settings:compression.field.promptTemplate'); },
       rows: 10,
       monospace: true,
-      placeholder: 'Enter summarization prompt. Use {formatted_messages} as placeholder for conversation content.',
-      helpText: 'Use {formatted_messages} where the conversation text should be inserted'
+      get placeholder() { return i18n.t('settings:compression.field.promptTemplate.placeholder'); },
+      get helpText() { return i18n.t('settings:compression.field.promptTemplate.help'); }
     }
   ]
 };

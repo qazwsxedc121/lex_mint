@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const translationConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'Translation Settings',
-  description: 'Configure Q&A translation for translating LLM responses and user input',
+  get title() { return i18n.t('settings:translationConfig.title'); },
+  get description() { return i18n.t('settings:translationConfig.description'); },
 
   apiEndpoint: {
     get: '/api/translation/config',
@@ -20,27 +21,27 @@ export const translationConfig: SimpleConfigSettingsConfig = {
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable Translation',
-      helpText: 'Enable or disable the translation feature'
+      get label() { return i18n.t('settings:translationConfig.field.enabled'); },
+      get helpText() { return i18n.t('settings:translationConfig.field.enabled.help'); }
     },
     {
       type: 'text',
       name: 'target_language',
-      label: 'Response Translation Language',
+      get label() { return i18n.t('settings:translationConfig.field.targetLanguage'); },
       required: true,
-      helpText: 'Language to translate LLM responses into (e.g., Chinese, Japanese, Korean)'
+      get helpText() { return i18n.t('settings:translationConfig.field.targetLanguage.help'); }
     },
     {
       type: 'text',
       name: 'input_target_language',
-      label: 'Input Translation Language',
+      get label() { return i18n.t('settings:translationConfig.field.inputTargetLanguage'); },
       required: true,
-      helpText: 'Language to translate user input into before sending to LLM (e.g., English)'
+      get helpText() { return i18n.t('settings:translationConfig.field.inputTargetLanguage.help'); }
     },
     {
       type: 'select',
       name: 'model_id',
-      label: 'Translation Model',
+      get label() { return i18n.t('settings:translationConfig.field.modelId'); },
       required: true,
       dynamicOptions: (context) => {
         const models = context.models || [];
@@ -49,36 +50,36 @@ export const translationConfig: SimpleConfigSettingsConfig = {
           label: m.name || m.id
         }));
       },
-      helpText: 'Model used for translation. A fast model is recommended.'
+      get helpText() { return i18n.t('settings:translationConfig.field.modelId.help'); }
     },
     {
       type: 'slider',
       name: 'temperature',
-      label: 'Temperature',
+      get label() { return i18n.t('settings:translationConfig.field.temperature'); },
       min: 0,
       max: 2,
       step: 0.1,
       defaultValue: 0.3,
-      helpText: 'Lower values produce more accurate translations. Recommended: 0.1 - 0.5'
+      get helpText() { return i18n.t('settings:translationConfig.field.temperature.help'); }
     },
     {
       type: 'number',
       name: 'timeout_seconds',
-      label: 'Timeout (seconds)',
+      get label() { return i18n.t('settings:translationConfig.field.timeout'); },
       min: 10,
       max: 300,
       defaultValue: 30,
       required: true,
-      helpText: 'Maximum time to wait for the translation LLM call'
+      get helpText() { return i18n.t('settings:translationConfig.field.timeout.help'); }
     },
     {
       type: 'textarea',
       name: 'prompt_template',
-      label: 'Translation Prompt',
+      get label() { return i18n.t('settings:translationConfig.field.promptTemplate'); },
       rows: 10,
       monospace: true,
-      placeholder: 'Enter translation prompt. Use {text} and {target_language} as placeholders.',
-      helpText: 'Use {text} for the content to translate and {target_language} for the target language'
+      get placeholder() { return i18n.t('settings:translationConfig.field.promptTemplate.placeholder'); },
+      get helpText() { return i18n.t('settings:translationConfig.field.promptTemplate.help'); }
     }
   ]
 };

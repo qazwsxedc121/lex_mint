@@ -8,15 +8,15 @@ import i18n from '../../../i18n';
 
 export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
   type: 'crud',
-  title: 'Prompt Templates',
-  description: 'Manage reusable prompt templates for quick insertion.',
-  itemName: 'template',
-  itemNamePlural: 'templates',
+  get title() { return i18n.t('settings:promptTemplates.title'); },
+  get description() { return i18n.t('settings:promptTemplates.description'); },
+  get itemName() { return i18n.t('settings:promptTemplates.itemName'); },
+  get itemNamePlural() { return i18n.t('settings:promptTemplates.itemNamePlural'); },
 
   columns: [
     {
       key: 'name',
-      label: 'Name',
+      get label() { return i18n.t('settings:promptTemplates.col.name'); },
       sortable: true,
       render: (_value, row) => (
         <div>
@@ -33,7 +33,7 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
     },
     {
       key: 'content',
-      label: 'Content',
+      get label() { return i18n.t('settings:promptTemplates.col.content'); },
       sortable: false,
       hideOnMobile: true,
       render: (value) => (
@@ -44,7 +44,7 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
     },
     {
       key: 'enabled',
-      label: 'Enabled',
+      get label() { return i18n.t('settings:promptTemplates.col.enabled'); },
       sortable: true,
       hideOnMobile: true,
       render: (value) => (value ? i18n.t('common:yes') : i18n.t('common:no'))
@@ -53,7 +53,7 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
 
   statusKey: 'enabled',
   enableSearch: true,
-  searchPlaceholder: 'Search templates...',
+  get searchPlaceholder() { return i18n.t('settings:promptTemplates.search'); },
   filterFn: (item, term) => {
     const query = term.toLowerCase();
     return (
@@ -68,21 +68,21 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
     {
       type: 'text',
       name: 'name',
-      label: 'Name',
-      placeholder: 'Code Review Template',
+      get label() { return i18n.t('settings:promptTemplates.field.name'); },
+      get placeholder() { return i18n.t('settings:promptTemplates.field.name.placeholder'); },
       required: true
     },
     {
       type: 'text',
       name: 'description',
-      label: 'Description',
-      placeholder: 'Short summary of when to use this template'
+      get label() { return i18n.t('settings:promptTemplates.field.description'); },
+      get placeholder() { return i18n.t('settings:promptTemplates.field.description.placeholder'); }
     },
     {
       type: 'textarea',
       name: 'content',
-      label: 'Content',
-      placeholder: 'Write the prompt template here...',
+      get label() { return i18n.t('settings:promptTemplates.field.content'); },
+      get placeholder() { return i18n.t('settings:promptTemplates.field.content.placeholder'); },
       required: true,
       rows: 10,
       monospace: true
@@ -90,7 +90,7 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enabled',
+      get label() { return i18n.t('settings:promptTemplates.field.enabled'); },
       defaultValue: true
     }
   ],
@@ -99,18 +99,18 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
     {
       type: 'text',
       name: 'name',
-      label: 'Name',
+      get label() { return i18n.t('settings:promptTemplates.field.name'); },
       required: true
     },
     {
       type: 'text',
       name: 'description',
-      label: 'Description'
+      get label() { return i18n.t('settings:promptTemplates.field.description'); }
     },
     {
       type: 'textarea',
       name: 'content',
-      label: 'Content',
+      get label() { return i18n.t('settings:promptTemplates.field.content'); },
       required: true,
       rows: 10,
       monospace: true
@@ -118,7 +118,7 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enabled'
+      get label() { return i18n.t('settings:promptTemplates.field.enabled'); }
     }
   ],
 };

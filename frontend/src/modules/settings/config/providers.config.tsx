@@ -12,10 +12,10 @@ import i18n from '../../../i18n';
 
 export const providersConfig: CrudSettingsConfig<Provider> = {
   type: 'crud',
-  title: 'Provider List',
-  description: 'Manage LLM providers (DeepSeek, OpenAI, Anthropic, etc.)',
-  itemName: 'provider',
-  itemNamePlural: 'providers',
+  get title() { return i18n.t('settings:providers.title'); },
+  get description() { return i18n.t('settings:providers.description'); },
+  get itemName() { return i18n.t('settings:providers.itemName'); },
+  get itemNamePlural() { return i18n.t('settings:providers.itemNamePlural'); },
   createMode: 'page',
   createPath: '/settings/providers/new',
   editMode: 'page',
@@ -25,7 +25,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
   columns: [
     {
       key: 'name',
-      label: 'Name',
+      get label() { return i18n.t('settings:providers.col.name'); },
       sortable: true,
       render: (_value, row) => (
         <div>
@@ -40,13 +40,13 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
     },
     {
       key: 'id',
-      label: 'Provider ID',
+      get label() { return i18n.t('settings:providers.col.providerId'); },
       sortable: true,
       hideOnMobile: true
     },
     {
       key: 'api_key',
-      label: 'API Key',
+      get label() { return i18n.t('settings:providers.col.apiKey'); },
       hideOnMobile: true,
       render: (_value, row) => (
         <span className="text-gray-500 dark:text-gray-400">
@@ -56,7 +56,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
     },
     {
       key: 'base_url',
-      label: 'Base URL',
+      get label() { return i18n.t('settings:providers.col.baseUrl'); },
       hideOnMobile: true,
       render: (value) => (
         <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
@@ -69,29 +69,29 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
   statusKey: 'enabled',
 
   enableSearch: true,
-  searchPlaceholder: 'Search providers...',
+  get searchPlaceholder() { return i18n.t('settings:providers.search'); },
 
   // Form fields
   createFields: [
     {
       type: 'text',
       name: 'id',
-      label: 'Provider ID',
-      placeholder: 'e.g., my-openai',
+      get label() { return i18n.t('settings:providers.field.id'); },
+      get placeholder() { return i18n.t('settings:providers.field.id.placeholder'); },
       required: true,
-      helpText: 'Unique identifier for this provider'
+      get helpText() { return i18n.t('settings:providers.field.id.help'); }
     },
     {
       type: 'text',
       name: 'name',
-      label: 'Display Name',
-      placeholder: 'My OpenAI Provider',
+      get label() { return i18n.t('settings:providers.field.name'); },
+      get placeholder() { return i18n.t('settings:providers.field.name.placeholder'); },
       required: true
     },
     {
       type: 'select',
       name: 'protocol',
-      label: 'API Protocol',
+      get label() { return i18n.t('settings:providers.field.protocol'); },
       required: true,
       defaultValue: 'openai',
       options: [
@@ -100,34 +100,34 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
         { value: 'gemini', label: 'Google Gemini' },
         { value: 'ollama', label: 'Ollama' }
       ],
-      helpText: 'API protocol used by this provider'
+      get helpText() { return i18n.t('settings:providers.field.protocol.help'); }
     },
     {
       type: 'text',
       name: 'base_url',
-      label: 'Base URL',
-      placeholder: 'https://api.openai.com/v1',
+      get label() { return i18n.t('settings:providers.field.baseUrl'); },
+      get placeholder() { return i18n.t('settings:providers.field.baseUrl.placeholder'); },
       required: true,
-      helpText: 'API endpoint base URL'
+      get helpText() { return i18n.t('settings:providers.field.baseUrl.help'); }
     },
     {
       type: 'password',
       name: 'api_key',
-      label: 'API Key',
-      placeholder: 'sk-...',
-      helpText: 'API key for authentication (leave empty to use environment variable)'
+      get label() { return i18n.t('settings:providers.field.apiKey'); },
+      get placeholder() { return i18n.t('settings:providers.field.apiKey.placeholder'); },
+      get helpText() { return i18n.t('settings:providers.field.apiKey.help'); }
     },
     {
       type: 'text',
       name: 'api_key_env',
-      label: 'API Key Env Var',
-      placeholder: 'MY_PROVIDER_API_KEY',
-      helpText: 'Environment variable name for API key'
+      get label() { return i18n.t('settings:providers.field.apiKeyEnv'); },
+      get placeholder() { return i18n.t('settings:providers.field.apiKeyEnv.placeholder'); },
+      get helpText() { return i18n.t('settings:providers.field.apiKeyEnv.help'); }
     },
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable this provider',
+      get label() { return i18n.t('settings:providers.field.enabled'); },
       defaultValue: true
     }
   ],
@@ -136,21 +136,21 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
     {
       type: 'text',
       name: 'id',
-      label: 'Provider ID',
+      get label() { return i18n.t('settings:providers.field.id'); },
       required: true,
       disabled: true
     },
     {
       type: 'text',
       name: 'name',
-      label: 'Display Name',
-      placeholder: 'My OpenAI Provider',
+      get label() { return i18n.t('settings:providers.field.name'); },
+      get placeholder() { return i18n.t('settings:providers.field.name.placeholder'); },
       required: true
     },
     {
       type: 'select',
       name: 'protocol',
-      label: 'API Protocol',
+      get label() { return i18n.t('settings:providers.field.protocol'); },
       required: true,
       options: [
         { value: 'openai', label: 'OpenAI' },
@@ -158,34 +158,34 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
         { value: 'gemini', label: 'Google Gemini' },
         { value: 'ollama', label: 'Ollama' }
       ],
-      helpText: 'API protocol used by this provider'
+      get helpText() { return i18n.t('settings:providers.field.protocol.help'); }
     },
     {
       type: 'text',
       name: 'base_url',
-      label: 'Base URL',
-      placeholder: 'https://api.openai.com/v1',
+      get label() { return i18n.t('settings:providers.field.baseUrl'); },
+      get placeholder() { return i18n.t('settings:providers.field.baseUrl.placeholder'); },
       required: true,
-      helpText: 'API endpoint base URL'
+      get helpText() { return i18n.t('settings:providers.field.baseUrl.help'); }
     },
     {
       type: 'password',
       name: 'api_key',
-      label: 'API Key',
+      get label() { return i18n.t('settings:providers.field.apiKey'); },
       placeholder: '••••••••',
-      helpText: 'API key for authentication (leave unchanged if masked)'
+      get helpText() { return i18n.t('settings:providers.field.apiKey.editHelp'); }
     },
     {
       type: 'text',
       name: 'api_key_env',
-      label: 'API Key Env Var',
-      placeholder: 'MY_PROVIDER_API_KEY',
-      helpText: 'Environment variable name for API key'
+      get label() { return i18n.t('settings:providers.field.apiKeyEnv'); },
+      get placeholder() { return i18n.t('settings:providers.field.apiKeyEnv.placeholder'); },
+      get helpText() { return i18n.t('settings:providers.field.apiKeyEnv.help'); }
     },
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable this provider',
+      get label() { return i18n.t('settings:providers.field.enabled'); },
       defaultValue: true
     }
   ],

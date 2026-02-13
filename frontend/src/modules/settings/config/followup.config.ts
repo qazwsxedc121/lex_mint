@@ -5,11 +5,12 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import i18n from '../../../i18n';
 
 export const followupConfig: SimpleConfigSettingsConfig = {
   type: 'config',
-  title: 'Follow-up Questions Settings',
-  description: 'Configure automatic follow-up question suggestions after each chat response',
+  get title() { return i18n.t('settings:followup.title'); },
+  get description() { return i18n.t('settings:followup.description'); },
 
   apiEndpoint: {
     get: '/api/followup/config',
@@ -20,24 +21,24 @@ export const followupConfig: SimpleConfigSettingsConfig = {
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable follow-up question suggestions',
+      get label() { return i18n.t('settings:followup.field.enabled'); },
       defaultValue: true
     },
     {
       type: 'number',
       name: 'count',
-      label: 'Number of Suggestions',
+      get label() { return i18n.t('settings:followup.field.count'); },
       min: 0,
       max: 5,
       defaultValue: 3,
       required: true,
-      helpText: 'How many follow-up questions to generate (0 to disable)',
+      get helpText() { return i18n.t('settings:followup.field.count.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'select',
       name: 'model_id',
-      label: 'Model for Follow-up Generation',
+      get label() { return i18n.t('settings:followup.field.modelId'); },
       required: true,
       dynamicOptions: (context) => {
         const models = context.models || [];
@@ -46,39 +47,39 @@ export const followupConfig: SimpleConfigSettingsConfig = {
           label: m.name || m.id
         }));
       },
-      helpText: 'Recommended: Use a small, fast model to minimize latency',
+      get helpText() { return i18n.t('settings:followup.field.modelId.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'number',
       name: 'max_context_rounds',
-      label: 'Max Context Rounds',
+      get label() { return i18n.t('settings:followup.field.maxContextRounds'); },
       min: 1,
       max: 10,
       defaultValue: 3,
       required: true,
-      helpText: 'Maximum number of recent conversation rounds to use as context',
+      get helpText() { return i18n.t('settings:followup.field.maxContextRounds.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'number',
       name: 'timeout_seconds',
-      label: 'Timeout (seconds)',
+      get label() { return i18n.t('settings:followup.field.timeout'); },
       min: 5,
       max: 60,
       defaultValue: 15,
       required: true,
-      helpText: 'Maximum time to wait for follow-up generation',
+      get helpText() { return i18n.t('settings:followup.field.timeout.help'); },
       condition: (formData) => formData.enabled !== false
     },
     {
       type: 'textarea',
       name: 'prompt_template',
-      label: 'Prompt Template',
+      get label() { return i18n.t('settings:followup.field.promptTemplate'); },
       rows: 8,
       monospace: true,
-      placeholder: 'Enter prompt template. Use {count} and {conversation_text} as placeholders.',
-      helpText: 'Use {count} for number of questions and {conversation_text} for conversation content',
+      get placeholder() { return i18n.t('settings:followup.field.promptTemplate.placeholder'); },
+      get helpText() { return i18n.t('settings:followup.field.promptTemplate.help'); },
       condition: (formData) => formData.enabled !== false
     }
   ]

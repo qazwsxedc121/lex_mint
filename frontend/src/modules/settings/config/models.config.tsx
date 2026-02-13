@@ -6,13 +6,14 @@
 
 import type { CrudSettingsConfig } from './types';
 import type { Model } from '../../../types/model';
+import i18n from '../../../i18n';
 
 export const modelsConfig: CrudSettingsConfig<Model> = {
   type: 'crud',
-  title: 'Model List',
-  description: 'Manage language models from different providers',
-  itemName: 'model',
-  itemNamePlural: 'models',
+  get title() { return i18n.t('settings:models.title'); },
+  get description() { return i18n.t('settings:models.description'); },
+  get itemName() { return i18n.t('settings:models.itemName'); },
+  get itemNamePlural() { return i18n.t('settings:models.itemNamePlural'); },
   createMode: 'page',
   createPath: '/settings/models/new',
   editMode: 'page',
@@ -22,7 +23,7 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
   columns: [
     {
       key: 'name',
-      label: 'Name',
+      get label() { return i18n.t('settings:models.col.name'); },
       sortable: true,
       render: (_value, row) => (
         <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -32,18 +33,18 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     },
     {
       key: 'provider_id',
-      label: 'Provider',
+      get label() { return i18n.t('settings:models.col.provider'); },
       sortable: true
     },
     {
       key: 'id',
-      label: 'Model ID',
+      get label() { return i18n.t('settings:models.col.modelId'); },
       sortable: true,
       hideOnMobile: true
     },
     {
       key: 'group',
-      label: 'Group',
+      get label() { return i18n.t('settings:models.col.group'); },
       sortable: true,
       hideOnMobile: true
     }
@@ -52,22 +53,22 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
   statusKey: 'enabled',
 
   enableSearch: true,
-  searchPlaceholder: 'Search models...',
+  get searchPlaceholder() { return i18n.t('settings:models.search'); },
 
   // Form fields
   createFields: [
     {
       type: 'text',
       name: 'id',
-      label: 'Model ID',
-      placeholder: 'e.g., gpt-4',
+      get label() { return i18n.t('settings:models.field.id'); },
+      get placeholder() { return i18n.t('settings:models.field.id.placeholder'); },
       required: true,
-      helpText: 'Model identifier as used by the provider'
+      get helpText() { return i18n.t('settings:models.field.id.help'); }
     },
     {
       type: 'select',
       name: 'provider_id',
-      label: 'Provider',
+      get label() { return i18n.t('settings:models.field.providerId'); },
       required: true,
       dynamicOptions: (context) => {
         const providers = context.providers || [];
@@ -78,28 +79,28 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
             label: `${p.name} (${p.id})`
           }));
       },
-      helpText: 'Provider that hosts this model'
+      get helpText() { return i18n.t('settings:models.field.providerId.help'); }
     },
     {
       type: 'text',
       name: 'name',
-      label: 'Display Name',
-      placeholder: 'GPT-4',
+      get label() { return i18n.t('settings:models.field.name'); },
+      get placeholder() { return i18n.t('settings:models.field.name.placeholder'); },
       required: true,
-      helpText: 'Human-readable name for this model'
+      get helpText() { return i18n.t('settings:models.field.name.help'); }
     },
     {
       type: 'text',
       name: 'group',
-      label: 'Group',
-      placeholder: 'e.g., gpt-4',
+      get label() { return i18n.t('settings:models.field.group'); },
+      get placeholder() { return i18n.t('settings:models.field.group.placeholder'); },
       required: true,
-      helpText: 'Model family or group'
+      get helpText() { return i18n.t('settings:models.field.group.help'); }
     },
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable this model',
+      get label() { return i18n.t('settings:models.field.enabled'); },
       defaultValue: true
     }
   ],
@@ -108,14 +109,14 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     {
       type: 'text',
       name: 'id',
-      label: 'Model ID',
+      get label() { return i18n.t('settings:models.field.id'); },
       required: true,
       disabled: true
     },
     {
       type: 'select',
       name: 'provider_id',
-      label: 'Provider',
+      get label() { return i18n.t('settings:models.field.providerId'); },
       required: true,
       disabled: true,
       dynamicOptions: (context) => {
@@ -126,28 +127,28 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
             label: `${p.name} (${p.id})`
           }));
       },
-      helpText: 'Provider that hosts this model'
+      get helpText() { return i18n.t('settings:models.field.providerId.help'); }
     },
     {
       type: 'text',
       name: 'name',
-      label: 'Display Name',
-      placeholder: 'GPT-4',
+      get label() { return i18n.t('settings:models.field.name'); },
+      get placeholder() { return i18n.t('settings:models.field.name.placeholder'); },
       required: true,
-      helpText: 'Human-readable name for this model'
+      get helpText() { return i18n.t('settings:models.field.name.help'); }
     },
     {
       type: 'text',
       name: 'group',
-      label: 'Group',
-      placeholder: 'e.g., gpt-4',
+      get label() { return i18n.t('settings:models.field.group'); },
+      get placeholder() { return i18n.t('settings:models.field.group.placeholder'); },
       required: true,
-      helpText: 'Model family or group'
+      get helpText() { return i18n.t('settings:models.field.group.help'); }
     },
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable this model',
+      get label() { return i18n.t('settings:models.field.enabled'); },
       defaultValue: true
     }
   ],

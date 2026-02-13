@@ -6,13 +6,14 @@
 
 import type { CrudSettingsConfig } from './types';
 import type { KnowledgeBase } from '../../../types/knowledgeBase';
+import i18n from '../../../i18n';
 
 export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
   type: 'crud',
-  title: 'Knowledge Bases',
-  description: 'Manage knowledge bases for RAG (Retrieval-Augmented Generation)',
-  itemName: 'knowledge base',
-  itemNamePlural: 'knowledge bases',
+  get title() { return i18n.t('settings:knowledgeBases.title'); },
+  get description() { return i18n.t('settings:knowledgeBases.description'); },
+  get itemName() { return i18n.t('settings:knowledgeBases.itemName'); },
+  get itemNamePlural() { return i18n.t('settings:knowledgeBases.itemNamePlural'); },
   createMode: 'page',
   createPath: '/settings/knowledge-bases/new',
   editMode: 'page',
@@ -22,7 +23,7 @@ export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
   columns: [
     {
       key: 'name',
-      label: 'Name',
+      get label() { return i18n.t('settings:knowledgeBases.col.name'); },
       sortable: true,
       render: (_value, row) => (
         <div>
@@ -39,14 +40,14 @@ export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
     },
     {
       key: 'document_count',
-      label: 'Documents',
+      get label() { return i18n.t('settings:knowledgeBases.col.documents'); },
       sortable: true,
       hideOnMobile: true,
       render: (value) => value || 0
     },
     {
       key: 'created_at',
-      label: 'Created',
+      get label() { return i18n.t('settings:knowledgeBases.col.created'); },
       sortable: true,
       hideOnMobile: true,
       render: (value) => {
@@ -63,61 +64,61 @@ export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
   statusKey: 'enabled',
 
   enableSearch: true,
-  searchPlaceholder: 'Search knowledge bases...',
+  get searchPlaceholder() { return i18n.t('settings:knowledgeBases.search'); },
 
   // Form fields for create
   createFields: [
     {
       type: 'text',
       name: 'id',
-      label: 'Knowledge Base ID',
-      placeholder: 'e.g., my-knowledge-base',
+      get label() { return i18n.t('settings:knowledgeBases.field.id'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.id.placeholder'); },
       required: true,
-      helpText: 'Unique identifier for this knowledge base'
+      get helpText() { return i18n.t('settings:knowledgeBases.field.id.help'); }
     },
     {
       type: 'text',
       name: 'name',
-      label: 'Name',
-      placeholder: 'My Knowledge Base',
+      get label() { return i18n.t('settings:knowledgeBases.field.name'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.name.placeholder'); },
       required: true
     },
     {
       type: 'text',
       name: 'description',
-      label: 'Description',
-      placeholder: 'Optional description',
-      helpText: 'Brief description of this knowledge base'
+      get label() { return i18n.t('settings:knowledgeBases.field.description'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.description.placeholder'); },
+      get helpText() { return i18n.t('settings:knowledgeBases.field.description.help'); }
     },
     {
       type: 'text',
       name: 'embedding_model',
-      label: 'Embedding Model Override',
-      placeholder: 'e.g., deepseek:deepseek-chat',
-      helpText: 'Override the default embedding model (leave empty to use global RAG config)'
+      get label() { return i18n.t('settings:knowledgeBases.field.embeddingModel'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.embeddingModel.placeholder'); },
+      get helpText() { return i18n.t('settings:knowledgeBases.field.embeddingModel.help'); }
     },
     {
       type: 'number',
       name: 'chunk_size',
-      label: 'Chunk Size Override',
-      placeholder: 'e.g., 1000',
+      get label() { return i18n.t('settings:knowledgeBases.field.chunkSize'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.chunkSize.placeholder'); },
       min: 100,
       max: 10000,
-      helpText: 'Override chunk size for this KB (leave empty to use global RAG config)'
+      get helpText() { return i18n.t('settings:knowledgeBases.field.chunkSize.help'); }
     },
     {
       type: 'number',
       name: 'chunk_overlap',
-      label: 'Chunk Overlap Override',
-      placeholder: 'e.g., 200',
+      get label() { return i18n.t('settings:knowledgeBases.field.chunkOverlap'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.chunkOverlap.placeholder'); },
       min: 0,
       max: 5000,
-      helpText: 'Override chunk overlap for this KB (leave empty to use global RAG config)'
+      get helpText() { return i18n.t('settings:knowledgeBases.field.chunkOverlap.help'); }
     },
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable this knowledge base',
+      get label() { return i18n.t('settings:knowledgeBases.field.enabled'); },
       defaultValue: true
     }
   ],
@@ -127,53 +128,53 @@ export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
     {
       type: 'text',
       name: 'id',
-      label: 'Knowledge Base ID',
+      get label() { return i18n.t('settings:knowledgeBases.field.id'); },
       required: true,
       disabled: true
     },
     {
       type: 'text',
       name: 'name',
-      label: 'Name',
-      placeholder: 'My Knowledge Base',
+      get label() { return i18n.t('settings:knowledgeBases.field.name'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.name.placeholder'); },
       required: true
     },
     {
       type: 'text',
       name: 'description',
-      label: 'Description',
-      placeholder: 'Optional description',
-      helpText: 'Brief description of this knowledge base'
+      get label() { return i18n.t('settings:knowledgeBases.field.description'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.description.placeholder'); },
+      get helpText() { return i18n.t('settings:knowledgeBases.field.description.help'); }
     },
     {
       type: 'text',
       name: 'embedding_model',
-      label: 'Embedding Model Override',
-      placeholder: 'e.g., deepseek:deepseek-chat',
-      helpText: 'Override the default embedding model (leave empty to use global RAG config)'
+      get label() { return i18n.t('settings:knowledgeBases.field.embeddingModel'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.embeddingModel.placeholder'); },
+      get helpText() { return i18n.t('settings:knowledgeBases.field.embeddingModel.help'); }
     },
     {
       type: 'number',
       name: 'chunk_size',
-      label: 'Chunk Size Override',
-      placeholder: 'e.g., 1000',
+      get label() { return i18n.t('settings:knowledgeBases.field.chunkSize'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.chunkSize.placeholder'); },
       min: 100,
       max: 10000,
-      helpText: 'Override chunk size for this KB (leave empty to use global RAG config)'
+      get helpText() { return i18n.t('settings:knowledgeBases.field.chunkSize.help'); }
     },
     {
       type: 'number',
       name: 'chunk_overlap',
-      label: 'Chunk Overlap Override',
-      placeholder: 'e.g., 200',
+      get label() { return i18n.t('settings:knowledgeBases.field.chunkOverlap'); },
+      get placeholder() { return i18n.t('settings:knowledgeBases.field.chunkOverlap.placeholder'); },
       min: 0,
       max: 5000,
-      helpText: 'Override chunk overlap for this KB (leave empty to use global RAG config)'
+      get helpText() { return i18n.t('settings:knowledgeBases.field.chunkOverlap.help'); }
     },
     {
       type: 'checkbox',
       name: 'enabled',
-      label: 'Enable this knowledge base',
+      get label() { return i18n.t('settings:knowledgeBases.field.enabled'); },
       defaultValue: true
     }
   ],
