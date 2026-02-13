@@ -61,6 +61,11 @@ export interface RagConfig {
   embedding_api_key: string;
   embedding_local_model: string;
   embedding_local_device: string;
+  embedding_local_gguf_model_path: string;
+  embedding_local_gguf_n_ctx: number;
+  embedding_local_gguf_n_threads: number;
+  embedding_local_gguf_n_gpu_layers: number;
+  embedding_local_gguf_normalize: boolean;
   chunk_size: number;
   chunk_overlap: number;
   top_k: number;

@@ -61,5 +61,8 @@ data/knowledge_bases/
 # State/data files (writable, not tracked)
 data/state/
 
+# Local model files
+models/**/*.gguf
+
 # Learn Projects
 learn_proj/

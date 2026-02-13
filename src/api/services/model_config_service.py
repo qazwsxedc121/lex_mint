@@ -783,6 +783,32 @@ class ModelConfigService:
             pass
         return None
 
+    def provider_requires_api_key(self, provider: Provider) -> bool:
+        """Return whether this provider requires a non-empty API key."""
+        return provider.protocol != ApiProtocol.OLLAMA
+
+    def resolve_provider_api_key_sync(self, provider: Provider) -> str:
+        """
+        Resolve API key for a provider, allowing empty key for local providers.
+
+        Raises:
+            RuntimeError: when provider requires API key but none is configured.
+        """
+        api_key = self.get_api_key_sync(provider.id)
+        if not api_key:
+            api_key = os.getenv(provider.api_key_env or "")
+
+        if api_key:
+            return api_key
+
+        if self.provider_requires_api_key(provider):
+            raise RuntimeError(
+                f"API key not found for provider '{provider.id}'. "
+                f"Please set it via the UI or environment variable: {provider.api_key_env}"
+            )
+
+        return ""
+
     def to_provider_config(self, provider: Provider) -> ProviderConfig:
         """
         将 Provider 转换为 ProviderConfig（用于 AdapterRegistry）
@@ -876,28 +902,7 @@ class ModelConfigService:
         if not provider:
             raise ValueError(f"Provider with id '{model.provider_id}' not found")
 
-        # 获取 API 密钥（先尝试从 YAML 加载，然后回退到环境变量）
-        # 同步读取 keys_config.yaml
-        api_key = None
-        if self.keys_path.exists():
-            try:
-                with open(self.keys_path, 'r', encoding='utf-8') as f:
-                    keys_data = yaml.safe_load(f)
-                    if keys_data and "providers" in keys_data:
-                        provider_keys = keys_data["providers"].get(provider.id, {})
-                        api_key = provider_keys.get("api_key")
-            except Exception:
-                pass  # 如果读取失败，继续尝试环境变量
-
-        # 回退到环境变量（向后兼容）
-        if not api_key:
-            api_key = os.getenv(provider.api_key_env)
-
-        if not api_key:
-            raise RuntimeError(
-                f"API key not found for provider '{provider.id}'. "
-                f"Please set it via the UI or environment variable: {provider.api_key_env}"
-            )
+        api_key = self.resolve_provider_api_key_sync(provider)
 
         # 创建 LLM 实例
         model_kwargs = {}

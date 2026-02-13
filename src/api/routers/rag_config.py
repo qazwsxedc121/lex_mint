@@ -22,6 +22,11 @@ class RagConfigResponse(BaseModel):
     embedding_api_key: str = ""
     embedding_local_model: str
     embedding_local_device: str
+    embedding_local_gguf_model_path: str
+    embedding_local_gguf_n_ctx: int
+    embedding_local_gguf_n_threads: int
+    embedding_local_gguf_n_gpu_layers: int
+    embedding_local_gguf_normalize: bool
     chunk_size: int
     chunk_overlap: int
     top_k: int
@@ -37,6 +42,11 @@ class RagConfigUpdate(BaseModel):
     embedding_api_key: Optional[str] = None
     embedding_local_model: Optional[str] = None
     embedding_local_device: Optional[str] = None
+    embedding_local_gguf_model_path: Optional[str] = None
+    embedding_local_gguf_n_ctx: Optional[int] = Field(None, ge=256, le=65536)
+    embedding_local_gguf_n_threads: Optional[int] = Field(None, ge=0, le=256)
+    embedding_local_gguf_n_gpu_layers: Optional[int] = Field(None, ge=0, le=1024)
+    embedding_local_gguf_normalize: Optional[bool] = None
     chunk_size: Optional[int] = Field(None, ge=100, le=10000)
     chunk_overlap: Optional[int] = Field(None, ge=0, le=5000)
     top_k: Optional[int] = Field(None, ge=1, le=50)
@@ -75,7 +85,7 @@ async def update_config(
 
         # Validate embedding provider
         if 'embedding_provider' in update_dict:
-            allowed = {"api", "local"}
+            allowed = {"api", "local", "local_gguf"}
             if update_dict['embedding_provider'] not in allowed:
                 raise HTTPException(
                     status_code=400,

@@ -27,7 +27,8 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get options() {
         return [
           { value: 'api', label: i18n.t('settings:rag.opt.api') },
-          { value: 'local', label: i18n.t('settings:rag.opt.local') }
+          { value: 'local', label: i18n.t('settings:rag.opt.local') },
+          { value: 'local_gguf', label: i18n.t('settings:rag.opt.localGguf') }
         ];
       },
       get helpText() { return i18n.t('settings:rag.field.embeddingProvider.help'); }
@@ -79,6 +80,53 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       ],
       get helpText() { return i18n.t('settings:rag.field.embeddingLocalDevice.help'); },
       condition: (formData) => formData.embedding_provider === 'local',
+    },
+    {
+      type: 'text',
+      name: 'embedding_local_gguf_model_path',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalGgufModelPath'); },
+      get placeholder() { return i18n.t('settings:rag.field.embeddingLocalGgufModelPath.placeholder'); },
+      defaultValue: 'models/embeddings/qwen3-embedding-0.6b.gguf',
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalGgufModelPath.help'); },
+      condition: (formData) => formData.embedding_provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'embedding_local_gguf_n_ctx',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalGgufCtx'); },
+      min: 256,
+      max: 65536,
+      defaultValue: 2048,
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalGgufCtx.help'); },
+      condition: (formData) => formData.embedding_provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'embedding_local_gguf_n_threads',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalGgufThreads'); },
+      min: 0,
+      max: 256,
+      defaultValue: 0,
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalGgufThreads.help'); },
+      condition: (formData) => formData.embedding_provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'embedding_local_gguf_n_gpu_layers',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalGgufGpuLayers'); },
+      min: 0,
+      max: 1024,
+      defaultValue: 0,
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalGgufGpuLayers.help'); },
+      condition: (formData) => formData.embedding_provider === 'local_gguf',
+    },
+    {
+      type: 'checkbox',
+      name: 'embedding_local_gguf_normalize',
+      get label() { return i18n.t('settings:rag.field.embeddingLocalGgufNormalize'); },
+      defaultValue: true,
+      get helpText() { return i18n.t('settings:rag.field.embeddingLocalGgufNormalize.help'); },
+      condition: (formData) => formData.embedding_provider === 'local_gguf',
     },
     {
       type: 'number',

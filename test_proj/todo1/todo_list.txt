@@ -27,7 +27,7 @@
 [X] conversation in Project path
 [X] 数学公式
 [] SVG渲染
-[] Docker file
+[X] Docker file
 [] 完善话题分支
 [X] 对话文件夹组织
 [] projects专用目录
@@ -37,7 +37,7 @@
 [] MCP客户端最小版
 [] STT语音输入
 [] RAG评估体系
-[] 本地embedding
+[X] 本地embedding
 [] 本地reranking
 [] 本地LLM总结
 [] 本地LLM翻译

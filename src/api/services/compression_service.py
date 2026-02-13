@@ -1,6 +1,5 @@
 """Compression service for summarizing conversation context."""
 
-import os
 import logging
 import json
 from typing import AsyncIterator, Union, Dict, Any, Optional, Tuple
@@ -81,12 +80,10 @@ class CompressionService:
 
         adapter = model_service.get_adapter_for_provider(provider_config)
 
-        api_key = model_service.get_api_key_sync(provider_config.id)
-        if not api_key:
-            api_key = os.getenv(provider_config.api_key_env or "")
-
-        if not api_key:
-            yield {"type": "error", "error": f"API key not found for provider '{provider_config.id}'"}
+        try:
+            api_key = model_service.resolve_provider_api_key_sync(provider_config)
+        except RuntimeError as e:
+            yield {"type": "error", "error": str(e)}
             return
 
         # Create LLM instance with configured temperature
@@ -197,12 +194,10 @@ class CompressionService:
         model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
         adapter = model_service.get_adapter_for_provider(provider_config)
 
-        api_key = model_service.get_api_key_sync(provider_config.id)
-        if not api_key:
-            api_key = os.getenv(provider_config.api_key_env or "")
-
-        if not api_key:
-            logger.error(f"[AUTO-COMPRESS] API key not found for provider '{provider_config.id}'")
+        try:
+            api_key = model_service.resolve_provider_api_key_sync(provider_config)
+        except RuntimeError as e:
+            logger.error(f"[AUTO-COMPRESS] {e}")
             return None
 
         llm = adapter.create_llm(

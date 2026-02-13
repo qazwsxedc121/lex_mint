@@ -23,6 +23,11 @@ class EmbeddingConfig:
     api_key: str = ""
     local_model: str = "all-MiniLM-L6-v2"
     local_device: str = "cpu"
+    local_gguf_model_path: str = "models/embeddings/qwen3-embedding-0.6b.gguf"
+    local_gguf_n_ctx: int = 2048
+    local_gguf_n_threads: int = 0
+    local_gguf_n_gpu_layers: int = 0
+    local_gguf_normalize: bool = True
     batch_size: int = 64
     batch_delay_seconds: float = 0.5
     batch_max_retries: int = 3
@@ -77,6 +82,11 @@ class RagConfigService:
                     'api_key': '',
                     'local_model': 'all-MiniLM-L6-v2',
                     'local_device': 'cpu',
+                    'local_gguf_model_path': 'models/embeddings/qwen3-embedding-0.6b.gguf',
+                    'local_gguf_n_ctx': 2048,
+                    'local_gguf_n_threads': 0,
+                    'local_gguf_n_gpu_layers': 0,
+                    'local_gguf_normalize': True,
                     'batch_size': 64,
                     'batch_delay_seconds': 0.5,
                     'batch_max_retries': 3,
@@ -121,6 +131,14 @@ class RagConfigService:
                     api_key=embedding_data.get('api_key', ''),
                     local_model=embedding_data.get('local_model', 'all-MiniLM-L6-v2'),
                     local_device=embedding_data.get('local_device', 'cpu'),
+                    local_gguf_model_path=embedding_data.get(
+                        'local_gguf_model_path',
+                        'models/embeddings/qwen3-embedding-0.6b.gguf'
+                    ),
+                    local_gguf_n_ctx=embedding_data.get('local_gguf_n_ctx', 2048),
+                    local_gguf_n_threads=embedding_data.get('local_gguf_n_threads', 0),
+                    local_gguf_n_gpu_layers=embedding_data.get('local_gguf_n_gpu_layers', 0),
+                    local_gguf_normalize=embedding_data.get('local_gguf_normalize', True),
                     batch_size=embedding_data.get('batch_size', 64),
                     batch_delay_seconds=embedding_data.get('batch_delay_seconds', 0.5),
                     batch_max_retries=embedding_data.get('batch_max_retries', 3),
@@ -181,6 +199,11 @@ class RagConfigService:
             'embedding_api_key': self.config.embedding.api_key,
             'embedding_local_model': self.config.embedding.local_model,
             'embedding_local_device': self.config.embedding.local_device,
+            'embedding_local_gguf_model_path': self.config.embedding.local_gguf_model_path,
+            'embedding_local_gguf_n_ctx': self.config.embedding.local_gguf_n_ctx,
+            'embedding_local_gguf_n_threads': self.config.embedding.local_gguf_n_threads,
+            'embedding_local_gguf_n_gpu_layers': self.config.embedding.local_gguf_n_gpu_layers,
+            'embedding_local_gguf_normalize': self.config.embedding.local_gguf_normalize,
             'chunk_size': self.config.chunking.chunk_size,
             'chunk_overlap': self.config.chunking.chunk_overlap,
             'top_k': self.config.retrieval.top_k,
@@ -198,6 +221,11 @@ class RagConfigService:
             'embedding_api_key': ('embedding', 'api_key'),
             'embedding_local_model': ('embedding', 'local_model'),
             'embedding_local_device': ('embedding', 'local_device'),
+            'embedding_local_gguf_model_path': ('embedding', 'local_gguf_model_path'),
+            'embedding_local_gguf_n_ctx': ('embedding', 'local_gguf_n_ctx'),
+            'embedding_local_gguf_n_threads': ('embedding', 'local_gguf_n_threads'),
+            'embedding_local_gguf_n_gpu_layers': ('embedding', 'local_gguf_n_gpu_layers'),
+            'embedding_local_gguf_normalize': ('embedding', 'local_gguf_normalize'),
             'chunk_size': ('chunking', 'chunk_size'),
             'chunk_overlap': ('chunking', 'chunk_overlap'),
             'top_k': ('retrieval', 'top_k'),

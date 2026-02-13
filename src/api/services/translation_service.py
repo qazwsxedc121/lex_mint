@@ -1,6 +1,5 @@
 """Translation service for translating text via LLM."""
 
-import os
 import logging
 from typing import AsyncIterator, Union, Dict, Any
 
@@ -61,12 +60,10 @@ class TranslationService:
 
         adapter = model_service.get_adapter_for_provider(provider_config)
 
-        api_key = model_service.get_api_key_sync(provider_config.id)
-        if not api_key:
-            api_key = os.getenv(provider_config.api_key_env or "")
-
-        if not api_key:
-            yield {"type": "error", "error": f"API key not found for provider '{provider_config.id}'"}
+        try:
+            api_key = model_service.resolve_provider_api_key_sync(provider_config)
+        except RuntimeError as e:
+            yield {"type": "error", "error": str(e)}
             return
 
         # Create LLM instance

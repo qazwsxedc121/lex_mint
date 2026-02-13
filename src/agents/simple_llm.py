@@ -1,6 +1,5 @@
 """Simple LLM call service - without LangGraph"""
 
-import os
 import time
 import logging
 from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple
@@ -419,15 +418,7 @@ async def call_llm_stream(
         logger.warning(f"Model {model_config.id} does not support reasoning mode, ignoring reasoning_effort")
 
     # Get API key
-    api_key = model_service.get_api_key_sync(provider_config.id)
-    if not api_key:
-        api_key = os.getenv(provider_config.api_key_env or "")
-
-    if not api_key:
-        raise RuntimeError(
-            f"API key not found for provider '{provider_config.id}'. "
-            f"Please set it via the UI or environment variable: {provider_config.api_key_env}"
-        )
+    api_key = model_service.resolve_provider_api_key_sync(provider_config)
 
     # Build extra params from assistant config (if provided)
     extra_params = {}
