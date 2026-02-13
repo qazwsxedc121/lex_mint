@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useOutletContext, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ProjectSelector } from './components/ProjectSelector';
 import { FileTree } from './components/FileTree';
 import { FileViewer } from './components/FileViewer';
@@ -24,6 +25,7 @@ interface ProjectsOutletContext {
 }
 
 export const ProjectExplorer: React.FC = () => {
+  const { t } = useTranslation('projects');
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { projects, onManageClick } = useOutletContext<ProjectsOutletContext>();
@@ -233,7 +235,7 @@ export const ProjectExplorer: React.FC = () => {
   if (!projectId) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
-        <p className="text-gray-500 dark:text-gray-400">Invalid project ID</p>
+        <p className="text-gray-500 dark:text-gray-400">{t('explorer.invalidId')}</p>
       </div>
     );
   }
@@ -248,7 +250,7 @@ export const ProjectExplorer: React.FC = () => {
           onCloseProject={handleCloseProject}
         />
         <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
-          <p className="text-gray-500 dark:text-gray-400">Loading project...</p>
+          <p className="text-gray-500 dark:text-gray-400">{t('explorer.loading')}</p>
         </div>
       </div>
     );
@@ -265,7 +267,7 @@ export const ProjectExplorer: React.FC = () => {
         />
         <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
           <div className="text-center">
-            <p className="text-red-600 dark:text-red-400 mb-2">Failed to load project</p>
+            <p className="text-red-600 dark:text-red-400 mb-2">{t('explorer.loadFailed')}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{treeError}</p>
           </div>
         </div>
@@ -283,7 +285,7 @@ export const ProjectExplorer: React.FC = () => {
           onCloseProject={handleCloseProject}
         />
         <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
-          <p className="text-gray-500 dark:text-gray-400">No files found</p>
+          <p className="text-gray-500 dark:text-gray-400">{t('explorer.noFiles')}</p>
         </div>
       </div>
     );

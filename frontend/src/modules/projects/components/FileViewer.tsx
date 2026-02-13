@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -110,6 +111,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   onToggleFileTree,
   onEditorReady,
 }) => {
+  const { t } = useTranslation('projects');
   const [value, setValue] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -504,7 +506,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       <div data-name="file-viewer-breadcrumb-row" className="flex items-center gap-2 min-w-0">
         <button
           type="button"
-          title={fileTreeOpen ? 'Hide file tree' : 'Show file tree'}
+          title={fileTreeOpen ? t('fileViewer.hideTree') : t('fileViewer.showTree')}
           aria-pressed={fileTreeOpen}
           onClick={onToggleFileTree}
           data-name="file-tree-toggle"
@@ -534,7 +536,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+        <div className="text-gray-500 dark:text-gray-400">{t('fileViewer.loading')}</div>
       </div>
     );
   }
@@ -552,7 +554,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">
         {renderBreadcrumbBar()}
         <div className="flex-1 flex flex-col items-center justify-center">
-          <p className="text-gray-500 dark:text-gray-400 mb-2">Select a file to view</p>
+          <p className="text-gray-500 dark:text-gray-400 mb-2">{t('fileViewer.emptyState')}</p>
         </div>
       </div>
     );

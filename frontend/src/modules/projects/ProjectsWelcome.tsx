@@ -5,6 +5,7 @@
 import React, { useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { FolderIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import type { Project } from '../../types/project';
 
@@ -15,6 +16,7 @@ interface ProjectsOutletContext {
 }
 
 export const ProjectsWelcome: React.FC = () => {
+  const { t } = useTranslation('projects');
   const { projects, onManageClick, onAddProjectClick } = useOutletContext<ProjectsOutletContext>();
   const navigate = useNavigate();
   const { currentProjectId, setCurrentProject } = useProjectWorkspaceStore();
@@ -35,10 +37,10 @@ export const ProjectsWelcome: React.FC = () => {
     <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-900">
       <FolderIcon className="h-24 w-24 text-gray-400 dark:text-gray-600 mb-4" />
       <h2 className="text-2xl font-medium text-gray-900 dark:text-white mb-2">
-        Select a Project
+        {t('welcome.title')}
       </h2>
       <p className="text-gray-500 dark:text-gray-400 mb-6 text-center max-w-md">
-        Choose a project to browse files, or create a new one.
+        {t('welcome.description')}
       </p>
 
       {/* Project List */}
@@ -66,7 +68,7 @@ export const ProjectsWelcome: React.FC = () => {
         </div>
       ) : (
         <p className="text-gray-500 dark:text-gray-400 mb-6">
-          No projects available
+          {t('welcome.noProjects')}
         </p>
       )}
 
@@ -75,13 +77,13 @@ export const ProjectsWelcome: React.FC = () => {
           onClick={onAddProjectClick}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          Add Project
+          {t('welcome.addProject')}
         </button>
         <button
           onClick={onManageClick}
           className="px-6 py-3 bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
         >
-          Manage Projects
+          {t('welcome.manageProjects')}
         </button>
       </div>
     </div>

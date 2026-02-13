@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { DocumentArrowDownIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 import { useProjectEditor } from '../contexts/ProjectEditorContext';
 
 interface InsertToEditorButtonProps {
@@ -23,6 +24,7 @@ export const InsertToEditorButton: React.FC<InsertToEditorButtonProps> = ({
   content,
   messageRole,
 }) => {
+  const { t } = useTranslation('projects');
   const editorContext = useProjectEditor();
   const [inserted, setInserted] = useState(false);
 
@@ -56,7 +58,7 @@ export const InsertToEditorButton: React.FC<InsertToEditorButtonProps> = ({
           ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 border-gray-300 dark:border-gray-600'
           : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 border-gray-300 dark:border-gray-600 cursor-not-allowed opacity-50'
       }`}
-      title={inserted ? 'Inserted' : isEditorAvailable ? 'Insert to editor' : 'No file open'}
+      title={inserted ? t('insertButton.inserted') : isEditorAvailable ? t('insertButton.insert') : t('insertButton.noFile')}
       data-name="insert-to-editor-button"
     >
       {inserted ? (
@@ -65,7 +67,7 @@ export const InsertToEditorButton: React.FC<InsertToEditorButtonProps> = ({
         <DocumentArrowDownIcon className="w-4 h-4" />
       )}
       <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        {inserted ? 'Inserted' : isEditorAvailable ? 'Insert to editor' : 'No file open'}
+        {inserted ? t('insertButton.inserted') : isEditorAvailable ? t('insertButton.insert') : t('insertButton.noFile')}
       </span>
     </button>
   );

@@ -5,6 +5,7 @@
 import React, { Fragment, useEffect, useRef, useState } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { FolderIcon, FolderOpenIcon, DocumentIcon, ChevronRightIcon, ChevronDownIcon, EllipsisVerticalIcon, TrashIcon, Square2StackIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 import type { FileNode } from '../../../types/project';
 
 type FileTreeMenuAction = 'new-file' | 'new-folder' | 'delete-folder' | 'duplicate-file' | 'delete-file' | 'rename-path';
@@ -50,6 +51,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
   allowDeleteFolder,
   allowRename,
 }) => {
+  const { t } = useTranslation('projects');
   const [isExpanded, setIsExpanded] = useState(true);
   const isDirectory = tree.type === 'directory';
   const isSelected = selectedPath === tree.path;
@@ -112,7 +114,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
               type="button"
               onClick={(event) => event.stopPropagation()}
               className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-              title="Actions"
+              title={t('fileTree.menu.actionsTitle')}
             >
               <EllipsisVerticalIcon className="h-4 w-4" />
             </Menu.Button>
@@ -143,7 +145,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                           }`}
                         >
                           <DocumentIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                          New file
+                          {t('fileTree.menu.newFile')}
                         </button>
                       )}
                     </Menu.Item>
@@ -161,7 +163,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                           }`}
                         >
                           <FolderIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                          New folder
+                          {t('fileTree.menu.newFolder')}
                         </button>
                       )}
                     </Menu.Item>
@@ -182,7 +184,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                           }`}
                         >
                           <PencilSquareIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                          Rename
+                          {t('fileTree.menu.rename')}
                         </button>
                       )}
                     </Menu.Item>
@@ -207,7 +209,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                           }`}
                         >
                           <TrashIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                          Delete folder
+                          {t('fileTree.menu.deleteFolder')}
                         </button>
                       )}
                     </Menu.Item>
@@ -225,7 +227,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                           }`}
                         >
                           <Square2StackIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                          Duplicate file
+                          {t('fileTree.menu.duplicateFile')}
                         </button>
                       )}
                     </Menu.Item>
@@ -243,7 +245,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
                           }`}
                         >
                           <TrashIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-                          Delete file
+                          {t('fileTree.menu.deleteFile')}
                         </button>
                       )}
                     </Menu.Item>
@@ -290,6 +292,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   onDeleteFolder,
   onRenamePath,
 }) => {
+  const { t } = useTranslation('projects');
   const [createTarget, setCreateTarget] = useState<{
     directoryPath: string;
     directoryName: string;
@@ -498,20 +501,20 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     const trimmedName = newEntryName.trim();
     const label = createTarget.kind === 'folder' ? 'folder' : 'file';
     if (!trimmedName) {
-      setCreateError(`Please enter a ${label} name.`);
+      setCreateError(t('fileTree.error.emptyName', { label }));
       return;
     }
     if (/[\\/]/.test(trimmedName)) {
-      setCreateError(`${label.charAt(0).toUpperCase() + label.slice(1)} name cannot contain / or \\\\.`);
+      setCreateError(t('fileTree.error.invalidChars', { label: label.charAt(0).toUpperCase() + label.slice(1) }));
       return;
     }
 
     if (createTarget.kind === 'file' && !onCreateFile) {
-      setCreateError('File creation is unavailable.');
+      setCreateError(t('fileTree.error.fileCreationUnavailable'));
       return;
     }
     if (createTarget.kind === 'folder' && !onCreateFolder) {
-      setCreateError('Folder creation is unavailable.');
+      setCreateError(t('fileTree.error.folderCreationUnavailable'));
       return;
     }
 
@@ -527,7 +530,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
         handleCloseCreate();
       }
     } catch (err: any) {
-      const fallbackMessage = createTarget.kind === 'folder' ? 'Failed to create folder.' : 'Failed to create file.';
+      const fallbackMessage = createTarget.kind === 'folder' ? t('fileTree.error.createFolderFailed') : t('fileTree.error.createFileFailed');
       const message = err?.response?.data?.detail || err?.message || fallbackMessage;
       setCreateError(message);
       setCreating(false);
@@ -537,7 +540,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   const handleDeleteSubmit = async () => {
     if (!deleteTarget || deleting || !onDeleteFolder) return;
     if (deleteConfirm.trim() !== deleteTarget.directoryPath) {
-      setDeleteError('Please type the folder path to confirm.');
+      setDeleteError(t('fileTree.error.deleteFolderConfirm'));
       return;
     }
 
@@ -547,7 +550,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
       await onDeleteFolder(deleteTarget.directoryPath);
       handleCloseDelete();
     } catch (err: any) {
-      const message = err?.response?.data?.detail || err?.message || 'Failed to delete folder.';
+      const message = err?.response?.data?.detail || err?.message || t('fileTree.error.createFolderFailed');
       setDeleteError(message);
       setDeleting(false);
     }
@@ -557,15 +560,15 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     if (!duplicateTarget || duplicating || !onDuplicateFile) return;
     const trimmedName = duplicateName.trim();
     if (!trimmedName) {
-      setDuplicateError('Please enter a file name.');
+      setDuplicateError(t('fileTree.error.emptyName', { label: 'file' }));
       return;
     }
     if (/[\\/]/.test(trimmedName)) {
-      setDuplicateError('File name cannot contain / or \\\\.');
+      setDuplicateError(t('fileTree.error.invalidChars', { label: 'File' }));
       return;
     }
     if (trimmedName === duplicateTarget.fileName) {
-      setDuplicateError('Please choose a different name.');
+      setDuplicateError(t('fileTree.error.duplicateNameExists'));
       return;
     }
 
@@ -576,7 +579,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
       handleCloseDuplicate();
       onFileSelect(createdPath);
     } catch (err: any) {
-      const message = err?.response?.data?.detail || err?.message || 'Failed to duplicate file.';
+      const message = err?.response?.data?.detail || err?.message || t('fileTree.error.duplicateFailed');
       setDuplicateError(message);
       setDuplicating(false);
     }
@@ -585,7 +588,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   const handleDeleteFileSubmit = async () => {
     if (!deleteFileTarget || deletingFile || !onDeleteFile) return;
     if (deleteFileConfirm.trim() !== deleteFileTarget.fileName) {
-      setDeleteFileError('Please type the file name to confirm.');
+      setDeleteFileError(t('fileTree.error.deleteFileConfirm'));
       return;
     }
 
@@ -595,7 +598,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
       await onDeleteFile(deleteFileTarget.filePath);
       handleCloseDeleteFile();
     } catch (err: any) {
-      const message = err?.response?.data?.detail || err?.message || 'Failed to delete file.';
+      const message = err?.response?.data?.detail || err?.message || t('fileTree.error.createFileFailed');
       setDeleteFileError(message);
       setDeletingFile(false);
     }
@@ -606,15 +609,15 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     const trimmedName = renameName.trim();
     const label = renameTarget.isDirectory ? 'folder' : 'file';
     if (!trimmedName) {
-      setRenameError(`Please enter a ${label} name.`);
+      setRenameError(t('fileTree.error.emptyName', { label }));
       return;
     }
     if (/[\\/]/.test(trimmedName)) {
-      setRenameError(`${label.charAt(0).toUpperCase() + label.slice(1)} name cannot contain / or \\\\.`);
+      setRenameError(t('fileTree.error.invalidChars', { label: label.charAt(0).toUpperCase() + label.slice(1) }));
       return;
     }
     if (trimmedName === renameTarget.name) {
-      setRenameError('Please choose a different name.');
+      setRenameError(t('fileTree.error.duplicateNameExists'));
       return;
     }
 
@@ -630,7 +633,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
         onFileSelect(newPath);
       }
     } catch (err: any) {
-      const fallbackMessage = renameTarget.isDirectory ? 'Failed to rename folder.' : 'Failed to rename file.';
+      const fallbackMessage = renameTarget.isDirectory ? t('fileTree.error.renameFolderFailed') : t('fileTree.error.renameFileFailed');
       const message = err?.response?.data?.detail || err?.message || fallbackMessage;
       setRenameError(message);
       setRenaming(false);
@@ -661,10 +664,10 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div data-name="file-entry-create-modal-card" className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                {createTarget.kind === 'folder' ? 'New Folder' : 'New File'}
+                {createTarget.kind === 'folder' ? t('fileTree.modal.newFolder') : t('fileTree.modal.newFile')}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                Create in {createTarget.directoryName}
+                {t('fileTree.modal.createIn', { directoryName: createTarget.directoryName })}
               </p>
               <form
                 onSubmit={(event) => {
@@ -675,7 +678,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
               >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {createTarget.kind === 'folder' ? 'Folder Name' : 'File Name'}
+                    {createTarget.kind === 'folder' ? t('fileTree.modal.folderNameLabel') : t('fileTree.modal.fileNameLabel')}
                   </label>
                   <input
                     ref={inputRef}
@@ -689,7 +692,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                       }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder={createTarget.kind === 'folder' ? 'e.g. docs' : 'e.g. notes.txt'}
+                    placeholder={createTarget.kind === 'folder' ? t('fileTree.modal.folderPlaceholder') : t('fileTree.modal.filePlaceholder')}
                     disabled={creating}
                   />
                 </div>
@@ -705,14 +708,14 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                     disabled={creating}
                   >
-                    Cancel
+                    {t('common:cancel')}
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={creating}
                   >
-                    {creating ? 'Creating...' : 'Create'}
+                    {creating ? t('fileTree.button.creating') : t('fileTree.button.create')}
                   </button>
                 </div>
               </form>
@@ -729,10 +732,10 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div data-name="file-duplicate-modal-card" className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                Duplicate File
+                {t('fileTree.modal.duplicateFile')}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                Duplicate <span className="font-medium text-gray-800 dark:text-gray-200">{duplicateTarget.fileName}</span>
+                {t('fileTree.modal.duplicateSubtitle', { fileName: duplicateTarget.fileName })}
               </p>
               <form
                 onSubmit={(event) => {
@@ -743,7 +746,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
               >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    New File Name
+                    {t('fileTree.modal.newFileNameLabel')}
                   </label>
                   <input
                     ref={duplicateInputRef}
@@ -772,14 +775,14 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                     disabled={duplicating}
                   >
-                    Cancel
+                    {t('common:cancel')}
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={duplicating}
                   >
-                    {duplicating ? 'Duplicating...' : 'Duplicate'}
+                    {duplicating ? t('fileTree.button.duplicating') : t('fileTree.button.duplicate')}
                   </button>
                 </div>
               </form>
@@ -796,10 +799,10 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div data-name="file-rename-modal-card" className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                {renameTarget.isDirectory ? 'Rename Folder' : 'Rename File'}
+                {renameTarget.isDirectory ? t('fileTree.modal.renameFolder') : t('fileTree.modal.renameFile')}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                Rename <span className="font-medium text-gray-800 dark:text-gray-200">{renameTarget.name}</span>
+                {t('fileTree.modal.renameSubtitle', { name: renameTarget.name })}
               </p>
               <form
                 onSubmit={(event) => {
@@ -810,7 +813,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
               >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    New {renameTarget.isDirectory ? 'Folder' : 'File'} Name
+                    {renameTarget.isDirectory ? t('fileTree.modal.newFolderNameLabel') : t('fileTree.modal.newFileNameLabel')}
                   </label>
                   <input
                     ref={renameInputRef}
@@ -839,14 +842,14 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                     disabled={renaming}
                   >
-                    Cancel
+                    {t('common:cancel')}
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={renaming}
                   >
-                    {renaming ? 'Renaming...' : 'Rename'}
+                    {renaming ? t('fileTree.button.renaming') : t('fileTree.button.rename')}
                   </button>
                 </div>
               </form>
@@ -863,10 +866,10 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div data-name="folder-delete-modal-card" className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                Delete Folder
+                {t('fileTree.modal.deleteFolder')}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                This will permanently delete <span className="font-medium text-gray-800 dark:text-gray-200">{deleteTarget.directoryPath}</span> and all contents.
+                {t('fileTree.modal.deleteFolderWarning', { path: deleteTarget.directoryPath })}
               </p>
               <form
                 onSubmit={(event) => {
@@ -877,7 +880,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
               >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Type the folder path to confirm
+                    {t('fileTree.modal.deleteFolderConfirmLabel')}
                   </label>
                   <input
                     ref={deleteInputRef}
@@ -907,14 +910,14 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                     disabled={deleting}
                   >
-                    Cancel
+                    {t('common:cancel')}
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={deleting || deleteConfirm.trim() !== deleteTarget.directoryPath}
                   >
-                    {deleting ? 'Deleting...' : 'Delete'}
+                    {deleting ? t('fileTree.button.deleting') : t('fileTree.button.delete')}
                   </button>
                 </div>
               </form>
@@ -931,10 +934,10 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <div data-name="file-delete-modal-card" className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                Delete File
+                {t('fileTree.modal.deleteFile')}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                This will permanently delete <span className="font-medium text-gray-800 dark:text-gray-200">{deleteFileTarget.fileName}</span>.
+                {t('fileTree.modal.deleteFileWarning', { fileName: deleteFileTarget.fileName })}
               </p>
               <form
                 onSubmit={(event) => {
@@ -945,7 +948,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
               >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Type the file name to confirm
+                    {t('fileTree.modal.deleteFileConfirmLabel')}
                   </label>
                   <input
                     ref={deleteFileInputRef}
@@ -975,14 +978,14 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                     disabled={deletingFile}
                   >
-                    Cancel
+                    {t('common:cancel')}
                   </button>
                   <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={deletingFile || deleteFileConfirm.trim() !== deleteFileTarget.fileName}
                   >
-                    {deletingFile ? 'Deleting...' : 'Delete'}
+                    {deletingFile ? t('fileTree.button.deleting') : t('fileTree.button.delete')}
                   </button>
                 </div>
               </form>

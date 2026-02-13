@@ -5,6 +5,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDownIcon, CogIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import type { Project } from '../../../types/project';
 
@@ -21,6 +22,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   onManageClick,
   onCloseProject,
 }) => {
+  const { t } = useTranslation('projects');
   const navigate = useNavigate();
   const { setCurrentProject } = useProjectWorkspaceStore();
   const [isOpen, setIsOpen] = React.useState(false);
@@ -53,7 +55,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
             className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-left text-sm text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center justify-between"
           >
             <span className="truncate">
-              {currentProject ? currentProject.name : 'Select Project'}
+              {currentProject ? currentProject.name : t('selector.selectProject')}
             </span>
             <ChevronDownIcon className="h-4 w-4 ml-2 flex-shrink-0 text-gray-500 dark:text-gray-400" />
           </button>
@@ -63,7 +65,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-10 max-h-64 overflow-y-auto">
               {projects.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-center">
-                  No projects available
+                  {t('selector.noProjects')}
                 </div>
               ) : (
                 projects.map((project) => (
@@ -93,8 +95,8 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         <button
           onClick={onManageClick}
           className="px-3 py-2 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-          title="Manage Projects"
-          aria-label="Manage Projects"
+          title={t('selector.manageTitle')}
+          aria-label={t('selector.manageTitle')}
         >
           <CogIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
         </button>
@@ -103,8 +105,8 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         <button
           onClick={onCloseProject}
           className="px-3 py-2 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-          title="Close Current Project"
-          aria-label="Close current project"
+          title={t('selector.closeProject')}
+          aria-label={t('selector.closeProject')}
         >
           <XMarkIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
         </button>

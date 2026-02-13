@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChatView, useChatServices } from '../../../shared/chat';
 import type { Message } from '../../../types/message';
 import type { Project } from '../../../types/project';
@@ -61,6 +62,7 @@ function ChatServiceConsumer({
   onSelectSession,
   onSetCurrentSessionId,
 }: ChatServiceConsumerProps) {
+  const { t } = useTranslation('projects');
   const { api, sessions, createSession, deleteSession, sessionsLoading, refreshSessions } = useChatServices();
   const [initialized, setInitialized] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -137,7 +139,7 @@ function ChatServiceConsumer({
       onSetCurrentSessionId(newSessionId);
     } catch (error) {
       console.error('Failed to create session:', error);
-      alert('Failed to create new conversation. Please try again.');
+      alert(t('chat.createFailed'));
     }
   };
 
@@ -163,7 +165,7 @@ function ChatServiceConsumer({
       await deleteSession(sessionId);
     } catch (error) {
       console.error('Failed to delete session:', error);
-      alert('Failed to delete conversation. Please try again.');
+      alert(t('chat.deleteFailed'));
     }
   };
 
@@ -193,7 +195,7 @@ function ChatServiceConsumer({
       }
     } catch (error) {
       console.error('Failed to transfer session:', error);
-      alert('Failed to transfer conversation. Please try again.');
+      alert(t('chat.transferFailed'));
     } finally {
       setTransferBusy(false);
       setTransferState(null);
@@ -208,7 +210,7 @@ function ChatServiceConsumer({
   if (sessionsLoading && sessions.length === 0) {
     return (
       <div data-name="chat-loading" className="flex items-center justify-center h-full">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+        <div className="text-gray-500 dark:text-gray-400">{t('chat.loading')}</div>
       </div>
     );
   }

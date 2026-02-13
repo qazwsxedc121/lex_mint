@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal } from '../../settings/components/common/Modal';
 import { FolderIcon, ArrowUturnLeftIcon, PlusIcon } from '@heroicons/react/24/outline';
 import type { DirectoryEntry } from '../../../types/project';
@@ -31,6 +32,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
   onClose,
   onSelect,
 }) => {
+  const { t } = useTranslation('projects');
   const [roots, setRoots] = useState<DirectoryEntry[]>([]);
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
   const [currentRoot, setCurrentRoot] = useState<string | null>(null);
@@ -153,7 +155,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Select Server Directory"
+      title={t('directoryPicker.title')}
       size="lg"
     >
       <div className="space-y-4" data-name="backend-directory-picker">
@@ -176,7 +178,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
                 className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
               >
                 <ArrowUturnLeftIcon className="h-4 w-4" />
-                Up
+                {t('directoryPicker.upButton')}
               </button>
             </div>
 
@@ -192,7 +194,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
                   }
                 }}
                 disabled={loading || creatingFolder}
-                placeholder="New folder name"
+                placeholder={t('directoryPicker.newFolderPlaceholder')}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-60"
               />
               <button
@@ -204,18 +206,18 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60"
               >
                 <PlusIcon className="h-4 w-4" />
-                {creatingFolder ? 'Creating...' : 'Create'}
+                {creatingFolder ? t('directoryPicker.creating') : t('directoryPicker.createButton')}
               </button>
             </div>
 
             <div className="max-h-72 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700" data-name="backend-directory-list">
               {loading ? (
                 <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                  Loading directories...
+                  {t('directoryPicker.loadingDirs')}
                 </div>
               ) : entries.length === 0 ? (
                 <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                  No subdirectories
+                  {t('directoryPicker.noDirs')}
                 </div>
               ) : (
                 entries.map((entry) => (
@@ -235,12 +237,12 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
         ) : (
           <div className="space-y-2" data-name="backend-root-list">
             <div className="text-sm text-gray-600 dark:text-gray-300">
-              Choose a root folder to browse:
+              {t('directoryPicker.instruction')}
             </div>
             {loading ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">Loading roots...</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">{t('directoryPicker.loadingRoots')}</div>
             ) : roots.length === 0 ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">No roots configured.</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">{t('directoryPicker.noRoots')}</div>
             ) : (
               roots.map((root) => (
                 <button
@@ -263,7 +265,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
           >
-            Cancel
+            {t('common:cancel')}
           </button>
           <button
             type="button"
@@ -271,7 +273,7 @@ export const BackendDirectoryPicker: React.FC<BackendDirectoryPickerProps> = ({
             disabled={!currentPath}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60"
           >
-            Use this folder
+            {t('directoryPicker.useButton')}
           </button>
         </div>
       </div>

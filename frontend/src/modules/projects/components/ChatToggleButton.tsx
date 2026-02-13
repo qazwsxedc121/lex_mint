@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { ChatBubbleLeftIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from 'react-i18next';
 
 interface ChatToggleButtonProps {
   isOpen: boolean;
@@ -14,9 +15,11 @@ export const ChatToggleButton: React.FC<ChatToggleButtonProps> = ({
   isOpen,
   onToggle
 }) => {
+  const { t } = useTranslation('projects');
+
   return (
     <button
-      title={isOpen ? "Hide chat" : "Show chat"}
+      title={isOpen ? t('chatToggle.hide') : t('chatToggle.show')}
       onClick={onToggle}
       className={`p-1.5 rounded ${
         isOpen

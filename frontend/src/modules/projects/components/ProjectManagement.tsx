@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Project, ProjectCreate, ProjectUpdate } from '../../../types/project';
 import { BackendDirectoryPicker } from './BackendDirectoryPicker';
@@ -24,6 +25,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   initialCreateForm = false,
   onClose,
 }) => {
+  const { t } = useTranslation('projects');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(initialCreateForm);
   const [formData, setFormData] = useState<Partial<ProjectCreate>>({});
@@ -63,7 +65,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
         setEditingId(null);
       } else {
         if (!formData.name || !formData.root_path) {
-          alert('Please fill in required fields: Name and Root Path');
+          alert(t('management.alert.requiredFields'));
           return;
         }
         await onCreateProject(formData as ProjectCreate);
@@ -71,16 +73,16 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
       }
       setFormData({});
     } catch (err) {
-      alert(`Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(t('management.alert.saveFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
+    if (!confirm(t('management.confirm.delete'))) return;
     try {
       await onDeleteProject(id);
     } catch (err) {
-      alert(`Failed to delete: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(t('management.alert.deleteFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
     }
   };
 
@@ -98,7 +100,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
           {/* Header */}
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-              Manage Projects
+              {t('management.title')}
             </h3>
             <button
               onClick={onClose}
@@ -119,7 +121,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
-              Add Project
+              {t('management.addButton')}
             </button>
           </div>
 
@@ -129,16 +131,16 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
               <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Name
+                    {t('management.table.name')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Root Path
+                    {t('management.table.rootPath')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Description
+                    {t('management.table.description')}
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Actions
+                    {t('management.table.actions')}
                   </th>
                 </tr>
               </thead>
@@ -146,7 +148,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                 {projects.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                      No projects found. Click "Add Project" to create one.
+                      {t('management.emptyState')}
                     </td>
                   </tr>
                 ) : (
@@ -166,14 +168,14 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                           <button
                             onClick={() => handleEdit(project)}
                             className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="Edit"
+                            title={t('management.action.edit')}
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(project.id)}
                             className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                            title="Delete"
+                            title={t('management.action.delete')}
                           >
                             <TrashIcon className="h-4 w-4" />
                           </button>
@@ -199,12 +201,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
               <div className="flex min-h-full items-center justify-center p-4">
                 <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                    {editingId ? 'Edit Project' : 'Add Project'}
+                    {editingId ? t('management.modal.titleEdit') : t('management.modal.titleAdd')}
                   </h3>
                   <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Project Name *
+                        {t('management.form.nameLabel')}
                       </label>
                       <input
                         type="text"
@@ -213,12 +215,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                         value={formData.name || ''}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="My Project"
+                        placeholder={t('management.form.namePlaceholder')}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Root Path *
+                        {t('management.form.pathLabel')}
                       </label>
                       <div className="flex gap-2" data-name="project-root-path">
                         <input
@@ -227,23 +229,23 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                           value={formData.root_path || ''}
                           onChange={(e) => setFormData({ ...formData, root_path: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="C:\Users\username\project"
+                          placeholder={t('management.form.pathPlaceholder')}
                         />
                         <button
                           type="button"
                           onClick={() => setShowDirectoryPicker(true)}
                           className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                         >
-                          Browse
+                          {t('management.form.browseButton')}
                         </button>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Absolute path to project directory
+                        {t('management.form.pathHint')}
                       </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Description
+                        {t('management.form.descLabel')}
                       </label>
                       <textarea
                         value={formData.description || ''}
@@ -251,10 +253,10 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                         maxLength={500}
                         rows={3}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="Optional description..."
+                        placeholder={t('management.form.descPlaceholder')}
                       />
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {(formData.description || '').length}/500 characters
+                        {t('management.form.charCount', { count: (formData.description || '').length })}
                       </p>
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
@@ -266,13 +268,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                         }}
                         className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                       >
-                        Cancel
+                        {t('common:cancel')}
                       </button>
                       <button
                         type="submit"
                         className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
                       >
-                        {editingId ? 'Save' : 'Create'}
+                        {editingId ? t('common:save') : t('common:create')}
                       </button>
                     </div>
                   </form>
