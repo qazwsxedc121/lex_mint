@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import logging
 
 from ..services.folder_service import FolderService, Folder
-from ..services.conversation_storage import ConversationStorage
+from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def get_folder_service() -> FolderService:
 
 def get_storage() -> ConversationStorage:
     """Dependency injection for ConversationStorage."""
-    return ConversationStorage(settings.conversations_dir)
+    return create_storage_with_project_resolver(settings.conversations_dir)
 
 
 @router.get("", response_model=List[Folder])

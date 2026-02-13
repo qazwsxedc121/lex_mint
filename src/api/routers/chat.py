@@ -9,7 +9,7 @@ import json
 
 # 使用简化版 AgentService（不使用 LangGraph）
 from ..services.agent_service_simple import AgentService
-from ..services.conversation_storage import ConversationStorage
+from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..services.file_service import FileService
 from ..models.search import SearchSource
 from ..config import settings
@@ -103,7 +103,7 @@ class CompareRequest(BaseModel):
 
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
-    storage = ConversationStorage(settings.conversations_dir)
+    storage = create_storage_with_project_resolver(settings.conversations_dir)
     return AgentService(storage)
 
 

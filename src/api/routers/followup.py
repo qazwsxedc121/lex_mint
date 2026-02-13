@@ -9,7 +9,7 @@ from typing import List, Optional
 import logging
 
 from ..services.followup_service import FollowupService
-from ..services.conversation_storage import ConversationStorage
+from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/followup", tags=["followup"])
 
 
 def get_storage() -> ConversationStorage:
-    return ConversationStorage(settings.conversations_dir)
+    return create_storage_with_project_resolver(settings.conversations_dir)
 
 
 # Pydantic models

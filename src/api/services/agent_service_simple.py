@@ -43,7 +43,7 @@ class AgentService:
         self.webpage_service = WebpageService()
         self.memory_service = MemoryService()
         self.file_reference_config_service = FileReferenceConfigService()
-        self.comparison_storage = ComparisonStorage(settings.conversations_dir)
+        self.comparison_storage = ComparisonStorage(self.storage)
         logger.info("AgentService initialized (simplified version)")
 
     _FILE_CONTEXT_CHUNK_SIZE = 2500

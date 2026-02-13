@@ -2,7 +2,8 @@
 
 > 分析版本: Open WebUI v0.7.2
 > 对比项目: Agents (LangGraph-based AI Agent System)
-> 报告日期: 2026-02-08
+> 报告日期: 2026-02-13
+> 更新说明: 基于当前代码实现，更新了 Agents 侧落地能力（RAG、记忆、翻译、TTS、导入导出、会话分组/分支等）
 
 ---
 
@@ -15,7 +16,7 @@
 5. [对比总结表](#5-对比总结表)
 6. [Open WebUI 值得借鉴的设计](#6-open-webui-值得借鉴的设计)
 7. [功能引入优先级建议](#7-功能引入优先级建议)
-8. [实施路线图](#8-实施路线图)
+8. [实施路线图与进度复盘](#8-实施路线图与进度复盘)
 9. [附录](#9-附录)
 
 ---
@@ -30,7 +31,7 @@ Open WebUI 是一个企业级 AI 对话平台，版本 0.7.2，采用 Docker-fir
 
 ### 1.2 本项目 (Agents) 简介
 
-本项目是基于 LangGraph 的 AI 代理系统，采用 FastAPI + React 19 架构。最大特色是使用 Markdown + YAML frontmatter 作为对话存储格式（无数据库依赖），配置全部通过 YAML 文件管理。支持 6 个 LLM 提供商（DeepSeek、OpenRouter、OpenAI、Anthropic、Ollama、XAI），具备上下文压缩、后续问题建议、自动标题生成、代价追踪等特色功能。
+本项目是基于 LangGraph 的 AI 代理系统，采用 FastAPI + React 19 架构。对话主存储仍为 Markdown + YAML frontmatter，同时已引入 ChromaDB 作为 RAG/记忆向量层。支持 6 个 LLM 提供商（DeepSeek、OpenRouter、OpenAI、Anthropic、Ollama、XAI），并已落地知识库 RAG、会话全文搜索、消息原地编辑、会话分支、会话文件夹分组、对话导入导出（ChatGPT/Markdown）、对话内翻译、TTS、Prompt 模板、基础记忆系统、多模型对比等能力。
 
 **核心定位**: 面向开发者的轻量级 AI 代理系统，强调简洁、可读、易同步。
 
@@ -50,15 +51,15 @@ Open WebUI 是一个企业级 AI 对话平台，版本 0.7.2，采用 Docker-fir
 | **前端框架** | SvelteKit 2.5 + Svelte 5 | React 19 + TypeScript 5.9 |
 | **CSS 框架** | Tailwind CSS 4.0 | Tailwind CSS 4.0 |
 | **状态管理** | Svelte stores | Zustand |
-| **数据库/ORM** | SQLAlchemy (SQLite / PostgreSQL / MySQL) | Markdown 文件 + YAML frontmatter (无数据库) |
+| **数据库/ORM** | SQLAlchemy (SQLite / PostgreSQL / MySQL) | Markdown + YAML frontmatter + ChromaDB (向量层) |
 | **实时通信** | Socket.IO (WebSocket) | SSE (Server-Sent Events) |
 | **Agent 框架** | 自定义 Pipeline 系统 | LangGraph 状态机 |
 | **构建工具** | SvelteKit / Vite | Vite |
-| **配置系统** | PersistentConfig (300+ 项, 数据库持久化) | YAML 文件 (9 个配置文件) |
+| **配置系统** | PersistentConfig (300+ 项, 数据库持久化) | YAML defaults/local + data/state 运行态配置 |
 | **后端依赖数** | ~80+ packages | ~15 packages |
 | **前端依赖数** | ~50+ packages | ~20 packages |
 | **部署方式** | Docker / Kubernetes / Helm | 手动启动 (start.bat) |
-| **国际化** | i18next (20+ 语言) | 无 |
+| **国际化** | i18next (20+ 语言) | i18next (2 种语言: en / zh-CN) |
 | **代码编辑器** | CodeMirror 6 | CodeMirror |
 | **图表渲染** | Mermaid + Vega/Vega-Lite + Chart.js | Mermaid |
 | **富文本编辑** | TipTap 3.0 (ProseMirror) | 无 |
@@ -102,9 +103,11 @@ backend/open_webui/
 ```
 src/
 ├── api/
-│   ├── main.py          # FastAPI 应用入口, 10 个路由
-│   ├── routers/         # chat, sessions, models, assistants, projects,
-│   │                    # title_generation, followup, compression, search, webpage
+│   ├── main.py          # FastAPI 应用入口, 20 个路由
+│   ├── routers/         # chat, sessions, models, assistants, projects, folders,
+│   │                    # title_generation, followup, compression, file_reference,
+│   │                    # search, webpage, translation, tts, rag, knowledge_base,
+│   │                    # prompt_templates, memory
 │   └── services/        # 业务逻辑层
 │       ├── conversation_storage.py  # Markdown 存储核心
 │       └── ...
@@ -112,17 +115,17 @@ src/
 ├── providers/           # 多提供商适配器
 │   ├── registry.py      # AdapterRegistry
 │   └── adapters/        # DeepSeek, OpenAI, Anthropic, Ollama, XAI
-└── config/              # 9 个 YAML 配置文件
+└── config/              # defaults/local 双层配置 + data/state 运行态文件
 ```
 
 **对比分析**:
 
 | 方面 | Open WebUI | Agents |
 |------|-----------|--------|
-| 路由规模 | 25+ 模块 | 10 模块 |
+| 路由规模 | 25+ 模块 | 20 模块 |
 | 单文件复杂度 | main.py 88KB, config.py 128KB | 各文件均较小，可维护性好 |
-| 配置持久化 | 数据库持久化，运行时可改 | YAML 文件，需重启生效 |
-| 数据库迁移 | Alembic 自动管理 | 无需 (无数据库) |
+| 配置持久化 | 数据库持久化，运行时可改 | YAML + API 更新（多数配置无需重启） |
+| 数据库迁移 | Alembic 自动管理 | 无关系库迁移（文件 + 向量集合） |
 | 代码组织 | 单体应用，所有功能在一个包内 | 分层清晰 (api/agents/providers) |
 
 ### 3.2 前端架构
@@ -135,11 +138,11 @@ src/
 - Pyodide 支持浏览器内 Python 执行
 
 **Agents (本项目)** (React):
-- 模块化路由 (`modules/chat`, `modules/projects`, `modules/settings`)
+- 模块化路由 (`modules/chat`, `modules/projects`, `modules/settings`, `modules/developer`)
 - 共享聊天组件 (`shared/chat/`)
-- 自定义 hooks: `useChat()`, `useSessions()`, `useAssistants()`, `useModels()`
+- 自定义 hooks: `useChat()`, `useSessions()`, `useAssistants()`, `useModels()`, `useFolders()`, `useTTS()`
 - Zustand 状态管理
-- CodeMirror + Mermaid + Prism 代码高亮
+- CodeMirror + Mermaid + Prism + KaTeX 数学公式
 
 **对比**: Open WebUI 前端功能密度远高于本项目，但本项目的 React 模块化结构更清晰，可维护性更好。
 
@@ -172,8 +175,8 @@ src/
 **Agents (本项目)**:
 ```
 用户消息 → Router → AgentService → LangGraph Agent → LLM Adapter
-                                         ↓
-                              ConversationStorage → Markdown 文件
+                                          ↓
+                    ConversationStorage (Markdown) + ChromaDB (RAG/Memory)
                                          ↓
                               SSE 流式响应 → 前端更新
 ```
@@ -190,19 +193,21 @@ src/
 |------|-----------|--------|---------|
 | 流式对话 | WebSocket | SSE | 差异小 |
 | 多轮对话 | 支持 | 支持 | 无差距 |
-| 消息编辑 | 完整编辑 | 删除 + 重新生成 | 中等差距 |
-| 消息分支/版本 | 支持 (对话树) | 不支持 | 较大差距 |
-| 对话文件夹分组 | 支持 | 不支持 (平铺列表) | 中等差距 |
-| 对话分享/导出 | 支持 (分享链接, 导出) | 不支持 | 中等差距 |
+| 消息编辑 | 完整编辑 | 支持原地编辑 + 重新生成 | 差距缩小 |
+| 消息分支/版本 | 支持 (对话树) | 支持会话分支（分叉到新会话） | 中等差距 |
+| 对话文件夹分组 | 支持 | 支持文件夹分组 + 拖拽排序 | 差距缩小 |
+| 对话分享/导出 | 支持 (分享链接, 导出) | 支持会话导出 (Markdown) | 中等差距 |
 | 对话标签 | 支持 | 不支持 | 低优先级 |
 | **上下文压缩** | 不支持 | **支持 (LLM 智能摘要)** | **本项目优势** |
 | **后续问题建议** | 不支持 | **支持 (LLM 生成)** | **本项目优势** |
 | 自动标题生成 | 支持 | 支持 | 无差距 |
 | 文件附件 | 支持 | 支持 | 无差距 |
+| 会话全文搜索 | 支持 | 支持 | 无差距 |
+| 对话导入 | 支持 | 支持 (ChatGPT `.json/.zip` + Markdown) | 差距缩小 |
 | 消息反馈/点赞 | 支持 (thumbs up/down) | 不支持 | 低优先级 |
 | 固定对话 | 支持 | 不支持 | 低优先级 |
 
-**小结**: 核心对话功能上两个项目各有特色。Open WebUI 在消息分支和对话组织上更强；本项目在上下文压缩和后续问题建议上有独特优势。
+**小结**: 核心对话能力差距明显缩小。本项目已补齐编辑、分组、搜索、导入导出与分支基础能力；Open WebUI 仍在分享协作与完整对话树体验上领先。
 
 ### 4.2 模型管理与提供商集成
 
@@ -217,6 +222,7 @@ src/
 | 自定义参数 | 支持 | 支持 (temperature, top_p, top_k 等) | 无差距 |
 | **会话级参数覆盖** | 有限 | **支持 (frontmatter param_overrides)** | **本项目优势** |
 | **推理深度控制** | 不支持 | **支持 (reasoning_effort 参数)** | **本项目优势** |
+| 多模型并行回复 | 支持 | 支持 Compare 并行对比 | 差距缩小 |
 | Model Builder (自定义模型) | 支持 (UI 创建) | 支持 (API + UI) | 无差距 |
 
 **小结**: 模型管理是本项目的优势领域。适配器模式更清晰，费用追踪、参数覆盖、推理深度控制是 Open WebUI 不具备的特色功能。
@@ -225,14 +231,14 @@ src/
 
 | 功能 | Open WebUI | Agents | 差距评估 |
 |------|-----------|--------|---------|
-| 存储类型 | SQLAlchemy ORM | Markdown + YAML frontmatter | 根本差异 |
-| 复杂查询 | SQL 全功能查询 | 文件扫描 | Open WebUI 优势 |
+| 存储类型 | SQLAlchemy ORM | Markdown + YAML + ChromaDB (向量层) | 根本差异 |
+| 复杂查询 | SQL 全功能查询 | 文件扫描 + 向量相似度检索 | Open WebUI 优势 |
 | **人类可读性** | 数据库 (不可直接阅读) | **Markdown 文件 (可直读可编辑)** | **本项目优势** |
 | **跨设备同步** | 需要数据库复制 | **文件同步 (Dropbox/OneDrive/git)** | **本项目优势** |
 | 数据迁移 | Alembic 管理 | 不需要 | 各有利弊 |
 | **备份** | 数据库备份 (复杂) | **文件复制 (简单)** | **本项目优势** |
 | 大规模性能 | 好 (索引查询) | 退化 (文件扫描) | Open WebUI 优势 |
-| 数据库选择 | SQLite / PostgreSQL / MySQL | 无 | Open WebUI 优势 |
+| 数据库选择 | SQLite / PostgreSQL / MySQL | 无关系库（文件存储 + 向量集合） | Open WebUI 优势 |
 | 加密存储 | 支持 SQLCipher | 不支持 | 差距 |
 
 **小结**: 两种存储策略代表不同的设计哲学。Open WebUI 面向企业级查询和多用户；本项目面向个人使用的简洁性和可移植性。
@@ -268,16 +274,16 @@ src/
 
 | 功能 | Open WebUI | Agents | 差距评估 |
 |------|-----------|--------|---------|
-| 向量数据库 | 13 种后端 (Chroma, Milvus, Qdrant, Pinecone, Elasticsearch, PGVector, Weaviate, OpenSearch 等) | 无 | **关键差距** |
-| 文档加载器 | YouTube, Tika, Docling, Mistral OCR, MinerU 等 | 无 | **关键差距** |
-| 知识库管理 | 完整 CRUD + 集合管理 | 无 | **关键差距** |
-| 文件上传 + 索引 | 支持 (自动分块 + 嵌入) | 仅上传 (无索引) | **较大差距** |
-| 嵌入模型 | Sentence Transformers, OpenAI, Ollama | 无 | **关键差距** |
+| 向量数据库 | 13 种后端 (Chroma, Milvus, Qdrant, Pinecone, Elasticsearch, PGVector, Weaviate, OpenSearch 等) | ChromaDB | 中等差距 |
+| 文档加载器 | YouTube, Tika, Docling, Mistral OCR, MinerU 等 | TXT/MD/PDF/DOCX/HTML | 中等差距 |
+| 知识库管理 | 完整 CRUD + 集合管理 | 支持 CRUD + 文档管理 | 差距缩小 |
+| 文件上传 + 索引 | 支持 (自动分块 + 嵌入) | 支持 (分块 + 嵌入 + 索引) | 差距缩小 |
+| 嵌入模型 | Sentence Transformers, OpenAI, Ollama | 支持可配置嵌入模型 | 差距缩小 |
 | 混合搜索 | 向量 + BM25 | 无 | 差距 |
 | 重排序 | 支持多种重排序引擎 | 无 | 差距 |
-| RAG 模板 | 可自定义 | 无 | 差距 |
+| RAG 模板 | 可自定义 | 基础配置可调 | 小差距 |
 
-**小结**: RAG/知识库是 Open WebUI 与本项目之间最大的功能差距。Open WebUI 在这方面投入极大（`retrieval.py` 单文件 117KB），支持从文档解析到向量检索的完整链路。这也是 AI 平台最核心的增值功能之一。
+**小结**: 本项目已落地可用的 RAG 主链路，当前差距主要在“平台化深度”（多向量后端、混合检索、重排序、评估体系）。
 
 ### 4.7 Web 搜索
 
@@ -295,10 +301,10 @@ src/
 | 功能 | Open WebUI | Agents | 差距评估 |
 |------|-----------|--------|---------|
 | 语音转文字 (STT) | Whisper (本地 + API), Azure, Deepgram, Mistral | 无 | 较大差距 |
-| 文字转语音 (TTS) | OpenAI, Azure, ElevenLabs, Transformers | 无 | 较大差距 |
+| 文字转语音 (TTS) | OpenAI, Azure, ElevenLabs, Transformers | 支持 (edge-tts, 配置化语音参数) | 中等差距 |
 | 语音/视频通话 | 支持 | 无 | 较大差距 |
 
-**小结**: 音频功能本项目完全缺失。对于提升用户体验有一定价值，但并非核心功能。
+**小结**: 本项目已补齐 TTS，剩余缺口集中在 STT 与实时语音会话。
 
 ### 4.9 图像生成
 
@@ -322,6 +328,7 @@ src/
 | Tool Servers (OpenAPI) | 支持 | 不支持 | 较大差距 |
 | **LangGraph Agent 编排** | 不支持 | **支持 (状态机)** | **本项目优势** |
 | Function Calling | 支持 | 支持 (能力标记) | 无差距 |
+| 内置工具链路 | 支持（函数/MCP/工具服务） | 支持搜索/网页/RAG/翻译/TTS/记忆链路 | 中等差距 |
 | Pipeline 中间件 | 支持 (请求/响应过滤) | 不支持 | 中等差距 |
 | RestrictedPython 沙箱 | 支持 | 不支持 | 差距 |
 
@@ -338,10 +345,12 @@ src/
 | Vega/数据图表 | 支持 (Vega + Vega-Lite) | 不支持 | 中等差距 |
 | Artifacts/Playground | 支持 | 不支持 | 中等差距 |
 | 协同编辑 | 支持 (Yjs CRDT) | 不支持 | 差距大 (非必要) |
-| 国际化 (i18n) | 20+ 语言 | 不支持 | 中等差距 |
+| 国际化 (i18n) | 20+ 语言 | 支持 (en / zh-CN) | 中等差距 |
 | 暗色模式 | 支持 | 支持 | 无差距 |
 | 笔记系统 | 支持 | 不支持 | 低优先级 |
-| Prompt 模板库 | 支持 (独立管理) | 部分 (仅 assistant 系统提示词) | 中等差距 |
+| Prompt 模板库 | 支持 (独立管理) | 支持独立模板管理 | 差距缩小 |
+| 数学公式 | 支持 | 支持 (KaTeX) | 无差距 |
+| 命令面板 | 支持 | 支持 (Ctrl/Cmd+K) | 无差距 |
 | **项目文件浏览器** | 不支持 | **支持 (完整文件树 + 代码查看)** | **本项目优势** |
 | **上下文用量可视化** | 不支持 | **支持 (ContextUsageBar)** | **本项目优势** |
 | **参数覆盖弹窗** | 不支持 | **支持 (ParameterOverridePopover)** | **本项目优势** |
@@ -369,17 +378,17 @@ src/
 
 | 类别 | Open WebUI | Agents | 评价 |
 |------|:---------:|:------:|------|
-| 核心对话 | ★★★★☆ | ★★★★☆ | 各有特色，本项目有压缩和后续问题优势 |
+| 核心对话 | ★★★★☆ | ★★★★☆ | 本项目补齐了编辑/分支/分组/导入导出，Open WebUI 在协作上领先 |
 | 模型管理 | ★★★☆☆ | ★★★★★ | 本项目优势：费用追踪、参数覆盖、推理深度 |
 | 数据存储 | ★★★★★ | ★★★☆☆ | 取舍：企业级查询 vs 简洁可读可同步 |
 | 认证权限 | ★★★★★ | ☆☆☆☆☆ | 本项目关键缺失 |
 | 实时通信 | ★★★★★ | ★★★☆☆ | SSE 满足单用户需求，多用户需升级 |
-| RAG/知识库 | ★★★★★ | ☆☆☆☆☆ | 最大功能差距 |
+| RAG/知识库 | ★★★★★ | ★★★☆☆ | 主链路已落地，差距转向平台化深度 |
 | Web 搜索 | ★★★★★ | ★★★☆☆ | 基本满足，提供商数量有差距 |
-| 音频功能 | ★★★★☆ | ☆☆☆☆☆ | 完全缺失，非核心 |
+| 音频功能 | ★★★★☆ | ★★☆☆☆ | 已支持 TTS，STT 仍缺失 |
 | 图像生成 | ★★★★☆ | ☆☆☆☆☆ | 完全缺失，非核心 |
 | 工具/函数 | ★★★★★ | ★★★☆☆ | 不同路线：可扩展性 vs Agent 编排 |
-| 前端功能 | ★★★★★ | ★★★☆☆ | Open WebUI 更丰富，本项目有独特开发者功能 |
+| 前端功能 | ★★★★★ | ★★★★☆ | Open WebUI 更丰富，本项目实用能力提升明显 |
 | 部署运维 | ★★★★★ | ★☆☆☆☆ | 本项目需要加强 |
 | 代码复杂度 | ★☆☆☆☆ (高) | ★★★★★ (低) | 本项目优势：简洁可维护 |
 
@@ -389,9 +398,9 @@ src/
 
 ### 6.1 PersistentConfig 模式
 
-Open WebUI 的 `config.py` 实现了 `PersistentConfig` 类，将配置项持久化到数据库，支持运行时修改无需重启。本项目目前使用 YAML 文件配置，修改后需要重启服务。
+Open WebUI 的 `config.py` 实现了 `PersistentConfig` 类，将配置项持久化到数据库，支持运行时修改无需重启。本项目目前以 YAML 为主，已支持多项配置在线更新，但在统一配置治理上仍有提升空间。
 
-**借鉴建议**: 对于高频修改的配置 (如搜索、压缩策略等)，可以实现一个轻量版 PersistentConfig，将配置缓存在内存中，YAML 文件作为持久化层，提供 API 端点进行运行时修改和重新加载。
+**借鉴建议**: 本项目已经支持多项配置通过 API 在线更新。下一步可将配置变更审计、版本回滚和变更可视化补齐，进一步接近 PersistentConfig 体验。
 
 ### 6.2 插件/函数系统
 
@@ -406,7 +415,7 @@ Open WebUI 的 RAG 系统设计值得学习：
 - 可插拔的文档加载器 (`retrieval/loaders/`)
 - 配置化的分块策略和嵌入模型选择
 
-**借鉴建议**: 可以先从单一向量数据库 (ChromaDB) 开始，实现基础 RAG 能力，设计好抽象接口以便后续扩展。
+**借鉴建议**: 本项目已基于 ChromaDB 落地 RAG 主链路，后续重点应放在重排序、混合检索、评估指标与多向量后端抽象。
 
 ### 6.4 WebSocket 架构
 
@@ -418,7 +427,7 @@ Open WebUI 使用 Socket.IO 实现双向实时通信，支持事件广播、房�
 
 Open WebUI 支持对话树结构，同一个消息节点可以有多个回复分支，用户可以在不同分支间切换。
 
-**借鉴建议**: 这需要改变存储模型 (从线性列表变为树结构)。对于 Markdown 存储格式是一个挑战，可能需要在 frontmatter 中维护树状索引。
+**借鉴建议**: 本项目已支持“按消息分叉为新会话”。若要进一步对齐，可在此基础上增加树状视图与分支切换，而不必一次性重构全部存储模型。
 
 ### 6.6 Docker-First 部署
 
@@ -430,7 +439,9 @@ Open WebUI 提供多种 Docker 镜像 (main/cuda/ollama)，多种 Docker Compose
 
 Open WebUI 有独立的 Prompt 管理系统，用户可以创建、保存、分享提示词模板，在对话中快速引用。
 
-**借鉴建议**: 可以新增一个 `config/prompts_config.yaml` 配置文件和对应的 API + UI 页面，实现基础的 Prompt 模板管理。
+**当前落地**: 本项目已具备 Prompt 模板管理（配置 + API + 设置页）。
+
+**后续借鉴建议**: 可继续增强模板分类、检索、变量化和分享能力。
 
 ### 6.8 多后端存储抽象
 
@@ -442,69 +453,66 @@ Open WebUI 的 `storage/provider.py` 实现了存储后端抽象：本地文件�
 
 ## 7. 功能引入优先级建议
 
-### P0 - 基础必备 (如面向多用户)
+> 以下建议结合当前落地状态，优先关注“平台化缺口”与“已上线能力增强”。
 
-| 功能 | 工程量 | 理由 | 实施方式 |
-|------|--------|------|---------|
-| Docker 容器化 | 低 | 标准化部署，所有现代项目必备 | 添加 Dockerfile + docker-compose.yml |
-| 用户认证 (JWT) | 中 | 多用户场景的前提条件 | 添加 auth 中间件 + 用户模型 |
+### P0 - 平台化缺口（仍需优先）
 
-### P1 - 高价值功能
+| 功能 | 工程量 | 当前状态 | 建议 |
+|------|--------|----------|------|
+| Docker 容器化 | 低 | 未开始 | 保持最高优先级，补齐标准化部署 |
+| 用户认证 (JWT/OAuth) | 中 | 未开始 | 若进入多用户场景，必须优先落地 |
+| MCP 客户端支持 | 高 | 未开始 | 作为平台能力长期投入，先做基础客户端 |
 
-| 功能 | 工程量 | 理由 | 实施方式 |
-|------|--------|------|---------|
-| 基础 RAG | 高 | AI 平台最核心的增值功能 | 集成 ChromaDB + 文档加载器 |
-| 消息原地编辑 | 低 | 用户体验提升 | 前端组件 + 存储 API 修改 |
-| 对话文件夹/标签 | 中 | 对话量增多后的组织需求 | frontmatter 增加 folder/tags 字段 + UI |
-| Prompt 模板库 | 低 | 提示词复用 | 新增 YAML 配置 + API + UI 页面 |
-| 对话导出 | 低 | 数据可移植性 | 已是 Markdown 格式，添加下载端点即可 |
+### P1 - 高价值增强（已有基础能力）
 
-### P2 - 中等价值功能
+| 功能 | 工程量 | 当前状态 | 建议 |
+|------|--------|----------|------|
+| RAG 增强（重排序/混合检索/评估） | 中 | 主链路已完成 | 进入质量优化阶段 |
+| 记忆系统增强（治理+可视化） | 中 | 基础版已完成 | 增补冲突处理、可解释性与生命周期管理 |
+| 会话树分支 | 高 | 已支持“分叉到新会话” | 若要对齐 Open WebUI，需要升级为树状分支视图 |
+| 多模型并行回复 | 中 | 已支持 Compare 对比 | 增加结果复用与对比后处理能力 |
 
-| 功能 | 工程量 | 理由 | 实施方式 |
-|------|--------|------|---------|
-| TTS 文字转语音 | 中 | 提升可及性 | 集成浏览器 Web Speech API 或 OpenAI TTS |
-| 更多搜索提供商 | 低 | 灵活性 | SearchService 添加适配器 |
-| 消息分支 | 高 | 高级用户功能 | 存储结构改造 (树结构) |
-| Artifacts / Playground | 中 | 面向开发者 | 新增前端模块 |
-| i18n 国际化 | 中 | 扩大用户群 | 添加 react-i18next |
-| Vega 数据图表 | 低 | 数据可视化增强 | 添加 vega-lite 前端依赖 |
+### P2 - 体验与生态扩展
 
-### P3 - 锦上添花
-
-| 功能 | 工程量 | 理由 | 实施方式 |
-|------|--------|------|---------|
-| STT 语音转文字 | 中 | 语音输入便利性 | Whisper API 集成 |
-| 图像生成 | 中 | 创意用例 | DALL-E API 集成 |
-| 协同编辑 | 极高 | 团队功能 | Yjs CRDT 集成 |
-| MCP 协议支持 | 高 | 工具生态接入 | 协议实现 |
-| 插件系统 | 高 | 可扩展性 | 函数加载 + 沙箱执行 |
+| 功能 | 工程量 | 当前状态 | 建议 |
+|------|--------|----------|------|
+| STT 语音转文字 | 中 | 未开始 | 与已有 TTS 形成语音闭环 |
+| 图像生成 | 中 | 未开始 | 视用户画像决定是否推进 |
+| 协同编辑 | 极高 | 未开始 | 仅在团队化场景再立项 |
+| 插件/函数系统 | 高 | 未开始 | 可先做受控函数执行，再扩展生态 |
 
 ---
 
-## 8. 实施路线图
+## 8. 实施路线图与进度复盘
 
-### Phase 1 - 短期 (基础加固)
+### Phase 1 - 已完成（能力补齐）
 
-- Docker 支持 (Dockerfile + docker-compose.yml)
-- 对话导出功能 (Markdown / JSON 下载)
-- Prompt 模板库 (config + API + UI)
-- 消息原地编辑 (前端组件改造)
-- 对话文件夹组织 (frontmatter 扩展)
+- [x] 消息原地编辑
+- [x] 会话文件夹组织与拖拽排序
+- [x] 对话导出（Markdown）
+- [x] 对话导入（ChatGPT `.json/.zip`、Markdown）
+- [x] Prompt 模板库
+- [x] 会话全文搜索
+- [x] 国际化基础能力（en / zh-CN）
+- [x] 命令面板（Ctrl/Cmd+K）
 
-### Phase 2 - 中期 (核心增值)
+### Phase 2 - 已完成主链路（进入增强期）
 
-- 基础 RAG 能力 (ChromaDB + 文档上传 + 嵌入 + 检索)
-- 用户认证 (JWT + 基础角色)
-- 搜索提供商扩展 (Brave, Google PSE, Bing)
-- TTS 集成 (OpenAI TTS API)
+- [x] 基础 RAG（知识库 CRUD、文档处理、向量检索、助手绑定）
+- [x] 简化版用户记忆系统（全局/助手级、自动提取、CRUD、检索）
+- [x] TTS 集成（edge-tts）
+- [x] 对话内翻译（流式）
+- [x] 多模型并行 Compare
+- [~] 会话分支（已支持新会话分叉，未形成树状分支 UI）
 
-### Phase 3 - 远期 (平台进化)
+### Phase 3 - 待推进（平台化）
 
-- 函数/工具系统 (Python 函数加载 + LangGraph 工具节点)
-- MCP 协议支持
-- 消息分支 (对话树结构)
-- 协同功能探索
+- [ ] Docker 支持 (Dockerfile + docker-compose.yml)
+- [ ] 用户认证与权限体系
+- [ ] MCP 客户端支持
+- [ ] STT 语音输入
+- [ ] 图像生成
+- [ ] 协同能力探索
 
 ---
 
@@ -529,17 +537,23 @@ Open WebUI 的 `storage/provider.py` 实现了存储后端抽象：本地文件�
 
 | 文件 | 描述 |
 |------|------|
-| `src/api/main.py` | 后端入口，10 个路由 |
+| `src/api/main.py` | 后端入口，20 个路由（含 RAG/翻译/TTS/Prompt/Memory/Folders） |
 | `src/api/services/conversation_storage.py` | Markdown 存储核心 |
+| `src/api/services/knowledge_base_service.py` | 知识库服务 |
+| `src/api/services/document_processing_service.py` | 文档解析 + 分块 + 向量化 |
+| `src/api/services/memory_service.py` | 长期记忆服务 |
+| `src/api/services/translation_service.py` | 翻译服务 |
+| `src/api/services/tts_service.py` | TTS 服务 |
 | `src/providers/registry.py` | 适配器注册表 |
 | `src/providers/adapters/` | 5 个 LLM 适配器 |
 | `src/agents/` | LangGraph Agent 实现 |
-| `config/models_config.yaml` | 模型配置 |
-| `config/assistants_config.yaml` | 助手配置 |
+| `config/defaults/models_config.yaml` | 模型默认配置 |
+| `config/local/models_config.yaml` | 模型本地配置 |
+| `config/defaults/assistants_config.yaml` | 助手默认配置 |
 | `frontend/src/modules/` | 前端模块 (chat, projects, settings) |
 | `frontend/src/shared/chat/` | 共享聊天组件 |
 
 ### 9.3 分析版本信息
 
 - **Open WebUI**: v0.7.2，源码位于 `learn_proj/open-webui`
-- **Agents 项目**: master 分支，最新提交 `7e8e1b2` (support mermaid flowchart)
+- **Agents 项目**: master 分支，最新提交 `6781c23`

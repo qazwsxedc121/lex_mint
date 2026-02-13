@@ -9,7 +9,7 @@ from typing import Optional
 import logging
 
 from ..services.title_generation_service import TitleGenerationService
-from ..services.conversation_storage import ConversationStorage
+from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class ManualGenerateRequest(BaseModel):
 # Dependency: Get title generation service instance
 def get_title_service() -> TitleGenerationService:
     """Get TitleGenerationService instance"""
-    storage = ConversationStorage(settings.conversations_dir)
+    storage = create_storage_with_project_resolver(settings.conversations_dir)
     return TitleGenerationService(storage=storage)
 
 

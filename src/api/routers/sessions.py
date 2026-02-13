@@ -12,7 +12,7 @@ import zipfile
 import shutil
 from urllib.parse import quote
 
-from ..services.conversation_storage import ConversationStorage
+from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..services.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
@@ -73,7 +73,7 @@ class ImportChatGPTResponse(BaseModel):
 
 def get_storage() -> ConversationStorage:
     """Dependency injection for ConversationStorage."""
-    return ConversationStorage(settings.conversations_dir)
+    return create_storage_with_project_resolver(settings.conversations_dir)
 
 
 @router.post("", response_model=Dict[str, str])
@@ -228,7 +228,7 @@ async def get_session(
 
         # Load comparison data if it exists
         try:
-            comparison_storage = ComparisonStorage(settings.conversations_dir)
+            comparison_storage = ComparisonStorage(storage)
             compare_data = await comparison_storage.load(session_id, context_type=context_type, project_id=project_id)
             if compare_data:
                 session["compare_data"] = compare_data

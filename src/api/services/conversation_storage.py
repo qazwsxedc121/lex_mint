@@ -7,7 +7,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 import aiofiles
 import uuid
 import re
@@ -23,14 +23,20 @@ class ConversationStorage:
     - Markdown body with timestamped messages
     """
 
-    def __init__(self, conversations_dir: Path):
+    def __init__(self, conversations_dir: Path, project_root_resolver: Optional[Callable[[str], Optional[str]]] = None):
         """Initialize storage with conversations directory.
 
         Args:
             conversations_dir: Path to directory for storing conversation files
+            project_root_resolver: Optional sync function (project_id) -> root_path
+                that resolves a project ID to its filesystem root path.
+                When set, project conversations are stored under
+                {root_path}/.lex_mint/conversations/ instead of
+                conversations/projects/{project_id}/.
         """
         self.conversations_dir = Path(conversations_dir)
         self.conversations_dir.mkdir(exist_ok=True)
+        self._project_root_resolver = project_root_resolver
         # Per-file locks to prevent concurrent read-modify-write corruption
         self._file_locks: Dict[str, asyncio.Lock] = {}
 
@@ -1121,7 +1127,37 @@ class ConversationStorage:
                 except Exception:
                     continue
 
-        # Scan project directories
+        # Scan project directories via project root resolver
+        if self._project_root_resolver:
+            try:
+                import yaml
+                from ..config import settings
+                config_path = settings.projects_config_path
+                if config_path.exists():
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
+                    if data:
+                        for proj in data.get('projects', []):
+                            root_path = proj.get('root_path')
+                            if root_path:
+                                proj_conv_dir = Path(root_path) / ".lex_mint" / "conversations"
+                                if proj_conv_dir.exists():
+                                    for filepath in proj_conv_dir.glob("*.md"):
+                                        try:
+                                            with open(filepath, 'r', encoding='utf-8') as f:
+                                                post = frontmatter.load(f)
+                                            if post.metadata.get("temporary", False):
+                                                filepath.unlink()
+                                                compare_path = filepath.with_suffix(".compare.json")
+                                                if compare_path.exists():
+                                                    compare_path.unlink()
+                                                cleaned += 1
+                                        except Exception:
+                                            continue
+            except Exception:
+                pass
+
+        # Also scan legacy conversations/projects/ for backward compat
         projects_dir = self.conversations_dir / "projects"
         if projects_dir.exists():
             for filepath in projects_dir.glob("**/*.md"):
@@ -1277,15 +1313,16 @@ class ConversationStorage:
                 raise ValueError("project_id is required for project context")
             if not project_id.strip():
                 raise ValueError("project_id cannot be empty")
-            # Prevent path traversal
-            if ".." in project_id or "/" in project_id or "\\" in project_id:
-                raise ValueError(f"Invalid project_id: {project_id}. Contains invalid characters")
 
         # Return appropriate directory
         if context_type == "chat":
             return self.conversations_dir / "chat"
         else:  # project
-            return self.conversations_dir / "projects" / project_id
+            if self._project_root_resolver:
+                root_path = self._project_root_resolver(project_id)
+                if root_path:
+                    return Path(root_path) / ".lex_mint" / "conversations"
+            raise ValueError(f"Project '{project_id}' not found or project root resolver not configured")
 
     async def _find_session_file(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> Optional[Path]:
         """Find the file path for a session by its ID.
@@ -1426,3 +1463,37 @@ class ConversationStorage:
                 msg["message_id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{index}"))
 
         return messages
+
+
+def create_storage_with_project_resolver(conversations_dir) -> ConversationStorage:
+    """Create a ConversationStorage with a sync resolver that reads projects_config.yaml.
+
+    The resolver maps project_id -> root_path by reading the projects config file.
+    Project conversations are then stored at {root_path}/.lex_mint/conversations/.
+
+    Args:
+        conversations_dir: Path to the base conversations directory
+
+    Returns:
+        ConversationStorage instance with project root resolver configured
+    """
+    import yaml
+    from ..config import settings
+
+    def resolve_project_root(project_id: str) -> Optional[str]:
+        config_path = settings.projects_config_path
+        if not config_path.exists():
+            return None
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if not data:
+                return None
+            for proj in data.get('projects', []):
+                if proj.get('id') == project_id:
+                    return proj.get('root_path')
+        except Exception:
+            return None
+        return None
+
+    return ConversationStorage(conversations_dir, project_root_resolver=resolve_project_root)

@@ -107,10 +107,18 @@ async def startup_event():
     PromptTemplateConfigService()
     FolderService()
 
-    # Clean temporary sessions from previous runs.
-    from .services.conversation_storage import ConversationStorage
+    # Migrate project conversations from conversations/projects/ to .lex_mint/
+    from .services.migration_service import migrate_project_conversations
 
-    storage = ConversationStorage(settings.conversations_dir)
+    migration_result = migrate_project_conversations(settings.conversations_dir)
+    if migration_result["migrated"]:
+        logger.info("Migrated %s project conversation file(s) to .lex_mint directories",
+                     migration_result["migrated"])
+
+    # Clean temporary sessions from previous runs.
+    from .services.conversation_storage import create_storage_with_project_resolver
+
+    storage = create_storage_with_project_resolver(settings.conversations_dir)
     cleaned = await storage.cleanup_temporary_sessions()
     if cleaned:
         logger.info("Cleaned up %s temporary session(s)", cleaned)

@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class ComparisonStorage:
     """Manages sidecar .compare.json files for multi-model comparison data."""
 
-    def __init__(self, conversations_dir: str):
-        self._conversation_storage = ConversationStorage(conversations_dir)
+    def __init__(self, conversation_storage: ConversationStorage):
+        self._conversation_storage = conversation_storage
         self._file_locks: Dict[str, asyncio.Lock] = {}
 
     def _get_lock(self, file_path: str) -> asyncio.Lock:
