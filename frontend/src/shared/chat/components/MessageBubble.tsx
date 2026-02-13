@@ -2,7 +2,7 @@
  * MessageBubble component - displays a single message.
  */
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -17,6 +17,12 @@ import { CompareResponseView } from './CompareResponseView';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
+import {
+  buildFileReferencePreview,
+  ensureFileReferencePreviewConfigLoaded,
+  getFileReferencePreviewConfig,
+  subscribeFileReferencePreviewConfig,
+} from '../config/fileReferencePreview';
 
 interface MessageBubbleProps {
   message: Message;
@@ -62,7 +68,52 @@ const parseUserBlocks = (rawContent: string): { blocks: ParsedUserBlock[]; messa
   while (index < content.length) {
     const headerMatch = content.slice(index).match(/^\[(Context|Block):([^\]]+)\]\n/);
     if (!headerMatch) {
-      break;
+      const legacyFileHeaderMatch = content.slice(index).match(/^\[File:\s*([^\]]+)\]\n/);
+      if (!legacyFileHeaderMatch) {
+        break;
+      }
+
+      const title = `File Reference: ${legacyFileHeaderMatch[1].trim()}`;
+      index += legacyFileHeaderMatch[0].length;
+
+      // Legacy injected file contexts are followed by two newlines before user input
+      // (or another file block). Capture that segment as a synthetic block.
+      let legacyEnd = content.length;
+      let scanIndex = index;
+      while (scanIndex < content.length) {
+        const separatorIndex = content.indexOf('\n\n', scanIndex);
+        if (separatorIndex < 0) {
+          break;
+        }
+
+        const nextSegment = content.slice(separatorIndex + 2);
+        if (
+          nextSegment.startsWith('[File:') ||
+          nextSegment.startsWith('[Context:') ||
+          nextSegment.startsWith('[Block:') ||
+          nextSegment.startsWith('@[') ||
+          (!nextSegment.startsWith('[') && nextSegment.trim().length > 0)
+        ) {
+          legacyEnd = separatorIndex;
+          break;
+        }
+
+        scanIndex = separatorIndex + 2;
+      }
+
+      const legacyContent = content.slice(index, legacyEnd).replace(/^\n+|\n+$/g, '');
+      blocks.push({
+        id: `block-${blocks.length}-${title}`,
+        kind: 'block',
+        title,
+        content: legacyContent,
+        language: '',
+        isCodeFence: false,
+        isAttachmentNote: false,
+      });
+      index = legacyEnd;
+      skipNewlines();
+      continue;
     }
 
     const kind = headerMatch[1].toLowerCase() as 'context' | 'block';
@@ -226,6 +277,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [showTranslation, setShowTranslation] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isPlaying: ttsPlaying, isLoading: ttsLoading, speak: ttsSpeak, stop: ttsStop } = useTTS();
+  const fileReferencePreviewConfig = useSyncExternalStore(
+    subscribeFileReferencePreviewConfig,
+    getFileReferencePreviewConfig,
+    getFileReferencePreviewConfig
+  );
 
   // Parse thinking content from message
   const { thinking, mainContent, isThinkingInProgress } = useMemo(
@@ -250,6 +306,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   useEffect(() => {
     setExpandedUserBlocks({});
   }, [message.content]);
+
+  useEffect(() => {
+    void ensureFileReferencePreviewConfigLoaded();
+  }, []);
 
   const canEdit = !isStreaming && !isSeparator && !isSummary && (isUser ? (onEdit || onSaveOnly) : onSaveOnly);
   const canRegenerate = !isStreaming && onRegenerate && message.content.trim() !== '';
@@ -618,9 +678,26 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       <div className="divide-y divide-blue-400/30">
                         {userBlocks.map((block) => {
                           const isExpanded = !!expandedUserBlocks[block.id];
+                          const isFileReferenceBlock = block.title.toLowerCase().startsWith('file reference:');
+                          const filePreview = isFileReferenceBlock
+                            ? buildFileReferencePreview(block.content, fileReferencePreviewConfig)
+                            : null;
+                          const previewHiddenParts: string[] = [];
+                          if (filePreview?.hiddenLines) {
+                            previewHiddenParts.push(`${filePreview.hiddenLines} lines`);
+                          }
+                          if (filePreview?.hiddenChars) {
+                            previewHiddenParts.push(`${filePreview.hiddenChars} chars`);
+                          }
+                          const previewHiddenLabel = previewHiddenParts.join(', ');
+                          const blockDisplayContent = filePreview?.truncated
+                            ? `${filePreview.text}\n...\n[Preview only: ${previewHiddenLabel} hidden]`
+                            : block.content;
                           const metaLabel = block.isAttachmentNote
                             ? 'Attachment'
-                            : `${block.content.length} chars`;
+                            : filePreview?.truncated
+                              ? `preview ${filePreview.shownLines}/${filePreview.totalLines} lines, ${filePreview.shownChars}/${filePreview.totalChars} chars`
+                              : `${block.content.length} chars`;
                           return (
                             <div key={block.id}>
                               <button
@@ -650,7 +727,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                       {block.attachmentLabel || 'Attachment'}
                                     </div>
                                   ) : block.isCodeFence ? (
-                                    <CodeBlock language={block.language} value={block.content} />
+                                    <CodeBlock language={block.language} value={blockDisplayContent} />
                                   ) : (
                                     <div className="prose prose-sm max-w-none prose-invert">
                                       <ReactMarkdown
@@ -674,7 +751,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                           },
                                         }}
                                       >
-                                        {normalizeMathDelimiters(block.content || '_Empty block_')}
+                                        {normalizeMathDelimiters(blockDisplayContent || '_Empty block_')}
                                       </ReactMarkdown>
                                     </div>
                                   )}

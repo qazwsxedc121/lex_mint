@@ -131,11 +131,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     }
   };
 
-  const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
+  const handleSendMessage = (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => {
     sendMessage(message, options);
   };
 
-  const handleCompare = (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
+  const handleCompare = (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => {
     sendCompareMessage(message, modelIds, options);
   };
 

@@ -123,5 +123,17 @@
   "compare.sideBySide": "Side by side",
   "compare.tabs": "Tabs",
   "compare.modelError": "Error: {{error}}",
-  "compare.generating": "Generating..."
+  "compare.generating": "Generating...",
+
+  "fileReference.searchPlaceholder": "Search files...",
+  "fileReference.noResults": "No files found",
+  "fileReference.searching": "Searching...",
+  "fileReference.selectFile": "Press Enter to select",
+  "fileReference.proximityLabel.same-dir": "Same directory",
+  "fileReference.proximityLabel.child-dir": "Subdirectory",
+  "fileReference.proximityLabel.parent-dir": "Parent directory",
+  "fileReference.proximityLabel.sibling": "Sibling directory",
+  "fileReference.proximityLabel.project-wide": "Project",
+  "fileReference.fileNotFound": "File not found",
+  "fileReference.readError": "Could not read file"
 }

@@ -123,5 +123,17 @@
   "compare.sideBySide": "并排显示",
   "compare.tabs": "标签页",
   "compare.modelError": "错误：{{error}}",
-  "compare.generating": "生成中..."
+  "compare.generating": "生成中...",
+
+  "fileReference.searchPlaceholder": "搜索文件...",
+  "fileReference.noResults": "未找到文件",
+  "fileReference.searching": "搜索中...",
+  "fileReference.selectFile": "按回车选择",
+  "fileReference.proximityLabel.same-dir": "同目录",
+  "fileReference.proximityLabel.child-dir": "子目录",
+  "fileReference.proximityLabel.parent-dir": "父目录",
+  "fileReference.proximityLabel.sibling": "兄弟目录",
+  "fileReference.proximityLabel.project-wide": "项目",
+  "fileReference.fileNotFound": "文件未找到",
+  "fileReference.readError": "无法读取文件"
 }

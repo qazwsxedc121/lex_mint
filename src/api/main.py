@@ -20,6 +20,7 @@ from .routers import (
     assistants,
     chat,
     compression_config,
+    file_reference_config,
     followup,
     folders,
     knowledge_base,
@@ -67,6 +68,7 @@ app.include_router(search_config.router)
 app.include_router(webpage_config.router)
 app.include_router(followup.router)
 app.include_router(compression_config.router)
+app.include_router(file_reference_config.router)
 app.include_router(translation_config.router)
 app.include_router(translation.router)
 app.include_router(tts_config.router)

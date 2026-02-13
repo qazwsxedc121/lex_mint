@@ -64,7 +64,17 @@
       "Bash(taskkill:*)",
       "Bash(timeout 5 venv/bin/python:*)",
       "Bash(venv/bin/python:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__wait_for",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__press_key",
+      "Bash(npx eslint:*)",
+      "mcp__chrome-devtools__get_console_message",
+      "mcp__chrome-devtools__evaluate_script"
     ]
   }
 }

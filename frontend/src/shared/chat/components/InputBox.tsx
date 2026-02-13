@@ -4,6 +4,7 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import {
   GlobeAltIcon,
   PaperClipIcon,
@@ -27,6 +28,9 @@ import type { PromptTemplate } from '../../../types/promptTemplate';
 import { listPromptTemplates } from '../../../services/api';
 import { ParamOverridePopover } from './ParamOverridePopover';
 import { CompareModelButton } from './CompareModelButton';
+import { FilePickerPopover } from './FilePickerPopover';
+import { useFileSearch } from '../../../modules/projects/hooks/useFileSearch';
+import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 
 // Reasoning effort options for supported models
 const REASONING_EFFORT_OPTIONS = [
@@ -123,6 +127,32 @@ const findSlashCommand = (text: string, cursorPosition: number): SlashCommandMat
   };
 };
 
+interface AtFileMatch {
+  query: string;
+  start: number;
+  end: number;
+}
+
+const findAtFileCommand = (text: string, cursorPosition: number): AtFileMatch | null => {
+  const safeCursor = Math.max(0, Math.min(cursorPosition, text.length));
+  const beforeCursor = text.slice(0, safeCursor);
+  // Match @ at start or after whitespace, followed by non-whitespace
+  const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const leading = match[1] || '';
+  const atStart = safeCursor - match[0].length + leading.length;
+
+  return {
+    query: match[2] || '',
+    start: atStart,
+    end: safeCursor,
+  };
+};
+
 interface ChatBlock {
   id: string;
   title: string;
@@ -146,8 +176,8 @@ const createBlockId = () => {
 };
 
 interface InputBoxProps {
-  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => void;
-  onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => void;
+  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
+  onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
   onCompressContext?: () => void;
@@ -209,6 +239,19 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [blocks, setBlocks] = useState<ChatBlock[]>([]);
   const [isTranslatingInput, setIsTranslatingInput] = useState(false);
   const [pendingCompareModelIds, setPendingCompareModelIds] = useState<string[]>([]);
+
+  // File reference state
+  const [atFileCommand, setAtFileCommand] = useState<AtFileMatch | null>(null);
+  const [fileMenuIndex, setFileMenuIndex] = useState(0);
+  const location = useLocation();
+  const { currentProjectId, getCurrentFile } = useProjectWorkspaceStore();
+  const isProjectRoute = location.pathname.startsWith('/projects/');
+  const routeProjectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+  const routeProjectId = routeProjectMatch ? routeProjectMatch[1] : null;
+  const activeProjectId = isProjectRoute ? (routeProjectId || currentProjectId) : null;
+  const currentFile = activeProjectId ? getCurrentFile(activeProjectId) : null;
+  const { results: fileSearchResults, setQuery: setFileQuery, loading: fileSearchLoading } = useFileSearch(activeProjectId, currentFile);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const templateSearchInputRef = useRef<HTMLInputElement>(null);
@@ -318,8 +361,22 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextInput = e.target.value;
     setInput(nextInput);
-    updateSlashCommandFromText(nextInput, e.target.selectionStart);
-  }, [updateSlashCommandFromText]);
+
+    const cursorPos = e.target.selectionStart;
+
+    // Check for @ file command
+    const atMatch = findAtFileCommand(nextInput, cursorPos);
+    if (atMatch) {
+      setAtFileCommand(atMatch);
+      setFileQuery(atMatch.query);
+      setFileMenuIndex(0);
+    } else {
+      setAtFileCommand(null);
+    }
+
+    // Existing slash command logic
+    updateSlashCommandFromText(nextInput, cursorPos);
+  }, [updateSlashCommandFromText, setFileQuery]);
 
   const handleTextareaSelectionChange = useCallback(() => {
     const textarea = textareaRef.current;
@@ -414,6 +471,25 @@ export const InputBox: React.FC<InputBoxProps> = ({
       textarea.setSelectionRange(cursor, cursor);
     });
   }, [recordTemplateUsage, slashCommand]);
+
+  const handleFileReferenceSelect = useCallback((filePath: string) => {
+    if (!atFileCommand) return;
+
+    const beforeAt = input.slice(0, atFileCommand.start);
+    const afterCursor = input.slice(atFileCommand.end);
+
+    // Insert file reference marker
+    const newInput = `${beforeAt}@[file:${filePath}] ${afterCursor}`;
+    setInput(newInput);
+    setAtFileCommand(null);
+
+    // Focus back to textarea
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      const newCursorPos = beforeAt.length + `@[file:${filePath}] `.length;
+      textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+    }
+  }, [input, atFileCommand]);
 
   const handleTemplateSearchKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
@@ -658,10 +734,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
     const message = messageParts.join('\n\n');
 
     if (message || attachments.length > 0) {
+      // Parse file references from message
+      const fileReferencePattern = /@\[file:(.*?)\]/g;
+      const matches = [...message.matchAll(fileReferencePattern)];
+      const fileReferences = activeProjectId
+        ? matches.map(match => ({
+            path: match[1],
+            project_id: activeProjectId
+          }))
+        : [];
+
       const sendOptions = {
         reasoningEffort: reasoningEffort || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
         useWebSearch,
+        fileReferences: fileReferences.length > 0 ? fileReferences : undefined,
       };
 
       if (pendingCompareModelIds.length >= 2 && onCompare) {
@@ -674,12 +761,42 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setInput('');
       setSlashCommand(null);
       setSlashMenuIndex(0);
+      setAtFileCommand(null);
       setAttachments([]);
       setBlocks([]);
     }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle @ file reference navigation
+    if (atFileCommand && fileSearchResults.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFileMenuIndex((prev) =>
+          prev < fileSearchResults.length - 1 ? prev + 1 : 0
+        );
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFileMenuIndex((prev) =>
+          prev > 0 ? prev - 1 : fileSearchResults.length - 1
+        );
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleFileReferenceSelect(fileSearchResults[fileMenuIndex].path);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAtFileCommand(null);
+        return;
+      }
+    }
+
+    // Handle slash command navigation
     if (slashCommand) {
       if (e.key === 'ArrowDown' && slashMatchedTemplates.length > 0) {
         e.preventDefault();
@@ -1334,6 +1451,20 @@ export const InputBox: React.FC<InputBoxProps> = ({
                   })}
                 </div>
               </div>
+            )}
+
+            {/* File picker popover */}
+            {atFileCommand && activeProjectId && (
+              <FilePickerPopover
+                isOpen={true}
+                projectId={activeProjectId}
+                query={atFileCommand.query}
+                results={fileSearchResults}
+                selectedIndex={fileMenuIndex}
+                loading={fileSearchLoading}
+                onSelect={handleFileReferenceSelect}
+                onClose={() => setAtFileCommand(null)}
+              />
             )}
 
             <textarea

@@ -24,6 +24,7 @@ import { WebpageSettings } from './modules/settings/WebpageSettings';
 import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
 import { FollowupSettings } from './modules/settings/FollowupSettings';
 import { CompressionSettings } from './modules/settings/CompressionSettings';
+import { FileReferenceSettings } from './modules/settings/FileReferenceSettings';
 import { TranslationSettings } from './modules/settings/TranslationSettings';
 import { TTSSettings } from './modules/settings/TTSSettings';
 import { KnowledgeBasesPage } from './modules/settings/KnowledgeBasesPage';
@@ -71,6 +72,7 @@ function App() {
             <Route path="title-generation" element={<TitleGenerationSettings />} />
             <Route path="followup" element={<FollowupSettings />} />
             <Route path="compression" element={<CompressionSettings />} />
+            <Route path="file-reference" element={<FileReferenceSettings />} />
             <Route path="translation" element={<TranslationSettings />} />
             <Route path="tts" element={<TTSSettings />} />
             <Route path="developer" element={<DeveloperSettings />} />

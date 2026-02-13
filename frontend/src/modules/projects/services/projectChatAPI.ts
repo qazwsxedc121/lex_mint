@@ -85,7 +85,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       useWebSearch?,
       onFollowupQuestions?,
       onContextInfo?,
-      onThinkingDuration?
+      onThinkingDuration?,
+      fileReferences?
     ) => {
       return api.sendMessageStream(
         sessionId,
@@ -107,7 +108,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         projectId,
         onFollowupQuestions,
         onContextInfo,
-        onThinkingDuration
+        onThinkingDuration,
+        fileReferences
       );
     },
 

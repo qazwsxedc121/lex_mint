@@ -23,3 +23,4 @@ export { compressionConfig } from './compression.config';
 export { translationConfig } from './translation.config';
 export { ttsConfig } from './tts.config';
 export { ragConfig } from './rag.config';
+export { fileReferenceConfig } from './fileReference.config';

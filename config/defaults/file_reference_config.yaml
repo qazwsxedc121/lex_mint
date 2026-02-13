@@ -1,0 +1,9 @@
+file_reference:
+  ui_preview_max_chars: 1200
+  ui_preview_max_lines: 28
+  injection_preview_max_chars: 600
+  injection_preview_max_lines: 40
+  chunk_size: 2500
+  max_chunks: 6
+  total_budget_chars: 18000
+

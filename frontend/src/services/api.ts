@@ -172,6 +172,18 @@ export interface SearchResult {
 }
 
 /**
+ * File search result with proximity scoring.
+ */
+export interface FileSearchResult {
+  path: string;
+  name: string;
+  directory: string;
+  extension: string;
+  score: number;
+  proximityReason: 'same-dir' | 'child-dir' | 'parent-dir' | 'sibling' | 'project-wide' | 'no-match';
+}
+
+/**
  * Search sessions by title and message content.
  */
 export async function searchSessions(query: string, contextType: string = 'chat', projectId?: string): Promise<SearchResult[]> {
@@ -638,7 +650,8 @@ export async function sendMessageStream(
   projectId?: string,
   onFollowupQuestions?: (questions: string[]) => void,
   onContextInfo?: (info: ContextInfo) => void,
-  onThinkingDuration?: (durationMs: number) => void
+  onThinkingDuration?: (durationMs: number) => void,
+  fileReferences?: Array<{ path: string; project_id: string }>
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -671,6 +684,10 @@ export async function sendMessageStream(
         mime_type: a.mime_type,
         temp_path: a.temp_path,
       }));
+    }
+
+    if (fileReferences && fileReferences.length > 0) {
+      requestBody.file_references = fileReferences;
     }
 
     const response = await fetch(`${API_BASE}/api/chat/stream`, {
@@ -801,6 +818,7 @@ export async function sendCompareStream(
     useWebSearch?: boolean;
     contextType?: string;
     projectId?: string;
+    fileReferences?: Array<{ path: string; project_id: string }>;
   }
 ): Promise<void> {
   const controller = new AbortController();
@@ -829,6 +847,10 @@ export async function sendCompareStream(
         mime_type: a.mime_type,
         temp_path: a.temp_path,
       }));
+    }
+
+    if (options?.fileReferences && options.fileReferences.length > 0) {
+      requestBody.file_references = options.fileReferences;
     }
 
     const response = await fetch(`${API_BASE}/api/chat/compare`, {
@@ -1600,6 +1622,25 @@ export async function renameProjectPath(id: string, sourcePath: string, targetPa
     source_path: sourcePath,
     target_path: targetPath
   });
+  return response.data;
+}
+
+/**
+ * Search project files with proximity-based scoring
+ */
+export async function searchProjectFiles(
+  projectId: string,
+  query: string,
+  currentFile?: string | null
+): Promise<FileSearchResult[]> {
+  const params = new URLSearchParams({ query });
+  if (currentFile) {
+    params.append('current_file', currentFile);
+  }
+
+  const response = await api.get<FileSearchResult[]>(
+    `/api/projects/${projectId}/files/search?${params}`
+  );
   return response.data;
 }
 

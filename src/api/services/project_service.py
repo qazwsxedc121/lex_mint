@@ -6,7 +6,7 @@ import os
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from src.api.models.project_config import (
@@ -704,6 +704,151 @@ class ProjectService:
             size=size,
             modified_at=modified_at
         )
+
+    async def search_files_with_proximity(
+        self,
+        project_id: str,
+        query: str,
+        current_file_path: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Search files with context-aware proximity scoring.
+
+        Args:
+            project_id: Project ID
+            query: Search query (file name, path fragment, etc.)
+            current_file_path: Current file for proximity calculation
+            limit: Max results to return
+
+        Returns:
+            List of file results with scores and proximity reasons
+        """
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        root_path = Path(project.root_path)
+
+        # Build file list
+        all_files = []
+        for file_path in root_path.rglob('*'):
+            if file_path.is_file() and not file_path.name.startswith('.'):
+                relative_path = file_path.relative_to(root_path)
+                all_files.append({
+                    'path': str(relative_path).replace('\\', '/'),
+                    'name': file_path.name,
+                    'directory': str(relative_path.parent).replace('\\', '/') if relative_path.parent != Path('.') else '',
+                    'extension': file_path.suffix,
+                })
+
+        # Score and filter files
+        scored_files = []
+        for file_info in all_files:
+            score, reason = self._calculate_file_score(
+                file_info, query, current_file_path
+            )
+            if score > 0:  # Only include matches
+                scored_files.append({
+                    **file_info,
+                    'score': score,
+                    'proximityReason': reason
+                })
+
+        # Sort by score and limit
+        scored_files.sort(key=lambda x: x['score'], reverse=True)
+        return scored_files[:limit]
+
+    def _calculate_file_score(
+        self,
+        file_info: Dict[str, str],
+        query: str,
+        current_file_path: Optional[str]
+    ) -> tuple[int, str]:
+        """Calculate match score with proximity weighting."""
+        file_path = file_info['path']
+        file_name = file_info['name']
+        query_lower = query.lower()
+
+        # Fuzzy match score (0-500)
+        fuzzy_score = 0
+
+        # Exact matches
+        if file_path == query:
+            fuzzy_score = 500
+        elif file_name == query:
+            fuzzy_score = 400
+        elif file_name.lower() == query_lower:
+            fuzzy_score = 350
+        elif query_lower in file_name.lower():
+            fuzzy_score = 300
+        elif query_lower in file_path.lower():
+            fuzzy_score = 200
+        else:
+            # Fuzzy substring matching
+            fuzzy_score = self._fuzzy_match_score(file_name.lower(), query_lower)
+
+        # If no match, return 0
+        if fuzzy_score == 0:
+            return 0, 'no-match'
+
+        # Proximity score (0-1000)
+        if not current_file_path:
+            # No current file: prefer shallow files
+            depth = file_path.count('/')
+            proximity_score = max(100, 500 - depth * 50)
+            proximity_reason = 'project-wide'
+        else:
+            current_file_path = current_file_path.replace('\\', '/')
+            current_dir = str(Path(current_file_path).parent).replace('\\', '/')
+            file_dir = file_info['directory']
+
+            if file_dir == current_dir:
+                proximity_score = 1000
+                proximity_reason = 'same-dir'
+            elif file_path.startswith(current_dir + '/'):
+                # Child directory
+                proximity_score = 800
+                proximity_reason = 'child-dir'
+            elif current_dir.startswith(file_dir + '/'):
+                # Parent directory
+                proximity_score = 600
+                proximity_reason = 'parent-dir'
+            elif Path(current_dir).parent == Path(file_dir).parent:
+                # Sibling directory
+                proximity_score = 400
+                proximity_reason = 'sibling'
+            else:
+                proximity_score = 200
+                proximity_reason = 'project-wide'
+
+        total_score = proximity_score + fuzzy_score
+        return total_score, proximity_reason
+
+    def _fuzzy_match_score(self, text: str, query: str) -> int:
+        """Simple fuzzy matching score (0-100)."""
+        if not query:
+            return 0
+
+        # Check if all query characters appear in order
+        text_idx = 0
+        matched_chars = 0
+
+        for char in query:
+            while text_idx < len(text) and text[text_idx] != char:
+                text_idx += 1
+            if text_idx < len(text):
+                matched_chars += 1
+                text_idx += 1
+            else:
+                break
+
+        if matched_chars == len(query):
+            # All characters matched - score based on match density
+            match_ratio = matched_chars / len(text)
+            return int(match_ratio * 100)
+
+        return 0
 
     def _detect_encoding(self, file_path: Path) -> str:
         """Detect file encoding.

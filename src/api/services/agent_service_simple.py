@@ -13,6 +13,7 @@ from .file_service import FileService
 from .search_service import SearchService
 from .webpage_service import WebpageService
 from .memory_service import MemoryService
+from .file_reference_config_service import FileReferenceConfigService, FileReferenceConfig
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,169 @@ class AgentService:
         self.search_service = SearchService()
         self.webpage_service = WebpageService()
         self.memory_service = MemoryService()
+        self.file_reference_config_service = FileReferenceConfigService()
         self.comparison_storage = ComparisonStorage(settings.conversations_dir)
         logger.info("AgentService initialized (simplified version)")
+
+    _FILE_CONTEXT_CHUNK_SIZE = 2500
+    _FILE_CONTEXT_MAX_CHUNKS = 6
+    _FILE_CONTEXT_PREVIEW_CHARS = 600
+    _FILE_CONTEXT_PREVIEW_LINES = 40
+    _FILE_CONTEXT_TOTAL_BUDGET_CHARS = 18000
+
+    def _get_file_reference_config(self) -> FileReferenceConfig:
+        """Load latest runtime limits; fall back to hardcoded defaults on error."""
+        try:
+            self.file_reference_config_service.reload_config()
+            return self.file_reference_config_service.config
+        except Exception as e:
+            logger.warning("Failed to refresh file reference config, using defaults: %s", e)
+            return FileReferenceConfig(
+                ui_preview_max_chars=1200,
+                ui_preview_max_lines=28,
+                injection_preview_max_chars=self._FILE_CONTEXT_PREVIEW_CHARS,
+                injection_preview_max_lines=self._FILE_CONTEXT_PREVIEW_LINES,
+                chunk_size=self._FILE_CONTEXT_CHUNK_SIZE,
+                max_chunks=self._FILE_CONTEXT_MAX_CHUNKS,
+                total_budget_chars=self._FILE_CONTEXT_TOTAL_BUDGET_CHARS,
+            )
+
+    @staticmethod
+    def _format_file_reference_block(title: str, body: str) -> str:
+        """Wrap file reference context in the same block format used by frontend blocks."""
+        return f"[Block: {title}]\n```text\n{body}\n```"
+
+    @staticmethod
+    def _abbreviate_chunk_text(text: str, max_chars: int, max_lines: int) -> str:
+        """Return a compact preview bounded by lines and chars."""
+        safe_max_chars = max(1, max_chars)
+        safe_max_lines = max(1, max_lines)
+        lines = text.splitlines()
+        if len(lines) > safe_max_lines:
+            text = "\n".join(lines[:safe_max_lines])
+
+        if len(text) <= safe_max_chars:
+            return text
+        head = int(safe_max_chars * 0.65)
+        tail = safe_max_chars - head
+        return f"{text[:head]}\n...\n{text[-tail:]}"
+
+    @staticmethod
+    def _select_chunk_indexes(total_chunks: int, max_chunks: int) -> List[int]:
+        """Select representative chunk indexes across the whole file."""
+        if total_chunks <= max_chunks:
+            return list(range(total_chunks))
+        if max_chunks <= 1:
+            return [0]
+
+        selected = {0, total_chunks - 1}
+        middle_slots = max_chunks - 2
+        if middle_slots > 0:
+            for i in range(1, middle_slots + 1):
+                idx = round(i * (total_chunks - 1) / (middle_slots + 1))
+                selected.add(idx)
+
+        ordered = sorted(selected)
+        while len(ordered) > max_chunks:
+            ordered.pop(len(ordered) // 2)
+        return ordered
+
+    async def _read_file_reference(
+        self,
+        project_id: str,
+        file_path: str,
+        cfg: FileReferenceConfig,
+    ) -> str:
+        """Read file and return chunked, abbreviated context (safe for large files)."""
+        try:
+            from ..routers.projects import get_project_service
+            service = get_project_service()
+
+            # Use existing read_file method
+            file_content = await service.read_file(project_id, file_path)
+            content = file_content.content or ""
+
+            # Empty file guard
+            if not content:
+                return self._format_file_reference_block(
+                    f"File Reference: {file_path}",
+                    "[Content Summary] empty file",
+                )
+
+            chunk_size = max(1, cfg.chunk_size)
+            max_chunks = max(1, cfg.max_chunks)
+            preview_max_chars = max(1, cfg.injection_preview_max_chars)
+            preview_max_lines = max(1, cfg.injection_preview_max_lines)
+
+            chunks = [
+                content[i:i + chunk_size]
+                for i in range(0, len(content), chunk_size)
+            ]
+            total_chunks = len(chunks)
+            selected_indexes = self._select_chunk_indexes(total_chunks, max_chunks)
+
+            chunk_blocks: List[str] = []
+            for idx in selected_indexes:
+                chunk = chunks[idx]
+                start_char = idx * chunk_size + 1
+                end_char = min((idx + 1) * chunk_size, len(content))
+                preview = self._abbreviate_chunk_text(
+                    chunk,
+                    preview_max_chars,
+                    preview_max_lines,
+                )
+                chunk_blocks.append(
+                    f"[Chunk {idx + 1}/{total_chunks} | chars {start_char}-{end_char}]\n{preview}"
+                )
+            block_body = (
+                f"[Content Summary] {len(content)} chars, {total_chunks} chunks; "
+                f"showing {len(selected_indexes)} abbreviated chunks "
+                f"(<= {preview_max_lines} lines and <= {preview_max_chars} chars each).\n\n"
+                f"{chr(10).join(chunk_blocks)}\n\n"
+                "[Hint] Ask for a specific chunk number or keyword range if you need more detail."
+            )
+            return self._format_file_reference_block(f"File Reference: {file_path}", block_body)
+        except Exception as e:
+            logger.warning(f"Failed to read file {file_path} from project {project_id}: {e}")
+            return self._format_file_reference_block(
+                f"File Reference: {file_path}",
+                "[Error] Could not read file",
+            )
+
+    async def _build_file_context_block(
+        self,
+        file_references: Optional[List[Dict[str, str]]]
+    ) -> str:
+        """Build bounded context from referenced files to avoid context explosion."""
+        if not file_references:
+            return ""
+
+        cfg = self._get_file_reference_config()
+        total_budget_chars = max(1, cfg.total_budget_chars)
+        parts: List[str] = []
+        used_chars = 0
+
+        for index, ref in enumerate(file_references):
+            file_context = await self._read_file_reference(
+                ref.get("project_id"),
+                ref.get("path"),
+                cfg,
+            )
+
+            if used_chars + len(file_context) > total_budget_chars:
+                skipped = len(file_references) - index
+                parts.append(
+                    self._format_file_reference_block(
+                        "File Reference Budget",
+                        f"[File Context Truncated] budget reached; skipped {skipped} remaining file reference(s).",
+                    )
+                )
+                break
+
+            parts.append(file_context)
+            used_chars += len(file_context)
+
+        return "\n\n".join(parts)
 
     async def process_message(
         self,
@@ -51,7 +213,8 @@ class AgentService:
         context_type: str = "chat",
         project_id: Optional[str] = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None
+        search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None
     ) -> tuple[str, List[Dict[str, Any]]]:
         """Process a user message and return AI response.
 
@@ -60,15 +223,23 @@ class AgentService:
             user_message: User's input text
             context_type: Context type ("chat" or "project")
             project_id: Project ID (required when context_type="project")
+            use_web_search: Whether to use web search
+            search_query: Optional explicit search query
+            file_references: List of {path, project_id} for @file references
 
         Returns:
-            AI assistant's response text
+            AI assistant's response text and sources
 
         Raises:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
-        raw_user_message = user_message
+        original_user_message = user_message
+        file_context_block = await self._build_file_context_block(file_references)
+        full_message = f"{file_context_block}\n\n{user_message}" if file_context_block else user_message
+
+        # Keep retrieval/search anchored to user intent instead of expanded file text.
+        raw_user_message = original_user_message
         webpage_context = None
         webpage_sources: List[Dict[str, Any]] = []
         try:
@@ -83,7 +254,7 @@ class AgentService:
         user_message_id = await self.storage.append_message(
             session_id,
             "user",
-            user_message,
+            full_message,  # Use full_message with file context
             context_type=context_type,
             project_id=project_id,
         )
@@ -254,7 +425,8 @@ class AgentService:
         context_type: str = "chat",
         project_id: Optional[str] = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None
+        search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None
     ) -> AsyncIterator[Any]:
         """Stream process user message and return AI response stream.
 
@@ -266,6 +438,9 @@ class AgentService:
             attachments: List of file attachments with {filename, size, mime_type, temp_path}
             context_type: Context type ("chat" or "project")
             project_id: Project ID (required when context_type="project")
+            use_web_search: Whether to use web search
+            search_query: Optional explicit search query
+            file_references: List of {path, project_id} for @file references
 
         Yields:
             String tokens during streaming, or dict events:
@@ -275,7 +450,13 @@ class AgentService:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
-        raw_user_message = user_message
+        original_user_message = user_message
+        file_context_block = await self._build_file_context_block(file_references)
+        if file_context_block:
+            user_message = f"{file_context_block}\n\n{user_message}"
+
+        # Keep retrieval/search anchored to user intent instead of expanded file text.
+        raw_user_message = original_user_message
         webpage_context = None
         webpage_sources: List[Dict[str, Any]] = []
         try:
@@ -835,12 +1016,19 @@ class AgentService:
         project_id: Optional[str] = None,
         use_web_search: bool = False,
         search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncIterator[Any]:
         """Stream compare responses from multiple models.
 
         Yields SSE events tagged by model_id.
         """
-        raw_user_message = user_message
+        original_user_message = user_message
+        file_context_block = await self._build_file_context_block(file_references)
+        if file_context_block:
+            user_message = f"{file_context_block}\n\n{user_message}"
+
+        # Keep retrieval/search anchored to user intent instead of expanded file text.
+        raw_user_message = original_user_message
 
         # Process attachments (same as process_message_stream)
         attachment_metadata = []

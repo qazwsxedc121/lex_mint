@@ -461,3 +461,32 @@ async def delete_directory(
     except Exception as e:
         logger.error(f"Error deleting directory in {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/files/search")
+async def search_project_files(
+    project_id: str,
+    query: str = Query(..., description="Search query"),
+    current_file: Optional[str] = Query(None, description="Current file path for proximity"),
+    limit: int = Query(20, ge=1, le=100, description="Max results")
+):
+    """
+    Search project files with proximity-based scoring.
+
+    Returns files ranked by:
+    1. Proximity to current file (same dir > child > parent > sibling > project-wide)
+    2. Fuzzy match quality (exact > partial > fuzzy)
+    """
+    try:
+        service = get_project_service()
+        results = await service.search_files_with_proximity(
+            project_id=project_id,
+            query=query,
+            current_file_path=current_file,
+            limit=limit
+        )
+        return results
+    except Exception as e:
+        logger.error(f"Error searching files in project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

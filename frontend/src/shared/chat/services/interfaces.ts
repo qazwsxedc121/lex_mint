@@ -10,8 +10,7 @@ import type {
   SearchSource,
   UploadedFile,
   ParamOverrides,
-  ContextInfo,
-  CompareModelResponse
+  ContextInfo
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
@@ -55,7 +54,8 @@ export interface ChatAPI {
     useWebSearch?: boolean,
     onFollowupQuestions?: (questions: string[]) => void,
     onContextInfo?: (info: ContextInfo) => void,
-    onThinkingDuration?: (durationMs: number) => void
+    onThinkingDuration?: (durationMs: number) => void,
+    fileReferences?: Array<{ path: string; project_id: string }>
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;
@@ -111,6 +111,7 @@ export interface ChatAPI {
       reasoningEffort?: string;
       attachments?: UploadedFile[];
       useWebSearch?: boolean;
+      fileReferences?: Array<{ path: string; project_id: string }>;
     }
   ): Promise<void>;
 }

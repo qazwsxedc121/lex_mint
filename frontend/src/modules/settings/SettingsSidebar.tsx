@@ -22,6 +22,7 @@ import {
   CircleStackIcon,
   WrenchScrewdriverIcon,
   DocumentTextIcon,
+  AtSymbolIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -46,6 +47,7 @@ export const SettingsSidebar: React.FC = () => {
     { path: '/settings/title-generation', labelKey: 'nav.titleGeneration', icon: SparklesIcon },
     { path: '/settings/followup', labelKey: 'nav.followup', icon: ChatBubbleLeftRightIcon },
     { path: '/settings/compression', labelKey: 'nav.compression', icon: ArchiveBoxArrowDownIcon },
+    { path: '/settings/file-reference', labelKey: 'nav.fileReference', icon: AtSymbolIcon },
     { path: '/settings/translation', labelKey: 'nav.translation', icon: LanguageIcon },
     { path: '/settings/tts', labelKey: 'nav.tts', icon: SpeakerWaveIcon },
     { path: '/settings/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon },

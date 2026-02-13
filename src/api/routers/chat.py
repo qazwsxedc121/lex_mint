@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     attachments: Optional[List[Dict[str, Any]]] = None  # List of {filename, size, mime_type, temp_path}
+    file_references: Optional[List[Dict[str, str]]] = None  # List of {path, project_id} for @file references
     truncate_after_index: Optional[int] = None  # 截断索引，删除此索引之后的消息
     skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
     reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
@@ -97,6 +98,7 @@ class CompareRequest(BaseModel):
     project_id: Optional[str] = None
     use_web_search: bool = False
     search_query: Optional[str] = None
+    file_references: Optional[List[Dict[str, str]]] = None  # List of {path, project_id} for @file references
 
 
 def get_agent_service() -> AgentService:
@@ -155,7 +157,8 @@ async def chat(
             context_type=request.context_type,
             project_id=request.project_id,
             use_web_search=request.use_web_search,
-            search_query=request.search_query
+            search_query=request.search_query,
+            file_references=request.file_references
         )
 
         print("=" * 80)
@@ -244,7 +247,8 @@ async def chat_stream(
                 context_type=request.context_type,
                 project_id=request.project_id,
                 use_web_search=request.use_web_search,
-                search_query=request.search_query
+                search_query=request.search_query,
+                file_references=request.file_references
             ):
                 # Check if chunk is a dict event (usage, user_message_id, assistant_message_id)
                 if isinstance(chunk, dict):
@@ -666,6 +670,7 @@ async def chat_compare(
                 project_id=request.project_id,
                 use_web_search=request.use_web_search,
                 search_query=request.search_query,
+                file_references=request.file_references,
             ):
                 if isinstance(event, dict):
                     data = json.dumps(event, ensure_ascii=False)

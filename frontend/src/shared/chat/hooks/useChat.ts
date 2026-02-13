@@ -3,8 +3,15 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo, CompareModelResponse } from '../../../types/message';
+import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
+
+type SendMessageOptions = {
+  reasoningEffort?: string;
+  attachments?: UploadedFile[];
+  useWebSearch?: boolean;
+  fileReferences?: Array<{ path: string; project_id: string }>;
+};
 
 export function useChat(sessionId: string | null) {
   const { api } = useChatServices();
@@ -108,7 +115,65 @@ export function useChat(sessionId: string | null) {
     loadSession();
   }, [sessionId]);
 
-  const sendMessage = async (content: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
+  // Replace optimistic user message content with server-stored content
+  // (important for @file injected blocks).
+  const hydrateUserMessageFromServer = async (
+    userMessageId: string,
+    attempt: number = 0
+  ): Promise<boolean> => {
+    if (!sessionId) return false;
+    try {
+      const session = await api.getSession(sessionId);
+      const serverUserMessage = session.state.messages.find(
+        (m) => m.message_id === userMessageId && m.role === 'user'
+      );
+      if (!serverUserMessage) {
+        if (attempt < 4) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return hydrateUserMessageFromServer(userMessageId, attempt + 1);
+        }
+        return false;
+      }
+
+      setMessages(prev => {
+        const next = [...prev];
+        let targetIndex = next.findIndex(
+          (m) => m.message_id === userMessageId && m.role === 'user'
+        );
+
+        // Fallback for optimistic message race: fill the latest user message
+        // that still has no backend message_id.
+        if (targetIndex < 0) {
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'user' && !next[i].message_id) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          return prev;
+        }
+
+        next[targetIndex] = {
+          ...next[targetIndex],
+          message_id: userMessageId,
+          content: serverUserMessage.content,
+          attachments: serverUserMessage.attachments,
+          created_at: serverUserMessage.created_at || next[targetIndex].created_at,
+        };
+        return next;
+      });
+      return true;
+    } catch (err) {
+      // Keep optimistic content if hydration fails.
+      console.warn('Failed to hydrate user message from server:', err);
+      return false;
+    }
+  };
+
+  const sendMessage = async (content: string, options?: SendMessageOptions) => {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
@@ -142,6 +207,7 @@ export function useChat(sessionId: string | null) {
     setError(null);
 
     let streamedContent = '';
+    let latestUserMessageId: string | null = null;
 
     try {
       await api.sendMessageStream(
@@ -164,6 +230,9 @@ export function useChat(sessionId: string | null) {
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
+          if (latestUserMessageId) {
+            void hydrateUserMessageFromServer(latestUserMessageId);
+          }
         },
         (error: string) => {
           setError(error);
@@ -211,6 +280,7 @@ export function useChat(sessionId: string | null) {
         },
         options?.attachments,
         (userMessageId: string) => {
+          latestUserMessageId = userMessageId;
           // Backend returned user message ID, update the user message
           setMessages(prev => {
             const newMessages = [...prev];
@@ -222,6 +292,7 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
+          void hydrateUserMessageFromServer(userMessageId);
         },
         (assistantMessageId: string) => {
           // Backend returned assistant message ID, update the assistant message
@@ -254,7 +325,8 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
-        }
+        },
+        options?.fileReferences
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
@@ -265,7 +337,7 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const sendCompareMessage = async (content: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean }) => {
+  const sendCompareMessage = async (content: string, modelIds: string[], options?: SendMessageOptions) => {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
@@ -301,6 +373,7 @@ export function useChat(sessionId: string | null) {
     const modelContentMap = new Map<string, string>();
     const modelNameMap = new Map<string, string>();
 
+    let latestUserMessageId: string | null = null;
     try {
       await api.sendCompareStream(
         sessionId,
@@ -372,6 +445,7 @@ export function useChat(sessionId: string | null) {
             });
           },
           onUserMessageId: (messageId: string) => {
+            latestUserMessageId = messageId;
             setMessages(prev => {
               const newMessages = [...prev];
               if (newMessages.length >= 2) {
@@ -382,6 +456,7 @@ export function useChat(sessionId: string | null) {
               }
               return newMessages;
             });
+            void hydrateUserMessageFromServer(messageId);
           },
           onAssistantMessageId: (messageId: string) => {
             setMessages(prev => {
@@ -409,6 +484,9 @@ export function useChat(sessionId: string | null) {
             setLoading(false);
             setIsComparing(false);
             isProcessingRef.current = false;
+            if (latestUserMessageId) {
+              void hydrateUserMessageFromServer(latestUserMessageId);
+            }
           },
           onError: (error: string) => {
             setError(error);
@@ -423,6 +501,7 @@ export function useChat(sessionId: string | null) {
           reasoningEffort: options?.reasoningEffort,
           attachments: options?.attachments,
           useWebSearch: options?.useWebSearch,
+          fileReferences: options?.fileReferences,
         }
       );
     } catch (err) {
@@ -530,6 +609,7 @@ export function useChat(sessionId: string | null) {
             }
             return newMessages;
           });
+          void hydrateUserMessageFromServer(userMessageId);
         },
         (assistantMessageId: string) => {
           // Backend returned assistant message ID
