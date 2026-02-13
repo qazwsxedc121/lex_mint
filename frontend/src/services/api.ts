@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo, CompareModelResponse } from '../types/message';
+import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type { Provider, Model, DefaultConfig } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult, DirectoryEntry } from '../types/project';
@@ -33,6 +33,56 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+async function* iterateSSEData(
+  reader: ReadableStreamDefaultReader<Uint8Array>
+): AsyncGenerator<string, void, unknown> {
+  let buffer = '';
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    buffer = buffer.replace(/\r\n/g, '\n');
+
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const rawEvent = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      const dataLines = rawEvent
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart());
+
+      if (dataLines.length > 0) {
+        yield dataLines.join('\n');
+      }
+
+      boundary = buffer.indexOf('\n\n');
+    }
+
+    if (done) {
+      break;
+    }
+  }
+
+  const trailing = buffer.trim();
+  if (!trailing) {
+    return;
+  }
+
+  const trailingDataLines = trailing
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart());
+
+  if (trailingDataLines.length > 0) {
+    yield trailingDataLines.join('\n');
+  }
+}
 
 /**
  * Create a new conversation session.
@@ -388,50 +438,39 @@ export async function compressContext(
     }
 
     const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
 
     if (!reader) {
       throw new Error('Response body is not readable');
     }
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      for await (const dataStr of iterateSSEData(reader)) {
+        try {
+          const data = JSON.parse(dataStr);
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6);
-            try {
-              const data = JSON.parse(dataStr);
-
-              if (data.error) {
-                onError(data.error);
-                return;
-              }
-
-              if (data.done) {
-                return;
-              }
-
-              if (data.type === 'compression_complete') {
-                onComplete({
-                  message_id: data.message_id,
-                  compressed_count: data.compressed_count,
-                });
-                continue;
-              }
-
-              if (data.chunk) {
-                onChunk(data.chunk);
-              }
-            } catch (e) {
-              // Ignore parse errors for partial chunks
-            }
+          if (data.error) {
+            onError(data.error);
+            return;
           }
+
+          if (data.done) {
+            return;
+          }
+
+          if (data.type === 'compression_complete') {
+            onComplete({
+              message_id: data.message_id,
+              compressed_count: data.compressed_count,
+            });
+            continue;
+          }
+
+          if (data.chunk) {
+            onChunk(data.chunk);
+          }
+        } catch {
+          // Ignore malformed SSE event payloads.
+          continue;
         }
       }
     } finally {
@@ -487,47 +526,36 @@ export async function translateText(
     }
 
     const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
 
     if (!reader) {
       throw new Error('Response body is not readable');
     }
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      for await (const dataStr of iterateSSEData(reader)) {
+        try {
+          const data = JSON.parse(dataStr);
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6);
-            try {
-              const data = JSON.parse(dataStr);
-
-              if (data.error) {
-                onError(data.error);
-                return;
-              }
-
-              if (data.done) {
-                onComplete();
-                return;
-              }
-
-              if (data.type === 'translation_complete') {
-                continue;
-              }
-
-              if (data.chunk) {
-                onChunk(data.chunk);
-              }
-            } catch (e) {
-              // Ignore parse errors for partial chunks
-            }
+          if (data.error) {
+            onError(data.error);
+            return;
           }
+
+          if (data.done) {
+            onComplete();
+            return;
+          }
+
+          if (data.type === 'translation_complete') {
+            continue;
+          }
+
+          if (data.chunk) {
+            onChunk(data.chunk);
+          }
+        } catch {
+          // Ignore malformed SSE event payloads.
+          continue;
         }
       }
     } finally {
@@ -659,86 +687,74 @@ export async function sendMessageStream(
     }
 
     const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
 
     if (!reader) {
       throw new Error('Response body is not readable');
     }
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
+      for await (const dataStr of iterateSSEData(reader)) {
+        try {
+          const data = JSON.parse(dataStr);
 
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6); //  "data: " 
-            try {
-              const data = JSON.parse(dataStr);
-
-              if (data.error) {
-                onError(data.error);
-                return;
-              }
-
-              if (data.done) {
-                onDone();
-                return;
-              }
-
-              // Handle usage/cost event
-              if (data.type === 'usage' && data.usage && onUsage) {
-                onUsage(data.usage, data.cost);
-                continue;
-              }
-
-              // Handle sources event
-              if (data.type === 'sources' && data.sources && onSources) {
-                onSources(data.sources);
-                continue;
-              }
-
-              // Handle user_message_id event
-              if (data.type === 'user_message_id' && data.message_id && onUserMessageId) {
-                onUserMessageId(data.message_id);
-                continue;
-              }
-
-              // Handle assistant_message_id event
-              if (data.type === 'assistant_message_id' && data.message_id && onAssistantMessageId) {
-                onAssistantMessageId(data.message_id);
-                continue;
-              }
-
-              // Handle followup_questions event
-              if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
-                onFollowupQuestions(data.questions);
-                continue;
-              }
-
-              // Handle context_info event
-              if (data.type === 'context_info' && onContextInfo) {
-                onContextInfo(data);
-                continue;
-              }
-
-              // Handle thinking_duration event
-              if (data.type === 'thinking_duration' && onThinkingDuration) {
-                onThinkingDuration(data.duration_ms);
-                continue;
-              }
-
-              if (data.chunk) {
-                onChunk(data.chunk);
-              }
-            } catch (e) {
-            }
+          if (data.error) {
+            onError(data.error);
+            return;
           }
+
+          if (data.done) {
+            onDone();
+            return;
+          }
+
+          // Handle usage/cost event
+          if (data.type === 'usage' && data.usage && onUsage) {
+            onUsage(data.usage, data.cost);
+            continue;
+          }
+
+          // Handle sources event
+          if (data.type === 'sources' && data.sources && onSources) {
+            onSources(data.sources);
+            continue;
+          }
+
+          // Handle user_message_id event
+          if (data.type === 'user_message_id' && data.message_id && onUserMessageId) {
+            onUserMessageId(data.message_id);
+            continue;
+          }
+
+          // Handle assistant_message_id event
+          if (data.type === 'assistant_message_id' && data.message_id && onAssistantMessageId) {
+            onAssistantMessageId(data.message_id);
+            continue;
+          }
+
+          // Handle followup_questions event
+          if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
+            onFollowupQuestions(data.questions);
+            continue;
+          }
+
+          // Handle context_info event
+          if (data.type === 'context_info' && onContextInfo) {
+            onContextInfo(data);
+            continue;
+          }
+
+          // Handle thinking_duration event
+          if (data.type === 'thinking_duration' && onThinkingDuration) {
+            onThinkingDuration(data.duration_ms);
+            continue;
+          }
+
+          if (data.chunk) {
+            onChunk(data.chunk);
+          }
+        } catch {
+          // Ignore malformed SSE event payloads.
+          continue;
         }
       }
     } finally {
@@ -827,74 +843,63 @@ export async function sendCompareStream(
     }
 
     const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
 
     if (!reader) {
       throw new Error('Response body is not readable');
     }
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      for await (const dataStr of iterateSSEData(reader)) {
+        try {
+          const data = JSON.parse(dataStr);
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6);
-            try {
-              const data = JSON.parse(dataStr);
-
-              if (data.error) {
-                callbacks.onError(data.error);
-                return;
-              }
-
-              if (data.done) {
-                callbacks.onDone();
-                return;
-              }
-
-              if (data.type === 'model_start') {
-                callbacks.onModelStart(data.model_id, data.model_name);
-                continue;
-              }
-
-              if (data.type === 'model_chunk') {
-                callbacks.onModelChunk(data.model_id, data.chunk);
-                continue;
-              }
-
-              if (data.type === 'model_done') {
-                callbacks.onModelDone(data.model_id, data.content, data.usage, data.cost);
-                continue;
-              }
-
-              if (data.type === 'model_error') {
-                callbacks.onModelError(data.model_id, data.error);
-                continue;
-              }
-
-              if (data.type === 'user_message_id' && data.message_id) {
-                callbacks.onUserMessageId(data.message_id);
-                continue;
-              }
-
-              if (data.type === 'assistant_message_id' && data.message_id) {
-                callbacks.onAssistantMessageId(data.message_id);
-                continue;
-              }
-
-              if (data.type === 'sources' && data.sources && callbacks.onSources) {
-                callbacks.onSources(data.sources);
-                continue;
-              }
-            } catch (e) {
-              // ignore parse errors
-            }
+          if (data.error) {
+            callbacks.onError(data.error);
+            return;
           }
+
+          if (data.done) {
+            callbacks.onDone();
+            return;
+          }
+
+          if (data.type === 'model_start') {
+            callbacks.onModelStart(data.model_id, data.model_name);
+            continue;
+          }
+
+          if (data.type === 'model_chunk') {
+            callbacks.onModelChunk(data.model_id, data.chunk);
+            continue;
+          }
+
+          if (data.type === 'model_done') {
+            callbacks.onModelDone(data.model_id, data.content, data.usage, data.cost);
+            continue;
+          }
+
+          if (data.type === 'model_error') {
+            callbacks.onModelError(data.model_id, data.error);
+            continue;
+          }
+
+          if (data.type === 'user_message_id' && data.message_id) {
+            callbacks.onUserMessageId(data.message_id);
+            continue;
+          }
+
+          if (data.type === 'assistant_message_id' && data.message_id) {
+            callbacks.onAssistantMessageId(data.message_id);
+            continue;
+          }
+
+          if (data.type === 'sources' && data.sources && callbacks.onSources) {
+            callbacks.onSources(data.sources);
+            continue;
+          }
+        } catch {
+          // Ignore malformed SSE event payloads.
+          continue;
         }
       }
     } finally {

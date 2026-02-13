@@ -1022,7 +1022,14 @@ class ConversationStorage:
         if target_path.exists():
             raise FileExistsError(f"Target session file already exists: {target_path}")
 
+        source_compare_path = source_path.with_suffix(".compare.json")
+        target_compare_path = target_path.with_suffix(".compare.json")
+        if target_compare_path.exists():
+            raise FileExistsError(f"Target compare sidecar file already exists: {target_compare_path}")
+
         shutil.move(str(source_path), str(target_path))
+        if source_compare_path.exists():
+            shutil.move(str(source_compare_path), str(target_compare_path))
 
         # Move lock reference to new path if present
         old_key = str(source_path)
@@ -1084,6 +1091,11 @@ class ConversationStorage:
         async with aiofiles.open(target_path, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
+        source_compare_path = source_path.with_suffix(".compare.json")
+        if source_compare_path.exists():
+            target_compare_path = target_path.with_suffix(".compare.json")
+            shutil.copy2(str(source_compare_path), str(target_compare_path))
+
         return new_session_id
 
     async def cleanup_temporary_sessions(self):
@@ -1099,9 +1111,13 @@ class ConversationStorage:
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         post = frontmatter.load(f)
-                        if post.metadata.get("temporary", False):
-                            filepath.unlink()
-                            cleaned += 1
+
+                    if post.metadata.get("temporary", False):
+                        filepath.unlink()
+                        compare_path = filepath.with_suffix(".compare.json")
+                        if compare_path.exists():
+                            compare_path.unlink()
+                        cleaned += 1
                 except Exception:
                     continue
 
@@ -1112,9 +1128,13 @@ class ConversationStorage:
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         post = frontmatter.load(f)
-                        if post.metadata.get("temporary", False):
-                            filepath.unlink()
-                            cleaned += 1
+
+                    if post.metadata.get("temporary", False):
+                        filepath.unlink()
+                        compare_path = filepath.with_suffix(".compare.json")
+                        if compare_path.exists():
+                            compare_path.unlink()
+                        cleaned += 1
                 except Exception:
                     continue
 

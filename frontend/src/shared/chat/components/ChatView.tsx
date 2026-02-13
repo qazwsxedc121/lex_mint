@@ -72,6 +72,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   // Check model capabilities (vision, reasoning)
   const { supportsVision, supportsReasoning } = useModelCapabilities(currentAssistantId);
+  const isGenerating = isStreaming || isComparing;
 
   // Auto-refresh title after streaming completes
   useEffect(() => {
@@ -213,7 +214,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       <MessageList
         messages={messages}
         loading={loading}
-        isStreaming={isStreaming}
+        isStreaming={isGenerating}
         sessionId={currentSessionId}
         onEditMessage={editMessage}
         onSaveMessageOnly={saveMessageOnly}
@@ -227,11 +228,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       <FollowupChips
         questions={followupQuestions}
         onSelect={(question) => sendMessage(question)}
-        disabled={loading || isStreaming}
+        disabled={loading || isGenerating}
       />
 
       {/* Generate follow-ups button */}
-      {messages.length > 0 && followupQuestions.length === 0 && !isStreaming && !loading && (
+      {messages.length > 0 && followupQuestions.length === 0 && !isGenerating && !loading && (
         <div data-name="generate-followups" className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={handleGenerateFollowups}
@@ -268,7 +269,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         isCompressing={isCompressing}
         onClearAllMessages={handleClearAllMessages}
         disabled={loading || isComparing}
-        isStreaming={isStreaming}
+        isStreaming={isGenerating}
         supportsReasoning={supportsReasoning}
         supportsVision={supportsVision}
         sessionId={currentSessionId}

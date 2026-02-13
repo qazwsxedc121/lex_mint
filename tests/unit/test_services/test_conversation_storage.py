@@ -255,6 +255,85 @@ class TestConversationStorage:
             await storage.delete_session("nonexistent-session-id")
 
     @pytest.mark.asyncio
+    async def test_move_session_moves_compare_sidecar(self, temp_conversation_dir, mock_assistant_service):
+        """Test moving a session also moves its compare sidecar file."""
+        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+            storage = ConversationStorage(temp_conversation_dir)
+            session_id = await storage.create_session(assistant_id="default")
+
+            source_path = await storage._find_session_file(session_id)
+            assert source_path is not None
+            source_compare_path = source_path.with_suffix(".compare.json")
+            compare_payload = '{"msg-1": {"responses": [{"model_id": "deepseek:deepseek-chat", "model_name": "DeepSeek Chat", "content": "hello"}]}}'
+            source_compare_path.write_text(compare_payload, encoding='utf-8')
+
+            await storage.move_session(
+                session_id,
+                source_context_type="chat",
+                target_context_type="project",
+                target_project_id="proj-1",
+            )
+
+            moved_path = await storage._find_session_file(session_id, context_type="project", project_id="proj-1")
+            assert moved_path is not None
+            moved_compare_path = moved_path.with_suffix(".compare.json")
+
+            assert not source_path.exists()
+            assert not source_compare_path.exists()
+            assert moved_compare_path.exists()
+            assert moved_compare_path.read_text(encoding='utf-8') == compare_payload
+
+    @pytest.mark.asyncio
+    async def test_copy_session_copies_compare_sidecar(self, temp_conversation_dir, mock_assistant_service):
+        """Test copying a session also copies its compare sidecar file."""
+        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+            storage = ConversationStorage(temp_conversation_dir)
+            session_id = await storage.create_session(assistant_id="default")
+
+            source_path = await storage._find_session_file(session_id)
+            assert source_path is not None
+            source_compare_path = source_path.with_suffix(".compare.json")
+            compare_payload = '{"msg-1": {"responses": [{"model_id": "openai:gpt-4", "model_name": "GPT-4", "content": "hi"}]}}'
+            source_compare_path.write_text(compare_payload, encoding='utf-8')
+
+            copied_session_id = await storage.copy_session(
+                session_id,
+                source_context_type="chat",
+                target_context_type="project",
+                target_project_id="proj-2",
+            )
+
+            copied_path = await storage._find_session_file(copied_session_id, context_type="project", project_id="proj-2")
+            assert copied_path is not None
+            copied_compare_path = copied_path.with_suffix(".compare.json")
+
+            assert source_compare_path.exists()
+            assert copied_compare_path.exists()
+            assert copied_compare_path.read_text(encoding='utf-8') == compare_payload
+
+    @pytest.mark.asyncio
+    async def test_cleanup_temporary_sessions_deletes_compare_sidecar(self, temp_conversation_dir):
+        """Test cleanup removes compare sidecars of temporary sessions."""
+        storage = ConversationStorage(temp_conversation_dir)
+
+        chat_dir = temp_conversation_dir / "chat"
+        chat_dir.mkdir(parents=True, exist_ok=True)
+        session_path = chat_dir / "2026-01-01_12345678.md"
+        import frontmatter
+        temp_post = frontmatter.Post("## User\nhello")
+        temp_post.metadata = {"session_id": "test-session", "temporary": True}
+        session_path.write_text(frontmatter.dumps(temp_post), encoding='utf-8')
+
+        compare_path = session_path.with_suffix(".compare.json")
+        compare_path.write_text('{"msg-1": {"responses": []}}', encoding='utf-8')
+
+        cleaned = await storage.cleanup_temporary_sessions()
+
+        assert cleaned == 1
+        assert not session_path.exists()
+        assert not compare_path.exists()
+
+    @pytest.mark.asyncio
     async def test_update_session_model(self, temp_conversation_dir):
         """Test updating session's model."""
         # Create mock assistant
