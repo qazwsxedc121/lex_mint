@@ -54,6 +54,22 @@ npm run dev
 - 前端：`http://localhost:5173`
 - API 文档：`http://localhost:8988/docs`
 
+### Docker Compose 启动
+
+1. 复制 `.env.example` 为 `.env`
+2. 在 `.env` 中配置 `DEEPSEEK_API_KEY`
+3. 启动服务：
+
+```powershell
+docker compose up --build
+```
+
+4. 停止服务：
+
+```powershell
+docker compose down
+```
+
 ## 目录结构
 
 ```text
@@ -68,7 +84,6 @@ docs/                   架构与分析文档
 
 ## 后续方向
 
-- Docker 化部署
 - 多用户认证与权限体系
 - MCP 客户端支持
 - STT 语音输入

@@ -61,7 +61,7 @@
 
 ## 3. 当前主要缺口
 
-- 容器化与标准部署：尚未提供官方 `Dockerfile / docker-compose`。
+- 容器化已具备基础能力（`Dockerfile.backend`、`Dockerfile.frontend`、`docker-compose.yml`），但生产化部署模板仍可继续完善（镜像优化、反向代理、分环境编排）。
 - 多用户能力：认证、权限、租户/团队协作尚未落地。
 - MCP 客户端与插件生态：尚未接入。
 - 语音输入（STT）、图像生成仍未上线。

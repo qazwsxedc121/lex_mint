@@ -87,6 +87,22 @@ Open:
 - App: `http://localhost:5173`
 - API docs: `http://localhost:8988/docs`
 
+### Option C: Docker Compose
+
+1. Copy `.env.example` to `.env`
+2. Set `DEEPSEEK_API_KEY` in `.env`
+3. Start services:
+
+```powershell
+docker compose up --build
+```
+
+4. Stop services:
+
+```powershell
+docker compose down
+```
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -131,7 +147,6 @@ npm run lint
 
 ## Roadmap (short)
 
-- Dockerized deployment
 - Auth and permissions for multi-user scenarios
 - MCP client support
 - STT voice input

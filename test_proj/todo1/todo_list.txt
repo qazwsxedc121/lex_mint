@@ -12,7 +12,7 @@
 [X] 全局记忆
 [X] 常用提示词
 [X] @文件名
-[] 多参与者
+[] 多个LLM开会
 [X] 导入chatgpt对话
 [] 导出图片
 [] 导出PDF
@@ -24,7 +24,7 @@
 [] RAG Reorder
 [] RAG by tool use
 [] RAG word search (BM25)
-[] conversation in Project path
+[X] conversation in Project path
 [X] 数学公式
 [] SVG渲染
 [] Docker file
@@ -33,3 +33,11 @@
 [] projects专用目录
 [] function call初步
 [] apply_diff功能
+[] 用户管理,认证,权限
+[] MCP客户端最小版
+[] STT语音输入
+[] RAG评估体系
+[] 本地embedding
+[] 本地reranking
+[] 本地LLM总结
+[] 本地LLM翻译

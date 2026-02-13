@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file:
+      - .env
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: ${API_PORT:-8988}
+    ports:
+      - "${API_PORT:-8988}:${API_PORT:-8988}"
+    volumes:
+      - ./conversations:/app/conversations
+      - ./attachments:/app/attachments
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./config/local:/app/config/local
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      - backend
+    environment:
+      API_PORT: ${API_PORT:-8988}
+      VITE_API_URL: http://localhost:${API_PORT:-8988}
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
