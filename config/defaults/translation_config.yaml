@@ -2,7 +2,13 @@ translation:
   enabled: true
   target_language: Chinese
   input_target_language: English
+  provider: model_config
   model_id: deepseek:deepseek-chat
+  local_gguf_model_path: models/llm/local-translate.gguf
+  local_gguf_n_ctx: 8192
+  local_gguf_n_threads: 0
+  local_gguf_n_gpu_layers: 0
+  local_gguf_max_tokens: 2048
   temperature: 0.3
   timeout_seconds: 30
   prompt_template: 'You are a translation expert. Your only task is to translate the

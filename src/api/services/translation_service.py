@@ -1,10 +1,13 @@
 """Translation service for translating text via LLM."""
 
+import asyncio
 import logging
 from typing import AsyncIterator, Union, Dict, Any
 
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.translation_config_service import TranslationConfigService
+from src.api.services.local_llama_cpp_service import LocalLlamaCppService
+from src.api.services.think_tag_filter import ThinkTagStreamFilter
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,51 @@ class TranslationService:
             target_language=effective_target_language,
         )
 
+        if config.provider == "local_gguf":
+            try:
+                local_llm = LocalLlamaCppService(
+                    model_path=config.local_gguf_model_path,
+                    n_ctx=config.local_gguf_n_ctx,
+                    n_threads=config.local_gguf_n_threads,
+                    n_gpu_layers=config.local_gguf_n_gpu_layers,
+                )
+            except Exception as e:
+                yield {"type": "error", "error": str(e)}
+                return
+
+            actual_model_id = f"local_gguf:{local_llm.model_path.name}"
+            print(f"[TRANSLATE] Starting local GGUF translation to {effective_target_language} (model: {actual_model_id})")
+            logger.info(f"Local GGUF translation started: target={effective_target_language}, model={actual_model_id}")
+
+            try:
+                full_response = ""
+                think_filter = ThinkTagStreamFilter()
+                for token in local_llm.stream_prompt(
+                    prompt,
+                    temperature=config.temperature,
+                    max_tokens=config.local_gguf_max_tokens,
+                ):
+                    visible = think_filter.feed(token)
+                    if visible:
+                        full_response += visible
+                        yield visible
+                        await asyncio.sleep(0)
+
+                tail = think_filter.flush()
+                if tail:
+                    full_response += tail
+                    yield tail
+
+                print(f"[TRANSLATE] Translation complete: {len(full_response)} chars")
+                logger.info(f"Translation complete: {len(full_response)} chars")
+                yield {"type": "translation_complete"}
+                return
+            except Exception as e:
+                print(f"[ERROR] Translation failed: {str(e)}")
+                logger.error(f"Translation failed: {str(e)}", exc_info=True)
+                yield {"type": "error", "error": str(e)}
+                return
+
         # Get model and adapter
         model_service = ModelConfigService()
         model_config, provider_config = model_service.get_model_and_provider_sync(effective_model_id)
@@ -85,11 +133,19 @@ class TranslationService:
 
         try:
             full_response = ""
+            think_filter = ThinkTagStreamFilter()
 
             async for chunk in adapter.stream(llm, langchain_messages):
                 if chunk.content:
-                    full_response += chunk.content
-                    yield chunk.content
+                    visible = think_filter.feed(chunk.content)
+                    if visible:
+                        full_response += visible
+                        yield visible
+
+            tail = think_filter.flush()
+            if tail:
+                full_response += tail
+                yield tail
 
             print(f"[TRANSLATE] Translation complete: {len(full_response)} chars")
             logger.info(f"Translation complete: {len(full_response)} chars")

@@ -81,7 +81,13 @@ Output ONLY the structured summary following the format above. No additional com
 @dataclass
 class CompressionConfig:
     """Configuration for context compression"""
+    provider: str
     model_id: str
+    local_gguf_model_path: str
+    local_gguf_n_ctx: int
+    local_gguf_n_threads: int
+    local_gguf_n_gpu_layers: int
+    local_gguf_max_tokens: int
     temperature: float
     min_messages: int
     timeout_seconds: int
@@ -111,7 +117,13 @@ class CompressionConfigService:
         if not self.config_path.exists():
             default_data = {
                 'compression': {
+                    'provider': 'model_config',
                     'model_id': 'deepseek:deepseek-chat',
+                    'local_gguf_model_path': 'models/llm/local-summarizer.gguf',
+                    'local_gguf_n_ctx': 8192,
+                    'local_gguf_n_threads': 0,
+                    'local_gguf_n_gpu_layers': 0,
+                    'local_gguf_max_tokens': 2048,
                     'temperature': 0.3,
                     'min_messages': 2,
                     'timeout_seconds': 60,
@@ -137,7 +149,13 @@ class CompressionConfigService:
 
             config_data = data.get('compression', {})
             return CompressionConfig(
+                provider=config_data.get('provider', 'model_config'),
                 model_id=config_data.get('model_id', 'deepseek:deepseek-chat'),
+                local_gguf_model_path=config_data.get('local_gguf_model_path', 'models/llm/local-summarizer.gguf'),
+                local_gguf_n_ctx=config_data.get('local_gguf_n_ctx', 8192),
+                local_gguf_n_threads=config_data.get('local_gguf_n_threads', 0),
+                local_gguf_n_gpu_layers=config_data.get('local_gguf_n_gpu_layers', 0),
+                local_gguf_max_tokens=config_data.get('local_gguf_max_tokens', 2048),
                 temperature=config_data.get('temperature', 0.3),
                 min_messages=config_data.get('min_messages', 2),
                 timeout_seconds=config_data.get('timeout_seconds', 60),
@@ -148,7 +166,13 @@ class CompressionConfigService:
         except Exception as e:
             logger.error(f"Failed to load compression config: {e}")
             return CompressionConfig(
+                provider='model_config',
                 model_id='deepseek:deepseek-chat',
+                local_gguf_model_path='models/llm/local-summarizer.gguf',
+                local_gguf_n_ctx=8192,
+                local_gguf_n_threads=0,
+                local_gguf_n_gpu_layers=0,
+                local_gguf_max_tokens=2048,
                 temperature=0.3,
                 min_messages=2,
                 timeout_seconds=60,

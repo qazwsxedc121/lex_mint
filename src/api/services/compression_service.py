@@ -1,5 +1,6 @@
 """Compression service for summarizing conversation context."""
 
+import asyncio
 import logging
 import json
 from typing import AsyncIterator, Union, Dict, Any, Optional, Tuple
@@ -7,6 +8,8 @@ from typing import AsyncIterator, Union, Dict, Any, Optional, Tuple
 from src.api.services.conversation_storage import ConversationStorage
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.compression_config_service import CompressionConfigService
+from src.api.services.local_llama_cpp_service import LocalLlamaCppService
+from src.api.services.think_tag_filter import ThinkTagStreamFilter, strip_think_blocks
 from src.agents.simple_llm import _filter_messages_by_context_boundary
 
 logger = logging.getLogger(__name__)
@@ -71,8 +74,64 @@ class CompressionService:
 
         # Use compression-specific model if configured, otherwise fall back to session model
         compression_model_id = config.model_id
-        if compression_model_id:
+        if config.provider == "model_config" and compression_model_id:
             model_id = compression_model_id
+
+        if config.provider == "local_gguf":
+            try:
+                local_llm = LocalLlamaCppService(
+                    model_path=config.local_gguf_model_path,
+                    n_ctx=config.local_gguf_n_ctx,
+                    n_threads=config.local_gguf_n_threads,
+                    n_gpu_layers=config.local_gguf_n_gpu_layers,
+                )
+            except Exception as e:
+                yield {"type": "error", "error": str(e)}
+                return
+
+            actual_model_id = f"local_gguf:{local_llm.model_path.name}"
+            print(f"[COMPRESS] Starting local GGUF compression (model: {actual_model_id})")
+            print(f"[COMPRESS] Compressing {compressed_count} messages")
+            logger.info(f"Local GGUF compression started: {compressed_count} messages, model: {actual_model_id}")
+
+            try:
+                full_response = ""
+                think_filter = ThinkTagStreamFilter()
+                for token in local_llm.stream_prompt(
+                    prompt,
+                    temperature=config.temperature,
+                    max_tokens=config.local_gguf_max_tokens,
+                ):
+                    visible = think_filter.feed(token)
+                    if visible:
+                        full_response += visible
+                        yield visible
+                        await asyncio.sleep(0)
+
+                tail = think_filter.flush()
+                if tail:
+                    full_response += tail
+                    yield tail
+                message_id = await self.storage.append_summary(
+                    session_id=session_id,
+                    content=full_response,
+                    compressed_count=compressed_count,
+                    context_type=context_type,
+                    project_id=project_id,
+                )
+                print(f"[COMPRESS] Compression complete: {len(full_response)} chars, message_id: {message_id[:8]}...")
+                logger.info(f"Context compression complete: {len(full_response)} chars")
+                yield {
+                    "type": "compression_complete",
+                    "message_id": message_id,
+                    "compressed_count": compressed_count,
+                }
+                return
+            except Exception as e:
+                print(f"[ERROR] Compression failed: {str(e)}")
+                logger.error(f"Compression failed: {str(e)}", exc_info=True)
+                yield {"type": "error", "error": str(e)}
+                return
 
         # Get model and adapter
         model_service = ModelConfigService()
@@ -106,11 +165,19 @@ class CompressionService:
 
         try:
             full_response = ""
+            think_filter = ThinkTagStreamFilter()
 
             async for chunk in adapter.stream(llm, langchain_messages):
                 if chunk.content:
-                    full_response += chunk.content
-                    yield chunk.content
+                    visible = think_filter.feed(chunk.content)
+                    if visible:
+                        full_response += visible
+                        yield visible
+
+            tail = think_filter.flush()
+            if tail:
+                full_response += tail
+                yield tail
 
             # Append summary to storage
             message_id = await self.storage.append_summary(
@@ -187,8 +254,40 @@ class CompressionService:
         prompt = config.prompt_template.format(formatted_messages=formatted)
 
         compression_model_id = config.model_id
-        if compression_model_id:
+        if config.provider == "model_config" and compression_model_id:
             model_id = compression_model_id
+
+        if config.provider == "local_gguf":
+            try:
+                local_llm = LocalLlamaCppService(
+                    model_path=config.local_gguf_model_path,
+                    n_ctx=config.local_gguf_n_ctx,
+                    n_threads=config.local_gguf_n_threads,
+                    n_gpu_layers=config.local_gguf_n_gpu_layers,
+                )
+                full_response = local_llm.complete_prompt(
+                    prompt,
+                    temperature=config.temperature,
+                    max_tokens=config.local_gguf_max_tokens,
+                )
+                full_response = strip_think_blocks(full_response)
+                message_id = await self.storage.append_summary(
+                    session_id=session_id,
+                    content=full_response,
+                    compressed_count=compressed_count,
+                    context_type=context_type,
+                    project_id=project_id,
+                )
+                print(
+                    f"[AUTO-COMPRESS] Complete: {len(full_response)} chars, "
+                    f"message_id: {message_id[:8]}..."
+                )
+                logger.info(f"Auto-compression complete: {len(full_response)} chars")
+                return message_id, compressed_count
+            except Exception as e:
+                print(f"[ERROR] Auto-compression failed: {str(e)}")
+                logger.error(f"Auto-compression failed: {str(e)}", exc_info=True)
+                return None
 
         model_service = ModelConfigService()
         model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
@@ -221,6 +320,7 @@ class CompressionService:
             async for chunk in adapter.stream(llm, langchain_messages):
                 if chunk.content:
                     full_response += chunk.content
+            full_response = strip_think_blocks(full_response)
 
             message_id = await self.storage.append_summary(
                 session_id=session_id,

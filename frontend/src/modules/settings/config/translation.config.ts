@@ -19,6 +19,20 @@ export const translationConfig: SimpleConfigSettingsConfig = {
 
   fields: [
     {
+      type: 'select',
+      name: 'provider',
+      get label() { return i18n.t('settings:translationConfig.field.provider'); },
+      required: true,
+      defaultValue: 'model_config',
+      get options() {
+        return [
+          { value: 'model_config', label: i18n.t('settings:translationConfig.opt.modelConfig') },
+          { value: 'local_gguf', label: i18n.t('settings:translationConfig.opt.localGguf') },
+        ];
+      },
+      get helpText() { return i18n.t('settings:translationConfig.field.provider.help'); }
+    },
+    {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:translationConfig.field.enabled'); },
@@ -50,7 +64,57 @@ export const translationConfig: SimpleConfigSettingsConfig = {
           label: m.name || m.id
         }));
       },
-      get helpText() { return i18n.t('settings:translationConfig.field.modelId.help'); }
+      get helpText() { return i18n.t('settings:translationConfig.field.modelId.help'); },
+      condition: (formData) => formData.provider !== 'local_gguf',
+    },
+    {
+      type: 'text',
+      name: 'local_gguf_model_path',
+      get label() { return i18n.t('settings:translationConfig.field.localGgufModelPath'); },
+      get placeholder() { return i18n.t('settings:translationConfig.field.localGgufModelPath.placeholder'); },
+      defaultValue: 'models/llm/local-translate.gguf',
+      get helpText() { return i18n.t('settings:translationConfig.field.localGgufModelPath.help'); },
+      condition: (formData) => formData.provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'local_gguf_n_ctx',
+      get label() { return i18n.t('settings:translationConfig.field.localGgufCtx'); },
+      min: 512,
+      max: 65536,
+      defaultValue: 8192,
+      get helpText() { return i18n.t('settings:translationConfig.field.localGgufCtx.help'); },
+      condition: (formData) => formData.provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'local_gguf_n_threads',
+      get label() { return i18n.t('settings:translationConfig.field.localGgufThreads'); },
+      min: 0,
+      max: 256,
+      defaultValue: 0,
+      get helpText() { return i18n.t('settings:translationConfig.field.localGgufThreads.help'); },
+      condition: (formData) => formData.provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'local_gguf_n_gpu_layers',
+      get label() { return i18n.t('settings:translationConfig.field.localGgufGpuLayers'); },
+      min: 0,
+      max: 1024,
+      defaultValue: 0,
+      get helpText() { return i18n.t('settings:translationConfig.field.localGgufGpuLayers.help'); },
+      condition: (formData) => formData.provider === 'local_gguf',
+    },
+    {
+      type: 'number',
+      name: 'local_gguf_max_tokens',
+      get label() { return i18n.t('settings:translationConfig.field.localGgufMaxTokens'); },
+      min: 64,
+      max: 16384,
+      defaultValue: 2048,
+      get helpText() { return i18n.t('settings:translationConfig.field.localGgufMaxTokens.help'); },
+      condition: (formData) => formData.provider === 'local_gguf',
     },
     {
       type: 'slider',

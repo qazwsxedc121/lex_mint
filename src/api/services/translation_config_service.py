@@ -32,7 +32,13 @@ class TranslationConfig:
     enabled: bool
     target_language: str
     input_target_language: str
+    provider: str
     model_id: str
+    local_gguf_model_path: str
+    local_gguf_n_ctx: int
+    local_gguf_n_threads: int
+    local_gguf_n_gpu_layers: int
+    local_gguf_max_tokens: int
     temperature: float
     timeout_seconds: int
     prompt_template: str
@@ -62,7 +68,13 @@ class TranslationConfigService:
                     'enabled': True,
                     'target_language': 'Chinese',
                     'input_target_language': 'English',
+                    'provider': 'model_config',
                     'model_id': 'deepseek:deepseek-chat',
+                    'local_gguf_model_path': 'models/llm/local-translate.gguf',
+                    'local_gguf_n_ctx': 8192,
+                    'local_gguf_n_threads': 0,
+                    'local_gguf_n_gpu_layers': 0,
+                    'local_gguf_max_tokens': 2048,
                     'temperature': 0.3,
                     'timeout_seconds': 30,
                     'prompt_template': DEFAULT_PROMPT_TEMPLATE,
@@ -88,7 +100,13 @@ class TranslationConfigService:
                 enabled=config_data.get('enabled', True),
                 target_language=config_data.get('target_language', 'Chinese'),
                 input_target_language=config_data.get('input_target_language', 'English'),
+                provider=config_data.get('provider', 'model_config'),
                 model_id=config_data.get('model_id', 'deepseek:deepseek-chat'),
+                local_gguf_model_path=config_data.get('local_gguf_model_path', 'models/llm/local-translate.gguf'),
+                local_gguf_n_ctx=config_data.get('local_gguf_n_ctx', 8192),
+                local_gguf_n_threads=config_data.get('local_gguf_n_threads', 0),
+                local_gguf_n_gpu_layers=config_data.get('local_gguf_n_gpu_layers', 0),
+                local_gguf_max_tokens=config_data.get('local_gguf_max_tokens', 2048),
                 temperature=config_data.get('temperature', 0.3),
                 timeout_seconds=config_data.get('timeout_seconds', 30),
                 prompt_template=config_data.get('prompt_template', DEFAULT_PROMPT_TEMPLATE),
@@ -99,7 +117,13 @@ class TranslationConfigService:
                 enabled=True,
                 target_language='Chinese',
                 input_target_language='English',
+                provider='model_config',
                 model_id='deepseek:deepseek-chat',
+                local_gguf_model_path='models/llm/local-translate.gguf',
+                local_gguf_n_ctx=8192,
+                local_gguf_n_threads=0,
+                local_gguf_n_gpu_layers=0,
+                local_gguf_max_tokens=2048,
                 temperature=0.3,
                 timeout_seconds=30,
                 prompt_template=DEFAULT_PROMPT_TEMPLATE,

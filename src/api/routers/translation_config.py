@@ -20,7 +20,13 @@ class TranslationConfigResponse(BaseModel):
     enabled: bool
     target_language: str
     input_target_language: str
+    provider: str
     model_id: str
+    local_gguf_model_path: str
+    local_gguf_n_ctx: int
+    local_gguf_n_threads: int
+    local_gguf_n_gpu_layers: int
+    local_gguf_max_tokens: int
     temperature: float
     timeout_seconds: int
     prompt_template: str
@@ -31,7 +37,13 @@ class TranslationConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     target_language: Optional[str] = None
     input_target_language: Optional[str] = None
+    provider: Optional[str] = None
     model_id: Optional[str] = None
+    local_gguf_model_path: Optional[str] = None
+    local_gguf_n_ctx: Optional[int] = Field(None, ge=512, le=65536)
+    local_gguf_n_threads: Optional[int] = Field(None, ge=0, le=256)
+    local_gguf_n_gpu_layers: Optional[int] = Field(None, ge=0, le=1024)
+    local_gguf_max_tokens: Optional[int] = Field(None, ge=64, le=16384)
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     timeout_seconds: Optional[int] = Field(None, ge=10, le=300)
     prompt_template: Optional[str] = None
@@ -55,7 +67,13 @@ async def get_config(
             enabled=config.enabled,
             target_language=config.target_language,
             input_target_language=config.input_target_language,
+            provider=config.provider,
             model_id=config.model_id,
+            local_gguf_model_path=config.local_gguf_model_path,
+            local_gguf_n_ctx=config.local_gguf_n_ctx,
+            local_gguf_n_threads=config.local_gguf_n_threads,
+            local_gguf_n_gpu_layers=config.local_gguf_n_gpu_layers,
+            local_gguf_max_tokens=config.local_gguf_max_tokens,
             temperature=config.temperature,
             timeout_seconds=config.timeout_seconds,
             prompt_template=config.prompt_template,
@@ -76,6 +94,14 @@ async def update_config(
 
         if not update_dict:
             raise HTTPException(status_code=400, detail="No updates provided")
+
+        if 'provider' in update_dict:
+            allowed = {"model_config", "local_gguf"}
+            if update_dict['provider'] not in allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported translation provider: {update_dict['provider']}"
+                )
 
         service.save_config(update_dict)
 
