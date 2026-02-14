@@ -22,9 +22,11 @@ class RagResult:
     doc_id: str
     filename: str
     chunk_index: int
+    rerank_score: Optional[float] = None
+    final_score: Optional[float] = None
 
     def to_dict(self):
-        return {
+        data = {
             "content": self.content,
             "score": self.score,
             "kb_id": self.kb_id,
@@ -33,6 +35,11 @@ class RagResult:
             "chunk_index": self.chunk_index,
             "type": "rag",
         }
+        if self.rerank_score is not None:
+            data["rerank_score"] = self.rerank_score
+        if self.final_score is not None:
+            data["final_score"] = self.final_score
+        return data
 
 
 class RagService:
@@ -41,8 +48,10 @@ class RagService:
     def __init__(self):
         from .rag_config_service import RagConfigService
         from .embedding_service import EmbeddingService
+        from .rerank_service import RerankService
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
+        self.rerank_service = RerankService()
 
     @staticmethod
     def _result_identity(result: RagResult) -> Tuple[str, str, int, str]:
@@ -119,6 +128,10 @@ class RagService:
         max_per_doc = int(diagnostics.get("max_per_doc", 0) or 0)
         score_threshold = float(diagnostics.get("score_threshold", 0.0) or 0.0)
         kb_count = int(diagnostics.get("searched_kb_count", 0) or 0)
+        rerank_enabled = bool(diagnostics.get("rerank_enabled", False))
+        rerank_applied = bool(diagnostics.get("rerank_applied", False))
+        rerank_weight = float(diagnostics.get("rerank_weight", 0.0) or 0.0)
+        rerank_model = str(diagnostics.get("rerank_model", "") or "")
 
         return {
             "type": "rag_diagnostics",
@@ -137,7 +150,64 @@ class RagService:
             "max_per_doc": max_per_doc,
             "reorder_strategy": reorder_strategy,
             "searched_kb_count": kb_count,
+            "rerank_enabled": rerank_enabled,
+            "rerank_applied": rerank_applied,
+            "rerank_weight": rerank_weight,
+            "rerank_model": rerank_model,
         }
+
+    async def _rank_candidates(
+        self,
+        *,
+        query: str,
+        candidates: List[RagResult],
+        rerank_enabled: bool,
+        rerank_model: str,
+        rerank_base_url: str,
+        rerank_api_key: str,
+        rerank_timeout_seconds: int,
+        rerank_weight: float,
+    ) -> Tuple[List[RagResult], bool]:
+        ranked = list(candidates)
+        for item in ranked:
+            item.final_score = item.score
+            item.rerank_score = None
+
+        ranked.sort(key=lambda x: x.score, reverse=True)
+        if not rerank_enabled or len(ranked) <= 1:
+            return ranked, False
+
+        rerank_weight = max(0.0, min(1.0, float(rerank_weight)))
+        docs = [item.content for item in ranked]
+        try:
+            rerank_scores = await self.rerank_service.rerank(
+                query=query,
+                documents=docs,
+                model=rerank_model,
+                base_url=rerank_base_url,
+                api_key=rerank_api_key,
+                timeout_seconds=rerank_timeout_seconds,
+            )
+        except Exception as e:
+            logger.warning(f"Rerank request failed, fallback to vector scores: {e}")
+            return ranked, False
+
+        if not rerank_scores:
+            logger.info("Rerank returned empty scores, fallback to vector scores")
+            return ranked, False
+
+        for index, item in enumerate(ranked):
+            rerank_score = rerank_scores.get(index)
+            if rerank_score is None:
+                continue
+            item.rerank_score = rerank_score
+            item.final_score = rerank_weight * rerank_score + (1.0 - rerank_weight) * item.score
+
+        ranked.sort(
+            key=lambda x: x.final_score if x.final_score is not None else x.score,
+            reverse=True,
+        )
+        return ranked, True
 
     async def retrieve(
         self,
@@ -184,13 +254,25 @@ class RagService:
         reorder_strategy = str(getattr(config.retrieval, "reorder_strategy", "long_context") or "long_context").lower()
         if reorder_strategy not in {"none", "long_context"}:
             reorder_strategy = "long_context"
+        rerank_enabled = bool(getattr(config.retrieval, "rerank_enabled", False))
+        rerank_model = str(
+            getattr(config.retrieval, "rerank_api_model", "jina-reranker-v2-base-multilingual")
+            or "jina-reranker-v2-base-multilingual"
+        )
+        rerank_base_url = str(
+            getattr(config.retrieval, "rerank_api_base_url", "https://api.jina.ai/v1/rerank")
+            or "https://api.jina.ai/v1/rerank"
+        )
+        rerank_api_key = str(getattr(config.retrieval, "rerank_api_key", "") or "")
+        rerank_timeout_seconds = int(getattr(config.retrieval, "rerank_timeout_seconds", 20) or 20)
+        rerank_weight = float(getattr(config.retrieval, "rerank_weight", 0.7) or 0.0)
         short_query = (query or "").strip().replace("\n", " ")
         if len(short_query) > 120:
             short_query = f"{short_query[:120]}..."
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', kb_ids=%s, top_k=%s, recall_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', kb_ids=%s, top_k=%s, recall_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, provider=%s, model=%s, base_url=%s",
             short_query,
             kb_ids,
             effective_top_k,
@@ -198,6 +280,9 @@ class RagService:
             effective_threshold,
             configured_max_per_doc,
             reorder_strategy,
+            rerank_enabled,
+            rerank_model,
+            rerank_weight,
             embedding_cfg.provider,
             embedding_cfg.api_model,
             base_url or "default",
@@ -244,10 +329,26 @@ class RagService:
         # Score ranking baseline
         all_results.sort(key=lambda r: r.score, reverse=True)
         deduped_results = self._deduplicate_results(all_results)
-        diversified_results = self._apply_doc_diversity(deduped_results, configured_max_per_doc)
+        ranked_results, rerank_applied = await self._rank_candidates(
+            query=query,
+            candidates=deduped_results,
+            rerank_enabled=rerank_enabled,
+            rerank_model=rerank_model,
+            rerank_base_url=rerank_base_url,
+            rerank_api_key=rerank_api_key,
+            rerank_timeout_seconds=rerank_timeout_seconds,
+            rerank_weight=rerank_weight,
+        )
+        diversified_results = self._apply_doc_diversity(ranked_results, configured_max_per_doc)
         selected_results = diversified_results[:effective_top_k]
         reordered_results = self._reorder_results(selected_results, reorder_strategy)
-        best_score = max((item.score for item in selected_results), default=0.0)
+        best_score = max(
+            (
+                item.final_score if item.final_score is not None else item.score
+                for item in selected_results
+            ),
+            default=0.0,
+        )
         diagnostics: Dict[str, Any] = {
             "raw_count": len(all_results),
             "deduped_count": len(deduped_results),
@@ -261,6 +362,10 @@ class RagService:
             "searched_kb_count": searched_kb_count,
             "requested_kb_count": len(kb_ids),
             "best_score": best_score,
+            "rerank_enabled": rerank_enabled,
+            "rerank_applied": rerank_applied,
+            "rerank_model": rerank_model,
+            "rerank_weight": rerank_weight,
         }
 
         if reordered_results:
@@ -275,7 +380,7 @@ class RagService:
         else:
             logger.info("[RAG] retrieve done: total=0")
         logger.info(
-            "[RAG][DIAG] raw=%d deduped=%d diversified=%d selected=%d top_k=%d recall_k=%d threshold=%.3f max_per_doc=%d reorder=%s kb=%d/%d",
+            "[RAG][DIAG] raw=%d deduped=%d diversified=%d selected=%d top_k=%d recall_k=%d threshold=%.3f max_per_doc=%d reorder=%s rerank=%s/%s(%.2f) kb=%d/%d",
             diagnostics["raw_count"],
             diagnostics["deduped_count"],
             diagnostics["diversified_count"],
@@ -285,6 +390,9 @@ class RagService:
             diagnostics["score_threshold"],
             diagnostics["max_per_doc"],
             diagnostics["reorder_strategy"],
+            diagnostics["rerank_enabled"],
+            diagnostics["rerank_applied"],
+            diagnostics["rerank_weight"],
             diagnostics["searched_kb_count"],
             diagnostics["requested_kb_count"],
         )

@@ -5,7 +5,7 @@
  * Handles loading, saving, and displaying configuration forms.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { ConfigForm } from './ConfigForm';
@@ -42,7 +42,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
     throw new Error('VITE_API_URL is not configured. Set API_PORT in the root .env file.');
   }
 
-  const defaultApiClient = {
+  const defaultApiClient = useMemo(() => ({
     get: async (url: string) => {
       const response = await fetch(`${API_BASE}${url}`);
       if (!response.ok) {
@@ -61,9 +61,9 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
       }
       return response.json();
     }
-  };
+  }), [API_BASE]);
 
-  const api = apiClient || defaultApiClient;
+  const api = useMemo(() => apiClient || defaultApiClient, [apiClient, defaultApiClient]);
 
   // Load configuration
   const loadConfig = useCallback(async () => {

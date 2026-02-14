@@ -34,6 +34,12 @@ class RagConfigResponse(BaseModel):
     recall_k: int
     max_per_doc: int
     reorder_strategy: str
+    rerank_enabled: bool
+    rerank_api_model: str
+    rerank_api_base_url: str
+    rerank_api_key: str = ""
+    rerank_timeout_seconds: int
+    rerank_weight: float
     persist_directory: str
 
 
@@ -57,6 +63,12 @@ class RagConfigUpdate(BaseModel):
     recall_k: Optional[int] = Field(None, ge=1, le=200)
     max_per_doc: Optional[int] = Field(None, ge=1, le=20)
     reorder_strategy: Optional[Literal["none", "long_context"]] = None
+    rerank_enabled: Optional[bool] = None
+    rerank_api_model: Optional[str] = None
+    rerank_api_base_url: Optional[str] = None
+    rerank_api_key: Optional[str] = None
+    rerank_timeout_seconds: Optional[int] = Field(None, ge=1, le=120)
+    rerank_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     persist_directory: Optional[str] = None
 
 

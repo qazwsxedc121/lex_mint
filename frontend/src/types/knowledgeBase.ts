@@ -73,5 +73,11 @@ export interface RagConfig {
   recall_k: number;
   max_per_doc: number;
   reorder_strategy: 'none' | 'long_context';
+  rerank_enabled: boolean;
+  rerank_api_model: string;
+  rerank_api_base_url: string;
+  rerank_api_key: string;
+  rerank_timeout_seconds: number;
+  rerank_weight: number;
   persist_directory: string;
 }

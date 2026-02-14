@@ -200,6 +200,63 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       ],
       required: true,
       get helpText() { return i18n.t('settings:rag.field.reorderStrategy.help'); }
+    },
+    {
+      type: 'checkbox',
+      name: 'rerank_enabled',
+      get label() { return i18n.t('settings:rag.field.rerankEnabled'); },
+      defaultValue: false,
+      get helpText() { return i18n.t('settings:rag.field.rerankEnabled.help'); }
+    },
+    {
+      type: 'text',
+      name: 'rerank_api_model',
+      get label() { return i18n.t('settings:rag.field.rerankApiModel'); },
+      get placeholder() { return i18n.t('settings:rag.field.rerankApiModel.placeholder'); },
+      defaultValue: 'jina-reranker-v2-base-multilingual',
+      get helpText() { return i18n.t('settings:rag.field.rerankApiModel.help'); },
+      condition: (formData) => formData.rerank_enabled === true,
+    },
+    {
+      type: 'text',
+      name: 'rerank_api_base_url',
+      get label() { return i18n.t('settings:rag.field.rerankApiBaseUrl'); },
+      get placeholder() { return i18n.t('settings:rag.field.rerankApiBaseUrl.placeholder'); },
+      defaultValue: 'https://api.jina.ai/v1/rerank',
+      get helpText() { return i18n.t('settings:rag.field.rerankApiBaseUrl.help'); },
+      condition: (formData) => formData.rerank_enabled === true,
+    },
+    {
+      type: 'password',
+      name: 'rerank_api_key',
+      get label() { return i18n.t('settings:rag.field.rerankApiKey'); },
+      get placeholder() { return i18n.t('settings:rag.field.rerankApiKey.placeholder'); },
+      defaultValue: '',
+      get helpText() { return i18n.t('settings:rag.field.rerankApiKey.help'); },
+      condition: (formData) => formData.rerank_enabled === true,
+    },
+    {
+      type: 'number',
+      name: 'rerank_timeout_seconds',
+      get label() { return i18n.t('settings:rag.field.rerankTimeoutSeconds'); },
+      min: 1,
+      max: 120,
+      defaultValue: 20,
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.rerankTimeoutSeconds.help'); },
+      condition: (formData) => formData.rerank_enabled === true,
+    },
+    {
+      type: 'number',
+      name: 'rerank_weight',
+      get label() { return i18n.t('settings:rag.field.rerankWeight'); },
+      min: 0,
+      max: 1,
+      step: 0.05,
+      defaultValue: 0.7,
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.rerankWeight.help'); },
+      condition: (formData) => formData.rerank_enabled === true,
     }
   ]
 };

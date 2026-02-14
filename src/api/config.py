@@ -33,7 +33,12 @@ class Settings(BaseSettings):
     ]
 
     # CORS Configuration
-    cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ]
 
     # Logging
     log_level: str = "INFO"

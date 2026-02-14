@@ -28,6 +28,12 @@ def _build_service(*, top_k: int, score_threshold: float, recall_k: int, max_per
                 recall_k=recall_k,
                 max_per_doc=max_per_doc,
                 reorder_strategy=reorder_strategy,
+                rerank_enabled=False,
+                rerank_api_model="jina-reranker-v2-base-multilingual",
+                rerank_api_base_url="https://api.jina.ai/v1/rerank",
+                rerank_api_key="",
+                rerank_timeout_seconds=20,
+                rerank_weight=0.7,
             ),
             embedding=SimpleNamespace(
                 provider="api",
@@ -38,6 +44,7 @@ def _build_service(*, top_k: int, score_threshold: float, recall_k: int, max_per
         )
     )
     service.embedding_service = None
+    service.rerank_service = None
     return service
 
 
@@ -147,3 +154,40 @@ def test_build_rag_diagnostics_source_contains_expected_fields():
     assert source["raw_count"] == 8
     assert source["selected_count"] == 3
     assert source["reorder_strategy"] == "long_context"
+
+
+def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.rerank_enabled = True
+    service.rag_config_service.config.retrieval.rerank_weight = 1.0
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        return [
+            RagResult("chunk 1", 0.95, kb_id, "doc_1", "d1.md", 1),
+            RagResult("chunk 2", 0.90, kb_id, "doc_2", "d2.md", 2),
+            RagResult("chunk 3", 0.85, kb_id, "doc_3", "d3.md", 3),
+        ]
+
+    async def fake_rerank(**kwargs):
+        _ = kwargs
+        return {0: 0.1, 1: 0.9, 2: 0.7}
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+    service.rerank_service = SimpleNamespace(rerank=fake_rerank)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("query", ["kb_a"]))
+
+    assert [item.doc_id for item in results] == ["doc_2", "doc_3", "doc_1"]
+    assert diagnostics["rerank_enabled"] is True
+    assert diagnostics["rerank_applied"] is True

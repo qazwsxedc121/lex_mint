@@ -27,6 +27,8 @@ class SearchSource(BaseModel):
     doc_id: Optional[str] = Field(None, description="Knowledge base document ID")
     filename: Optional[str] = Field(None, description="Document filename")
     chunk_index: Optional[int] = Field(None, description="Chunk index in document")
+    rerank_score: Optional[float] = Field(None, description="Reranker score when rerank is enabled")
+    final_score: Optional[float] = Field(None, description="Final blended score after rerank")
 
     # RAG diagnostics fields (optional)
     raw_count: Optional[int] = Field(None, description="Raw retrieved chunks before processing")
@@ -38,3 +40,7 @@ class SearchSource(BaseModel):
     max_per_doc: Optional[int] = Field(None, description="Per-document cap for selected chunks")
     reorder_strategy: Optional[Literal["none", "long_context"]] = Field(None, description="Reorder strategy")
     searched_kb_count: Optional[int] = Field(None, description="Knowledge base collections searched")
+    rerank_enabled: Optional[bool] = Field(None, description="Whether rerank is enabled in retrieval config")
+    rerank_applied: Optional[bool] = Field(None, description="Whether rerank was successfully applied")
+    rerank_weight: Optional[float] = Field(None, description="Blend weight for rerank score")
+    rerank_model: Optional[str] = Field(None, description="Configured rerank model")

@@ -46,6 +46,12 @@ class RetrievalConfig:
     recall_k: int = 20
     max_per_doc: int = 2
     reorder_strategy: str = "long_context"
+    rerank_enabled: bool = False
+    rerank_api_model: str = "jina-reranker-v2-base-multilingual"
+    rerank_api_base_url: str = "https://api.jina.ai/v1/rerank"
+    rerank_api_key: str = ""
+    rerank_timeout_seconds: int = 20
+    rerank_weight: float = 0.7
 
 
 @dataclass
@@ -104,6 +110,12 @@ class RagConfigService:
                     'recall_k': 20,
                     'max_per_doc': 2,
                     'reorder_strategy': 'long_context',
+                    'rerank_enabled': False,
+                    'rerank_api_model': 'jina-reranker-v2-base-multilingual',
+                    'rerank_api_base_url': 'https://api.jina.ai/v1/rerank',
+                    'rerank_api_key': '',
+                    'rerank_timeout_seconds': 20,
+                    'rerank_weight': 0.7,
                 },
                 'storage': {
                     'persist_directory': 'data/chromadb',
@@ -159,6 +171,18 @@ class RagConfigService:
                     recall_k=retrieval_data.get('recall_k', 20),
                     max_per_doc=retrieval_data.get('max_per_doc', 2),
                     reorder_strategy=retrieval_data.get('reorder_strategy', 'long_context'),
+                    rerank_enabled=retrieval_data.get('rerank_enabled', False),
+                    rerank_api_model=retrieval_data.get(
+                        'rerank_api_model',
+                        'jina-reranker-v2-base-multilingual',
+                    ),
+                    rerank_api_base_url=retrieval_data.get(
+                        'rerank_api_base_url',
+                        'https://api.jina.ai/v1/rerank',
+                    ),
+                    rerank_api_key=retrieval_data.get('rerank_api_key', ''),
+                    rerank_timeout_seconds=retrieval_data.get('rerank_timeout_seconds', 20),
+                    rerank_weight=retrieval_data.get('rerank_weight', 0.7),
                 ),
                 storage=StorageConfig(
                     persist_directory=storage_data.get('persist_directory', 'data/chromadb'),
@@ -220,6 +244,12 @@ class RagConfigService:
             'recall_k': self.config.retrieval.recall_k,
             'max_per_doc': self.config.retrieval.max_per_doc,
             'reorder_strategy': self.config.retrieval.reorder_strategy,
+            'rerank_enabled': self.config.retrieval.rerank_enabled,
+            'rerank_api_model': self.config.retrieval.rerank_api_model,
+            'rerank_api_base_url': self.config.retrieval.rerank_api_base_url,
+            'rerank_api_key': self.config.retrieval.rerank_api_key,
+            'rerank_timeout_seconds': self.config.retrieval.rerank_timeout_seconds,
+            'rerank_weight': self.config.retrieval.rerank_weight,
             'persist_directory': self.config.storage.persist_directory,
         }
 
@@ -245,6 +275,12 @@ class RagConfigService:
             'recall_k': ('retrieval', 'recall_k'),
             'max_per_doc': ('retrieval', 'max_per_doc'),
             'reorder_strategy': ('retrieval', 'reorder_strategy'),
+            'rerank_enabled': ('retrieval', 'rerank_enabled'),
+            'rerank_api_model': ('retrieval', 'rerank_api_model'),
+            'rerank_api_base_url': ('retrieval', 'rerank_api_base_url'),
+            'rerank_api_key': ('retrieval', 'rerank_api_key'),
+            'rerank_timeout_seconds': ('retrieval', 'rerank_timeout_seconds'),
+            'rerank_weight': ('retrieval', 'rerank_weight'),
             'persist_directory': ('storage', 'persist_directory'),
         }
 

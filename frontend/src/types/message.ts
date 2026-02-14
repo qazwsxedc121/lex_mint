@@ -41,6 +41,8 @@ export interface SearchSource {
   doc_id?: string;
   filename?: string;
   chunk_index?: number;
+  rerank_score?: number;
+  final_score?: number;
   raw_count?: number;
   deduped_count?: number;
   diversified_count?: number;
@@ -51,6 +53,10 @@ export interface SearchSource {
   max_per_doc?: number;
   reorder_strategy?: 'none' | 'long_context';
   searched_kb_count?: number;
+  rerank_enabled?: boolean;
+  rerank_applied?: boolean;
+  rerank_weight?: number;
+  rerank_model?: string;
 }
 
 export interface UploadedFile {
