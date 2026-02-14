@@ -17,6 +17,7 @@ import {
   TrashIcon,
   CheckIcon,
   LanguageIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { Brain } from 'lucide-react';
 import { useChatServices } from '../services/ChatServiceProvider';
@@ -43,6 +44,17 @@ const REASONING_EFFORT_OPTIONS = [
 // Shared toolbar button classes
 const TOOLBAR_BTN = 'flex items-center justify-center p-1.5 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 const TOOLBAR_BTN_DEFAULT = `${TOOLBAR_BTN} bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600`;
+
+const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'Chinese', label: 'Chinese' },
+  { value: 'English', label: 'English' },
+  { value: 'Japanese', label: 'Japanese' },
+  { value: 'Korean', label: 'Korean' },
+  { value: 'French', label: 'French' },
+  { value: 'German', label: 'German' },
+  { value: 'Spanish', label: 'Spanish' },
+];
 
 // Brain icon color by reasoning level
 const getReasoningIconColor = (effort: string): string => {
@@ -238,6 +250,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [blocks, setBlocks] = useState<ChatBlock[]>([]);
   const [isTranslatingInput, setIsTranslatingInput] = useState(false);
+  const [showTranslateInputMenu, setShowTranslateInputMenu] = useState(false);
+  const [selectedInputTranslateTarget, setSelectedInputTranslateTarget] = useState('auto');
   const [pendingCompareModelIds, setPendingCompareModelIds] = useState<string[]>([]);
 
   // File reference state
@@ -255,6 +269,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const templateSearchInputRef = useRef<HTMLInputElement>(null);
+  const translateInputMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     writeStoredTemplateIds(TEMPLATE_PINNED_STORAGE_KEY, pinnedTemplateIds);
@@ -263,6 +278,19 @@ export const InputBox: React.FC<InputBoxProps> = ({
   useEffect(() => {
     writeStoredTemplateIds(TEMPLATE_RECENT_STORAGE_KEY, recentTemplateIds);
   }, [recentTemplateIds]);
+
+  useEffect(() => {
+    if (!showTranslateInputMenu) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (translateInputMenuRef.current && !translateInputMenuRef.current.contains(event.target as Node)) {
+        setShowTranslateInputMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showTranslateInputMenu]);
 
   const recordTemplateUsage = useCallback((templateId: string) => {
     setRecentTemplateIds((prev) => [templateId, ...prev.filter((id) => id !== templateId)].slice(0, MAX_RECENT_TEMPLATE_COUNT));
@@ -851,9 +879,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowClearConfirm(false);
   };
 
-  const handleTranslateInput = async () => {
+  const handleTranslateInput = async (targetLanguage?: string) => {
     if (isTranslatingInput || !input.trim()) return;
     setIsTranslatingInput(true);
+    setShowTranslateInputMenu(false);
     setSlashCommand(null);
     setSlashMenuIndex(0);
     let translated = '';
@@ -869,10 +898,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           console.error('Input translation failed:', error);
           setIsTranslatingInput(false);
         },
-        undefined, // targetLanguage
-        undefined, // modelId
-        undefined, // abortControllerRef
-        true,      // useInputTargetLanguage
+        targetLanguage,
       );
     } catch (err) {
       console.error('Input translation failed:', err);
@@ -889,6 +915,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const currentOption = REASONING_EFFORT_OPTIONS.find(o => o.value === reasoningEffort) || REASONING_EFFORT_OPTIONS[0];
   const blocksMessage = buildBlocksMessage();
   const canSend = !!input.trim() || !!blocksMessage || attachments.length > 0;
+  const selectedInputTranslateLabel = useMemo(
+    () => TRANSLATION_TARGET_OPTIONS.find((option) => option.value === selectedInputTranslateTarget)?.label || 'Auto',
+    [selectedInputTranslateTarget]
+  );
   const pinnedTemplateSet = useMemo(() => new Set(pinnedTemplateIds), [pinnedTemplateIds]);
   const recentTemplateSet = useMemo(() => new Set(recentTemplateIds), [recentTemplateIds]);
 
@@ -1174,21 +1204,59 @@ export const InputBox: React.FC<InputBoxProps> = ({
           )}
         </div>
 
-        {/* Translate input button */}
-        <button
-          type="button"
-          onClick={handleTranslateInput}
-          disabled={disabled || isStreaming || isTranslatingInput || !input.trim()}
-          data-name="input-box-translate-toggle"
-          className={`${TOOLBAR_BTN} ${
-            isTranslatingInput
-              ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
-              : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-          title={isTranslatingInput ? t('input.translating') : t('input.translateInput')}
-        >
-          <LanguageIcon className={`h-4 w-4 ${isTranslatingInput ? 'animate-pulse' : ''}`} />
-        </button>
+        {/* Translate input button with target selector */}
+        <div data-name="input-box-translate-control" ref={translateInputMenuRef} className="relative">
+          <div
+            className={`group relative flex rounded-md border transition-colors ${
+              isTranslatingInput
+                ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => handleTranslateInput(selectedInputTranslateTarget === 'auto' ? undefined : selectedInputTranslateTarget)}
+              disabled={disabled || isStreaming || isTranslatingInput || !input.trim()}
+              data-name="input-box-translate-toggle"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-l-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title={`${isTranslatingInput ? t('input.translating') : t('input.translateInput')} (${selectedInputTranslateLabel})`}
+            >
+              <LanguageIcon className={`h-4 w-4 ${isTranslatingInput ? 'animate-pulse' : ''}`} />
+              <span className="text-[10px] font-medium leading-none">{selectedInputTranslateLabel}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTranslateInputMenu((prev) => !prev)}
+              disabled={disabled || isStreaming || isTranslatingInput}
+              className="px-1.5 py-1.5 border-l border-gray-300/80 dark:border-gray-600/80 rounded-r-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Select translation target"
+            >
+              <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showTranslateInputMenu ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+
+          {showTranslateInputMenu && (
+            <div data-name="input-box-translate-menu" className="absolute z-20 mt-1 min-w-[132px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+              {TRANSLATION_TARGET_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    setSelectedInputTranslateTarget(option.value);
+                    setShowTranslateInputMenu(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                    selectedInputTranslateTarget === option.value
+                      ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300'
+                      : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* File upload button */}
         <button

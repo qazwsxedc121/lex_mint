@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import AsyncIterator, Union, Dict, Any
 
+from src.api.services.language_detection_service import LanguageDetectionService
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.translation_config_service import TranslationConfigService
 from src.api.services.local_llama_cpp_service import LocalLlamaCppService
@@ -18,12 +19,48 @@ class TranslationService:
     def __init__(self):
         self.config_service = TranslationConfigService()
 
+    @classmethod
+    def _resolve_auto_target_language(
+        cls,
+        text: str,
+        config,
+        detected_language: str | None = None,
+    ) -> tuple[str | None, str | None]:
+        """Auto route between configured language pair based on detected source language."""
+        if detected_language is None:
+            detected_raw, _, _ = LanguageDetectionService.detect_language(text)
+            detected_language = LanguageDetectionService.normalize_language_hint(detected_raw)
+
+        if detected_language is None:
+            return None, None
+
+        response_language_code = LanguageDetectionService.normalize_language_hint(
+            config.target_language
+        )
+        input_language_code = LanguageDetectionService.normalize_language_hint(
+            config.input_target_language
+        )
+
+        if not response_language_code or not input_language_code:
+            return None, detected_language
+
+        if response_language_code == input_language_code:
+            return None, detected_language
+
+        if detected_language == response_language_code:
+            return config.input_target_language, detected_language
+        if detected_language == input_language_code:
+            return config.target_language, detected_language
+
+        return None, detected_language
+
     async def translate_stream(
         self,
         text: str,
         target_language: str = None,
         model_id: str = None,
         use_input_target_language: bool = False,
+        auto_detect_language: bool = True,
     ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """Translate text via LLM streaming.
 
@@ -32,6 +69,7 @@ class TranslationService:
             target_language: Override target language (defaults to config)
             model_id: Override model ID (defaults to config)
             use_input_target_language: If True, use input_target_language from config
+            auto_detect_language: If True, auto route between configured language pair
 
         Yields:
             String tokens during streaming, or dict events at the end.
@@ -40,9 +78,35 @@ class TranslationService:
         self.config_service.reload_config()
         config = self.config_service.config
 
-        # Determine target language (param > config)
+        detected_language: str | None = None
+        detected_confidence: float | None = None
+        detector_name: str | None = None
+        if auto_detect_language:
+            detected_raw, detected_confidence, detector_name = (
+                LanguageDetectionService.detect_language(text)
+            )
+            detected_language = LanguageDetectionService.normalize_language_hint(detected_raw)
+
+        # Determine target language (explicit param > auto detect > legacy config path)
         if target_language:
             effective_target_language = target_language
+        elif auto_detect_language:
+            auto_target_language, _ = self._resolve_auto_target_language(
+                text,
+                config,
+                detected_language=detected_language,
+            )
+            if auto_target_language:
+                effective_target_language = auto_target_language
+                logger.info(
+                    "Auto language routing: detected=%s target=%s detector=%s conf=%s",
+                    detected_language,
+                    effective_target_language,
+                    detector_name or "unknown",
+                    f"{detected_confidence:.3f}" if detected_confidence is not None else "n/a",
+                )
+            else:
+                effective_target_language = config.target_language
         elif use_input_target_language:
             effective_target_language = config.input_target_language
         else:
@@ -57,6 +121,14 @@ class TranslationService:
             target_language=effective_target_language,
         )
 
+        if detected_language:
+            yield {
+                "type": "language_detected",
+                "language": detected_language,
+                "confidence": detected_confidence,
+                "detector": detector_name,
+            }
+
         if config.provider == "local_gguf":
             try:
                 local_llm = LocalLlamaCppService(
@@ -70,8 +142,15 @@ class TranslationService:
                 return
 
             actual_model_id = f"local_gguf:{local_llm.model_path.name}"
-            print(f"[TRANSLATE] Starting local GGUF translation to {effective_target_language} (model: {actual_model_id})")
-            logger.info(f"Local GGUF translation started: target={effective_target_language}, model={actual_model_id}")
+            print(
+                f"[TRANSLATE] Starting local GGUF translation to "
+                f"{effective_target_language} (model: {actual_model_id})"
+            )
+            logger.info(
+                "Local GGUF translation started: target=%s, model=%s",
+                effective_target_language,
+                actual_model_id,
+            )
 
             try:
                 full_response = ""
@@ -94,7 +173,12 @@ class TranslationService:
 
                 print(f"[TRANSLATE] Translation complete: {len(full_response)} chars")
                 logger.info(f"Translation complete: {len(full_response)} chars")
-                yield {"type": "translation_complete"}
+                yield {
+                    "type": "translation_complete",
+                    "detected_source_language": detected_language,
+                    "detected_source_confidence": detected_confidence,
+                    "effective_target_language": effective_target_language,
+                }
                 return
             except Exception as e:
                 print(f"[ERROR] Translation failed: {str(e)}")
@@ -104,7 +188,9 @@ class TranslationService:
 
         # Get model and adapter
         model_service = ModelConfigService()
-        model_config, provider_config = model_service.get_model_and_provider_sync(effective_model_id)
+        model_config, provider_config = model_service.get_model_and_provider_sync(
+            effective_model_id
+        )
 
         adapter = model_service.get_adapter_for_provider(provider_config)
 
@@ -124,8 +210,15 @@ class TranslationService:
         )
 
         actual_model_id = f"{provider_config.id}:{model_config.id}"
-        print(f"[TRANSLATE] Starting translation to {effective_target_language} (model: {actual_model_id})")
-        logger.info(f"Translation started: target={effective_target_language}, model={actual_model_id}")
+        print(
+            f"[TRANSLATE] Starting translation to {effective_target_language} "
+            f"(model: {actual_model_id})"
+        )
+        logger.info(
+            "Translation started: target=%s, model=%s",
+            effective_target_language,
+            actual_model_id,
+        )
 
         from langchain_core.messages import HumanMessage as HMsg
 
@@ -152,6 +245,9 @@ class TranslationService:
 
             yield {
                 "type": "translation_complete",
+                "detected_source_language": detected_language,
+                "detected_source_confidence": detected_confidence,
+                "effective_target_language": effective_target_language,
             }
 
         except Exception as e:

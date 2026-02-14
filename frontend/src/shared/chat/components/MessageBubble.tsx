@@ -50,6 +50,17 @@ interface ParsedUserBlock {
   attachmentLabel?: string;
 }
 
+const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'Chinese', label: 'Chinese' },
+  { value: 'English', label: 'English' },
+  { value: 'Japanese', label: 'Japanese' },
+  { value: 'Korean', label: 'Korean' },
+  { value: 'French', label: 'French' },
+  { value: 'German', label: 'German' },
+  { value: 'Spanish', label: 'Spanish' },
+];
+
 const normalizeNewlines = (text: string) => text.replace(/\r\n/g, '\n');
 
 const parseUserBlocks = (rawContent: string): { blocks: ParsedUserBlock[]; message: string } => {
@@ -275,7 +286,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [translatedText, setTranslatedText] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [showTranslateMenu, setShowTranslateMenu] = useState(false);
+  const [selectedTranslateTarget, setSelectedTranslateTarget] = useState('auto');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const translateMenuRef = useRef<HTMLDivElement>(null);
   const { isPlaying: ttsPlaying, isLoading: ttsLoading, speak: ttsSpeak, stop: ttsStop } = useTTS();
   const fileReferencePreviewConfig = useSyncExternalStore(
     subscribeFileReferencePreviewConfig,
@@ -310,6 +324,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   useEffect(() => {
     void ensureFileReferencePreviewConfigLoaded();
   }, []);
+
+  useEffect(() => {
+    if (!showTranslateMenu) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (translateMenuRef.current && !translateMenuRef.current.contains(event.target as Node)) {
+        setShowTranslateMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showTranslateMenu]);
 
   const canEdit = !isStreaming && !isSeparator && !isSummary && (isUser ? (onEdit || onSaveOnly) : onSaveOnly);
   const canRegenerate = !isStreaming && onRegenerate && message.content.trim() !== '';
@@ -397,11 +424,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
-  const handleTranslate = async () => {
+  const handleTranslate = async (targetLanguage?: string) => {
     if (isTranslating) return;
     setTranslatedText('');
     setIsTranslating(true);
     setShowTranslation(true);
+    setShowTranslateMenu(false);
     try {
       await api.translateText(
         mainContent,
@@ -410,13 +438,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         (error) => {
           console.error('Translation failed:', error);
           setIsTranslating(false);
-        }
+        },
+        targetLanguage,
       );
     } catch (err) {
       console.error('Translation failed:', err);
       setIsTranslating(false);
     }
   };
+
+  const selectedTranslateLabel = useMemo(
+    () => TRANSLATION_TARGET_OPTIONS.find((option) => option.value === selectedTranslateTarget)?.label || 'Auto',
+    [selectedTranslateTarget]
+  );
 
   const handleDismissTranslation = () => {
     setShowTranslation(false);
@@ -993,21 +1027,58 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
             {/* Translate button (assistant messages only) */}
             {!isUser && !isStreaming && mainContent.trim() && (
-              <button
-                onClick={handleTranslate}
-                disabled={isTranslating}
-                className={`group relative p-1 rounded border transition-colors ${
-                  isTranslating
-                    ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title="Translate"
-              >
-                <LanguageIcon className={`w-4 h-4 ${isTranslating ? 'animate-pulse' : ''}`} />
-                <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  Translate
-                </span>
-              </button>
+              <div data-name="message-bubble-translate-control" ref={translateMenuRef} className="relative">
+                <div
+                  className={`group relative flex rounded border overflow-hidden transition-colors ${
+                    isTranslating
+                      ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 hover:text-teal-700 dark:hover:text-teal-300 hover:border-teal-200 dark:hover:border-teal-800'
+                  }`}
+                >
+                  <button
+                    onClick={() => handleTranslate(selectedTranslateTarget === 'auto' ? undefined : selectedTranslateTarget)}
+                    disabled={isTranslating}
+                    className="px-1.5 py-1 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={`Translate (${selectedTranslateLabel})`}
+                  >
+                    <LanguageIcon className={`w-4 h-4 ${isTranslating ? 'animate-pulse' : ''}`} />
+                    <span className="text-[10px] font-medium leading-none">{selectedTranslateLabel}</span>
+                  </button>
+                  <button
+                    onClick={() => setShowTranslateMenu((prev) => !prev)}
+                    disabled={isTranslating}
+                    className="px-1 py-1 border-l border-gray-300/80 dark:border-gray-600/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Select translation target"
+                  >
+                    <ChevronDownIcon className={`w-3 h-3 transition-transform ${showTranslateMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 text-xs text-white bg-gray-900 dark:bg-gray-700 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    {`Translate (${selectedTranslateLabel})`}
+                  </span>
+                </div>
+
+                {showTranslateMenu && (
+                  <div className="absolute z-20 mt-1 min-w-[132px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
+                    {TRANSLATION_TARGET_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTranslateTarget(option.value);
+                          setShowTranslateMenu(false);
+                        }}
+                        className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                          selectedTranslateTarget === option.value
+                            ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* TTS button (assistant messages only) */}

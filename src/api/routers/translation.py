@@ -11,6 +11,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
+from ..services.language_detection_service import LanguageDetectionService
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["translation"])
 
@@ -21,6 +23,34 @@ class TranslateRequest(BaseModel):
     target_language: Optional[str] = None
     model_id: Optional[str] = None
     use_input_target_language: bool = False
+    auto_detect_language: bool = True
+
+
+class DetectLanguageRequest(BaseModel):
+    """Request model for language detection endpoint."""
+    text: str
+
+
+class DetectLanguageResponse(BaseModel):
+    """Response model for language detection endpoint."""
+    language: Optional[str] = None
+    confidence: Optional[float] = None
+    detector: str
+
+
+@router.post("/translate/detect-language", response_model=DetectLanguageResponse)
+async def detect_language(request: DetectLanguageRequest):
+    """Detect source language from a piece of text."""
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    language, confidence, detector = LanguageDetectionService.detect_language(request.text)
+    normalized_language = LanguageDetectionService.normalize_language_hint(language)
+    return DetectLanguageResponse(
+        language=normalized_language,
+        confidence=confidence,
+        detector=detector,
+    )
 
 
 @router.post("/translate")
@@ -48,6 +78,7 @@ async def translate_text(request: TranslateRequest):
                 target_language=request.target_language,
                 model_id=request.model_id,
                 use_input_target_language=request.use_input_target_language,
+                auto_detect_language=request.auto_detect_language,
             ):
                 if isinstance(chunk, dict):
                     data = json.dumps(chunk, ensure_ascii=False)
