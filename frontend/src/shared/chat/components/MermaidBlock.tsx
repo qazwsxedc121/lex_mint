@@ -41,7 +41,10 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ value }) => {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track the latest value to avoid stale renders after debounce
   const latestValueRef = useRef(value);
-  latestValueRef.current = value;
+
+  useEffect(() => {
+    latestValueRef.current = value;
+  }, [value]);
 
   // Stable mermaid ID derived from useId (strip colons for valid HTML id)
   const mermaidId = `mermaid-${instanceId.replace(/:/g, '')}`;

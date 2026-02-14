@@ -183,7 +183,7 @@ export const ParamOverridePopover: React.FC<ParamOverridePopoverProps> = ({
   const hasDraftOverrides = Object.keys(draft).length > 0;
 
   return (
-    <div data-name="param-override-root">
+    <div data-name="param-override-root" data-session-id={sessionId}>
       {/* Trigger button */}
       <button
         ref={buttonRef}

@@ -12,7 +12,6 @@ import { css } from '@codemirror/lang-css';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { openSearchPanel, search } from '@codemirror/search';
 import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
@@ -355,7 +354,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   }, []);
 
   // Save handler
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!content || !hasUnsavedChanges) return;
 
     setSaving(true);
@@ -378,7 +377,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     } finally {
       setSaving(false);
     }
-  };
+  }, [content, hasUnsavedChanges, onContentSaved, projectId, value]);
 
   // Cancel handler
   const handleCancel = () => {
@@ -397,7 +396,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [value, originalContent, content, projectId]);
+  }, [handleSave]);
 
   // Detect dark mode from system preference (Tailwind defaults to media strategy)
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -472,7 +471,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const lineWrappingExtension = useMemo(() => EditorView.lineWrapping, []);
 
   // Callback for when editor is created
-  const onEditorCreate = useCallback((view: EditorView, _state: EditorState) => {
+  const onEditorCreate = useCallback((view: EditorView) => {
     editorViewRef.current = view;
     updateUndoRedoState();
 

@@ -81,7 +81,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
       const message = err instanceof Error ? err.message : t('documents.failedToLoad');
       setError(message);
     }
-  }, [kbId]);
+  }, [kbId, t]);
 
   useEffect(() => {
     setLoading(true);

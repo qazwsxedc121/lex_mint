@@ -175,7 +175,7 @@ export function CrudTable<T = any>({
     }
 
     return cols;
-  }, [config, defaultItemId, onEdit, onDelete, onSetDefault, context, getItemId]);
+  }, [config, defaultItemId, onEdit, onDelete, onSetDefault, context, getItemId, t]);
 
   return (
     <div data-name="crud-table">

@@ -522,11 +522,19 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     setCreateError(null);
     try {
       if (createTarget.kind === 'file') {
-        const createdPath = await onCreateFile(createTarget.directoryPath, trimmedName);
+        const createFileFn = onCreateFile;
+        if (!createFileFn) {
+          throw new Error(t('fileTree.error.fileCreationUnavailable'));
+        }
+        const createdPath = await createFileFn(createTarget.directoryPath, trimmedName);
         handleCloseCreate();
         onFileSelect(createdPath);
       } else {
-        await onCreateFolder(createTarget.directoryPath, trimmedName);
+        const createFolderFn = onCreateFolder;
+        if (!createFolderFn) {
+          throw new Error(t('fileTree.error.folderCreationUnavailable'));
+        }
+        await createFolderFn(createTarget.directoryPath, trimmedName);
         handleCloseCreate();
       }
     } catch (err: any) {

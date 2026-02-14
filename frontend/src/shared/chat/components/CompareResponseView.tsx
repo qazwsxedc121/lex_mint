@@ -68,12 +68,14 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
     setViewMode(next);
     try {
       localStorage.setItem(VIEW_MODE_KEY, next);
-    } catch {}
+    } catch {
+      // Ignore localStorage write failures.
+    }
   };
 
   const gridCols = responses.length <= 2 ? 'grid-cols-2' : 'grid-cols-3';
 
-  const renderResponsePanel = (response: CompareModelResponse, index: number) => {
+  const renderResponsePanel = (response: CompareModelResponse) => {
     const isEmpty = !response.content && !response.error;
     const isGenerating = isStreaming && isEmpty;
 
@@ -138,12 +140,12 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
       {viewMode === 'side-by-side' ? (
         /* Side-by-side layout */
         <div className={`grid ${gridCols} gap-4`}>
-          {responses.map((response, index) => (
+          {responses.map((response) => (
             <div
               key={response.model_id}
               className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800/50"
             >
-              {renderResponsePanel(response, index)}
+              {renderResponsePanel(response)}
             </div>
           ))}
         </div>
@@ -168,7 +170,7 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
             ))}
           </div>
           <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800/50">
-            {responses[activeTab] && renderResponsePanel(responses[activeTab], activeTab)}
+            {responses[activeTab] && renderResponsePanel(responses[activeTab])}
           </div>
         </div>
       )}

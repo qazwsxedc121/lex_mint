@@ -24,6 +24,9 @@ export const ContextUsageBar: React.FC<ContextUsageBarProps> = ({
   }
 
   const percentage = Math.min((promptTokens / contextBudget) * 100, 100);
+  const contextLabel = contextWindow && contextWindow > 0
+    ? `${formatNumber(contextBudget)} / ${formatNumber(contextWindow)}`
+    : formatNumber(contextBudget);
 
   // Color: green < 50%, yellow 50-75%, red > 75%
   let barColor: string;
@@ -49,7 +52,7 @@ export const ContextUsageBar: React.FC<ContextUsageBarProps> = ({
           />
         </div>
         <span className={`text-xs whitespace-nowrap ${textColor}`}>
-          Context: {formatNumber(promptTokens)} / {formatNumber(contextBudget)} ({percentage.toFixed(0)}%)
+          Context: {formatNumber(promptTokens)} / {contextLabel} ({percentage.toFixed(0)}%)
         </span>
       </div>
     </div>

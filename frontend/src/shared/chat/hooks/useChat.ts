@@ -2,7 +2,7 @@
  * Custom hook for managing chat functionality.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
@@ -41,7 +41,7 @@ export function useChat(sessionId: string | null) {
   const isProcessingRef = useRef(false);
 
   // Extract loadSession as a standalone function so it can be called after sending messages
-  const loadSession = async () => {
+  const loadSession = useCallback(async () => {
     if (!sessionId) {
       setMessages([]);
       setCurrentModelId(null);
@@ -108,12 +108,12 @@ export function useChat(sessionId: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api, sessionId]);
 
   // Load session messages when sessionId changes
   useEffect(() => {
     loadSession();
-  }, [sessionId]);
+  }, [loadSession]);
 
   // Replace optimistic user message content with server-stored content
   // (important for @file injected blocks).

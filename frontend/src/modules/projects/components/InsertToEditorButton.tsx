@@ -10,7 +10,6 @@ import { useProjectEditor } from '../contexts/ProjectEditorContext';
 
 interface InsertToEditorButtonProps {
   content: string;
-  messageRole: string;
 }
 
 /**
@@ -22,7 +21,6 @@ function removeThinkingBlocks(content: string): string {
 
 export const InsertToEditorButton: React.FC<InsertToEditorButtonProps> = ({
   content,
-  messageRole,
 }) => {
   const { t } = useTranslation('projects');
   const editorContext = useProjectEditor();

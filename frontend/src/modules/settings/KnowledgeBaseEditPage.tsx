@@ -45,7 +45,7 @@ export const KnowledgeBaseEditPage: React.FC = () => {
       setShowErrors(false);
       setSuccessMessage(null);
     }
-  }, [item]);
+  }, [fields, item]);
 
   const handleBack = () => {
     if (isSubmitting) return;

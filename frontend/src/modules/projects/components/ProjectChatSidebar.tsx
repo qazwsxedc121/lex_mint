@@ -3,7 +3,7 @@
  * Manages project sessions and provides ChatView with project context
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatView, useChatServices } from '../../../shared/chat';
 import type { Message } from '../../../types/message';
@@ -203,8 +203,8 @@ function ChatServiceConsumer({
   };
 
   // Custom message actions for ChatView
-  const customMessageActions = useCallback((message: Message, messageId: string) => (
-    <InsertToEditorButton content={message.content} messageRole={message.role} />
+  const customMessageActions = useCallback((message: Message) => (
+    <InsertToEditorButton content={message.content} />
   ), []);
 
   if (sessionsLoading && sessions.length === 0) {

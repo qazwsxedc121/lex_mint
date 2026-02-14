@@ -5,7 +5,7 @@
  * Handles loading, saving, and displaying configuration forms.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
 import { ConfigForm } from './ConfigForm';
@@ -66,7 +66,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   const api = apiClient || defaultApiClient;
 
   // Load configuration
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -92,12 +92,12 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [api, config, t]);
 
   // Initial load
   useEffect(() => {
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   // Handle form submit
   const handleSubmit = async (e: React.FormEvent) => {

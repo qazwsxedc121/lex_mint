@@ -4,7 +4,7 @@
  * Full-page editor for a CRUD item.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
@@ -50,7 +50,7 @@ export function CrudEditPage<T = any>({
     [hook.items, getItemId, itemId]
   );
 
-  const initializeFormData = (source?: T) => {
+  const initializeFormData = useCallback((source?: T) => {
     const data: any = source ? { ...source } : {};
 
     fields.forEach((field) => {
@@ -63,7 +63,7 @@ export function CrudEditPage<T = any>({
     });
 
     return data;
-  };
+  }, [fields]);
 
   useEffect(() => {
     if (item) {
@@ -71,7 +71,7 @@ export function CrudEditPage<T = any>({
       setShowErrors(false);
       setSuccessMessage(null);
     }
-  }, [item]);
+  }, [item, initializeFormData]);
 
   const handleBack = () => {
     if (isSubmitting) return;
@@ -81,6 +81,7 @@ export function CrudEditPage<T = any>({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setShowErrors(true);
+    if (!item) return;
 
     if (config.validateForm) {
       const error = config.validateForm(formData, true);
