@@ -43,6 +43,9 @@ class ChunkingConfig:
 class RetrievalConfig:
     top_k: int = 5
     score_threshold: float = 0.3
+    recall_k: int = 20
+    max_per_doc: int = 2
+    reorder_strategy: str = "long_context"
 
 
 @dataclass
@@ -98,6 +101,9 @@ class RagConfigService:
                 'retrieval': {
                     'top_k': 5,
                     'score_threshold': 0.3,
+                    'recall_k': 20,
+                    'max_per_doc': 2,
+                    'reorder_strategy': 'long_context',
                 },
                 'storage': {
                     'persist_directory': 'data/chromadb',
@@ -150,6 +156,9 @@ class RagConfigService:
                 retrieval=RetrievalConfig(
                     top_k=retrieval_data.get('top_k', 5),
                     score_threshold=retrieval_data.get('score_threshold', 0.3),
+                    recall_k=retrieval_data.get('recall_k', 20),
+                    max_per_doc=retrieval_data.get('max_per_doc', 2),
+                    reorder_strategy=retrieval_data.get('reorder_strategy', 'long_context'),
                 ),
                 storage=StorageConfig(
                     persist_directory=storage_data.get('persist_directory', 'data/chromadb'),
@@ -208,6 +217,9 @@ class RagConfigService:
             'chunk_overlap': self.config.chunking.chunk_overlap,
             'top_k': self.config.retrieval.top_k,
             'score_threshold': self.config.retrieval.score_threshold,
+            'recall_k': self.config.retrieval.recall_k,
+            'max_per_doc': self.config.retrieval.max_per_doc,
+            'reorder_strategy': self.config.retrieval.reorder_strategy,
             'persist_directory': self.config.storage.persist_directory,
         }
 
@@ -230,6 +242,9 @@ class RagConfigService:
             'chunk_overlap': ('chunking', 'chunk_overlap'),
             'top_k': ('retrieval', 'top_k'),
             'score_threshold': ('retrieval', 'score_threshold'),
+            'recall_k': ('retrieval', 'recall_k'),
+            'max_per_doc': ('retrieval', 'max_per_doc'),
+            'reorder_strategy': ('retrieval', 'reorder_strategy'),
             'persist_directory': ('storage', 'persist_directory'),
         }
 

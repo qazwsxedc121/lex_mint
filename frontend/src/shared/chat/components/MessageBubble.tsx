@@ -17,6 +17,7 @@ import { CompareResponseView } from './CompareResponseView';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
+import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
 import {
   buildFileReferencePreview,
   ensureFileReferencePreviewConfigLoaded,
@@ -309,8 +310,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const displayUserMessage = userBlocks.length > 0 ? userMessage : message.content;
   const sources = message.sources || [];
+  const { enabled: developerModeEnabled } = useDeveloperMode();
+  const ragDiagnostics = developerModeEnabled
+    ? sources.filter((source) => source.type === 'rag_diagnostics')
+    : [];
   const ragSources = sources.filter((source) => source.type === 'rag');
-  const otherSources = sources.filter((source) => source.type !== 'rag');
+  const otherSources = sources.filter((source) => source.type !== 'rag' && source.type !== 'rag_diagnostics');
+  const latestRagDiagnostics = ragDiagnostics.length > 0 ? ragDiagnostics[ragDiagnostics.length - 1] : null;
   const formatRagSnippet = (content?: string) => {
     if (!content) return '';
     const normalized = content.replace(/\s+/g, ' ').trim();
@@ -811,6 +817,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 />
               ) : (
                 <div className="prose prose-sm max-w-none dark:prose-invert">
+                  {latestRagDiagnostics && (
+                    <div data-name="message-bubble-rag-diagnostics" className="not-prose mb-3 rounded-md border border-amber-200 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-900/30">
+                      <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
+                        <span>RAG Diagnostics</span>
+                        <span>{latestRagDiagnostics.reorder_strategy || 'long_context'}</span>
+                      </div>
+                      <div className="px-3 pb-2 text-[11px] text-amber-800/90 dark:text-amber-200/90 space-y-1">
+                        <div>
+                          raw {latestRagDiagnostics.raw_count ?? 0}{' -> '}dedup {latestRagDiagnostics.deduped_count ?? 0}{' -> '}diversified {latestRagDiagnostics.diversified_count ?? 0}{' -> '}selected {latestRagDiagnostics.selected_count ?? 0}
+                        </div>
+                        <div>
+                          top_k {latestRagDiagnostics.top_k ?? '-'} | recall_k {latestRagDiagnostics.recall_k ?? '-'} | max_per_doc {latestRagDiagnostics.max_per_doc ?? '-'} | threshold {latestRagDiagnostics.score_threshold != null ? latestRagDiagnostics.score_threshold.toFixed(2) : '-'} | kb {latestRagDiagnostics.searched_kb_count ?? 0}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {ragSources.length > 0 && (
                     <div data-name="message-bubble-rag-sources" className="not-prose mb-3 rounded-md border border-emerald-200 dark:border-emerald-700 bg-emerald-50/60 dark:bg-emerald-900/30">
                       <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-emerald-800 dark:text-emerald-200">

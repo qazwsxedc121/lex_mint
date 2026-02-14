@@ -70,5 +70,8 @@ export interface RagConfig {
   chunk_overlap: number;
   top_k: number;
   score_threshold: number;
+  recall_k: number;
+  max_per_doc: number;
+  reorder_strategy: 'none' | 'long_context';
   persist_directory: string;
 }

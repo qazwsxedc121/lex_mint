@@ -350,10 +350,13 @@ class AgentService:
                 _assistant_obj = await _assistant_svc.get_assistant(assistant_id)
                 if _assistant_obj and getattr(_assistant_obj, 'knowledge_base_ids', None):
                     rag_service = RagService()
-                    rag_results = await rag_service.retrieve(raw_user_message, _assistant_obj.knowledge_base_ids)
+                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
+                        raw_user_message, _assistant_obj.knowledge_base_ids
+                    )
+                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
                     if rag_results:
                         rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources = [r.to_dict() for r in rag_results]
+                        rag_sources.extend([r.to_dict() for r in rag_results])
                         if rag_context:
                             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
             except Exception as e:
@@ -644,10 +647,13 @@ class AgentService:
                     _rag_assistant = await _rag_svc.get_assistant(assistant_id)
                 if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
                     rag_service = RagService()
-                    rag_results = await rag_service.retrieve(raw_user_message, _rag_assistant.knowledge_base_ids)
+                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
+                        raw_user_message, _rag_assistant.knowledge_base_ids
+                    )
+                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
                     if rag_results:
                         rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources = [r.to_dict() for r in rag_results]
+                        rag_sources.extend([r.to_dict() for r in rag_results])
                         if rag_context:
                             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
             except Exception as e:
@@ -974,10 +980,13 @@ class AgentService:
                 _rag_assistant = await _rag_svc.get_assistant(assistant_id)
                 if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
                     rag_service = RagService()
-                    rag_results = await rag_service.retrieve(raw_user_message, _rag_assistant.knowledge_base_ids)
+                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
+                        raw_user_message, _rag_assistant.knowledge_base_ids
+                    )
+                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
                     if rag_results:
                         rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources = [r.to_dict() for r in rag_results]
+                        rag_sources.extend([r.to_dict() for r in rag_results])
                         if rag_context:
                             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
             except Exception as e:
@@ -1212,5 +1221,4 @@ class AgentService:
         )
 
         yield {"type": "assistant_message_id", "message_id": assistant_message_id}
-
 

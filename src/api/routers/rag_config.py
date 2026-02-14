@@ -5,7 +5,7 @@ Provides endpoints for configuring RAG (Retrieval-Augmented Generation) settings
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 import logging
 
 from ..services.rag_config_service import RagConfigService
@@ -31,6 +31,9 @@ class RagConfigResponse(BaseModel):
     chunk_overlap: int
     top_k: int
     score_threshold: float
+    recall_k: int
+    max_per_doc: int
+    reorder_strategy: str
     persist_directory: str
 
 
@@ -51,6 +54,9 @@ class RagConfigUpdate(BaseModel):
     chunk_overlap: Optional[int] = Field(None, ge=0, le=5000)
     top_k: Optional[int] = Field(None, ge=1, le=50)
     score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    recall_k: Optional[int] = Field(None, ge=1, le=200)
+    max_per_doc: Optional[int] = Field(None, ge=1, le=20)
+    reorder_strategy: Optional[Literal["none", "long_context"]] = None
     persist_directory: Optional[str] = None
 
 
@@ -90,6 +96,13 @@ async def update_config(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported embedding provider: {update_dict['embedding_provider']}"
+                )
+        if 'reorder_strategy' in update_dict:
+            allowed_strategies = {"none", "long_context"}
+            if update_dict['reorder_strategy'] not in allowed_strategies:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported reorder strategy: {update_dict['reorder_strategy']}"
                 )
 
         service.save_flat_config(update_dict)

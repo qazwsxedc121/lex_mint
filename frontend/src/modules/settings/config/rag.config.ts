@@ -160,6 +160,26 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     },
     {
       type: 'number',
+      name: 'recall_k',
+      get label() { return i18n.t('settings:rag.field.recallK'); },
+      min: 1,
+      max: 200,
+      defaultValue: 20,
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.recallK.help'); }
+    },
+    {
+      type: 'number',
+      name: 'max_per_doc',
+      get label() { return i18n.t('settings:rag.field.maxPerDoc'); },
+      min: 1,
+      max: 20,
+      defaultValue: 2,
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.maxPerDoc.help'); }
+    },
+    {
+      type: 'number',
       name: 'score_threshold',
       get label() { return i18n.t('settings:rag.field.scoreThreshold'); },
       min: 0,
@@ -168,6 +188,18 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       defaultValue: 0.3,
       required: true,
       get helpText() { return i18n.t('settings:rag.field.scoreThreshold.help'); }
+    },
+    {
+      type: 'select',
+      name: 'reorder_strategy',
+      get label() { return i18n.t('settings:rag.field.reorderStrategy'); },
+      defaultValue: 'long_context',
+      options: [
+        { value: 'long_context', label: i18n.t('settings:rag.opt.longContext') },
+        { value: 'none', label: i18n.t('settings:rag.opt.none') }
+      ],
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.reorderStrategy.help'); }
     }
   ]
 };

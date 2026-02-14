@@ -28,7 +28,7 @@ export interface FileAttachment {
 }
 
 export interface SearchSource {
-  type?: 'search' | 'webpage' | 'rag' | 'memory';
+  type?: 'search' | 'webpage' | 'rag' | 'memory' | 'rag_diagnostics';
   id?: string;
   title?: string;
   url?: string;
@@ -41,6 +41,16 @@ export interface SearchSource {
   doc_id?: string;
   filename?: string;
   chunk_index?: number;
+  raw_count?: number;
+  deduped_count?: number;
+  diversified_count?: number;
+  selected_count?: number;
+  top_k?: number;
+  recall_k?: number;
+  score_threshold?: number;
+  max_per_doc?: number;
+  reorder_strategy?: 'none' | 'long_context';
+  searched_kb_count?: number;
 }
 
 export interface UploadedFile {

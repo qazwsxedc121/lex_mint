@@ -5,8 +5,9 @@ Handles retrieval-augmented generation: query embedding, similarity search,
 result merging, and context formatting.
 """
 import logging
+import hashlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,101 @@ class RagService:
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
 
+    @staticmethod
+    def _result_identity(result: RagResult) -> Tuple[str, str, int, str]:
+        """Stable identity key for deduplicating retrieved chunks."""
+        doc_key = result.doc_id or result.filename or ""
+        if not doc_key:
+            digest = hashlib.sha1(result.content.encode("utf-8", errors="ignore")).hexdigest()
+            doc_key = f"content:{digest}"
+        return (result.kb_id, doc_key, int(result.chunk_index), result.filename or "")
+
+    @staticmethod
+    def _doc_identity(result: RagResult) -> str:
+        """Document-level identity key for diversity capping."""
+        return f"{result.kb_id}:{result.doc_id or result.filename or RagService._result_identity(result)[1]}"
+
+    @staticmethod
+    def _deduplicate_results(results: List[RagResult]) -> List[RagResult]:
+        seen = set()
+        deduped: List[RagResult] = []
+        for item in results:
+            key = RagService._result_identity(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
+
+    @staticmethod
+    def _apply_doc_diversity(results: List[RagResult], max_per_doc: int) -> List[RagResult]:
+        if max_per_doc <= 0:
+            return results
+
+        per_doc: Dict[str, int] = {}
+        diversified: List[RagResult] = []
+        for item in results:
+            doc_key = RagService._doc_identity(item)
+            count = per_doc.get(doc_key, 0)
+            if count >= max_per_doc:
+                continue
+            per_doc[doc_key] = count + 1
+            diversified.append(item)
+        return diversified
+
+    @staticmethod
+    def _long_context_reorder(results: List[RagResult]) -> List[RagResult]:
+        """
+        Reorder so top-ranked chunks appear near both prompt edges:
+        [1,2,3,4,5,6] -> [1,3,5,6,4,2].
+        """
+        if len(results) <= 2:
+            return results
+        front = results[::2]
+        back = results[1::2]
+        return front + list(reversed(back))
+
+    @staticmethod
+    def _reorder_results(results: List[RagResult], strategy: str) -> List[RagResult]:
+        if strategy == "none":
+            return results
+        if strategy == "long_context":
+            return RagService._long_context_reorder(results)
+        return results
+
+    @staticmethod
+    def build_rag_diagnostics_source(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert diagnostics into a source payload that can be stored and rendered."""
+        raw_count = int(diagnostics.get("raw_count", 0) or 0)
+        deduped_count = int(diagnostics.get("deduped_count", 0) or 0)
+        diversified_count = int(diagnostics.get("diversified_count", 0) or 0)
+        selected_count = int(diagnostics.get("selected_count", 0) or 0)
+        top_k = int(diagnostics.get("top_k", selected_count) or selected_count)
+        recall_k = int(diagnostics.get("recall_k", top_k) or top_k)
+        reorder_strategy = str(diagnostics.get("reorder_strategy", "long_context") or "long_context")
+        max_per_doc = int(diagnostics.get("max_per_doc", 0) or 0)
+        score_threshold = float(diagnostics.get("score_threshold", 0.0) or 0.0)
+        kb_count = int(diagnostics.get("searched_kb_count", 0) or 0)
+
+        return {
+            "type": "rag_diagnostics",
+            "title": "RAG Diagnostics",
+            "snippet": (
+                f"raw {raw_count} -> dedup {deduped_count} -> "
+                f"diversified {diversified_count} -> selected {selected_count}"
+            ),
+            "raw_count": raw_count,
+            "deduped_count": deduped_count,
+            "diversified_count": diversified_count,
+            "selected_count": selected_count,
+            "top_k": top_k,
+            "recall_k": recall_k,
+            "score_threshold": score_threshold,
+            "max_per_doc": max_per_doc,
+            "reorder_strategy": reorder_strategy,
+            "searched_kb_count": kb_count,
+        }
+
     async def retrieve(
         self,
         query: str,
@@ -50,6 +146,21 @@ class RagService:
         top_k: Optional[int] = None,
         score_threshold: Optional[float] = None,
     ) -> List[RagResult]:
+        results, _ = await self.retrieve_with_diagnostics(
+            query=query,
+            kb_ids=kb_ids,
+            top_k=top_k,
+            score_threshold=score_threshold,
+        )
+        return results
+
+    async def retrieve_with_diagnostics(
+        self,
+        query: str,
+        kb_ids: List[str],
+        top_k: Optional[int] = None,
+        score_threshold: Optional[float] = None,
+    ) -> Tuple[List[RagResult], Dict[str, Any]]:
         """
         Retrieve relevant chunks from knowledge bases.
 
@@ -60,24 +171,33 @@ class RagService:
             score_threshold: Override minimum similarity score
 
         Returns:
-            List of RagResult sorted by relevance score (descending)
+            Tuple of (results, diagnostics)
         """
         from .knowledge_base_service import KnowledgeBaseService
 
         config = self.rag_config_service.config
-        effective_top_k = top_k or config.retrieval.top_k
+        effective_top_k = max(1, int(top_k or config.retrieval.top_k))
         effective_threshold = score_threshold if score_threshold is not None else config.retrieval.score_threshold
+        configured_recall_k = int(getattr(config.retrieval, "recall_k", effective_top_k) or effective_top_k)
+        effective_recall_k = max(effective_top_k, configured_recall_k)
+        configured_max_per_doc = int(getattr(config.retrieval, "max_per_doc", 0) or 0)
+        reorder_strategy = str(getattr(config.retrieval, "reorder_strategy", "long_context") or "long_context").lower()
+        if reorder_strategy not in {"none", "long_context"}:
+            reorder_strategy = "long_context"
         short_query = (query or "").strip().replace("\n", " ")
         if len(short_query) > 120:
             short_query = f"{short_query[:120]}..."
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', kb_ids=%s, top_k=%s, threshold=%s, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', kb_ids=%s, top_k=%s, recall_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, provider=%s, model=%s, base_url=%s",
             short_query,
             kb_ids,
             effective_top_k,
+            effective_recall_k,
             effective_threshold,
+            configured_max_per_doc,
+            reorder_strategy,
             embedding_cfg.provider,
             embedding_cfg.api_model,
             base_url or "default",
@@ -86,6 +206,7 @@ class RagService:
 
         kb_service = KnowledgeBaseService()
         all_results: List[RagResult] = []
+        searched_kb_count = 0
 
         for kb_id in kb_ids:
             try:
@@ -101,11 +222,12 @@ class RagService:
                     kb.embedding_model,
                     kb.document_count,
                 )
+                searched_kb_count += 1
 
                 results = self._search_collection(
                     kb_id=kb_id,
                     query=query,
-                    top_k=effective_top_k,
+                    top_k=effective_recall_k,
                     score_threshold=effective_threshold,
                     override_model=kb.embedding_model,
                 )
@@ -119,17 +241,54 @@ class RagService:
                 logger.warning(f"RAG search failed for KB {kb_id}: {e}")
                 continue
 
-        # Sort by score (descending) and take top_k
+        # Score ranking baseline
         all_results.sort(key=lambda r: r.score, reverse=True)
-        if all_results:
+        deduped_results = self._deduplicate_results(all_results)
+        diversified_results = self._apply_doc_diversity(deduped_results, configured_max_per_doc)
+        selected_results = diversified_results[:effective_top_k]
+        reordered_results = self._reorder_results(selected_results, reorder_strategy)
+        best_score = max((item.score for item in selected_results), default=0.0)
+        diagnostics: Dict[str, Any] = {
+            "raw_count": len(all_results),
+            "deduped_count": len(deduped_results),
+            "diversified_count": len(diversified_results),
+            "selected_count": len(selected_results),
+            "top_k": effective_top_k,
+            "recall_k": effective_recall_k,
+            "score_threshold": float(effective_threshold),
+            "max_per_doc": configured_max_per_doc,
+            "reorder_strategy": reorder_strategy,
+            "searched_kb_count": searched_kb_count,
+            "requested_kb_count": len(kb_ids),
+            "best_score": best_score,
+        }
+
+        if reordered_results:
             logger.info(
-                "[RAG] retrieve done: total=%d best_score=%.4f",
+                "[RAG] retrieve done: raw=%d deduped=%d diversified=%d selected=%d best_score=%.4f",
                 len(all_results),
-                all_results[0].score,
+                len(deduped_results),
+                len(diversified_results),
+                len(reordered_results),
+                best_score,
             )
         else:
             logger.info("[RAG] retrieve done: total=0")
-        return all_results[:effective_top_k]
+        logger.info(
+            "[RAG][DIAG] raw=%d deduped=%d diversified=%d selected=%d top_k=%d recall_k=%d threshold=%.3f max_per_doc=%d reorder=%s kb=%d/%d",
+            diagnostics["raw_count"],
+            diagnostics["deduped_count"],
+            diagnostics["diversified_count"],
+            diagnostics["selected_count"],
+            diagnostics["top_k"],
+            diagnostics["recall_k"],
+            diagnostics["score_threshold"],
+            diagnostics["max_per_doc"],
+            diagnostics["reorder_strategy"],
+            diagnostics["searched_kb_count"],
+            diagnostics["requested_kb_count"],
+        )
+        return reordered_results, diagnostics
 
     def _search_collection(
         self,

@@ -7,9 +7,9 @@ from typing import Optional, Literal
 class SearchSource(BaseModel):
     """Single web search source item."""
 
-    type: Optional[Literal["search", "webpage", "rag", "memory"]] = Field(
+    type: Optional[Literal["search", "webpage", "rag", "memory", "rag_diagnostics"]] = Field(
         None,
-        description="Source type: search, webpage, rag, or memory"
+        description="Source type: search, webpage, rag, memory, or rag_diagnostics"
     )
     title: Optional[str] = Field(None, description="Result title")
     url: Optional[str] = Field(None, description="Result URL")
@@ -27,3 +27,14 @@ class SearchSource(BaseModel):
     doc_id: Optional[str] = Field(None, description="Knowledge base document ID")
     filename: Optional[str] = Field(None, description="Document filename")
     chunk_index: Optional[int] = Field(None, description="Chunk index in document")
+
+    # RAG diagnostics fields (optional)
+    raw_count: Optional[int] = Field(None, description="Raw retrieved chunks before processing")
+    deduped_count: Optional[int] = Field(None, description="Chunk count after deduplication")
+    diversified_count: Optional[int] = Field(None, description="Chunk count after doc diversity cap")
+    selected_count: Optional[int] = Field(None, description="Final selected chunks")
+    top_k: Optional[int] = Field(None, description="Configured top_k")
+    recall_k: Optional[int] = Field(None, description="Configured recall_k")
+    max_per_doc: Optional[int] = Field(None, description="Per-document cap for selected chunks")
+    reorder_strategy: Optional[Literal["none", "long_context"]] = Field(None, description="Reorder strategy")
+    searched_kb_count: Optional[int] = Field(None, description="Knowledge base collections searched")
