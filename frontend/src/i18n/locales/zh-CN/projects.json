@@ -94,6 +94,10 @@
   "fileViewer.emptyState": "选择一个文件来查看",
   "fileViewer.hideTree": "隐藏文件树",
   "fileViewer.showTree": "显示文件树",
+  "fileViewer.refresh": "刷新项目文件",
+  "fileViewer.refreshing": "刷新中...",
+  "fileViewer.refreshConfirmDiscard": "当前有未保存的更改，刷新会丢弃这些更改。是否继续？",
+  "fileViewer.refreshFailed": "刷新项目文件失败。",
 
   "editor.save": "保存 (Ctrl+S)",
   "editor.saving": "保存中...",
