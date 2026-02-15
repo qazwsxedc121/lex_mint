@@ -159,6 +159,15 @@ export interface MultiSelectFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Prompt template variables visual editor
+ */
+export interface TemplateVariablesFieldConfig extends BaseFieldConfig {
+  type: 'template-variables';
+  /** Default value */
+  defaultValue?: Array<Record<string, any>>;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -169,7 +178,8 @@ export type FieldConfig =
   | SliderFieldConfig
   | TextareaFieldConfig
   | IconPickerFieldConfig
-  | MultiSelectFieldConfig;
+  | MultiSelectFieldConfig
+  | TemplateVariablesFieldConfig;
 
 // ==================== Table Configuration ====================
 

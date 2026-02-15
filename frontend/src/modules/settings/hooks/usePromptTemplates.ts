@@ -3,7 +3,11 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import type { PromptTemplate, PromptTemplateCreate, PromptTemplateUpdate } from '../../../types/promptTemplate';
+import type {
+  PromptTemplate,
+  PromptTemplateCreate,
+  PromptTemplateUpdate,
+} from '../../../types/promptTemplate';
 import * as api from '../../../services/api';
 
 export function usePromptTemplates() {
@@ -43,8 +47,7 @@ export function usePromptTemplates() {
 
   const updateTemplate = useCallback(async (templateId: string, template: PromptTemplateUpdate) => {
     try {
-      const { name, description, content, enabled } = template;
-      await api.updatePromptTemplate(templateId, { name, description, content, enabled });
+      await api.updatePromptTemplate(templateId, template);
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update prompt template';

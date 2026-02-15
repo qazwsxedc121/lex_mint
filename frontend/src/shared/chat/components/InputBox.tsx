@@ -25,7 +25,7 @@ import { useChatComposer } from '../contexts/ChatComposerContext';
 import type { ChatComposerBlockInput } from '../contexts/ChatComposerContext';
 import type { UploadedFile } from '../../../types/message';
 import type { ParamOverrides } from '../../../types/message';
-import type { PromptTemplate } from '../../../types/promptTemplate';
+import type { PromptTemplate, PromptTemplateVariable, PromptTemplateVariableType } from '../../../types/promptTemplate';
 import { listPromptTemplates } from '../../../services/api';
 import { ParamOverridePopover } from './ParamOverridePopover';
 import { CompareModelButton } from './CompareModelButton';
@@ -71,6 +71,7 @@ const TEMPLATE_RECENT_STORAGE_KEY = 'lex-mint.prompt-templates.recent';
 const MAX_RECENT_TEMPLATE_COUNT = 12;
 const TEMPLATE_VARIABLE_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
 const TEMPLATE_CURSOR_VARIABLE = 'cursor';
+const TEMPLATE_VARIABLE_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 interface SlashCommandMatch {
   query: string;
@@ -85,9 +86,21 @@ interface TemplateReplacementRange {
 
 interface PendingTemplateInsert {
   template: PromptTemplate;
-  variables: string[];
+  variables: TemplateVariableDefinition[];
   values: Record<string, string>;
   replacementRange?: TemplateReplacementRange;
+}
+
+type TemplateVariableResolvedType = NonNullable<PromptTemplateVariableType>;
+
+interface TemplateVariableDefinition {
+  key: string;
+  label: string;
+  description?: string;
+  type: TemplateVariableResolvedType;
+  required: boolean;
+  defaultValue?: string | number | boolean;
+  options: string[];
 }
 
 const extractTemplateVariables = (content: string): string[] => {
@@ -105,6 +118,67 @@ const extractTemplateVariables = (content: string): string[] => {
   }
 
   return variables;
+};
+
+const normalizeVariableType = (type: PromptTemplateVariable['type']): TemplateVariableResolvedType => {
+  if (type === 'number' || type === 'boolean' || type === 'select') {
+    return type;
+  }
+  return 'text';
+};
+
+const normalizeTemplateVariables = (template: PromptTemplate): TemplateVariableDefinition[] => {
+  const definitions: TemplateVariableDefinition[] = [];
+  const seen = new Set<string>();
+
+  const schemaVariables = Array.isArray(template.variables) ? template.variables : [];
+  for (const variable of schemaVariables) {
+    const key = (variable.key || '').trim();
+    if (!key || key.toLowerCase() === TEMPLATE_CURSOR_VARIABLE || !TEMPLATE_VARIABLE_KEY_PATTERN.test(key) || seen.has(key)) {
+      continue;
+    }
+
+    const type = normalizeVariableType(variable.type);
+    const options = type === 'select'
+      ? (variable.options || [])
+          .map((item) => item.trim())
+          .filter((item, idx, arr) => !!item && arr.indexOf(item) === idx)
+      : [];
+
+    definitions.push({
+      key,
+      label: variable.label?.trim() || key,
+      description: variable.description,
+      type,
+      required: variable.required === true,
+      defaultValue: variable.default ?? undefined,
+      options,
+    });
+    seen.add(key);
+  }
+
+  for (const key of extractTemplateVariables(template.content)) {
+    if (seen.has(key)) {
+      continue;
+    }
+    definitions.push({
+      key,
+      label: key,
+      type: 'text',
+      required: false,
+      options: [],
+    });
+    seen.add(key);
+  }
+
+  return definitions;
+};
+
+const toTemplateValueString = (value: string | number | boolean | null | undefined): string => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
 };
 
 const renderTemplateContent = (
@@ -306,6 +380,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [pinnedTemplateIds, setPinnedTemplateIds] = useState<string[]>(() => readStoredTemplateIds(TEMPLATE_PINNED_STORAGE_KEY));
   const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>(() => readStoredTemplateIds(TEMPLATE_RECENT_STORAGE_KEY));
   const [pendingTemplateInsert, setPendingTemplateInsert] = useState<PendingTemplateInsert | null>(null);
+  const [templateVariableErrors, setTemplateVariableErrors] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -560,17 +635,28 @@ export const InputBox: React.FC<InputBoxProps> = ({
     template: PromptTemplate,
     replacementRange?: TemplateReplacementRange,
   ) => {
-    const variables = extractTemplateVariables(template.content);
+    const variables = normalizeTemplateVariables(template);
     if (variables.length === 0) {
       executeTemplateInsert(template, {}, replacementRange);
       return;
     }
 
     const values = variables.reduce<Record<string, string>>((acc, variable) => {
-      acc[variable] = '';
+      if (variable.defaultValue === undefined) {
+        acc[variable.key] = '';
+      } else if (variable.type === 'boolean') {
+        if (typeof variable.defaultValue === 'boolean') {
+          acc[variable.key] = variable.defaultValue ? 'true' : 'false';
+        } else {
+          acc[variable.key] = '';
+        }
+      } else {
+        acc[variable.key] = toTemplateValueString(variable.defaultValue);
+      }
       return acc;
     }, {});
 
+    setTemplateVariableErrors({});
     setPendingTemplateInsert({
       template,
       variables,
@@ -600,6 +686,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
   }, [beginTemplateInsert, slashCommand]);
 
   const handleTemplateVariableChange = useCallback((variable: string, value: string) => {
+    setTemplateVariableErrors((prev) => {
+      if (!prev[variable]) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[variable];
+      return next;
+    });
+
     setPendingTemplateInsert((prev) => {
       if (!prev) {
         return prev;
@@ -617,6 +713,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   const handleTemplateVariableCancel = useCallback(() => {
     setPendingTemplateInsert(null);
+    setTemplateVariableErrors({});
   }, []);
 
   const handleTemplateVariableSubmit = useCallback(() => {
@@ -624,13 +721,54 @@ export const InputBox: React.FC<InputBoxProps> = ({
       return;
     }
 
+    const nextErrors: Record<string, string> = {};
+    for (const variable of pendingTemplateInsert.variables) {
+      const value = pendingTemplateInsert.values[variable.key] ?? '';
+      const trimmed = value.trim();
+
+      if (variable.required && !trimmed) {
+        nextErrors[variable.key] = t('input.templateVariableRequired');
+        continue;
+      }
+
+      if (variable.type === 'number' && trimmed) {
+        const parsed = Number(trimmed);
+        if (!Number.isFinite(parsed)) {
+          nextErrors[variable.key] = t('input.templateVariableInvalidNumber');
+          continue;
+        }
+      }
+
+      if (variable.type === 'boolean' && trimmed && trimmed !== 'true' && trimmed !== 'false') {
+        nextErrors[variable.key] = t('input.templateVariableInvalidBoolean');
+      }
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setTemplateVariableErrors(nextErrors);
+      return;
+    }
+
+    const normalizedValues = Object.fromEntries(
+      Object.entries(pendingTemplateInsert.values).map(([key, value]) => {
+        if (value === 'true') {
+          return [key, 'true'];
+        }
+        if (value === 'false') {
+          return [key, 'false'];
+        }
+        return [key, value];
+      }),
+    );
+
     executeTemplateInsert(
       pendingTemplateInsert.template,
-      pendingTemplateInsert.values,
+      normalizedValues,
       pendingTemplateInsert.replacementRange,
     );
     setPendingTemplateInsert(null);
-  }, [pendingTemplateInsert, executeTemplateInsert]);
+    setTemplateVariableErrors({});
+  }, [pendingTemplateInsert, executeTemplateInsert, t]);
 
   const handleFileReferenceSelect = useCallback((filePath: string) => {
     if (!atFileCommand) return;
@@ -1761,17 +1899,56 @@ export const InputBox: React.FC<InputBoxProps> = ({
             >
               <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                 {pendingTemplateInsert.variables.map((variable, index) => (
-                  <div key={variable} data-name="input-box-template-variable-row">
+                  <div key={variable.key} data-name="input-box-template-variable-row">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      {variable}
+                      {variable.label}
+                      {variable.required && <span className="text-red-500 ml-1">*</span>}
                     </label>
-                    <input
-                      autoFocus={index === 0}
-                      value={pendingTemplateInsert.values[variable] || ''}
-                      onChange={(event) => handleTemplateVariableChange(variable, event.target.value)}
-                      placeholder={t('input.templateVariablePlaceholder', { name: variable })}
-                      className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    {variable.description && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {variable.description}
+                      </p>
+                    )}
+                    {variable.type === 'select' ? (
+                      <select
+                        autoFocus={index === 0}
+                        value={pendingTemplateInsert.values[variable.key] || ''}
+                        onChange={(event) => handleTemplateVariableChange(variable.key, event.target.value)}
+                        className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">{t('common:select')}</option>
+                        {variable.options.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : variable.type === 'boolean' ? (
+                      <select
+                        autoFocus={index === 0}
+                        value={pendingTemplateInsert.values[variable.key] || ''}
+                        onChange={(event) => handleTemplateVariableChange(variable.key, event.target.value)}
+                        className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">{t('common:select')}</option>
+                        <option value="true">{t('common:yes')}</option>
+                        <option value="false">{t('common:no')}</option>
+                      </select>
+                    ) : (
+                      <input
+                        autoFocus={index === 0}
+                        type={variable.type === 'number' ? 'number' : 'text'}
+                        value={pendingTemplateInsert.values[variable.key] || ''}
+                        onChange={(event) => handleTemplateVariableChange(variable.key, event.target.value)}
+                        placeholder={t('input.templateVariablePlaceholder', { name: variable.label })}
+                        className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                    {templateVariableErrors[variable.key] && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                        {templateVariableErrors[variable.key]}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

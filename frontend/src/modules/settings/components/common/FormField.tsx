@@ -7,11 +7,17 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FieldConfig, ConfigContext } from '../../config/types';
+import type {
+  PromptTemplateVariable,
+  PromptTemplateVariableType,
+} from '../../../../types/promptTemplate';
 import {
   ASSISTANT_ICONS,
   ASSISTANT_ICON_KEYS,
   getAssistantIcon,
 } from '../../../../shared/constants/assistantIcons';
+
+const TEMPLATE_VARIABLE_TYPE_OPTIONS: PromptTemplateVariableType[] = ['text', 'number', 'boolean', 'select'];
 
 interface FormFieldProps {
   /** Field configuration */
@@ -218,6 +224,15 @@ export const FormField: React.FC<FormFieldProps> = ({
           />
         );
 
+      case 'template-variables':
+        return (
+          <TemplateVariablesField
+            variables={Array.isArray(value) ? value : []}
+            disabled={config.disabled}
+            onChange={onChange}
+          />
+        );
+
       case 'icon-picker': {
         const selectedKey = value || '';
         const SelectedIcon = selectedKey ? getAssistantIcon(selectedKey) : null;
@@ -312,6 +327,338 @@ export const FormField: React.FC<FormFieldProps> = ({
           {error}
         </p>
       )}
+    </div>
+  );
+};
+
+const normalizeTemplateVariables = (variables: PromptTemplateVariable[]): PromptTemplateVariable[] =>
+  variables.map((variable) => ({
+    ...variable,
+    key: variable.key ?? '',
+    label: variable.label ?? '',
+    description: variable.description ?? '',
+    type: variable.type ?? 'text',
+    required: variable.required === true,
+    default: variable.default ?? null,
+    options: Array.isArray(variable.options) ? variable.options : [],
+  }));
+
+const optionsToText = (options: string[] | undefined): string =>
+  Array.isArray(options) ? options.join('\n') : '';
+
+const textToOptions = (input: string): string[] => {
+  const items = input
+    .split('\n')
+    .flatMap((line) => line.split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return Array.from(new Set(items));
+};
+
+const normalizeDefaultForType = (
+  type: PromptTemplateVariableType,
+  value: PromptTemplateVariable['default'],
+): PromptTemplateVariable['default'] => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (type === 'text') {
+    return typeof value === 'string' ? value : null;
+  }
+  if (type === 'number') {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+  if (type === 'boolean') {
+    return typeof value === 'boolean' ? value : null;
+  }
+  return typeof value === 'string' ? value : null;
+};
+
+const TemplateVariablesField: React.FC<{
+  variables: PromptTemplateVariable[];
+  disabled?: boolean;
+  onChange: (value: PromptTemplateVariable[]) => void;
+}> = ({ variables, disabled, onChange }) => {
+  const { t } = useTranslation('settings');
+  const normalizedVariables = normalizeTemplateVariables(variables);
+
+  const updateVariable = (
+    index: number,
+    updater: (variable: PromptTemplateVariable) => PromptTemplateVariable,
+  ) => {
+    const next = normalizedVariables.map((variable, variableIndex) =>
+      variableIndex === index ? updater(variable) : variable,
+    );
+    onChange(next);
+  };
+
+  const removeVariable = (index: number) => {
+    onChange(normalizedVariables.filter((_, variableIndex) => variableIndex !== index));
+  };
+
+  const addVariable = () => {
+    onChange([
+      ...normalizedVariables,
+      {
+        key: '',
+        label: '',
+        description: '',
+        type: 'text',
+        required: false,
+        default: null,
+        options: [],
+      },
+    ]);
+  };
+
+  return (
+    <div className="space-y-3" data-name="template-variables-editor">
+      {normalizedVariables.length === 0 ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded-md px-3 py-4">
+          {t('promptTemplates.field.variables.empty')}
+        </div>
+      ) : (
+        normalizedVariables.map((variable, index) => {
+          const type = variable.type || 'text';
+          const options = Array.isArray(variable.options) ? variable.options : [];
+          const defaultValue = normalizeDefaultForType(type, variable.default);
+
+          return (
+            <div
+              key={`template-variable-${index}`}
+              className="rounded-md border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60 p-3 space-y-3"
+              data-name="template-variables-editor-row"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {t('promptTemplates.field.variables.variableLabel', { index: index + 1 })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeVariable(index)}
+                  disabled={disabled}
+                  className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                >
+                  {t('promptTemplates.field.variables.remove')}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div data-name="template-variables-editor-key">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {t('promptTemplates.field.variables.key')}
+                  </label>
+                  <input
+                    type="text"
+                    value={variable.key || ''}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => ({ ...current, key: event.target.value }))
+                    }
+                    disabled={disabled}
+                    placeholder={t('promptTemplates.field.variables.keyPlaceholder')}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div data-name="template-variables-editor-label">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {t('promptTemplates.field.variables.itemLabel')}
+                  </label>
+                  <input
+                    type="text"
+                    value={variable.label || ''}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => ({ ...current, label: event.target.value }))
+                    }
+                    disabled={disabled}
+                    placeholder={t('promptTemplates.field.variables.labelPlaceholder')}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div data-name="template-variables-editor-description">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {t('promptTemplates.field.variables.description')}
+                </label>
+                <input
+                  type="text"
+                  value={variable.description || ''}
+                  onChange={(event) =>
+                    updateVariable(index, (current) => ({ ...current, description: event.target.value }))
+                  }
+                  disabled={disabled}
+                  placeholder={t('promptTemplates.field.variables.descriptionPlaceholder')}
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div data-name="template-variables-editor-type">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {t('promptTemplates.field.variables.type')}
+                  </label>
+                  <select
+                    value={type}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => {
+                        const nextType = event.target.value as PromptTemplateVariableType;
+                        const nextDefault = normalizeDefaultForType(nextType, current.default);
+                        return {
+                          ...current,
+                          type: nextType,
+                          default: nextDefault,
+                          options: nextType === 'select'
+                            ? (Array.isArray(current.options) ? current.options : [])
+                            : [],
+                        };
+                      })
+                    }
+                    disabled={disabled}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  >
+                    {TEMPLATE_VARIABLE_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {t(`promptTemplates.field.variables.typeOptions.${option}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center pt-6" data-name="template-variables-editor-required">
+                  <input
+                    type="checkbox"
+                    checked={variable.required === true}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => ({ ...current, required: event.target.checked }))
+                    }
+                    disabled={disabled}
+                    id={`template-variable-required-${index}`}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label
+                    htmlFor={`template-variable-required-${index}`}
+                    className="ml-2 text-sm text-gray-700 dark:text-gray-300"
+                  >
+                    {t('promptTemplates.field.variables.required')}
+                  </label>
+                </div>
+              </div>
+
+              {type === 'select' && (
+                <div data-name="template-variables-editor-options">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {t('promptTemplates.field.variables.options')}
+                  </label>
+                  <textarea
+                    value={optionsToText(options)}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => {
+                        const nextOptions = textToOptions(event.target.value);
+                        const currentDefault = typeof current.default === 'string' ? current.default : null;
+                        return {
+                          ...current,
+                          options: nextOptions,
+                          default: currentDefault && nextOptions.includes(currentDefault)
+                            ? currentDefault
+                            : null,
+                        };
+                      })
+                    }
+                    disabled={disabled}
+                    rows={3}
+                    placeholder={t('promptTemplates.field.variables.optionsPlaceholder')}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+              )}
+
+              <div data-name="template-variables-editor-default">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {t('promptTemplates.field.variables.default')}
+                </label>
+                {type === 'boolean' ? (
+                  <select
+                    value={typeof defaultValue === 'boolean' ? (defaultValue ? 'true' : 'false') : ''}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => ({
+                        ...current,
+                        default: event.target.value === ''
+                          ? null
+                          : event.target.value === 'true',
+                      }))
+                    }
+                    disabled={disabled}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  >
+                    <option value="">{t('promptTemplates.field.variables.noDefault')}</option>
+                    <option value="true">{t('common:yes')}</option>
+                    <option value="false">{t('common:no')}</option>
+                  </select>
+                ) : type === 'number' ? (
+                  <input
+                    type="number"
+                    value={typeof defaultValue === 'number' ? defaultValue : ''}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => {
+                        const nextRaw = event.target.value;
+                        const parsed = Number(nextRaw);
+                        return {
+                          ...current,
+                          default: nextRaw === '' || !Number.isFinite(parsed) ? null : parsed,
+                        };
+                      })
+                    }
+                    disabled={disabled}
+                    placeholder={t('promptTemplates.field.variables.defaultPlaceholder')}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  />
+                ) : type === 'select' ? (
+                  <select
+                    value={typeof defaultValue === 'string' ? defaultValue : ''}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => ({
+                        ...current,
+                        default: event.target.value || null,
+                      }))
+                    }
+                    disabled={disabled || options.length === 0}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  >
+                    <option value="">{t('promptTemplates.field.variables.noDefault')}</option>
+                    {options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={typeof defaultValue === 'string' ? defaultValue : ''}
+                    onChange={(event) =>
+                      updateVariable(index, (current) => ({ ...current, default: event.target.value }))
+                    }
+                    disabled={disabled}
+                    placeholder={t('promptTemplates.field.variables.defaultPlaceholder')}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      <button
+        type="button"
+        onClick={addVariable}
+        disabled={disabled}
+        className="inline-flex items-center rounded-md border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-50"
+      >
+        {t('promptTemplates.field.variables.add')}
+      </button>
     </div>
   );
 };
