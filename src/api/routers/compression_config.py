@@ -5,13 +5,14 @@ Provides endpoints for configuring context compression.
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 import logging
 
 from ..services.compression_config_service import CompressionConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/compression", tags=["compression"])
+ALLOWED_OUTPUT_LANGUAGES = {"auto", "none", "zh", "en", "ja", "ko", "fr", "de", "es", "ru", "pt"}
 
 
 # Pydantic models
@@ -28,6 +29,17 @@ class CompressionConfigResponse(BaseModel):
     min_messages: int
     timeout_seconds: int
     prompt_template: str
+    compression_output_language: str
+    compression_strategy: str
+    hierarchical_chunk_target_tokens: int
+    hierarchical_chunk_overlap_messages: int
+    hierarchical_reduce_target_tokens: int
+    hierarchical_reduce_overlap_items: int
+    hierarchical_max_levels: int
+    quality_guard_enabled: bool
+    quality_guard_min_coverage: float
+    quality_guard_max_facts: int
+    compression_metrics_enabled: bool
     auto_compress_enabled: bool
     auto_compress_threshold: float
 
@@ -45,6 +57,17 @@ class CompressionConfigUpdate(BaseModel):
     min_messages: Optional[int] = Field(None, ge=1, le=50)
     timeout_seconds: Optional[int] = Field(None, ge=10, le=300)
     prompt_template: Optional[str] = None
+    compression_output_language: Optional[str] = None
+    compression_strategy: Optional[Literal["single_pass", "hierarchical"]] = None
+    hierarchical_chunk_target_tokens: Optional[int] = Field(None, ge=0, le=8192)
+    hierarchical_chunk_overlap_messages: Optional[int] = Field(None, ge=0, le=20)
+    hierarchical_reduce_target_tokens: Optional[int] = Field(None, ge=0, le=16384)
+    hierarchical_reduce_overlap_items: Optional[int] = Field(None, ge=0, le=10)
+    hierarchical_max_levels: Optional[int] = Field(None, ge=1, le=8)
+    quality_guard_enabled: Optional[bool] = None
+    quality_guard_min_coverage: Optional[float] = Field(None, ge=0.5, le=1.0)
+    quality_guard_max_facts: Optional[int] = Field(None, ge=5, le=100)
+    compression_metrics_enabled: Optional[bool] = None
     auto_compress_enabled: Optional[bool] = None
     auto_compress_threshold: Optional[float] = Field(None, ge=0.1, le=0.9)
 
@@ -75,6 +98,17 @@ async def get_config(
             min_messages=config.min_messages,
             timeout_seconds=config.timeout_seconds,
             prompt_template=config.prompt_template,
+            compression_output_language=config.compression_output_language,
+            compression_strategy=config.compression_strategy,
+            hierarchical_chunk_target_tokens=config.hierarchical_chunk_target_tokens,
+            hierarchical_chunk_overlap_messages=config.hierarchical_chunk_overlap_messages,
+            hierarchical_reduce_target_tokens=config.hierarchical_reduce_target_tokens,
+            hierarchical_reduce_overlap_items=config.hierarchical_reduce_overlap_items,
+            hierarchical_max_levels=config.hierarchical_max_levels,
+            quality_guard_enabled=config.quality_guard_enabled,
+            quality_guard_min_coverage=config.quality_guard_min_coverage,
+            quality_guard_max_facts=config.quality_guard_max_facts,
+            compression_metrics_enabled=config.compression_metrics_enabled,
             auto_compress_enabled=config.auto_compress_enabled,
             auto_compress_threshold=config.auto_compress_threshold,
         )
@@ -101,6 +135,21 @@ async def update_config(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported compression provider: {update_dict['provider']}"
+                )
+        if 'compression_output_language' in update_dict:
+            value = str(update_dict['compression_output_language']).strip().lower()
+            if value not in ALLOWED_OUTPUT_LANGUAGES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported compression output language: {update_dict['compression_output_language']}"
+                )
+            update_dict['compression_output_language'] = value
+        if 'compression_strategy' in update_dict:
+            allowed_strategies = {"single_pass", "hierarchical"}
+            if update_dict['compression_strategy'] not in allowed_strategies:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported compression strategy: {update_dict['compression_strategy']}"
                 )
 
         service.save_config(update_dict)

@@ -92,6 +92,17 @@ class CompressionConfig:
     min_messages: int
     timeout_seconds: int
     prompt_template: str
+    compression_output_language: str
+    compression_strategy: str
+    hierarchical_chunk_target_tokens: int
+    hierarchical_chunk_overlap_messages: int
+    hierarchical_reduce_target_tokens: int
+    hierarchical_reduce_overlap_items: int
+    hierarchical_max_levels: int
+    quality_guard_enabled: bool
+    quality_guard_min_coverage: float
+    quality_guard_max_facts: int
+    compression_metrics_enabled: bool
     auto_compress_enabled: bool
     auto_compress_threshold: float
 
@@ -127,6 +138,17 @@ class CompressionConfigService:
                     'temperature': 0.3,
                     'min_messages': 2,
                     'timeout_seconds': 60,
+                    'compression_output_language': 'auto',
+                    'compression_strategy': 'hierarchical',
+                    'hierarchical_chunk_target_tokens': 0,
+                    'hierarchical_chunk_overlap_messages': 2,
+                    'hierarchical_reduce_target_tokens': 0,
+                    'hierarchical_reduce_overlap_items': 1,
+                    'hierarchical_max_levels': 4,
+                    'quality_guard_enabled': True,
+                    'quality_guard_min_coverage': 0.75,
+                    'quality_guard_max_facts': 24,
+                    'compression_metrics_enabled': True,
                     'auto_compress_enabled': False,
                     'auto_compress_threshold': 0.5,
                     'prompt_template': DEFAULT_PROMPT_TEMPLATE,
@@ -160,6 +182,17 @@ class CompressionConfigService:
                 min_messages=config_data.get('min_messages', 2),
                 timeout_seconds=config_data.get('timeout_seconds', 60),
                 prompt_template=config_data.get('prompt_template', DEFAULT_PROMPT_TEMPLATE),
+                compression_output_language=config_data.get('compression_output_language', 'auto'),
+                compression_strategy=config_data.get('compression_strategy', 'hierarchical'),
+                hierarchical_chunk_target_tokens=config_data.get('hierarchical_chunk_target_tokens', 0),
+                hierarchical_chunk_overlap_messages=config_data.get('hierarchical_chunk_overlap_messages', 2),
+                hierarchical_reduce_target_tokens=config_data.get('hierarchical_reduce_target_tokens', 0),
+                hierarchical_reduce_overlap_items=config_data.get('hierarchical_reduce_overlap_items', 1),
+                hierarchical_max_levels=config_data.get('hierarchical_max_levels', 4),
+                quality_guard_enabled=config_data.get('quality_guard_enabled', True),
+                quality_guard_min_coverage=config_data.get('quality_guard_min_coverage', 0.75),
+                quality_guard_max_facts=config_data.get('quality_guard_max_facts', 24),
+                compression_metrics_enabled=config_data.get('compression_metrics_enabled', True),
                 auto_compress_enabled=config_data.get('auto_compress_enabled', False),
                 auto_compress_threshold=config_data.get('auto_compress_threshold', 0.5),
             )
@@ -177,6 +210,17 @@ class CompressionConfigService:
                 min_messages=2,
                 timeout_seconds=60,
                 prompt_template=DEFAULT_PROMPT_TEMPLATE,
+                compression_output_language='auto',
+                compression_strategy='hierarchical',
+                hierarchical_chunk_target_tokens=0,
+                hierarchical_chunk_overlap_messages=2,
+                hierarchical_reduce_target_tokens=0,
+                hierarchical_reduce_overlap_items=1,
+                hierarchical_max_levels=4,
+                quality_guard_enabled=True,
+                quality_guard_min_coverage=0.75,
+                quality_guard_max_facts=24,
+                compression_metrics_enabled=True,
                 auto_compress_enabled=False,
                 auto_compress_threshold=0.5,
             )

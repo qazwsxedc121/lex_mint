@@ -60,6 +60,7 @@ data/knowledge_bases/
 
 # State/data files (writable, not tracked)
 data/state/
+data/benchmarks/
 
 # Local model files
 models/**/*.gguf

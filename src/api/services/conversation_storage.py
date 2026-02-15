@@ -7,7 +7,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import aiofiles
 import uuid
 import re
@@ -356,6 +356,7 @@ class ConversationStorage:
         session_id: str,
         content: str,
         compressed_count: int = 0,
+        compression_meta: Optional[Dict[str, Any]] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None
     ) -> str:
@@ -366,6 +367,7 @@ class ConversationStorage:
             session_id: Session UUID
             content: Summary text content
             compressed_count: Number of messages that were compressed
+            compression_meta: Extra compression metadata to persist on the summary
             context_type: Context type ("chat" or "project")
             project_id: Project ID (required when context_type="project")
 
@@ -390,7 +392,10 @@ class ConversationStorage:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_message = f"\n## Summary ({timestamp})\n{content}\n"
         new_message += f"\n<!-- message_id: \"{message_id}\" -->\n"
-        new_message += f"<!-- compression_meta: {json.dumps({'compressed_count': compressed_count})} -->\n"
+        merged_meta: Dict[str, Any] = {"compressed_count": compressed_count}
+        if compression_meta:
+            merged_meta.update(compression_meta)
+        new_message += f"<!-- compression_meta: {json.dumps(merged_meta)} -->\n"
 
         post.content += new_message
 

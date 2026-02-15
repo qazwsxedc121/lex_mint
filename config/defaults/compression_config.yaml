@@ -7,6 +7,17 @@ compression:
   local_gguf_n_threads: 0
   local_gguf_n_gpu_layers: 0
   local_gguf_max_tokens: 2048
+  compression_output_language: auto
+  compression_strategy: hierarchical
+  hierarchical_chunk_target_tokens: 0
+  hierarchical_chunk_overlap_messages: 2
+  hierarchical_reduce_target_tokens: 0
+  hierarchical_reduce_overlap_items: 1
+  hierarchical_max_levels: 4
+  quality_guard_enabled: true
+  quality_guard_min_coverage: 0.75
+  quality_guard_max_facts: 24
+  compression_metrics_enabled: true
   prompt_template: "You are a conversation context compressor. Your task is to create\
     \ a structured summary that preserves essential information while significantly\
     \ reducing token count.\n\n## Output Format\n\nStructure your summary using these\

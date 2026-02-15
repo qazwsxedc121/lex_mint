@@ -21,7 +21,7 @@
 [X] 配置路径分离
 [X] Prompt Template搜索和/触发
 [X] i18n
-[] RAG Reorder
+[X] RAG Reorder
 [] RAG by tool use
 [] RAG word search (BM25)
 [X] conversation in Project path
@@ -43,3 +43,4 @@
 [X] 本地LLM翻译
 [] 超长分段总结
 [X] 翻译文本自动检查语言/自动中英互译
+[] 增强模板参数
