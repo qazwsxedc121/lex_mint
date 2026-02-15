@@ -69,12 +69,72 @@ const getReasoningIconColor = (effort: string): string => {
 const TEMPLATE_PINNED_STORAGE_KEY = 'lex-mint.prompt-templates.pinned';
 const TEMPLATE_RECENT_STORAGE_KEY = 'lex-mint.prompt-templates.recent';
 const MAX_RECENT_TEMPLATE_COUNT = 12;
+const TEMPLATE_VARIABLE_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
+const TEMPLATE_CURSOR_VARIABLE = 'cursor';
 
 interface SlashCommandMatch {
   query: string;
   start: number;
   end: number;
 }
+
+interface TemplateReplacementRange {
+  start: number;
+  end: number;
+}
+
+interface PendingTemplateInsert {
+  template: PromptTemplate;
+  variables: string[];
+  values: Record<string, string>;
+  replacementRange?: TemplateReplacementRange;
+}
+
+const extractTemplateVariables = (content: string): string[] => {
+  const variables: string[] = [];
+  const seen = new Set<string>();
+  const variablePattern = new RegExp(TEMPLATE_VARIABLE_PATTERN.source, 'g');
+
+  for (const match of content.matchAll(variablePattern)) {
+    const variableName = match[1];
+    if (!variableName || variableName === TEMPLATE_CURSOR_VARIABLE || seen.has(variableName)) {
+      continue;
+    }
+    seen.add(variableName);
+    variables.push(variableName);
+  }
+
+  return variables;
+};
+
+const renderTemplateContent = (
+  content: string,
+  values: Record<string, string>,
+): { text: string; cursorOffset: number | null } => {
+  const variablePattern = new RegExp(TEMPLATE_VARIABLE_PATTERN.source, 'g');
+  let rendered = '';
+  let cursorOffset: number | null = null;
+  let lastIndex = 0;
+
+  for (const match of content.matchAll(variablePattern)) {
+    const variableName = match[1];
+    const matchIndex = match.index ?? 0;
+    rendered += content.slice(lastIndex, matchIndex);
+
+    if (variableName === TEMPLATE_CURSOR_VARIABLE) {
+      if (cursorOffset === null) {
+        cursorOffset = rendered.length;
+      }
+    } else if (variableName) {
+      rendered += values[variableName] ?? '';
+    }
+
+    lastIndex = matchIndex + match[0].length;
+  }
+
+  rendered += content.slice(lastIndex);
+  return { text: rendered, cursorOffset };
+};
 
 const readStoredTemplateIds = (storageKey: string): string[] => {
   if (typeof window === 'undefined') {
@@ -245,6 +305,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [templatesFetched, setTemplatesFetched] = useState(false);
   const [pinnedTemplateIds, setPinnedTemplateIds] = useState<string[]>(() => readStoredTemplateIds(TEMPLATE_PINNED_STORAGE_KEY));
   const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>(() => readStoredTemplateIds(TEMPLATE_RECENT_STORAGE_KEY));
+  const [pendingTemplateInsert, setPendingTemplateInsert] = useState<PendingTemplateInsert | null>(null);
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -305,15 +366,30 @@ export const InputBox: React.FC<InputBoxProps> = ({
     });
   }, []);
 
-  const insertText = useCallback((text: string) => {
+  const insertText = useCallback((
+    text: string,
+    options?: { cursorOffset?: number; replacementRange?: TemplateReplacementRange },
+  ) => {
     const textarea = textareaRef.current;
+    const rawCursorOffset = options?.cursorOffset ?? text.length;
+    const boundedCursorOffset = Math.max(0, Math.min(rawCursorOffset, text.length));
+
     if (!textarea) {
-      setInput((prev) => prev + text);
+      if (options?.replacementRange) {
+        const { start, end } = options.replacementRange;
+        setInput((prev) => `${prev.slice(0, start)}${text}${prev.slice(end)}`);
+      } else {
+        setInput((prev) => prev + text);
+      }
       return;
     }
 
-    const start = textarea.selectionStart ?? 0;
-    const end = textarea.selectionEnd ?? 0;
+    const defaultStart = textarea.selectionStart ?? 0;
+    const defaultEnd = textarea.selectionEnd ?? 0;
+    const rawStart = options?.replacementRange?.start ?? defaultStart;
+    const rawEnd = options?.replacementRange?.end ?? defaultEnd;
+    const start = Math.max(0, Math.min(rawStart, textarea.value.length));
+    const end = Math.max(start, Math.min(rawEnd, textarea.value.length));
 
     setInput((prev) => `${prev.slice(0, start)}${text}${prev.slice(end)}`);
     setSlashCommand(null);
@@ -321,7 +397,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
     requestAnimationFrame(() => {
       textarea.focus();
-      const cursor = start + text.length;
+      const cursor = start + boundedCursorOffset;
       textarea.setSelectionRange(cursor, cursor);
     });
   }, []);
@@ -467,38 +543,94 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setSlashMenuIndex((prev) => Math.min(prev, slashMatchedTemplates.length - 1));
   }, [slashMatchedTemplates.length]);
 
-  const handleInsertTemplate = useCallback((template: PromptTemplate) => {
-    insertText(template.content);
+  const executeTemplateInsert = useCallback((
+    template: PromptTemplate,
+    values: Record<string, string>,
+    replacementRange?: TemplateReplacementRange,
+  ) => {
+    const rendered = renderTemplateContent(template.content, values);
+    insertText(rendered.text, {
+      replacementRange,
+      cursorOffset: rendered.cursorOffset ?? rendered.text.length,
+    });
     recordTemplateUsage(template.id);
+  }, [insertText, recordTemplateUsage]);
+
+  const beginTemplateInsert = useCallback((
+    template: PromptTemplate,
+    replacementRange?: TemplateReplacementRange,
+  ) => {
+    const variables = extractTemplateVariables(template.content);
+    if (variables.length === 0) {
+      executeTemplateInsert(template, {}, replacementRange);
+      return;
+    }
+
+    const values = variables.reduce<Record<string, string>>((acc, variable) => {
+      acc[variable] = '';
+      return acc;
+    }, {});
+
+    setPendingTemplateInsert({
+      template,
+      variables,
+      values,
+      replacementRange,
+    });
+  }, [executeTemplateInsert]);
+
+  const handleInsertTemplate = useCallback((template: PromptTemplate) => {
+    beginTemplateInsert(template);
     setShowTemplateMenu(false);
     setTemplateSearch('');
     setTemplateMenuIndex(0);
-  }, [insertText, recordTemplateUsage]);
+  }, [beginTemplateInsert]);
 
   const handleInsertSlashTemplate = useCallback((template: PromptTemplate) => {
     if (!slashCommand) {
       return;
     }
 
-    const replacementStart = slashCommand.start;
-    const replacementEnd = slashCommand.end;
-
-    setInput((prev) => `${prev.slice(0, replacementStart)}${template.content}${prev.slice(replacementEnd)}`);
+    beginTemplateInsert(template, {
+      start: slashCommand.start,
+      end: slashCommand.end,
+    });
     setSlashCommand(null);
     setSlashMenuIndex(0);
-    recordTemplateUsage(template.id);
+  }, [beginTemplateInsert, slashCommand]);
 
-    requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
+  const handleTemplateVariableChange = useCallback((variable: string, value: string) => {
+    setPendingTemplateInsert((prev) => {
+      if (!prev) {
+        return prev;
       }
 
-      const cursor = replacementStart + template.content.length;
-      textarea.focus();
-      textarea.setSelectionRange(cursor, cursor);
+      return {
+        ...prev,
+        values: {
+          ...prev.values,
+          [variable]: value,
+        },
+      };
     });
-  }, [recordTemplateUsage, slashCommand]);
+  }, []);
+
+  const handleTemplateVariableCancel = useCallback(() => {
+    setPendingTemplateInsert(null);
+  }, []);
+
+  const handleTemplateVariableSubmit = useCallback(() => {
+    if (!pendingTemplateInsert) {
+      return;
+    }
+
+    executeTemplateInsert(
+      pendingTemplateInsert.template,
+      pendingTemplateInsert.values,
+      pendingTemplateInsert.replacementRange,
+    );
+    setPendingTemplateInsert(null);
+  }, [pendingTemplateInsert, executeTemplateInsert]);
 
   const handleFileReferenceSelect = useCallback((filePath: string) => {
     if (!atFileCommand) return;
@@ -909,6 +1041,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       setShowClearConfirm(false);
+    }
+  };
+
+  const handleTemplateVariableBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      setPendingTemplateInsert(null);
     }
   };
 
@@ -1589,6 +1727,74 @@ export const InputBox: React.FC<InputBoxProps> = ({
           )}
         </div>
       </div>
+
+      {/* Template variable fill dialog */}
+      {pendingTemplateInsert && (
+        <div
+          data-name="input-box-template-variables-backdrop"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleTemplateVariableBackdropClick}
+        >
+          <div
+            data-name="input-box-template-variables-modal"
+            className="bg-white dark:bg-gray-800 rounded-lg p-5 w-full max-w-lg mx-4 shadow-xl"
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+              {t('input.templateVariablesTitle')}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              {t('input.templateVariablesDescription', { name: pendingTemplateInsert.template.name })}
+            </p>
+
+            <form
+              data-name="input-box-template-variables-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleTemplateVariableSubmit();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleTemplateVariableCancel();
+                }
+              }}
+            >
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {pendingTemplateInsert.variables.map((variable, index) => (
+                  <div key={variable} data-name="input-box-template-variable-row">
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {variable}
+                    </label>
+                    <input
+                      autoFocus={index === 0}
+                      value={pendingTemplateInsert.values[variable] || ''}
+                      onChange={(event) => handleTemplateVariableChange(variable, event.target.value)}
+                      placeholder={t('input.templateVariablePlaceholder', { name: variable })}
+                      className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={handleTemplateVariableCancel}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  {t('common:cancel')}
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  {t('input.insertFilledTemplate')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Clear messages confirmation dialog */}
       {showClearConfirm && (
