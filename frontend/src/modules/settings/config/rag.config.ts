@@ -149,6 +149,21 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get helpText() { return i18n.t('settings:rag.field.chunkOverlap.help'); }
     },
     {
+      type: 'select',
+      name: 'retrieval_mode',
+      get label() { return i18n.t('settings:rag.field.retrievalMode'); },
+      defaultValue: 'vector',
+      get options() {
+        return [
+          { value: 'vector', label: i18n.t('settings:rag.opt.retrievalVector') },
+          { value: 'bm25', label: i18n.t('settings:rag.opt.retrievalBm25') },
+          { value: 'hybrid', label: i18n.t('settings:rag.opt.retrievalHybrid') }
+        ];
+      },
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.retrievalMode.help'); }
+    },
+    {
       type: 'number',
       name: 'top_k',
       get label() { return i18n.t('settings:rag.field.topK'); },
@@ -167,6 +182,86 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       defaultValue: 20,
       required: true,
       get helpText() { return i18n.t('settings:rag.field.recallK.help'); }
+    },
+    {
+      type: 'number',
+      name: 'vector_recall_k',
+      get label() { return i18n.t('settings:rag.field.vectorRecallK'); },
+      min: 1,
+      max: 500,
+      defaultValue: 20,
+      required: true,
+      condition: (formData) => formData.retrieval_mode !== 'bm25',
+      get helpText() { return i18n.t('settings:rag.field.vectorRecallK.help'); }
+    },
+    {
+      type: 'number',
+      name: 'bm25_recall_k',
+      get label() { return i18n.t('settings:rag.field.bm25RecallK'); },
+      min: 1,
+      max: 500,
+      defaultValue: 20,
+      required: true,
+      condition: (formData) => formData.retrieval_mode !== 'vector',
+      get helpText() { return i18n.t('settings:rag.field.bm25RecallK.help'); }
+    },
+    {
+      type: 'number',
+      name: 'fusion_top_k',
+      get label() { return i18n.t('settings:rag.field.fusionTopK'); },
+      min: 1,
+      max: 500,
+      defaultValue: 30,
+      required: true,
+      condition: (formData) => formData.retrieval_mode === 'hybrid',
+      get helpText() { return i18n.t('settings:rag.field.fusionTopK.help'); }
+    },
+    {
+      type: 'select',
+      name: 'fusion_strategy',
+      get label() { return i18n.t('settings:rag.field.fusionStrategy'); },
+      defaultValue: 'rrf',
+      options: [
+        { value: 'rrf', label: i18n.t('settings:rag.opt.fusionRrf') }
+      ],
+      required: true,
+      condition: (formData) => formData.retrieval_mode === 'hybrid',
+      get helpText() { return i18n.t('settings:rag.field.fusionStrategy.help'); }
+    },
+    {
+      type: 'number',
+      name: 'rrf_k',
+      get label() { return i18n.t('settings:rag.field.rrfK'); },
+      min: 1,
+      max: 500,
+      defaultValue: 60,
+      required: true,
+      condition: (formData) => formData.retrieval_mode === 'hybrid',
+      get helpText() { return i18n.t('settings:rag.field.rrfK.help'); }
+    },
+    {
+      type: 'number',
+      name: 'vector_weight',
+      get label() { return i18n.t('settings:rag.field.vectorWeight'); },
+      min: 0,
+      max: 10,
+      step: 0.1,
+      defaultValue: 1,
+      required: true,
+      condition: (formData) => formData.retrieval_mode === 'hybrid',
+      get helpText() { return i18n.t('settings:rag.field.vectorWeight.help'); }
+    },
+    {
+      type: 'number',
+      name: 'bm25_weight',
+      get label() { return i18n.t('settings:rag.field.bm25Weight'); },
+      min: 0,
+      max: 10,
+      step: 0.1,
+      defaultValue: 1,
+      required: true,
+      condition: (formData) => formData.retrieval_mode === 'hybrid',
+      get helpText() { return i18n.t('settings:rag.field.bm25Weight.help'); }
     },
     {
       type: 'number',

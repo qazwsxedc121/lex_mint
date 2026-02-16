@@ -166,6 +166,14 @@ class KnowledgeBaseService:
         except Exception as e:
             logger.warning(f"Failed to delete ChromaDB collection for KB {kb_id}: {e}")
 
+        try:
+            from .bm25_service import Bm25Service
+
+            bm25_service = Bm25Service()
+            bm25_service.delete_kb_chunks(kb_id=kb_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete BM25 chunks for KB {kb_id}: {e}")
+
     # ==================== Document Management ====================
 
     async def get_documents(self, kb_id: str) -> List[KnowledgeBaseDocument]:
@@ -262,6 +270,14 @@ class KnowledgeBaseService:
                 pass
         except Exception as e:
             logger.warning(f"Failed to delete ChromaDB chunks for doc {doc_id}: {e}")
+
+        try:
+            from .bm25_service import Bm25Service
+
+            bm25_service = Bm25Service()
+            bm25_service.delete_document_chunks(kb_id=kb_id, doc_id=doc_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete BM25 chunks for doc {doc_id}: {e}")
 
     def get_document_storage_path(self, kb_id: str, doc_id: str, filename: str) -> Path:
         """Get the storage path for a document file"""

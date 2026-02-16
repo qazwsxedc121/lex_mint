@@ -49,9 +49,11 @@ class RagService:
         from .rag_config_service import RagConfigService
         from .embedding_service import EmbeddingService
         from .rerank_service import RerankService
+        from .bm25_service import Bm25Service
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
         self.rerank_service = RerankService()
+        self.bm25_service = Bm25Service()
 
     @staticmethod
     def _result_identity(result: RagResult) -> Tuple[str, str, int, str]:
@@ -116,6 +118,59 @@ class RagService:
         return results
 
     @staticmethod
+    def _fuse_results_rrf(
+        *,
+        vector_results: List[RagResult],
+        bm25_results: List[RagResult],
+        vector_weight: float,
+        bm25_weight: float,
+        rrf_k: int,
+        fusion_top_k: int,
+    ) -> List[RagResult]:
+        rrf_k = max(1, int(rrf_k))
+        fusion_top_k = max(1, int(fusion_top_k))
+        vector_weight = max(0.0, float(vector_weight))
+        bm25_weight = max(0.0, float(bm25_weight))
+        if vector_weight <= 0 and bm25_weight <= 0:
+            vector_weight, bm25_weight = 1.0, 1.0
+
+        fused: Dict[Tuple[str, str, int, str], Dict[str, Any]] = {}
+
+        def _merge_channel(items: List[RagResult], weight: float) -> None:
+            if weight <= 0:
+                return
+            for rank, item in enumerate(items, start=1):
+                key = RagService._result_identity(item)
+                entry = fused.get(key)
+                if entry is None:
+                    fused[key] = {
+                        "item": item,
+                        "score": weight * (1.0 / (rrf_k + rank)),
+                    }
+                else:
+                    entry["score"] += weight * (1.0 / (rrf_k + rank))
+
+        _merge_channel(vector_results, vector_weight)
+        _merge_channel(bm25_results, bm25_weight)
+
+        merged: List[RagResult] = []
+        for row in fused.values():
+            base: RagResult = row["item"]
+            merged.append(
+                RagResult(
+                    content=base.content,
+                    score=float(row["score"]),
+                    kb_id=base.kb_id,
+                    doc_id=base.doc_id,
+                    filename=base.filename,
+                    chunk_index=base.chunk_index,
+                )
+            )
+
+        merged.sort(key=lambda item: item.score, reverse=True)
+        return merged[:fusion_top_k]
+
+    @staticmethod
     def build_rag_diagnostics_source(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
         """Convert diagnostics into a source payload that can be stored and rendered."""
         raw_count = int(diagnostics.get("raw_count", 0) or 0)
@@ -130,6 +185,16 @@ class RagService:
         kb_count = int(diagnostics.get("searched_kb_count", 0) or 0)
         requested_kb_count = int(diagnostics.get("requested_kb_count", kb_count) or kb_count)
         best_score = float(diagnostics.get("best_score", 0.0) or 0.0)
+        vector_raw_count = int(diagnostics.get("vector_raw_count", 0) or 0)
+        bm25_raw_count = int(diagnostics.get("bm25_raw_count", 0) or 0)
+        retrieval_mode = str(diagnostics.get("retrieval_mode", "vector") or "vector")
+        vector_recall_k = int(diagnostics.get("vector_recall_k", recall_k) or recall_k)
+        bm25_recall_k = int(diagnostics.get("bm25_recall_k", recall_k) or recall_k)
+        fusion_top_k = int(diagnostics.get("fusion_top_k", top_k) or top_k)
+        fusion_strategy = str(diagnostics.get("fusion_strategy", "rrf") or "rrf")
+        rrf_k = int(diagnostics.get("rrf_k", 60) or 60)
+        vector_weight = float(diagnostics.get("vector_weight", 1.0) or 0.0)
+        bm25_weight = float(diagnostics.get("bm25_weight", 1.0) or 0.0)
         rerank_enabled = bool(diagnostics.get("rerank_enabled", False))
         rerank_applied = bool(diagnostics.get("rerank_applied", False))
         rerank_weight = float(diagnostics.get("rerank_weight", 0.0) or 0.0)
@@ -154,6 +219,16 @@ class RagService:
             "searched_kb_count": kb_count,
             "requested_kb_count": requested_kb_count,
             "best_score": best_score,
+            "vector_raw_count": vector_raw_count,
+            "bm25_raw_count": bm25_raw_count,
+            "retrieval_mode": retrieval_mode,
+            "vector_recall_k": vector_recall_k,
+            "bm25_recall_k": bm25_recall_k,
+            "fusion_top_k": fusion_top_k,
+            "fusion_strategy": fusion_strategy,
+            "rrf_k": rrf_k,
+            "vector_weight": vector_weight,
+            "bm25_weight": bm25_weight,
             "rerank_enabled": rerank_enabled,
             "rerank_applied": rerank_applied,
             "rerank_weight": rerank_weight,
@@ -253,7 +328,28 @@ class RagService:
         effective_top_k = max(1, int(top_k or config.retrieval.top_k))
         effective_threshold = score_threshold if score_threshold is not None else config.retrieval.score_threshold
         configured_recall_k = int(getattr(config.retrieval, "recall_k", effective_top_k) or effective_top_k)
-        effective_recall_k = max(effective_top_k, configured_recall_k)
+        retrieval_mode = str(getattr(config.retrieval, "retrieval_mode", "vector") or "vector").lower()
+        if retrieval_mode not in {"vector", "bm25", "hybrid"}:
+            retrieval_mode = "vector"
+        vector_recall_k = int(
+            getattr(config.retrieval, "vector_recall_k", configured_recall_k) or configured_recall_k
+        )
+        bm25_recall_k = int(
+            getattr(config.retrieval, "bm25_recall_k", configured_recall_k) or configured_recall_k
+        )
+        vector_recall_k = max(effective_top_k, vector_recall_k)
+        bm25_recall_k = max(effective_top_k, bm25_recall_k)
+        fusion_top_k = int(
+            getattr(config.retrieval, "fusion_top_k", max(vector_recall_k, bm25_recall_k))
+            or max(vector_recall_k, bm25_recall_k)
+        )
+        fusion_top_k = max(effective_top_k, fusion_top_k)
+        fusion_strategy = str(getattr(config.retrieval, "fusion_strategy", "rrf") or "rrf").lower()
+        if fusion_strategy not in {"rrf"}:
+            fusion_strategy = "rrf"
+        rrf_k = int(getattr(config.retrieval, "rrf_k", 60) or 60)
+        vector_weight = float(getattr(config.retrieval, "vector_weight", 1.0) or 0.0)
+        bm25_weight = float(getattr(config.retrieval, "bm25_weight", 1.0) or 0.0)
         configured_max_per_doc = int(getattr(config.retrieval, "max_per_doc", 0) or 0)
         reorder_strategy = str(getattr(config.retrieval, "reorder_strategy", "long_context") or "long_context").lower()
         if reorder_strategy not in {"none", "long_context"}:
@@ -276,11 +372,14 @@ class RagService:
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', kb_ids=%s, top_k=%s, recall_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, provider=%s, model=%s, base_url=%s",
             short_query,
             kb_ids,
+            retrieval_mode,
             effective_top_k,
-            effective_recall_k,
+            vector_recall_k,
+            bm25_recall_k,
+            fusion_top_k,
             effective_threshold,
             configured_max_per_doc,
             reorder_strategy,
@@ -294,7 +393,8 @@ class RagService:
         logger.info("[RAG] storage persist_directory=%s", config.storage.persist_directory)
 
         kb_service = KnowledgeBaseService()
-        all_results: List[RagResult] = []
+        vector_results: List[RagResult] = []
+        bm25_results: List[RagResult] = []
         searched_kb_count = 0
 
         for kb_id in kb_ids:
@@ -313,26 +413,58 @@ class RagService:
                 )
                 searched_kb_count += 1
 
-                results = self._search_collection(
-                    kb_id=kb_id,
-                    query=query,
-                    top_k=effective_recall_k,
-                    score_threshold=effective_threshold,
-                    override_model=kb.embedding_model,
-                )
-                if results:
-                    best_score = max(r.score for r in results)
-                    logger.info("[RAG] kb=%s results=%d best_score=%.4f", kb_id, len(results), best_score)
-                else:
-                    logger.info("[RAG] kb=%s results=0 (after threshold)", kb_id)
-                all_results.extend(results)
+                if retrieval_mode in {"vector", "hybrid"}:
+                    kb_vector_results = self._search_collection(
+                        kb_id=kb_id,
+                        query=query,
+                        top_k=vector_recall_k,
+                        score_threshold=effective_threshold,
+                        override_model=kb.embedding_model,
+                    )
+                    if kb_vector_results:
+                        best_score = max(r.score for r in kb_vector_results)
+                        logger.info("[RAG] kb=%s vector_results=%d best_score=%.4f", kb_id, len(kb_vector_results), best_score)
+                    else:
+                        logger.info("[RAG] kb=%s vector_results=0", kb_id)
+                    vector_results.extend(kb_vector_results)
+
+                if retrieval_mode in {"bm25", "hybrid"}:
+                    kb_bm25_results = self._search_bm25_collection(
+                        kb_id=kb_id,
+                        query=query,
+                        top_k=bm25_recall_k,
+                    )
+                    if kb_bm25_results:
+                        best_score = max(r.score for r in kb_bm25_results)
+                        logger.info("[RAG] kb=%s bm25_results=%d best_score=%.4f", kb_id, len(kb_bm25_results), best_score)
+                    else:
+                        logger.info("[RAG] kb=%s bm25_results=0", kb_id)
+                    bm25_results.extend(kb_bm25_results)
             except Exception as e:
                 logger.warning(f"RAG search failed for KB {kb_id}: {e}")
                 continue
 
-        # Score ranking baseline
-        all_results.sort(key=lambda r: r.score, reverse=True)
-        deduped_results = self._deduplicate_results(all_results)
+        vector_results.sort(key=lambda r: r.score, reverse=True)
+        bm25_results.sort(key=lambda r: r.score, reverse=True)
+        deduped_vector_results = self._deduplicate_results(vector_results)
+        deduped_bm25_results = self._deduplicate_results(bm25_results)
+
+        if retrieval_mode == "vector":
+            candidate_results = deduped_vector_results
+        elif retrieval_mode == "bm25":
+            candidate_results = deduped_bm25_results
+        else:
+            candidate_results = self._fuse_results_rrf(
+                vector_results=deduped_vector_results,
+                bm25_results=deduped_bm25_results,
+                vector_weight=vector_weight,
+                bm25_weight=bm25_weight,
+                rrf_k=rrf_k,
+                fusion_top_k=fusion_top_k,
+            )
+
+        candidate_results.sort(key=lambda r: r.score, reverse=True)
+        deduped_results = self._deduplicate_results(candidate_results)
         ranked_results, rerank_applied = await self._rank_candidates(
             query=query,
             candidates=deduped_results,
@@ -354,12 +486,22 @@ class RagService:
             default=0.0,
         )
         diagnostics: Dict[str, Any] = {
-            "raw_count": len(all_results),
+            "raw_count": len(vector_results) + len(bm25_results),
+            "vector_raw_count": len(vector_results),
+            "bm25_raw_count": len(bm25_results),
             "deduped_count": len(deduped_results),
             "diversified_count": len(diversified_results),
             "selected_count": len(selected_results),
             "top_k": effective_top_k,
-            "recall_k": effective_recall_k,
+            "recall_k": configured_recall_k,
+            "vector_recall_k": vector_recall_k,
+            "bm25_recall_k": bm25_recall_k,
+            "fusion_top_k": fusion_top_k,
+            "fusion_strategy": fusion_strategy,
+            "rrf_k": rrf_k,
+            "vector_weight": vector_weight,
+            "bm25_weight": bm25_weight,
+            "retrieval_mode": retrieval_mode,
             "score_threshold": float(effective_threshold),
             "max_per_doc": configured_max_per_doc,
             "reorder_strategy": reorder_strategy,
@@ -375,7 +517,7 @@ class RagService:
         if reordered_results:
             logger.info(
                 "[RAG] retrieve done: raw=%d deduped=%d diversified=%d selected=%d best_score=%.4f",
-                len(all_results),
+                len(vector_results) + len(bm25_results),
                 len(deduped_results),
                 len(diversified_results),
                 len(reordered_results),
@@ -384,13 +526,18 @@ class RagService:
         else:
             logger.info("[RAG] retrieve done: total=0")
         logger.info(
-            "[RAG][DIAG] raw=%d deduped=%d diversified=%d selected=%d top_k=%d recall_k=%d threshold=%.3f max_per_doc=%d reorder=%s rerank=%s/%s(%.2f) kb=%d/%d",
+            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s rerank=%s/%s(%.2f) kb=%d/%d",
+            diagnostics["retrieval_mode"],
             diagnostics["raw_count"],
+            diagnostics["vector_raw_count"],
+            diagnostics["bm25_raw_count"],
             diagnostics["deduped_count"],
             diagnostics["diversified_count"],
             diagnostics["selected_count"],
             diagnostics["top_k"],
-            diagnostics["recall_k"],
+            diagnostics["vector_recall_k"],
+            diagnostics["bm25_recall_k"],
+            diagnostics["fusion_top_k"],
             diagnostics["score_threshold"],
             diagnostics["max_per_doc"],
             diagnostics["reorder_strategy"],
@@ -481,6 +628,33 @@ class RagService:
                 ))
 
         return rag_results
+
+    def _search_bm25_collection(
+        self,
+        *,
+        kb_id: str,
+        query: str,
+        top_k: int,
+    ) -> List[RagResult]:
+        try:
+            rows = self.bm25_service.search(kb_id=kb_id, query=query, top_k=top_k)
+        except Exception as e:
+            logger.warning(f"BM25 search failed for kb {kb_id}: {e}")
+            return []
+
+        results: List[RagResult] = []
+        for item in rows:
+            results.append(
+                RagResult(
+                    content=str(item.get("content") or ""),
+                    score=float(item.get("score", 0.0) or 0.0),
+                    kb_id=str(item.get("kb_id") or kb_id),
+                    doc_id=str(item.get("doc_id") or ""),
+                    filename=str(item.get("filename") or ""),
+                    chunk_index=int(item.get("chunk_index", 0) or 0),
+                )
+            )
+        return results
 
     @staticmethod
     def build_rag_context(query: str, results: List[RagResult]) -> str:

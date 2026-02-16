@@ -18,14 +18,37 @@ class _FakeKnowledgeBaseService:
         )
 
 
-def _build_service(*, top_k: int, score_threshold: float, recall_k: int, max_per_doc: int, reorder_strategy: str) -> RagService:
+def _build_service(
+    *,
+    top_k: int,
+    score_threshold: float,
+    recall_k: int,
+    max_per_doc: int,
+    reorder_strategy: str,
+    retrieval_mode: str = "vector",
+    vector_recall_k: int | None = None,
+    bm25_recall_k: int | None = None,
+    fusion_top_k: int = 30,
+    fusion_strategy: str = "rrf",
+    rrf_k: int = 60,
+    vector_weight: float = 1.0,
+    bm25_weight: float = 1.0,
+) -> RagService:
     service = RagService.__new__(RagService)
     service.rag_config_service = SimpleNamespace(
         config=SimpleNamespace(
             retrieval=SimpleNamespace(
+                retrieval_mode=retrieval_mode,
                 top_k=top_k,
                 score_threshold=score_threshold,
                 recall_k=recall_k,
+                vector_recall_k=vector_recall_k if vector_recall_k is not None else recall_k,
+                bm25_recall_k=bm25_recall_k if bm25_recall_k is not None else recall_k,
+                fusion_top_k=fusion_top_k,
+                fusion_strategy=fusion_strategy,
+                rrf_k=rrf_k,
+                vector_weight=vector_weight,
+                bm25_weight=bm25_weight,
                 max_per_doc=max_per_doc,
                 reorder_strategy=reorder_strategy,
                 rerank_enabled=False,
@@ -45,6 +68,7 @@ def _build_service(*, top_k: int, score_threshold: float, recall_k: int, max_per
     )
     service.embedding_service = None
     service.rerank_service = None
+    service.bm25_service = None
     return service
 
 
@@ -195,3 +219,48 @@ def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):
     assert [item.doc_id for item in results] == ["doc_2", "doc_3", "doc_1"]
     assert diagnostics["rerank_enabled"] is True
     assert diagnostics["rerank_applied"] is True
+
+
+def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+        retrieval_mode="hybrid",
+        vector_recall_k=10,
+        bm25_recall_k=10,
+        fusion_top_k=10,
+        vector_weight=1.0,
+        bm25_weight=1.0,
+        rrf_k=60,
+    )
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, query, top_k, score_threshold, override_model
+        return [
+            RagResult("vec-a", 0.95, "kb_a", "doc_a", "a.md", 0),
+            RagResult("vec-b", 0.90, "kb_a", "doc_b", "b.md", 0),
+        ]
+
+    def fake_search_bm25_collection(*, kb_id, query, top_k):
+        _ = kb_id, query, top_k
+        return [
+            RagResult("bm25-b", 0.96, "kb_a", "doc_b", "b.md", 0),
+            RagResult("bm25-c", 0.92, "kb_a", "doc_c", "c.md", 0),
+        ]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+    monkeypatch.setattr(service, "_search_bm25_collection", fake_search_bm25_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("query", ["kb_a"]))
+
+    assert [item.doc_id for item in results] == ["doc_b", "doc_a", "doc_c"]
+    assert diagnostics["retrieval_mode"] == "hybrid"
+    assert diagnostics["vector_raw_count"] == 2
+    assert diagnostics["bm25_raw_count"] == 2

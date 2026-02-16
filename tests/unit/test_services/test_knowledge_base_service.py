@@ -80,6 +80,10 @@ def test_delete_document_uses_doc_id_where_filter(monkeypatch):
             "src.api.services.rag_config_service.RagConfigService",
             _FakeRagConfigService,
         )
+        monkeypatch.setattr(
+            "src.api.services.bm25_service.Bm25Service",
+            lambda: SimpleNamespace(delete_document_chunks=lambda **kwargs: None),
+        )
 
         fake_collection = _FakeCollection()
         fake_chromadb = types.ModuleType("chromadb")

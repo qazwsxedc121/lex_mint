@@ -29,9 +29,17 @@ class RagConfigResponse(BaseModel):
     embedding_local_gguf_normalize: bool
     chunk_size: int
     chunk_overlap: int
+    retrieval_mode: str
     top_k: int
     score_threshold: float
     recall_k: int
+    vector_recall_k: int
+    bm25_recall_k: int
+    fusion_top_k: int
+    fusion_strategy: str
+    rrf_k: int
+    vector_weight: float
+    bm25_weight: float
     max_per_doc: int
     reorder_strategy: str
     rerank_enabled: bool
@@ -41,6 +49,7 @@ class RagConfigResponse(BaseModel):
     rerank_timeout_seconds: int
     rerank_weight: float
     persist_directory: str
+    bm25_sqlite_path: str
 
 
 class RagConfigUpdate(BaseModel):
@@ -58,9 +67,17 @@ class RagConfigUpdate(BaseModel):
     embedding_local_gguf_normalize: Optional[bool] = None
     chunk_size: Optional[int] = Field(None, ge=100, le=10000)
     chunk_overlap: Optional[int] = Field(None, ge=0, le=5000)
+    retrieval_mode: Optional[Literal["vector", "bm25", "hybrid"]] = None
     top_k: Optional[int] = Field(None, ge=1, le=50)
     score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     recall_k: Optional[int] = Field(None, ge=1, le=200)
+    vector_recall_k: Optional[int] = Field(None, ge=1, le=500)
+    bm25_recall_k: Optional[int] = Field(None, ge=1, le=500)
+    fusion_top_k: Optional[int] = Field(None, ge=1, le=500)
+    fusion_strategy: Optional[Literal["rrf"]] = None
+    rrf_k: Optional[int] = Field(None, ge=1, le=500)
+    vector_weight: Optional[float] = Field(None, ge=0.0, le=10.0)
+    bm25_weight: Optional[float] = Field(None, ge=0.0, le=10.0)
     max_per_doc: Optional[int] = Field(None, ge=0, le=20)
     reorder_strategy: Optional[Literal["none", "long_context"]] = None
     rerank_enabled: Optional[bool] = None
@@ -70,6 +87,7 @@ class RagConfigUpdate(BaseModel):
     rerank_timeout_seconds: Optional[int] = Field(None, ge=1, le=120)
     rerank_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
     persist_directory: Optional[str] = None
+    bm25_sqlite_path: Optional[str] = None
 
 
 def get_rag_config_service() -> RagConfigService:
@@ -115,6 +133,13 @@ async def update_config(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported reorder strategy: {update_dict['reorder_strategy']}"
+                )
+        if 'fusion_strategy' in update_dict:
+            allowed_fusion = {"rrf"}
+            if update_dict['fusion_strategy'] not in allowed_fusion:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported fusion strategy: {update_dict['fusion_strategy']}"
                 )
 
         service.save_flat_config(update_dict)

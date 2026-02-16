@@ -68,9 +68,17 @@ export interface RagConfig {
   embedding_local_gguf_normalize: boolean;
   chunk_size: number;
   chunk_overlap: number;
+  retrieval_mode: 'vector' | 'bm25' | 'hybrid';
   top_k: number;
   score_threshold: number;
   recall_k: number;
+  vector_recall_k: number;
+  bm25_recall_k: number;
+  fusion_top_k: number;
+  fusion_strategy: 'rrf';
+  rrf_k: number;
+  vector_weight: number;
+  bm25_weight: number;
   max_per_doc: number;
   reorder_strategy: 'none' | 'long_context';
   rerank_enabled: boolean;
@@ -80,4 +88,5 @@ export interface RagConfig {
   rerank_timeout_seconds: number;
   rerank_weight: number;
   persist_directory: string;
+  bm25_sqlite_path: string;
 }

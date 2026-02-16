@@ -19,8 +19,10 @@ class DocumentProcessingService:
     def __init__(self):
         from .rag_config_service import RagConfigService
         from .embedding_service import EmbeddingService
+        from .bm25_service import Bm25Service
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
+        self.bm25_service = Bm25Service()
 
     async def process_document(
         self,
@@ -377,6 +379,29 @@ class DocumentProcessingService:
 
             if batch_delay > 0 and end < total:
                 await asyncio.sleep(batch_delay)
+
+        bm25_chunks = [
+            {
+                "chunk_id": ids[index],
+                "chunk_index": metadatas[index]["chunk_index"],
+                "content": chunks[index],
+            }
+            for index in range(total)
+        ]
+        try:
+            self.bm25_service.upsert_document_chunks(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=filename,
+                chunks=bm25_chunks,
+            )
+        except Exception:
+            if added_ids:
+                try:
+                    vectorstore._collection.delete(ids=added_ids)
+                except Exception:
+                    pass
+            raise
 
         # Keep only the newest generation for this document.
         try:

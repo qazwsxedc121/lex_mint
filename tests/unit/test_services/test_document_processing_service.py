@@ -95,6 +95,7 @@ def _build_service(tmp_path: Path, *, batch_max_retries: int = 1) -> DocumentPro
         )
     )
     service.embedding_service = None
+    service.bm25_service = SimpleNamespace(upsert_document_chunks=lambda **kwargs: None)
     return service
 
 

@@ -821,7 +821,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     <div data-name="message-bubble-rag-diagnostics" className="not-prose mb-3 rounded-md border border-amber-200 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-900/30">
                       <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
                         <span>RAG Diagnostics</span>
-                        <span>{latestRagDiagnostics.reorder_strategy || 'long_context'}</span>
+                        <span>
+                          {(latestRagDiagnostics.retrieval_mode || 'vector')}
+                          {' / '}
+                          {(latestRagDiagnostics.reorder_strategy || 'long_context')}
+                        </span>
                       </div>
                       <div className="px-3 pb-2 text-[11px] text-amber-800/90 dark:text-amber-200/90 space-y-1">
                         <div>
@@ -834,6 +838,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                           {' | '}threshold {latestRagDiagnostics.score_threshold != null ? latestRagDiagnostics.score_threshold.toFixed(2) : '-'}
                           {' | '}kb {(latestRagDiagnostics.searched_kb_count ?? 0)}/{(latestRagDiagnostics.requested_kb_count ?? latestRagDiagnostics.searched_kb_count ?? 0)}
                           {' | '}best {latestRagDiagnostics.best_score != null ? latestRagDiagnostics.best_score.toFixed(3) : '-'}
+                        </div>
+                        <div>
+                          vector_raw {latestRagDiagnostics.vector_raw_count ?? '-'}
+                          {' | '}bm25_raw {latestRagDiagnostics.bm25_raw_count ?? '-'}
                         </div>
                       </div>
                     </div>
