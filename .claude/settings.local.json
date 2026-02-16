@@ -74,7 +74,14 @@
       "mcp__chrome-devtools__press_key",
       "Bash(npx eslint:*)",
       "mcp__chrome-devtools__get_console_message",
-      "mcp__chrome-devtools__evaluate_script"
+      "mcp__chrome-devtools__evaluate_script",
+      "Bash(wc:*)",
+      "Bash(/Users/xiaocanguo/GitHub/lex_mint/docs/CODEMAPS/architecture.md:*)",
+      "Bash(/Users/xiaocanguo/GitHub/lex_mint/docs/CODEMAPS/backend.md:*)",
+      "Bash(/Users/xiaocanguo/GitHub/lex_mint/docs/CODEMAPS/frontend.md:*)",
+      "Bash(/Users/xiaocanguo/GitHub/lex_mint/docs/CODEMAPS/data.md:*)",
+      "Bash(/Users/xiaocanguo/GitHub/lex_mint/docs/CODEMAPS/dependencies.md:*)",
+      "Bash(/Users/xiaocanguo/GitHub/lex_mint/.reports/codemap-diff.txt:*)"
     ]
   }
 }

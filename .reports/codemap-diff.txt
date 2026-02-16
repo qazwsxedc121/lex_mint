@@ -1,0 +1,30 @@
+Codemap Analysis Report - 2026-02-17
+=====================================
+
+Status: INITIAL GENERATION (no previous codemaps existed)
+
+Files Generated:
+  docs/CODEMAPS/architecture.md  - System overview, data flow, design decisions
+  docs/CODEMAPS/backend.md       - 20 API routes, 35 services, adapter pattern
+  docs/CODEMAPS/frontend.md      - React 19, 4 modules, component hierarchy
+  docs/CODEMAPS/data.md          - Markdown storage, ChromaDB, YAML config
+  docs/CODEMAPS/dependencies.md  - 5 LLM providers, key packages
+
+Codebase Stats:
+  Backend Python:  ~22,326 lines across src/
+  Frontend TS/TSX: ~24,974 lines across frontend/src/
+  API Routers:     20 files, 4,873 lines
+  Services:        35 files, 13,334 lines
+  Provider Adapters: 5 adapters, 1,069 lines
+
+Architecture Notes:
+  - No traditional database (Markdown + ChromaDB + YAML)
+  - Provider adapter pattern for 5+ LLM providers
+  - SSE streaming for real-time chat
+  - Module-based frontend (chat, projects, settings, developer)
+  - Two-tier config system (defaults + local overrides)
+
+Hook Adjustment:
+  - Updated everything-claude-code hooks.json to allow CODEMAPS/ directory
+  - Both marketplace and cache versions updated
+  - Change takes effect in next session
