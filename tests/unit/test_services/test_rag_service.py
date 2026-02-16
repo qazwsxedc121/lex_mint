@@ -147,6 +147,8 @@ def test_build_rag_diagnostics_source_contains_expected_fields():
             "max_per_doc": 2,
             "reorder_strategy": "long_context",
             "searched_kb_count": 2,
+            "requested_kb_count": 3,
+            "best_score": 0.91,
         }
     )
 
@@ -154,6 +156,8 @@ def test_build_rag_diagnostics_source_contains_expected_fields():
     assert source["raw_count"] == 8
     assert source["selected_count"] == 3
     assert source["reorder_strategy"] == "long_context"
+    assert source["requested_kb_count"] == 3
+    assert source["best_score"] == pytest.approx(0.91)
 
 
 def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):

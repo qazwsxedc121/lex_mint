@@ -256,11 +256,8 @@ class KnowledgeBaseService:
             collection_name = f"kb_{kb_id}"
             try:
                 collection = client.get_collection(collection_name)
-                # Delete all chunks for this document
-                chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(doc_to_delete.chunk_count)]
-                if chunk_ids:
-                    collection.delete(ids=chunk_ids)
-                    logger.info(f"Deleted {len(chunk_ids)} chunks from ChromaDB for doc {doc_id}")
+                collection.delete(where={"doc_id": doc_id})
+                logger.info(f"Deleted ChromaDB chunks for doc {doc_id} using where filter")
             except Exception:
                 pass
         except Exception as e:

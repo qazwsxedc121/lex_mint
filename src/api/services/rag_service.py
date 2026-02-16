@@ -128,6 +128,8 @@ class RagService:
         max_per_doc = int(diagnostics.get("max_per_doc", 0) or 0)
         score_threshold = float(diagnostics.get("score_threshold", 0.0) or 0.0)
         kb_count = int(diagnostics.get("searched_kb_count", 0) or 0)
+        requested_kb_count = int(diagnostics.get("requested_kb_count", kb_count) or kb_count)
+        best_score = float(diagnostics.get("best_score", 0.0) or 0.0)
         rerank_enabled = bool(diagnostics.get("rerank_enabled", False))
         rerank_applied = bool(diagnostics.get("rerank_applied", False))
         rerank_weight = float(diagnostics.get("rerank_weight", 0.0) or 0.0)
@@ -150,6 +152,8 @@ class RagService:
             "max_per_doc": max_per_doc,
             "reorder_strategy": reorder_strategy,
             "searched_kb_count": kb_count,
+            "requested_kb_count": requested_kb_count,
+            "best_score": best_score,
             "rerank_enabled": rerank_enabled,
             "rerank_applied": rerank_applied,
             "rerank_weight": rerank_weight,

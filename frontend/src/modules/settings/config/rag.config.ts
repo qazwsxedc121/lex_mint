@@ -172,7 +172,7 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       type: 'number',
       name: 'max_per_doc',
       get label() { return i18n.t('settings:rag.field.maxPerDoc'); },
-      min: 1,
+      min: 0,
       max: 20,
       defaultValue: 2,
       required: true,

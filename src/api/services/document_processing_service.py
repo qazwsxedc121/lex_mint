@@ -4,8 +4,9 @@ Document Processing Service
 Pipeline: Upload -> Extract Text -> Chunk -> Embed -> Store in ChromaDB
 """
 import logging
-import time
 import random
+import asyncio
+import uuid
 from pathlib import Path
 from typing import List, Optional
 
@@ -76,7 +77,7 @@ class DocumentProcessingService:
 
             # Step 4: Store in ChromaDB
             logger.info(f"Storing {len(chunks)} chunks in ChromaDB collection kb_{kb_id}")
-            self._store_in_chromadb(
+            await self._store_in_chromadb(
                 kb_id=kb_id,
                 doc_id=doc_id,
                 filename=filename,
@@ -273,7 +274,7 @@ class DocumentProcessingService:
         )
         return splitter.split_text(text)
 
-    def _store_in_chromadb(
+    async def _store_in_chromadb(
         self,
         kb_id: str,
         doc_id: str,
@@ -301,8 +302,10 @@ class DocumentProcessingService:
             collection_metadata={"hnsw:space": "cosine"},
         )
 
-        # Prepare document IDs and metadata
-        ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
+        # Write a new document generation first, then clean stale generations.
+        # This keeps old chunks serving if re-indexing fails midway.
+        ingest_id = uuid.uuid4().hex[:8]
+        ids = [f"{doc_id}_{ingest_id}_chunk_{i}" for i in range(len(chunks))]
         metadatas = [
             {
                 "kb_id": kb_id,
@@ -310,15 +313,10 @@ class DocumentProcessingService:
                 "filename": filename,
                 "file_type": file_type,
                 "chunk_index": i,
+                "ingest_id": ingest_id,
             }
             for i in range(len(chunks))
         ]
-
-        # Remove existing chunks for this document to allow safe reprocess
-        try:
-            vectorstore._collection.delete(where={"doc_id": doc_id})
-        except Exception:
-            pass
 
         batch_size = max(1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64))
         batch_delay = max(0.0, float(getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0))
@@ -326,6 +324,7 @@ class DocumentProcessingService:
         max_delay = 60.0
 
         total = len(chunks)
+        added_ids: List[str] = []
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             batch_texts = chunks[start:end]
@@ -341,9 +340,15 @@ class DocumentProcessingService:
                         ids=batch_ids,
                         metadatas=batch_metas,
                     )
+                    added_ids.extend(batch_ids)
                     logger.info(f"Stored chunks {start + 1}-{end} of {total} in '{collection_name}'")
                     break
                 except InvalidArgumentError as e:
+                    if added_ids:
+                        try:
+                            vectorstore._collection.delete(ids=added_ids)
+                        except Exception:
+                            pass
                     raise e
                 except Exception as e:
                     message = str(e).lower()
@@ -351,6 +356,11 @@ class DocumentProcessingService:
                     attempt += 1
                     enforce_retries = max_retries > 0 and not is_rate_limit
                     if enforce_retries and attempt > max_retries:
+                        if added_ids:
+                            try:
+                                vectorstore._collection.delete(ids=added_ids)
+                            except Exception:
+                                pass
                         raise e
 
                     if is_rate_limit:
@@ -362,8 +372,22 @@ class DocumentProcessingService:
                         f"Embedding batch {start + 1}-{end} failed "
                         f"(attempt {attempt}/{max_label}). Retrying in {wait_seconds:.2f}s: {e}"
                     )
-                    time.sleep(wait_seconds)
+                    await asyncio.sleep(wait_seconds)
                     retry_delay = min(max_delay, max(retry_delay * 2, batch_delay, 0.5))
 
             if batch_delay > 0 and end < total:
-                time.sleep(batch_delay)
+                await asyncio.sleep(batch_delay)
+
+        # Keep only the newest generation for this document.
+        try:
+            existing = vectorstore._collection.get(where={"doc_id": doc_id}, include=[])
+            existing_ids = existing.get("ids", []) or []
+            current_ids = set(ids)
+            stale_ids = [chunk_id for chunk_id in existing_ids if chunk_id not in current_ids]
+            if stale_ids:
+                vectorstore._collection.delete(ids=stale_ids)
+                logger.info(
+                    f"Removed {len(stale_ids)} stale chunks for doc {doc_id} in '{collection_name}'"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to cleanup stale chunks for doc {doc_id}: {e}")

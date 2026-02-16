@@ -1,6 +1,6 @@
 """Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
-from typing import Dict, AsyncIterator, Optional, Any, List
+from typing import Dict, AsyncIterator, Optional, Any, List, Tuple
 import logging
 import asyncio
 
@@ -206,6 +206,48 @@ class AgentService:
 
         return "\n\n".join(parts)
 
+    async def _build_rag_context_and_sources(
+        self,
+        *,
+        raw_user_message: str,
+        assistant_id: Optional[str],
+        assistant_obj: Optional[Any] = None,
+    ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+        """Build RAG context and source metadata for the current assistant."""
+        rag_sources: List[Dict[str, Any]] = []
+        if not assistant_id or assistant_id.startswith("__legacy_model_"):
+            return None, rag_sources
+
+        try:
+            assistant_for_rag = assistant_obj
+            if assistant_for_rag is None:
+                from .assistant_config_service import AssistantConfigService
+
+                assistant_service = AssistantConfigService()
+                assistant_for_rag = await assistant_service.get_assistant(assistant_id)
+
+            kb_ids = list(getattr(assistant_for_rag, "knowledge_base_ids", None) or [])
+            if not kb_ids:
+                return None, rag_sources
+
+            from .rag_service import RagService
+
+            rag_service = RagService()
+            rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
+                raw_user_message,
+                kb_ids,
+            )
+            rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
+            if not rag_results:
+                return None, rag_sources
+
+            rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
+            rag_sources.extend([r.to_dict() for r in rag_results])
+            return rag_context, rag_sources
+        except Exception as e:
+            logger.warning(f"RAG retrieval failed: {e}")
+            return None, rag_sources
+
     async def process_message(
         self,
         session_id: str,
@@ -341,26 +383,13 @@ class AgentService:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
 
         # Optional RAG context from knowledge bases
-        rag_sources: List[Dict[str, Any]] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            try:
-                from .assistant_config_service import AssistantConfigService as _ACS
-                from .rag_service import RagService
-                _assistant_svc = _ACS()
-                _assistant_obj = await _assistant_svc.get_assistant(assistant_id)
-                if _assistant_obj and getattr(_assistant_obj, 'knowledge_base_ids', None):
-                    rag_service = RagService()
-                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                        raw_user_message, _assistant_obj.knowledge_base_ids
-                    )
-                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-                    if rag_results:
-                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources.extend([r.to_dict() for r in rag_results])
-                        if rag_context:
-                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
+        rag_context, rag_sources = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
         print(f"[OK] Session loaded, {len(messages)} messages, model: {model_id}")
 
@@ -635,29 +664,13 @@ class AgentService:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
 
         # Optional RAG context from knowledge bases
-        rag_sources: List[Dict[str, Any]] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            try:
-                from .rag_service import RagService
-                # Re-use assistant object if already loaded above
-                _rag_assistant = None
-                if assistant_id:
-                    from .assistant_config_service import AssistantConfigService as _ACS2
-                    _rag_svc = _ACS2()
-                    _rag_assistant = await _rag_svc.get_assistant(assistant_id)
-                if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
-                    rag_service = RagService()
-                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                        raw_user_message, _rag_assistant.knowledge_base_ids
-                    )
-                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-                    if rag_results:
-                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources.extend([r.to_dict() for r in rag_results])
-                        if rag_context:
-                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
+        rag_context, rag_sources = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
         all_sources: List[Dict[str, Any]] = []
         if memory_sources:
@@ -971,26 +984,13 @@ class AgentService:
             except Exception as e:
                 logger.warning(f"Web search failed: {e}")
 
-        rag_sources: List[Dict[str, Any]] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            try:
-                from .rag_service import RagService
-                from .assistant_config_service import AssistantConfigService as _ACS2
-                _rag_svc = _ACS2()
-                _rag_assistant = await _rag_svc.get_assistant(assistant_id)
-                if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
-                    rag_service = RagService()
-                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                        raw_user_message, _rag_assistant.knowledge_base_ids
-                    )
-                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-                    if rag_results:
-                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources.extend([r.to_dict() for r in rag_results])
-                        if rag_context:
-                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
+        rag_context, rag_sources = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
         all_sources: List[Dict[str, Any]] = []
         if memory_sources:
@@ -1221,4 +1221,3 @@ class AgentService:
         )
 
         yield {"type": "assistant_message_id", "message_id": assistant_message_id}
-

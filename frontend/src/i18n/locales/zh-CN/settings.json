@@ -401,7 +401,7 @@
   "rag.field.recallK": "Recall K 候选数",
   "rag.field.recallK.help": "重排前候选池大小（先召回再去重/多样化/重排），建议不小于 Top K。",
   "rag.field.maxPerDoc": "单文档最大块数",
-  "rag.field.maxPerDoc.help": "单轮注入中，同一文档最多保留的分块数。",
+  "rag.field.maxPerDoc.help": "单轮注入中，同一文档最多保留的分块数；设为 0 表示不限制。",
   "rag.field.scoreThreshold": "分数阈值",
   "rag.field.scoreThreshold.help": "结果的最低相似度分数（0-1）",
   "rag.field.reorderStrategy": "重排策略",

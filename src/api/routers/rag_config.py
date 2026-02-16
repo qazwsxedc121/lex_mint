@@ -61,7 +61,7 @@ class RagConfigUpdate(BaseModel):
     top_k: Optional[int] = Field(None, ge=1, le=50)
     score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     recall_k: Optional[int] = Field(None, ge=1, le=200)
-    max_per_doc: Optional[int] = Field(None, ge=1, le=20)
+    max_per_doc: Optional[int] = Field(None, ge=0, le=20)
     reorder_strategy: Optional[Literal["none", "long_context"]] = None
     rerank_enabled: Optional[bool] = None
     rerank_api_model: Optional[str] = None

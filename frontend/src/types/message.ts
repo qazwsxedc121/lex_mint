@@ -53,6 +53,8 @@ export interface SearchSource {
   max_per_doc?: number;
   reorder_strategy?: 'none' | 'long_context';
   searched_kb_count?: number;
+  requested_kb_count?: number;
+  best_score?: number;
   rerank_enabled?: boolean;
   rerank_applied?: boolean;
   rerank_weight?: number;

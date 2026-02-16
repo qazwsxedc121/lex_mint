@@ -828,7 +828,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                           raw {latestRagDiagnostics.raw_count ?? 0}{' -> '}dedup {latestRagDiagnostics.deduped_count ?? 0}{' -> '}diversified {latestRagDiagnostics.diversified_count ?? 0}{' -> '}selected {latestRagDiagnostics.selected_count ?? 0}
                         </div>
                         <div>
-                          top_k {latestRagDiagnostics.top_k ?? '-'} | recall_k {latestRagDiagnostics.recall_k ?? '-'} | max_per_doc {latestRagDiagnostics.max_per_doc ?? '-'} | threshold {latestRagDiagnostics.score_threshold != null ? latestRagDiagnostics.score_threshold.toFixed(2) : '-'} | kb {latestRagDiagnostics.searched_kb_count ?? 0}
+                          top_k {latestRagDiagnostics.top_k ?? '-'}
+                          {' | '}recall_k {latestRagDiagnostics.recall_k ?? '-'}
+                          {' | '}max_per_doc {latestRagDiagnostics.max_per_doc ?? '-'}
+                          {' | '}threshold {latestRagDiagnostics.score_threshold != null ? latestRagDiagnostics.score_threshold.toFixed(2) : '-'}
+                          {' | '}kb {(latestRagDiagnostics.searched_kb_count ?? 0)}/{(latestRagDiagnostics.requested_kb_count ?? latestRagDiagnostics.searched_kb_count ?? 0)}
+                          {' | '}best {latestRagDiagnostics.best_score != null ? latestRagDiagnostics.best_score.toFixed(3) : '-'}
                         </div>
                       </div>
                     </div>
