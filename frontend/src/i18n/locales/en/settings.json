@@ -258,7 +258,7 @@
   "models.field.enabled": "Enable this model",
 
   "providers.title": "Provider List",
-  "providers.description": "Manage LLM providers (DeepSeek, OpenAI, Anthropic, etc.)",
+  "providers.description": "Built-in providers are preloaded; use Add only for custom providers.",
   "providers.itemName": "provider",
   "providers.itemNamePlural": "providers",
   "providers.search": "Search providers...",
@@ -268,7 +268,7 @@
   "providers.col.baseUrl": "Base URL",
   "providers.field.id": "Provider ID",
   "providers.field.id.placeholder": "e.g., my-openai",
-  "providers.field.id.help": "Unique identifier for this provider",
+  "providers.field.id.help": "Unique identifier for custom providers (built-ins are preloaded).",
   "providers.field.name": "Display Name",
   "providers.field.name.placeholder": "My OpenAI Provider",
   "providers.field.protocol": "API Protocol",

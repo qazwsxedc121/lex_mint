@@ -258,7 +258,7 @@
   "models.field.enabled": "启用此模型",
 
   "providers.title": "服务商列表",
-  "providers.description": "管理 LLM 服务商（DeepSeek、OpenAI、Anthropic 等）",
+  "providers.description": "内置服务商已预置；“添加”仅用于自定义服务商。",
   "providers.itemName": "服务商",
   "providers.itemNamePlural": "服务商",
   "providers.search": "搜索服务商...",
@@ -268,7 +268,7 @@
   "providers.col.baseUrl": "基础 URL",
   "providers.field.id": "服务商 ID",
   "providers.field.id.placeholder": "例如 my-openai",
-  "providers.field.id.help": "此服务商的唯一标识符",
+  "providers.field.id.help": "仅用于自定义服务商的唯一标识（内置服务商已预置）",
   "providers.field.name": "显示名称",
   "providers.field.name.placeholder": "我的 OpenAI 服务商",
   "providers.field.protocol": "API 协议",

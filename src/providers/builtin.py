@@ -48,6 +48,118 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         supports_model_list=False,
     ),
 
+    "zhipu": ProviderDefinition(
+        id="zhipu",
+        name="Zhipu (GLM)",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://open.bigmodel.cn/api/paas/v4",
+        sdk_class="zhipu",
+        default_capabilities=ModelCapabilities(
+            context_length=128000,
+            vision=False,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        builtin_models=[
+            ModelDefinition(
+                id="glm-5",
+                name="GLM-5",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.7",
+                name="GLM-4.7",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.6",
+                name="GLM-4.6",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.6-flash",
+                name="GLM-4.6 Flash",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.6v",
+                name="GLM-4.6V",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.5",
+                name="GLM-4.5",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.5-air",
+                name="GLM-4.5 Air",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-4.5-flash",
+                name="GLM-4.5 Flash",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-z1-air",
+                name="GLM-Z1 Air",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="glm-z1-airx",
+                name="GLM-Z1 AirX",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+        ],
+        supports_model_list=False,
+    ),
+
     "openai": ProviderDefinition(
         id="openai",
         name="OpenAI",

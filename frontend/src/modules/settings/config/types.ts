@@ -310,6 +310,12 @@ export interface CrudSettingsConfig<T = any> {
     delete?: boolean;
     setDefault?: boolean;
   };
+  /** Per-item visibility control for default actions */
+  defaultActionVisibility?: {
+    edit?: (item: T, context: ConfigContext) => boolean;
+    delete?: (item: T, context: ConfigContext) => boolean;
+    setDefault?: (item: T, context: ConfigContext) => boolean;
+  };
 
   // Validation
   /** Validate form data before submit */

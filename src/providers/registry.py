@@ -9,7 +9,14 @@ from typing import Type, Dict, Optional
 from .base import BaseLLMAdapter
 from .types import ProviderConfig, ProviderType, ApiProtocol
 from .builtin import BUILTIN_PROVIDERS, get_builtin_provider
-from .adapters import OpenAIAdapter, DeepSeekAdapter, AnthropicAdapter, OllamaAdapter, XAIAdapter
+from .adapters import (
+    OpenAIAdapter,
+    DeepSeekAdapter,
+    AnthropicAdapter,
+    OllamaAdapter,
+    XAIAdapter,
+    ZhipuAdapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +36,7 @@ class AdapterRegistry:
         "anthropic": AnthropicAdapter,
         "ollama": OllamaAdapter,
         "xai": XAIAdapter,
+        "zhipu": ZhipuAdapter,
     }
 
     # Mapping of API protocols to default adapter classes

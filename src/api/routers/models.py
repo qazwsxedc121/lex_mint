@@ -25,7 +25,7 @@ from src.providers import (
     ModelCapabilities,
     get_builtin_provider,
 )
-from src.providers.types import ApiProtocol
+from src.providers.types import ApiProtocol, ProviderType
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -148,6 +148,12 @@ async def create_provider(
 ):
     """创建新提供商（包含 API 密钥）"""
     try:
+        if provider_data.type == ProviderType.BUILTIN:
+            raise HTTPException(
+                status_code=400,
+                detail="Built-in providers are preloaded. Use create provider for custom providers only."
+            )
+
         # 创建 Provider 对象（不包含 api_key）
         provider = Provider(
             id=provider_data.id,

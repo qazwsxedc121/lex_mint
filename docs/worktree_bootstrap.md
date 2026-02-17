@@ -65,7 +65,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 89
 脚本会做这些事：
 - 创建/检查 `venv`（`python -m venv .\venv --upgrade-deps`）
 - 从 `.env.example` 生成 `.env`（如不存在）
-- 设置 `API_PORT`
+- 设置 `API_PORT` 与 `FRONTEND_PORT`
 - 设置 `CORS_ORIGINS`（JSON 数组格式，避免后端解析报错）
 - 读取/写入共享 key 文件：`$HOME\.lex_mint\keys_config.yaml`
 - 若共享 key 缺失，脚本会尝试从当前/其他 worktree 的 `config/local/keys_config.yaml` 自动迁移

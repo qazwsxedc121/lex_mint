@@ -190,6 +190,7 @@ if (-not (Test-Path -Path ".\.env")) {
 
 $envContent = Get-Content -Path ".\.env" -Raw
 $envContent = Set-OrAddEnvVar -Content $envContent -Key "API_PORT" -Value "$ApiPort"
+$envContent = Set-OrAddEnvVar -Content $envContent -Key "FRONTEND_PORT" -Value "$FrontendPort"
 
 $origins = @(
     "http://localhost:$FrontendPort",

@@ -37,8 +37,7 @@ if not exist "venv" (
 
 echo.
 echo [2/4] Installing Python dependencies...
-call venv\Scripts\activate
-pip install -r requirements.txt
+venv\Scripts\python.exe -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install Python dependencies
     pause
@@ -63,7 +62,7 @@ echo [4/4] Checking configuration file...
 if not exist ".env" (
     echo [WARNING] .env file not found
     copy .env.example .env >nul 2>&1
-    echo     Please edit .env file for API_PORT/CORS settings if needed
+    echo     Please edit .env file for API_PORT/FRONTEND_PORT/CORS settings if needed
     echo     API keys are stored in %USERPROFILE%\.lex_mint\keys_config.yaml
     echo.
     notepad .env

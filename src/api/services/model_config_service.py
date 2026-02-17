@@ -17,6 +17,7 @@ from src.providers import (
     ProviderType,
     ApiProtocol,
     get_builtin_provider,
+    get_all_builtin_providers,
 )
 from src.providers.types import ProviderConfig
 
@@ -33,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 class ModelConfigService:
     """模型配置管理服务"""
+
+    _DEFAULT_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
 
     def __init__(self, config_path: Path = None, keys_path: Path = None):
         """
@@ -61,6 +64,7 @@ class ModelConfigService:
         self.config_path = config_path
         self.keys_path = keys_path
         self._ensure_config_exists()
+        self._sync_builtin_entries()
         self._ensure_keys_config_exists()
 
     def _ensure_config_exists(self):
@@ -83,104 +87,164 @@ class ModelConfigService:
 
     def _get_default_config(self) -> dict:
         """获取默认配置"""
+        providers: list[dict[str, Any]] = []
+        models: list[dict[str, Any]] = []
+
+        for definition in get_all_builtin_providers().values():
+            providers.append(
+                self._provider_from_definition(
+                    definition,
+                    enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
+                )
+            )
+            for model_definition in definition.builtin_models:
+                is_default_deepseek = (
+                    definition.id == "deepseek"
+                    and model_definition.id in {"deepseek-chat", "deepseek-reasoner"}
+                )
+                models.append(
+                    self._model_from_definition(
+                        provider_id=definition.id,
+                        model_id=model_definition.id,
+                        model_name=model_definition.name,
+                        capabilities=model_definition.capabilities,
+                        enabled=is_default_deepseek,
+                    )
+                )
+
         return {
             "default": {
                 "provider": "deepseek",
                 "model": "deepseek-chat"
             },
-            "providers": [
-                {
-                    "id": "deepseek",
-                    "name": "DeepSeek",
-                    "type": "builtin",
-                    "protocol": "openai",
-                    "base_url": "https://api.deepseek.com",
-                    "enabled": True,
-                    "sdk_class": "deepseek",
-                    "default_capabilities": {
-                        "context_length": 64000,
-                        "reasoning": True,
-                        "function_calling": True,
-                        "streaming": True,
-                    }
-                },
-                {
-                    "id": "openai",
-                    "name": "OpenAI",
-                    "type": "builtin",
-                    "protocol": "openai",
-                    "base_url": "https://api.openai.com/v1",
-                    "enabled": False,
-                    "sdk_class": "openai",
-                    "default_capabilities": {
-                        "context_length": 128000,
-                        "vision": True,
-                        "function_calling": True,
-                        "reasoning": True,
-                        "streaming": True,
-                    }
-                },
-                {
-                    "id": "openrouter",
-                    "name": "OpenRouter",
-                    "type": "builtin",
-                    "protocol": "openai",
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "enabled": True,
-                    "sdk_class": "openai",
-                    "supports_model_list": True,
-                    "default_capabilities": {
-                        "context_length": 128000,
-                        "function_calling": True,
-                        "streaming": True,
-                    }
-                }
-            ],
-            "models": [
-                {
-                    "id": "deepseek-chat",
-                    "name": "DeepSeek Chat",
-                    "provider_id": "deepseek",
-                    "group": "chat",
-                    "enabled": True,
-                    "capabilities": {
-                        "context_length": 64000,
-                        "reasoning": True,
-                        "function_calling": True,
-                    }
-                },
-                {
-                    "id": "deepseek-reasoner",
-                    "name": "DeepSeek Reasoner",
-                    "provider_id": "deepseek",
-                    "group": "reasoning",
-                    "enabled": True,
-                    "capabilities": {
-                        "context_length": 64000,
-                        "reasoning": True,
-                    }
-                },
-                {
-                    "id": "gpt-4-turbo",
-                    "name": "GPT-4 Turbo",
-                    "provider_id": "openai",
-                    "group": "chat",
-                    "enabled": False,
-                    "capabilities": {
-                        "context_length": 128000,
-                        "vision": True,
-                        "function_calling": True,
-                    }
-                },
-                {
-                    "id": "gpt-3.5-turbo",
-                    "name": "GPT-3.5 Turbo",
-                    "provider_id": "openai",
-                    "group": "chat",
-                    "enabled": False
-                }
-            ]
+            "providers": providers,
+            "models": models,
+            "reasoning_supported_patterns": ["deepseek-chat", "glm-"],
         }
+
+    def _provider_from_definition(self, definition, enabled: bool) -> dict[str, Any]:
+        return {
+            "id": definition.id,
+            "name": definition.name,
+            "type": "builtin",
+            "protocol": definition.protocol.value,
+            "base_url": definition.base_url,
+            "api_keys": [],
+            "enabled": enabled,
+            "default_capabilities": definition.default_capabilities.model_dump(mode="json"),
+            "url_suffix": definition.url_suffix,
+            "auto_append_path": definition.auto_append_path,
+            "supports_model_list": definition.supports_model_list,
+            "sdk_class": definition.sdk_class,
+        }
+
+    def _model_from_definition(
+        self,
+        *,
+        provider_id: str,
+        model_id: str,
+        model_name: str,
+        capabilities: Optional[ModelCapabilities],
+        enabled: bool,
+    ) -> dict[str, Any]:
+        group = "reasoning" if "reason" in model_id.lower() else "chat"
+        return {
+            "id": model_id,
+            "name": model_name,
+            "provider_id": provider_id,
+            "group": group,
+            "enabled": enabled,
+            "capabilities": capabilities.model_dump(mode="json") if capabilities else None,
+        }
+
+    def _sync_builtin_entries(self) -> None:
+        """
+        Ensure built-in providers/models always exist in local config.
+
+        Only adds missing entries; never overwrites existing user edits.
+        """
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning(f"Failed to read model config for builtin sync: {e}")
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        providers = data.get("providers")
+        if not isinstance(providers, list):
+            providers = []
+            data["providers"] = providers
+
+        models = data.get("models")
+        if not isinstance(models, list):
+            models = []
+            data["models"] = models
+
+        default_config = data.get("default") or {}
+        default_provider = default_config.get("provider")
+        default_model = default_config.get("model")
+
+        existing_provider_ids = {
+            p.get("id")
+            for p in providers
+            if isinstance(p, dict) and p.get("id")
+        }
+        existing_model_keys = {
+            (m.get("provider_id"), m.get("id"))
+            for m in models
+            if isinstance(m, dict) and m.get("provider_id") and m.get("id")
+        }
+
+        changed = False
+
+        for definition in get_all_builtin_providers().values():
+            if definition.id not in existing_provider_ids:
+                providers.append(
+                    self._provider_from_definition(
+                        definition,
+                        enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
+                    )
+                )
+                existing_provider_ids.add(definition.id)
+                changed = True
+
+            for model_definition in definition.builtin_models:
+                key = (definition.id, model_definition.id)
+                if key in existing_model_keys:
+                    continue
+
+                is_default_model = (
+                    default_provider == definition.id and default_model == model_definition.id
+                )
+                models.append(
+                    self._model_from_definition(
+                        provider_id=definition.id,
+                        model_id=model_definition.id,
+                        model_name=model_definition.name,
+                        capabilities=model_definition.capabilities,
+                        enabled=is_default_model,
+                    )
+                )
+                existing_model_keys.add(key)
+                changed = True
+
+        reasoning_patterns = data.get("reasoning_supported_patterns")
+        if not isinstance(reasoning_patterns, list):
+            reasoning_patterns = []
+            data["reasoning_supported_patterns"] = reasoning_patterns
+            changed = True
+
+        for pattern in ["deepseek-chat", "glm-"]:
+            if pattern not in reasoning_patterns:
+                reasoning_patterns.append(pattern)
+                changed = True
+
+        if changed:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 
     async def load_config(self) -> ModelsConfig:
         """加载配置文件"""
@@ -407,6 +471,8 @@ class ModelConfigService:
         # 检查是否是默认提供商
         if config.default.provider == provider_id:
             raise ValueError(f"Cannot delete default provider '{provider_id}'")
+        if get_builtin_provider(provider_id):
+            raise ValueError(f"Cannot delete built-in provider '{provider_id}', disable it instead")
 
         # 删除提供商
         config.providers = [p for p in config.providers if p.id != provider_id]
