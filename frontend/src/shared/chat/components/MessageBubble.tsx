@@ -842,6 +842,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         <div>
                           vector_raw {latestRagDiagnostics.vector_raw_count ?? '-'}
                           {' | '}bm25_raw {latestRagDiagnostics.bm25_raw_count ?? '-'}
+                          {' | '}bm25_cov {latestRagDiagnostics.bm25_min_term_coverage != null ? latestRagDiagnostics.bm25_min_term_coverage.toFixed(2) : '-'}
                         </div>
                       </div>
                     </div>

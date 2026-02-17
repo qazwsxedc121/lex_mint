@@ -428,6 +428,8 @@
   "rag.field.vectorRecallK.help": "融合/重排前向量通道的候选池大小。",
   "rag.field.bm25RecallK": "BM25 Recall K",
   "rag.field.bm25RecallK.help": "融合/重排前 BM25 通道的候选池大小。",
+  "rag.field.bm25MinTermCoverage": "BM25 最低词覆盖率",
+  "rag.field.bm25MinTermCoverage.help": "单个 BM25 分块必须覆盖的查询词比例下限，用于过滤噪声文本。",
   "rag.field.fusionTopK": "融合 Top K",
   "rag.field.fusionTopK.help": "进入重排前保留的融合候选上限。",
   "rag.field.fusionStrategy": "融合策略",

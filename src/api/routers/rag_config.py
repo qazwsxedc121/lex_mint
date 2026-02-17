@@ -38,6 +38,7 @@ class RagConfigResponse(BaseModel):
     recall_k: int
     vector_recall_k: int
     bm25_recall_k: int
+    bm25_min_term_coverage: float
     fusion_top_k: int
     fusion_strategy: str
     rrf_k: int
@@ -81,6 +82,7 @@ class RagConfigUpdate(BaseModel):
     recall_k: Optional[int] = Field(None, ge=1, le=200)
     vector_recall_k: Optional[int] = Field(None, ge=1, le=500)
     bm25_recall_k: Optional[int] = Field(None, ge=1, le=500)
+    bm25_min_term_coverage: Optional[float] = Field(None, ge=0.0, le=1.0)
     fusion_top_k: Optional[int] = Field(None, ge=1, le=500)
     fusion_strategy: Optional[Literal["rrf"]] = None
     rrf_k: Optional[int] = Field(None, ge=1, le=500)

@@ -51,6 +51,7 @@ export interface SearchSource {
   recall_k?: number;
   vector_recall_k?: number;
   bm25_recall_k?: number;
+  bm25_min_term_coverage?: number;
   fusion_top_k?: number;
   fusion_strategy?: 'rrf';
   retrieval_mode?: 'vector' | 'bm25' | 'hybrid';

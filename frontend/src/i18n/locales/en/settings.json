@@ -428,6 +428,8 @@
   "rag.field.vectorRecallK.help": "Vector candidate pool size before fusion/rerank.",
   "rag.field.bm25RecallK": "BM25 Recall K",
   "rag.field.bm25RecallK.help": "BM25 candidate pool size before fusion/rerank.",
+  "rag.field.bm25MinTermCoverage": "BM25 Min Term Coverage",
+  "rag.field.bm25MinTermCoverage.help": "Minimum query-term coverage per BM25 chunk to reduce noisy context.",
   "rag.field.fusionTopK": "Fusion Top K",
   "rag.field.fusionTopK.help": "Maximum fused candidates kept before reranking.",
   "rag.field.fusionStrategy": "Fusion Strategy",

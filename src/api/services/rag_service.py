@@ -190,6 +190,7 @@ class RagService:
         retrieval_mode = str(diagnostics.get("retrieval_mode", "vector") or "vector")
         vector_recall_k = int(diagnostics.get("vector_recall_k", recall_k) or recall_k)
         bm25_recall_k = int(diagnostics.get("bm25_recall_k", recall_k) or recall_k)
+        bm25_min_term_coverage = float(diagnostics.get("bm25_min_term_coverage", 0.0) or 0.0)
         fusion_top_k = int(diagnostics.get("fusion_top_k", top_k) or top_k)
         fusion_strategy = str(diagnostics.get("fusion_strategy", "rrf") or "rrf")
         rrf_k = int(diagnostics.get("rrf_k", 60) or 60)
@@ -224,6 +225,7 @@ class RagService:
             "retrieval_mode": retrieval_mode,
             "vector_recall_k": vector_recall_k,
             "bm25_recall_k": bm25_recall_k,
+            "bm25_min_term_coverage": bm25_min_term_coverage,
             "fusion_top_k": fusion_top_k,
             "fusion_strategy": fusion_strategy,
             "rrf_k": rrf_k,
@@ -337,6 +339,10 @@ class RagService:
         bm25_recall_k = int(
             getattr(config.retrieval, "bm25_recall_k", configured_recall_k) or configured_recall_k
         )
+        bm25_min_term_coverage = float(
+            getattr(config.retrieval, "bm25_min_term_coverage", 0.35) or 0.0
+        )
+        bm25_min_term_coverage = max(0.0, min(1.0, bm25_min_term_coverage))
         vector_recall_k = max(effective_top_k, vector_recall_k)
         bm25_recall_k = max(effective_top_k, bm25_recall_k)
         fusion_top_k = int(
@@ -375,13 +381,14 @@ class RagService:
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, bm25_min_term_coverage=%.2f, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
             short_query,
             kb_ids,
             retrieval_mode,
             effective_top_k,
             vector_recall_k,
             bm25_recall_k,
+            bm25_min_term_coverage,
             fusion_top_k,
             effective_threshold,
             configured_max_per_doc,
@@ -442,6 +449,7 @@ class RagService:
                         kb_id=kb_id,
                         query=query,
                         top_k=bm25_recall_k,
+                        min_term_coverage=bm25_min_term_coverage,
                     )
                     if kb_bm25_results:
                         best_score = max(r.score for r in kb_bm25_results)
@@ -505,6 +513,7 @@ class RagService:
             "recall_k": configured_recall_k,
             "vector_recall_k": vector_recall_k,
             "bm25_recall_k": bm25_recall_k,
+            "bm25_min_term_coverage": bm25_min_term_coverage,
             "fusion_top_k": fusion_top_k,
             "fusion_strategy": fusion_strategy,
             "rrf_k": rrf_k,
@@ -535,7 +544,7 @@ class RagService:
         else:
             logger.info("[RAG] retrieve done: total=0")
         logger.info(
-            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s rerank=%s/%s(%.2f) kb=%d/%d",
+            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s rerank=%s/%s(%.2f) kb=%d/%d",
             diagnostics["retrieval_mode"],
             diagnostics["raw_count"],
             diagnostics["vector_raw_count"],
@@ -546,6 +555,7 @@ class RagService:
             diagnostics["top_k"],
             diagnostics["vector_recall_k"],
             diagnostics["bm25_recall_k"],
+            diagnostics["bm25_min_term_coverage"],
             diagnostics["fusion_top_k"],
             diagnostics["score_threshold"],
             diagnostics["max_per_doc"],
@@ -730,9 +740,15 @@ class RagService:
         kb_id: str,
         query: str,
         top_k: int,
+        min_term_coverage: float,
     ) -> List[RagResult]:
         try:
-            rows = self.bm25_service.search(kb_id=kb_id, query=query, top_k=top_k)
+            rows = self.bm25_service.search(
+                kb_id=kb_id,
+                query=query,
+                top_k=top_k,
+                min_term_coverage=min_term_coverage,
+            )
         except Exception as e:
             logger.warning(f"BM25 search failed for kb {kb_id}: {e}")
             return []

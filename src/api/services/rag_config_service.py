@@ -41,16 +41,17 @@ class ChunkingConfig:
 
 @dataclass
 class RetrievalConfig:
-    retrieval_mode: str = "vector"
+    retrieval_mode: str = "hybrid"
     top_k: int = 5
-    score_threshold: float = 0.3
+    score_threshold: float = 0.65
     recall_k: int = 20
-    vector_recall_k: int = 20
+    vector_recall_k: int = 5
     bm25_recall_k: int = 20
+    bm25_min_term_coverage: float = 0.35
     fusion_top_k: int = 30
     fusion_strategy: str = "rrf"
-    rrf_k: int = 60
-    vector_weight: float = 1.0
+    rrf_k: int = 40
+    vector_weight: float = 0.05
     bm25_weight: float = 1.0
     max_per_doc: int = 2
     reorder_strategy: str = "long_context"
@@ -116,16 +117,17 @@ class RagConfigService:
                     'chunk_overlap': 200,
                 },
                 'retrieval': {
-                    'retrieval_mode': 'vector',
+                    'retrieval_mode': 'hybrid',
                     'top_k': 5,
-                    'score_threshold': 0.3,
+                    'score_threshold': 0.65,
                     'recall_k': 20,
-                    'vector_recall_k': 20,
+                    'vector_recall_k': 5,
                     'bm25_recall_k': 20,
+                    'bm25_min_term_coverage': 0.35,
                     'fusion_top_k': 30,
                     'fusion_strategy': 'rrf',
-                    'rrf_k': 60,
-                    'vector_weight': 1.0,
+                    'rrf_k': 40,
+                    'vector_weight': 0.05,
                     'bm25_weight': 1.0,
                     'max_per_doc': 2,
                     'reorder_strategy': 'long_context',
@@ -188,22 +190,23 @@ class RagConfigService:
                     chunk_overlap=chunking_data.get('chunk_overlap', 200),
                 ),
                 retrieval=RetrievalConfig(
-                    retrieval_mode=retrieval_data.get('retrieval_mode', 'vector'),
+                    retrieval_mode=retrieval_data.get('retrieval_mode', 'hybrid'),
                     top_k=retrieval_data.get('top_k', 5),
-                    score_threshold=retrieval_data.get('score_threshold', 0.3),
+                    score_threshold=retrieval_data.get('score_threshold', 0.65),
                     recall_k=retrieval_data.get('recall_k', 20),
                     vector_recall_k=retrieval_data.get(
                         'vector_recall_k',
-                        retrieval_data.get('recall_k', 20),
+                        5,
                     ),
                     bm25_recall_k=retrieval_data.get(
                         'bm25_recall_k',
                         retrieval_data.get('recall_k', 20),
                     ),
+                    bm25_min_term_coverage=retrieval_data.get('bm25_min_term_coverage', 0.35),
                     fusion_top_k=retrieval_data.get('fusion_top_k', 30),
                     fusion_strategy=retrieval_data.get('fusion_strategy', 'rrf'),
-                    rrf_k=retrieval_data.get('rrf_k', 60),
-                    vector_weight=retrieval_data.get('vector_weight', 1.0),
+                    rrf_k=retrieval_data.get('rrf_k', 40),
+                    vector_weight=retrieval_data.get('vector_weight', 0.05),
                     bm25_weight=retrieval_data.get('bm25_weight', 1.0),
                     max_per_doc=retrieval_data.get('max_per_doc', 2),
                     reorder_strategy=retrieval_data.get('reorder_strategy', 'long_context'),
@@ -287,6 +290,7 @@ class RagConfigService:
             'recall_k': self.config.retrieval.recall_k,
             'vector_recall_k': self.config.retrieval.vector_recall_k,
             'bm25_recall_k': self.config.retrieval.bm25_recall_k,
+            'bm25_min_term_coverage': self.config.retrieval.bm25_min_term_coverage,
             'fusion_top_k': self.config.retrieval.fusion_top_k,
             'fusion_strategy': self.config.retrieval.fusion_strategy,
             'rrf_k': self.config.retrieval.rrf_k,
@@ -332,6 +336,7 @@ class RagConfigService:
             'recall_k': ('retrieval', 'recall_k'),
             'vector_recall_k': ('retrieval', 'vector_recall_k'),
             'bm25_recall_k': ('retrieval', 'bm25_recall_k'),
+            'bm25_min_term_coverage': ('retrieval', 'bm25_min_term_coverage'),
             'fusion_top_k': ('retrieval', 'fusion_top_k'),
             'fusion_strategy': ('retrieval', 'fusion_strategy'),
             'rrf_k': ('retrieval', 'rrf_k'),

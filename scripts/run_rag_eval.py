@@ -51,16 +51,19 @@ class EvalCase:
     doc_ids: Set[str]
     filenames: Set[str]
     keywords: Set[str]
+    expect_none: bool
 
     @property
     def has_targets(self) -> bool:
-        return bool(self.doc_ids or self.filenames or self.keywords)
+        return self.expect_none or bool(self.doc_ids or self.filenames or self.keywords)
 
     @property
     def uses_keyword_targets_only(self) -> bool:
         return not (self.doc_ids or self.filenames)
 
     def target_count(self) -> int:
+        if self.expect_none:
+            return 0
         if not self.uses_keyword_targets_only:
             return len(self.doc_ids) + len(self.filenames)
         return len(self.keywords)
@@ -108,6 +111,11 @@ def _load_cases(dataset_path: Path) -> Tuple[Dict[str, Any], List[EvalCase]]:
         doc_ids = _as_lower_set(expected.get("doc_ids") or item.get("expected_doc_ids"))
         filenames = _as_lower_set(expected.get("filenames") or item.get("expected_filenames"))
         keywords = _as_lower_set(expected.get("keywords") or item.get("expected_keywords"))
+        expect_none = bool(item.get("expect_none") or expected.get("none"))
+        if expect_none and (doc_ids or filenames or keywords):
+            raise ValueError(
+                f"Case '{case_id}' cannot set expect_none together with expected targets."
+            )
 
         case = EvalCase(
             case_id=case_id,
@@ -118,6 +126,7 @@ def _load_cases(dataset_path: Path) -> Tuple[Dict[str, Any], List[EvalCase]]:
             doc_ids=doc_ids,
             filenames=filenames,
             keywords=keywords,
+            expect_none=expect_none,
         )
         if not case.has_targets:
             raise ValueError(
@@ -152,6 +161,25 @@ def _match_targets(case: EvalCase, result: RagResult) -> Set[str]:
 
 def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> Dict[str, Any]:
     capped = list(results[: max(1, int(top_k))])
+    if case.expect_none:
+        no_answer_success = 1.0 if len(capped) == 0 else 0.0
+        return {
+            "case_id": case.case_id,
+            "top_k": top_k,
+            "expect_none": True,
+            "target_type": "none",
+            "target_count": 0,
+            "matched_target_count": 0,
+            "hit_at_k": no_answer_success,
+            "citation_hit": no_answer_success,
+            "mrr": no_answer_success,
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "first_relevant_rank": None,
+            "relevant_ranks": [],
+            "no_answer_success": no_answer_success,
+        }
+
     total_targets = case.target_count()
     seen_targets: Set[str] = set()
     relevant_ranks: List[int] = []
@@ -171,6 +199,7 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
     return {
         "case_id": case.case_id,
         "top_k": top_k,
+        "expect_none": False,
         "target_type": "keyword" if case.uses_keyword_targets_only else "doc_file",
         "target_count": total_targets,
         "matched_target_count": len(seen_targets),
@@ -181,6 +210,7 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
         "recall_at_k": recall_at_k,
         "first_relevant_rank": first_rank,
         "relevant_ranks": relevant_ranks,
+        "no_answer_success": None,
     }
 
 
@@ -194,16 +224,49 @@ def _summarize_mode(mode: str, case_rows: Sequence[Dict[str, Any]]) -> Dict[str,
             "mean_mrr": 0.0,
             "mean_precision_at_k": 0.0,
             "mean_recall_at_k": 0.0,
+            "answerable_case_count": 0,
+            "no_answer_case_count": 0,
+            "no_answer_success_rate": 0.0,
+            "overall_pass_rate": 0.0,
         }
+
+    answerable_rows = [row for row in case_rows if not bool(row.get("expect_none", False))]
+    no_answer_rows = [row for row in case_rows if bool(row.get("expect_none", False))]
+
+    if answerable_rows:
+        hit_rate = mean(row["hit_at_k"] for row in answerable_rows)
+        citation_hit_rate = mean(row["citation_hit"] for row in answerable_rows)
+        mean_mrr = mean(row["mrr"] for row in answerable_rows)
+        mean_precision = mean(row["precision_at_k"] for row in answerable_rows)
+        mean_recall = mean(row["recall_at_k"] for row in answerable_rows)
+    else:
+        hit_rate = 0.0
+        citation_hit_rate = 0.0
+        mean_mrr = 0.0
+        mean_precision = 0.0
+        mean_recall = 0.0
+
+    no_answer_success_rate = (
+        mean(float(row.get("no_answer_success", 0.0) or 0.0) for row in no_answer_rows)
+        if no_answer_rows
+        else 0.0
+    )
+    pass_sum = sum(float(row.get("hit_at_k", 0.0) or 0.0) for row in answerable_rows) + sum(
+        float(row.get("no_answer_success", 0.0) or 0.0) for row in no_answer_rows
+    )
 
     return {
         "mode": mode,
         "case_count": len(case_rows),
-        "hit_rate": mean(row["hit_at_k"] for row in case_rows),
-        "citation_hit_rate": mean(row["citation_hit"] for row in case_rows),
-        "mean_mrr": mean(row["mrr"] for row in case_rows),
-        "mean_precision_at_k": mean(row["precision_at_k"] for row in case_rows),
-        "mean_recall_at_k": mean(row["recall_at_k"] for row in case_rows),
+        "hit_rate": hit_rate,
+        "citation_hit_rate": citation_hit_rate,
+        "mean_mrr": mean_mrr,
+        "mean_precision_at_k": mean_precision,
+        "mean_recall_at_k": mean_recall,
+        "answerable_case_count": len(answerable_rows),
+        "no_answer_case_count": len(no_answer_rows),
+        "no_answer_success_rate": no_answer_success_rate,
+        "overall_pass_rate": pass_sum / max(1, len(case_rows)),
     }
 
 
@@ -233,6 +296,21 @@ def _build_report(
             "{mean_mrr:.3f} | {mean_precision_at_k:.3f} | {mean_recall_at_k:.3f} |".format(**item)
         )
 
+    lines.extend(
+        [
+            "",
+            "## Extra Metrics",
+            "",
+            "| Mode | Answerable Cases | No-Answer Cases | No-Answer Success | Overall Pass |",
+            "|------|-----------------:|----------------:|------------------:|-------------:|",
+        ]
+    )
+    for item in summaries:
+        lines.append(
+            "| {mode} | {answerable_case_count} | {no_answer_case_count} | "
+            "{no_answer_success_rate:.3f} | {overall_pass_rate:.3f} |".format(**item)
+        )
+
     if summaries:
         best_mode = max(summaries, key=lambda row: (row["mean_mrr"], row["mean_recall_at_k"]))
         lines.extend(
@@ -254,6 +332,7 @@ async def _evaluate_mode(
     cases: Sequence[EvalCase],
     top_k_override: Optional[int],
     score_threshold_override: Optional[float],
+    bm25_min_term_coverage_override: Optional[float],
 ) -> Dict[str, Any]:
     service = RagService()
     retrieval_cfg = service.rag_config_service.config.retrieval
@@ -263,6 +342,11 @@ async def _evaluate_mode(
         retrieval_cfg.top_k = max(1, int(top_k_override))
     if score_threshold_override is not None:
         retrieval_cfg.score_threshold = float(score_threshold_override)
+    if bm25_min_term_coverage_override is not None:
+        retrieval_cfg.bm25_min_term_coverage = max(
+            0.0,
+            min(1.0, float(bm25_min_term_coverage_override)),
+        )
 
     case_outputs: List[Dict[str, Any]] = []
     for case in cases:
@@ -346,6 +430,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional score_threshold override for all cases.",
     )
     parser.add_argument(
+        "--bm25-min-term-coverage",
+        type=float,
+        default=None,
+        help="Optional BM25 lexical coverage threshold override (0-1).",
+    )
+    parser.add_argument(
         "--max-cases",
         type=int,
         default=None,
@@ -387,6 +477,7 @@ async def _main() -> None:
             cases=cases,
             top_k_override=args.top_k,
             score_threshold_override=args.score_threshold,
+            bm25_min_term_coverage_override=args.bm25_min_term_coverage,
         )
         mode_outputs.append(mode_result)
         (output_dir / f"mode_{mode}_cases.json").write_text(

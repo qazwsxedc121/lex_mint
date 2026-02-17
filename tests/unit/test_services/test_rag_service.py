@@ -33,6 +33,7 @@ def _build_service(
     rrf_k: int = 60,
     vector_weight: float = 1.0,
     bm25_weight: float = 1.0,
+    bm25_min_term_coverage: float = 0.35,
 ) -> RagService:
     service = RagService.__new__(RagService)
     service.rag_config_service = SimpleNamespace(
@@ -44,6 +45,7 @@ def _build_service(
                 recall_k=recall_k,
                 vector_recall_k=vector_recall_k if vector_recall_k is not None else recall_k,
                 bm25_recall_k=bm25_recall_k if bm25_recall_k is not None else recall_k,
+                bm25_min_term_coverage=bm25_min_term_coverage,
                 fusion_top_k=fusion_top_k,
                 fusion_strategy=fusion_strategy,
                 rrf_k=rrf_k,
@@ -248,8 +250,9 @@ def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
             RagResult("vec-b", 0.90, "kb_a", "doc_b", "b.md", 0),
         ]
 
-    def fake_search_bm25_collection(*, kb_id, query, top_k):
+    def fake_search_bm25_collection(*, kb_id, query, top_k, min_term_coverage):
         _ = kb_id, query, top_k
+        assert min_term_coverage == pytest.approx(0.35)
         return [
             RagResult("bm25-b", 0.96, "kb_a", "doc_b", "b.md", 0),
             RagResult("bm25-c", 0.92, "kb_a", "doc_c", "c.md", 0),
@@ -264,6 +267,7 @@ def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
     assert diagnostics["retrieval_mode"] == "hybrid"
     assert diagnostics["vector_raw_count"] == 2
     assert diagnostics["bm25_raw_count"] == 2
+    assert diagnostics["bm25_min_term_coverage"] == pytest.approx(0.35)
 
 
 def test_search_collection_dispatches_to_sqlite_vec(monkeypatch):

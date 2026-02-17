@@ -236,7 +236,7 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       type: 'select',
       name: 'retrieval_mode',
       get label() { return i18n.t('settings:rag.field.retrievalMode'); },
-      defaultValue: 'vector',
+      defaultValue: 'hybrid',
       get options() {
         return [
           { value: 'vector', label: i18n.t('settings:rag.opt.retrievalVector') },
@@ -273,7 +273,7 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get label() { return i18n.t('settings:rag.field.vectorRecallK'); },
       min: 1,
       max: 500,
-      defaultValue: 20,
+      defaultValue: 5,
       required: true,
       condition: (formData) => formData.retrieval_mode !== 'bm25',
       get helpText() { return i18n.t('settings:rag.field.vectorRecallK.help'); }
@@ -288,6 +288,18 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       required: true,
       condition: (formData) => formData.retrieval_mode !== 'vector',
       get helpText() { return i18n.t('settings:rag.field.bm25RecallK.help'); }
+    },
+    {
+      type: 'number',
+      name: 'bm25_min_term_coverage',
+      get label() { return i18n.t('settings:rag.field.bm25MinTermCoverage'); },
+      min: 0,
+      max: 1,
+      step: 0.05,
+      defaultValue: 0.35,
+      required: true,
+      condition: (formData) => formData.retrieval_mode !== 'vector',
+      get helpText() { return i18n.t('settings:rag.field.bm25MinTermCoverage.help'); }
     },
     {
       type: 'number',
@@ -318,7 +330,7 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get label() { return i18n.t('settings:rag.field.rrfK'); },
       min: 1,
       max: 500,
-      defaultValue: 60,
+      defaultValue: 40,
       required: true,
       condition: (formData) => formData.retrieval_mode === 'hybrid',
       get helpText() { return i18n.t('settings:rag.field.rrfK.help'); }
@@ -329,8 +341,8 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get label() { return i18n.t('settings:rag.field.vectorWeight'); },
       min: 0,
       max: 10,
-      step: 0.1,
-      defaultValue: 1,
+      step: 0.05,
+      defaultValue: 0.05,
       required: true,
       condition: (formData) => formData.retrieval_mode === 'hybrid',
       get helpText() { return i18n.t('settings:rag.field.vectorWeight.help'); }
@@ -364,7 +376,7 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       min: 0,
       max: 1,
       step: 0.05,
-      defaultValue: 0.3,
+      defaultValue: 0.65,
       required: true,
       get helpText() { return i18n.t('settings:rag.field.scoreThreshold.help'); }
     },
