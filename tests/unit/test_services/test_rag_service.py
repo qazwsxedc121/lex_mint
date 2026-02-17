@@ -264,3 +264,29 @@ def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
     assert diagnostics["retrieval_mode"] == "hybrid"
     assert diagnostics["vector_raw_count"] == 2
     assert diagnostics["bm25_raw_count"] == 2
+
+
+def test_search_collection_dispatches_to_sqlite_vec(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.storage.vector_store_backend = "sqlite_vec"
+
+    def fake_sqlite_search(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = query, top_k, score_threshold, override_model
+        return [RagResult("sqlite", 0.9, kb_id, "doc_sqlite", "sqlite.md", 0)]
+
+    def fail_chroma_search(*args, **kwargs):
+        _ = args, kwargs
+        raise AssertionError("chroma backend should not be used when sqlite_vec is selected")
+
+    monkeypatch.setattr(service, "_search_collection_sqlite_vec", fake_sqlite_search)
+    monkeypatch.setattr(service, "_search_collection_chroma", fail_chroma_search)
+
+    result = service._search_collection("kb1", "hello", 5, 0.1, None)
+    assert len(result) == 1
+    assert result[0].doc_id == "doc_sqlite"

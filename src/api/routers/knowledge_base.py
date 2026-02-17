@@ -287,33 +287,53 @@ async def list_chunks(
     try:
         from ..services.rag_config_service import RagConfigService
         rag_config = RagConfigService()
-        persist_dir = Path(rag_config.config.storage.persist_directory)
-        if not persist_dir.is_absolute():
-            persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
-
-        import chromadb
-        client = chromadb.PersistentClient(path=str(persist_dir))
-        collection_name = f"kb_{kb_id}"
-        collection = client.get_collection(collection_name)
-        query = {"include": ["documents", "metadatas"]}
-        if doc_id:
-            query["where"] = {"doc_id": doc_id}
-        data = collection.get(**query)
-
-        documents = data.get("documents", []) or []
-        metadatas = data.get("metadatas", []) or []
-        ids = data.get("ids", []) or []
+        backend = str(
+            getattr(rag_config.config.storage, "vector_store_backend", "chroma")
+            or "chroma"
+        ).lower()
         items: List[KnowledgeBaseChunk] = []
-        for index, content in enumerate(documents):
-            meta = metadatas[index] or {}
-            items.append(KnowledgeBaseChunk(
-                id=ids[index],
-                kb_id=meta.get("kb_id", kb_id),
-                doc_id=meta.get("doc_id"),
-                filename=meta.get("filename"),
-                chunk_index=meta.get("chunk_index", 0),
-                content=content or "",
-            ))
+        if backend == "sqlite_vec":
+            from ..services.sqlite_vec_service import SqliteVecService
+
+            rows = SqliteVecService().list_chunks(kb_id=kb_id, doc_id=doc_id, limit=limit)
+            for row in rows:
+                items.append(
+                    KnowledgeBaseChunk(
+                        id=str(row.get("id") or ""),
+                        kb_id=str(row.get("kb_id") or kb_id),
+                        doc_id=str(row.get("doc_id") or ""),
+                        filename=str(row.get("filename") or ""),
+                        chunk_index=int(row.get("chunk_index", 0) or 0),
+                        content=str(row.get("content") or ""),
+                    )
+                )
+        else:
+            persist_dir = Path(rag_config.config.storage.persist_directory)
+            if not persist_dir.is_absolute():
+                persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+
+            import chromadb
+            client = chromadb.PersistentClient(path=str(persist_dir))
+            collection_name = f"kb_{kb_id}"
+            collection = client.get_collection(collection_name)
+            query = {"include": ["documents", "metadatas"]}
+            if doc_id:
+                query["where"] = {"doc_id": doc_id}
+            data = collection.get(**query)
+
+            documents = data.get("documents", []) or []
+            metadatas = data.get("metadatas", []) or []
+            ids = data.get("ids", []) or []
+            for index, content in enumerate(documents):
+                meta = metadatas[index] or {}
+                items.append(KnowledgeBaseChunk(
+                    id=ids[index],
+                    kb_id=meta.get("kb_id", kb_id),
+                    doc_id=meta.get("doc_id"),
+                    filename=meta.get("filename"),
+                    chunk_index=meta.get("chunk_index", 0),
+                    content=content or "",
+                ))
 
         items.sort(key=lambda item: (item.doc_id or "", item.chunk_index, item.id))
         return items[:limit]

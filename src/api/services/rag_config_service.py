@@ -64,6 +64,8 @@ class RetrievalConfig:
 
 @dataclass
 class StorageConfig:
+    vector_store_backend: str = "sqlite_vec"
+    vector_sqlite_path: str = "data/state/rag_vec.sqlite3"
     persist_directory: str = "data/chromadb"
     bm25_sqlite_path: str = "data/state/rag_bm25.sqlite3"
 
@@ -135,6 +137,8 @@ class RagConfigService:
                     'rerank_weight': 0.7,
                 },
                 'storage': {
+                    'vector_store_backend': 'sqlite_vec',
+                    'vector_sqlite_path': 'data/state/rag_vec.sqlite3',
                     'persist_directory': 'data/chromadb',
                     'bm25_sqlite_path': 'data/state/rag_bm25.sqlite3',
                 },
@@ -217,6 +221,8 @@ class RagConfigService:
                     rerank_weight=retrieval_data.get('rerank_weight', 0.7),
                 ),
                 storage=StorageConfig(
+                    vector_store_backend=storage_data.get('vector_store_backend', 'sqlite_vec'),
+                    vector_sqlite_path=storage_data.get('vector_sqlite_path', 'data/state/rag_vec.sqlite3'),
                     persist_directory=storage_data.get('persist_directory', 'data/chromadb'),
                     bm25_sqlite_path=storage_data.get('bm25_sqlite_path', 'data/state/rag_bm25.sqlite3'),
                 ),
@@ -294,6 +300,8 @@ class RagConfigService:
             'rerank_api_key': self.config.retrieval.rerank_api_key,
             'rerank_timeout_seconds': self.config.retrieval.rerank_timeout_seconds,
             'rerank_weight': self.config.retrieval.rerank_weight,
+            'vector_store_backend': self.config.storage.vector_store_backend,
+            'vector_sqlite_path': self.config.storage.vector_sqlite_path,
             'persist_directory': self.config.storage.persist_directory,
             'bm25_sqlite_path': self.config.storage.bm25_sqlite_path,
         }
@@ -337,6 +345,8 @@ class RagConfigService:
             'rerank_api_key': ('retrieval', 'rerank_api_key'),
             'rerank_timeout_seconds': ('retrieval', 'rerank_timeout_seconds'),
             'rerank_weight': ('retrieval', 'rerank_weight'),
+            'vector_store_backend': ('storage', 'vector_store_backend'),
+            'vector_sqlite_path': ('storage', 'vector_sqlite_path'),
             'persist_directory': ('storage', 'persist_directory'),
             'bm25_sqlite_path': ('storage', 'bm25_sqlite_path'),
         }

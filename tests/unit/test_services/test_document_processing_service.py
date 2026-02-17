@@ -175,3 +175,66 @@ def test_store_in_chromadb_cleans_stale_doc_generation(monkeypatch):
         assert "other_doc_chunk" in collection.docs
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+class _FakeSqliteVecService:
+    def __init__(self):
+        self.upsert_calls = []
+        self.delete_by_ids_calls = []
+        self.delete_stale_calls = []
+
+    def upsert_chunks(self, **kwargs):
+        self.upsert_calls.append(kwargs)
+
+    def delete_chunks_by_ids(self, **kwargs):
+        self.delete_by_ids_calls.append(kwargs)
+
+    def delete_stale_document_chunks(self, **kwargs):
+        self.delete_stale_calls.append(kwargs)
+        return 1
+
+
+class _FakeEmbeddingFn:
+    def embed_documents(self, texts):
+        vectors = []
+        for text in texts:
+            size = max(1, len(text))
+            vectors.append([float(size), 1.0])
+        return vectors
+
+
+def test_store_in_sqlite_vec_rolls_back_on_bm25_failure(monkeypatch):
+    tmp_path = Path("data") / "tmp_test_runtime" / f"doc_proc_sqlite_{uuid.uuid4().hex[:8]}"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        service = _build_service(tmp_path, batch_max_retries=1)
+        fake_sqlite = _FakeSqliteVecService()
+        monkeypatch.setattr(
+            "src.api.services.sqlite_vec_service.SqliteVecService",
+            lambda: fake_sqlite,
+        )
+
+        def _raise_bm25(**kwargs):
+            _ = kwargs
+            raise RuntimeError("bm25 write failed")
+
+        service.bm25_service = SimpleNamespace(upsert_document_chunks=_raise_bm25)
+
+        with pytest.raises(RuntimeError, match="bm25 write failed"):
+            asyncio.run(
+                service._store_in_sqlite_vec(
+                    kb_id="kb1",
+                    doc_id="doc1",
+                    filename="doc.md",
+                    file_type=".md",
+                    chunks=["a", "bb", "ccc"],
+                    embedding_fn=_FakeEmbeddingFn(),
+                )
+            )
+
+        assert len(fake_sqlite.upsert_calls) == 1
+        assert len(fake_sqlite.delete_by_ids_calls) == 1
+        assert len(fake_sqlite.delete_stale_calls) == 0
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)

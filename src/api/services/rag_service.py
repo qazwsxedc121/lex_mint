@@ -366,13 +366,16 @@ class RagService:
         rerank_api_key = str(getattr(config.retrieval, "rerank_api_key", "") or "")
         rerank_timeout_seconds = int(getattr(config.retrieval, "rerank_timeout_seconds", 20) or 20)
         rerank_weight = float(getattr(config.retrieval, "rerank_weight", 0.7) or 0.0)
+        vector_backend = str(getattr(config.storage, "vector_store_backend", "chroma") or "chroma").lower()
+        if vector_backend not in {"chroma", "sqlite_vec"}:
+            vector_backend = "chroma"
         short_query = (query or "").strip().replace("\n", " ")
         if len(short_query) > 120:
             short_query = f"{short_query[:120]}..."
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
             short_query,
             kb_ids,
             retrieval_mode,
@@ -386,11 +389,17 @@ class RagService:
             rerank_enabled,
             rerank_model,
             rerank_weight,
+            vector_backend,
             embedding_cfg.provider,
             embedding_cfg.api_model,
             base_url or "default",
         )
-        logger.info("[RAG] storage persist_directory=%s", config.storage.persist_directory)
+        logger.info(
+            "[RAG] storage backend=%s sqlite_path=%s persist_directory=%s",
+            vector_backend,
+            getattr(config.storage, "vector_sqlite_path", "data/state/rag_vec.sqlite3"),
+            config.storage.persist_directory,
+        )
 
         kb_service = KnowledgeBaseService()
         vector_results: List[RagResult] = []
@@ -557,7 +566,36 @@ class RagService:
         score_threshold: float,
         override_model: Optional[str] = None,
     ) -> List[RagResult]:
-        """Search a single ChromaDB collection"""
+        """Search a single collection in the configured vector backend."""
+        backend = str(
+            getattr(self.rag_config_service.config.storage, "vector_store_backend", "chroma")
+            or "chroma"
+        ).lower()
+        if backend == "sqlite_vec":
+            return self._search_collection_sqlite_vec(
+                kb_id=kb_id,
+                query=query,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                override_model=override_model,
+            )
+        return self._search_collection_chroma(
+            kb_id=kb_id,
+            query=query,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            override_model=override_model,
+        )
+
+    def _search_collection_chroma(
+        self,
+        kb_id: str,
+        query: str,
+        top_k: int,
+        score_threshold: float,
+        override_model: Optional[str] = None,
+    ) -> List[RagResult]:
+        """Search a single ChromaDB collection."""
         from langchain_chroma import Chroma
 
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
@@ -627,6 +665,63 @@ class RagService:
                     chunk_index=metadata.get("chunk_index", 0),
                 ))
 
+        return rag_results
+
+    def _search_collection_sqlite_vec(
+        self,
+        kb_id: str,
+        query: str,
+        top_k: int,
+        score_threshold: float,
+        override_model: Optional[str] = None,
+    ) -> List[RagResult]:
+        """Search a single SQLite vector collection."""
+        from .sqlite_vec_service import SqliteVecService
+
+        embedding_fn = self.embedding_service.get_embedding_function(override_model)
+        if not hasattr(embedding_fn, "embed_query"):
+            logger.warning("sqlite_vec search failed for kb=%s: embedding function lacks embed_query()", kb_id)
+            return []
+
+        try:
+            query_embedding = embedding_fn.embed_query(query)
+            sqlite_vec = SqliteVecService()
+            rows = sqlite_vec.search(
+                kb_id=kb_id,
+                query_embedding=query_embedding,
+                top_k=top_k,
+            )
+        except Exception as e:
+            logger.warning(f"SQLite vector search failed for kb {kb_id}: {e}")
+            return []
+
+        if not rows:
+            logger.info("[RAG] sqlite_vec kb=%s raw_results=0", kb_id)
+        else:
+            scores = [float(item.get("score", 0.0) or 0.0) for item in rows]
+            logger.info(
+                "[RAG] sqlite_vec kb=%s raw_results=%d best_raw=%.4f top_scores=%s",
+                kb_id,
+                len(rows),
+                max(scores),
+                [round(s, 4) for s in scores[:5]],
+            )
+
+        rag_results: List[RagResult] = []
+        for item in rows:
+            score = float(item.get("score", 0.0) or 0.0)
+            if score < score_threshold:
+                continue
+            rag_results.append(
+                RagResult(
+                    content=str(item.get("content") or ""),
+                    score=score,
+                    kb_id=str(item.get("kb_id") or kb_id),
+                    doc_id=str(item.get("doc_id") or ""),
+                    filename=str(item.get("filename") or ""),
+                    chunk_index=int(item.get("chunk_index", 0) or 0),
+                )
+            )
         return rag_results
 
     def _search_bm25_collection(

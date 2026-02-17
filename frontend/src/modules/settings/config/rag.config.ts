@@ -46,6 +46,36 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     },
     {
       type: 'select',
+      name: 'vector_store_backend',
+      get label() { return i18n.t('settings:rag.field.vectorStoreBackend'); },
+      defaultValue: 'sqlite_vec',
+      options: [
+        { value: 'sqlite_vec', label: i18n.t('settings:rag.opt.vectorStoreSqliteVec') },
+        { value: 'chroma', label: i18n.t('settings:rag.opt.vectorStoreChroma') }
+      ],
+      required: true,
+      get helpText() { return i18n.t('settings:rag.field.vectorStoreBackend.help'); }
+    },
+    {
+      type: 'text',
+      name: 'vector_sqlite_path',
+      get label() { return i18n.t('settings:rag.field.vectorSqlitePath'); },
+      get placeholder() { return i18n.t('settings:rag.field.vectorSqlitePath.placeholder'); },
+      defaultValue: 'data/state/rag_vec.sqlite3',
+      get helpText() { return i18n.t('settings:rag.field.vectorSqlitePath.help'); },
+      condition: (formData) => formData.vector_store_backend === 'sqlite_vec',
+    },
+    {
+      type: 'text',
+      name: 'persist_directory',
+      get label() { return i18n.t('settings:rag.field.chromaPersistDirectory'); },
+      get placeholder() { return i18n.t('settings:rag.field.chromaPersistDirectory.placeholder'); },
+      defaultValue: 'data/chromadb',
+      get helpText() { return i18n.t('settings:rag.field.chromaPersistDirectory.help'); },
+      condition: (formData) => formData.vector_store_backend === 'chroma',
+    },
+    {
+      type: 'select',
       name: 'embedding_provider',
       get label() { return i18n.t('settings:rag.field.embeddingProvider'); },
       required: true,
@@ -410,7 +440,8 @@ export const ragConfig: SimpleConfigSettingsConfig = {
   ],
 
   transformSave: (data: any) => {
-    const { retrieval_preset, ...rest } = data;
+    const rest = { ...data };
+    delete rest.retrieval_preset;
     return rest;
   }
 };

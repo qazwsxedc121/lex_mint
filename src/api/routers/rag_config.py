@@ -51,6 +51,8 @@ class RagConfigResponse(BaseModel):
     rerank_api_key: str = ""
     rerank_timeout_seconds: int
     rerank_weight: float
+    vector_store_backend: str
+    vector_sqlite_path: str
     persist_directory: str
     bm25_sqlite_path: str
 
@@ -92,6 +94,8 @@ class RagConfigUpdate(BaseModel):
     rerank_api_key: Optional[str] = None
     rerank_timeout_seconds: Optional[int] = Field(None, ge=1, le=120)
     rerank_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    vector_store_backend: Optional[Literal["sqlite_vec", "chroma"]] = None
+    vector_sqlite_path: Optional[str] = None
     persist_directory: Optional[str] = None
     bm25_sqlite_path: Optional[str] = None
 
@@ -146,6 +150,13 @@ async def update_config(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported fusion strategy: {update_dict['fusion_strategy']}"
+                )
+        if 'vector_store_backend' in update_dict:
+            allowed_backends = {"sqlite_vec", "chroma"}
+            if update_dict['vector_store_backend'] not in allowed_backends:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported vector backend: {update_dict['vector_store_backend']}"
                 )
 
         service.save_flat_config(update_dict)

@@ -147,24 +147,34 @@ class KnowledgeBaseService:
         if kb_dir.exists():
             shutil.rmtree(kb_dir, ignore_errors=True)
 
-        # Remove ChromaDB collection
+        # Remove vector-store chunks
         try:
             from .rag_config_service import RagConfigService
             rag_config = RagConfigService()
-            persist_dir = Path(rag_config.config.storage.persist_directory)
-            if not persist_dir.is_absolute():
-                persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+            backend = str(
+                getattr(rag_config.config.storage, "vector_store_backend", "chroma")
+                or "chroma"
+            ).lower()
+            if backend == "sqlite_vec":
+                from .sqlite_vec_service import SqliteVecService
 
-            import chromadb
-            client = chromadb.PersistentClient(path=str(persist_dir))
-            collection_name = f"kb_{kb_id}"
-            try:
-                client.delete_collection(collection_name)
-                logger.info(f"Deleted ChromaDB collection: {collection_name}")
-            except Exception:
-                pass
+                deleted = SqliteVecService().delete_kb_chunks(kb_id=kb_id)
+                logger.info(f"Deleted {deleted} SQLite vector chunk(s) for kb {kb_id}")
+            else:
+                persist_dir = Path(rag_config.config.storage.persist_directory)
+                if not persist_dir.is_absolute():
+                    persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+
+                import chromadb
+                client = chromadb.PersistentClient(path=str(persist_dir))
+                collection_name = f"kb_{kb_id}"
+                try:
+                    client.delete_collection(collection_name)
+                    logger.info(f"Deleted ChromaDB collection: {collection_name}")
+                except Exception:
+                    pass
         except Exception as e:
-            logger.warning(f"Failed to delete ChromaDB collection for KB {kb_id}: {e}")
+            logger.warning(f"Failed to delete vector chunks for KB {kb_id}: {e}")
 
         try:
             from .bm25_service import Bm25Service
@@ -251,25 +261,35 @@ class KnowledgeBaseService:
         for file_path in doc_dir.glob(f"{doc_id}_*"):
             file_path.unlink(missing_ok=True)
 
-        # Remove chunks from ChromaDB
+        # Remove chunks from vector store
         try:
             from .rag_config_service import RagConfigService
             rag_config = RagConfigService()
-            persist_dir = Path(rag_config.config.storage.persist_directory)
-            if not persist_dir.is_absolute():
-                persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+            backend = str(
+                getattr(rag_config.config.storage, "vector_store_backend", "chroma")
+                or "chroma"
+            ).lower()
+            if backend == "sqlite_vec":
+                from .sqlite_vec_service import SqliteVecService
 
-            import chromadb
-            client = chromadb.PersistentClient(path=str(persist_dir))
-            collection_name = f"kb_{kb_id}"
-            try:
-                collection = client.get_collection(collection_name)
-                collection.delete(where={"doc_id": doc_id})
-                logger.info(f"Deleted ChromaDB chunks for doc {doc_id} using where filter")
-            except Exception:
-                pass
+                deleted = SqliteVecService().delete_document_chunks(kb_id=kb_id, doc_id=doc_id)
+                logger.info(f"Deleted {deleted} SQLite vector chunk(s) for doc {doc_id}")
+            else:
+                persist_dir = Path(rag_config.config.storage.persist_directory)
+                if not persist_dir.is_absolute():
+                    persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+
+                import chromadb
+                client = chromadb.PersistentClient(path=str(persist_dir))
+                collection_name = f"kb_{kb_id}"
+                try:
+                    collection = client.get_collection(collection_name)
+                    collection.delete(where={"doc_id": doc_id})
+                    logger.info(f"Deleted ChromaDB chunks for doc {doc_id} using where filter")
+                except Exception:
+                    pass
         except Exception as e:
-            logger.warning(f"Failed to delete ChromaDB chunks for doc {doc_id}: {e}")
+            logger.warning(f"Failed to delete vector chunks for doc {doc_id}: {e}")
 
         try:
             from .bm25_service import Bm25Service

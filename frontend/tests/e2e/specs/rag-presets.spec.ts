@@ -72,7 +72,7 @@ test.describe('RAG Retrieval Presets', () => {
     await ragPage.presetBalanced.click();
 
     // Verify highlight is active
-    let classes = await ragPage.presetBalanced.getAttribute('class');
+    const classes = await ragPage.presetBalanced.getAttribute('class');
     expect(classes).toContain('ring-blue-500');
 
     // Manually change top_k to a non-preset value
