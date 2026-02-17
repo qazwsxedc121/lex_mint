@@ -53,100 +53,53 @@ function Remove-ApiKeyEnvVars {
     return (($kept -join "`r`n").TrimEnd("`r", "`n") + "`r`n")
 }
 
-function Has-SharedDeepSeekKey {
-    param([Parameter(Mandatory = $true)][string]$Path)
+function Ensure-LocalKeysConfig {
+    param(
+        [Parameter(Mandatory = $true)][string]$LocalKeysPath,
+        [Parameter(Mandatory = $true)][string]$SharedKeysPath
+    )
 
-    if (-not (Test-Path -Path $Path)) {
-        return $false
+    if (Test-Path -Path $LocalKeysPath) {
+        Write-Host "[3/5] Local key file exists: $LocalKeysPath"
+        Write-Host "      Shared key file is read-only bootstrap source: $SharedKeysPath"
+        return
     }
 
-    $lines = Get-Content -Path $Path
-    $inProviders = $false
-    $inDeepSeek = $false
-
-    foreach ($line in $lines) {
-        if ($line -match "^\s*providers:\s*$") {
-            $inProviders = $true
-            $inDeepSeek = $false
-            continue
-        }
-        if (-not $inProviders) {
-            continue
-        }
-        if ($line -match "^\s{2}deepseek:\s*$") {
-            $inDeepSeek = $true
-            continue
-        }
-        if ($line -match "^\s{2}[A-Za-z0-9_-]+:\s*$" -and $line -notmatch "^\s{2}deepseek:\s*$") {
-            $inDeepSeek = $false
-            continue
-        }
-        if ($inDeepSeek -and $line -match "^\s{4}api_key:\s*(.+?)\s*$") {
-            $value = $Matches[1].Trim().Trim('"').Trim("'")
-            return $value -ne ""
-        }
-    }
-
-    return $false
-}
-
-function Get-DeepSeekKeyFromKeysFile {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    if (-not (Test-Path -Path $Path)) {
-        return $null
-    }
-
-    $lines = Get-Content -Path $Path
-    $inProviders = $false
-    $inDeepSeek = $false
-
-    foreach ($line in $lines) {
-        if ($line -match "^\s*providers:\s*$") {
-            $inProviders = $true
-            $inDeepSeek = $false
-            continue
-        }
-        if (-not $inProviders) {
-            continue
-        }
-        if ($line -match "^\s{2}deepseek:\s*$") {
-            $inDeepSeek = $true
-            continue
-        }
-        if ($line -match "^\s{2}[A-Za-z0-9_-]+:\s*$" -and $line -notmatch "^\s{2}deepseek:\s*$") {
-            $inDeepSeek = $false
-            continue
-        }
-        if ($inDeepSeek -and $line -match "^\s{4}api_key:\s*(.+?)\s*$") {
-            $value = $Matches[1].Trim().Trim('"').Trim("'")
-            if ($value -ne "") {
-                return $value
+    $bootstrapSource = $null
+    if (Test-Path -Path $SharedKeysPath) {
+        $bootstrapSource = $SharedKeysPath
+    } else {
+        $currentPath = [System.IO.Path]::GetFullPath((Get-Location).Path)
+        foreach ($worktreePath in Get-WorktreePaths) {
+            $full = [System.IO.Path]::GetFullPath($worktreePath)
+            if ($full -eq $currentPath) {
+                continue
+            }
+            $candidatePath = Join-Path $full "config\local\keys_config.yaml"
+            if (Test-Path -Path $candidatePath) {
+                $bootstrapSource = $candidatePath
+                break
             }
         }
     }
 
-    return $null
-}
-
-function Write-SharedKeysFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$DeepSeekKey
-    )
-
-    $safeKey = $DeepSeekKey.Replace('"', '\"')
-    $content = @(
-        "providers:",
-        "  deepseek:",
-        "    api_key: ""$safeKey"""
-    ) -join "`r`n"
-
-    $dir = Split-Path -Path $Path -Parent
-    if (-not (Test-Path -Path $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $localDir = Split-Path -Path $LocalKeysPath -Parent
+    if (-not (Test-Path -Path $localDir)) {
+        New-Item -ItemType Directory -Path $localDir -Force | Out-Null
     }
-    Set-Content -Path $Path -Value ($content + "`r`n")
+
+    if ($bootstrapSource) {
+        Copy-Item -Path $bootstrapSource -Destination $LocalKeysPath -Force
+        Write-Host "[3/5] Local key file initialized."
+        Write-Host "      Source: $bootstrapSource"
+        Write-Host "      Target: $LocalKeysPath"
+        Write-Host "      Shared key file is never modified by this script."
+    } else {
+        Set-Content -Path $LocalKeysPath -Value "providers: {}`r`n"
+        Write-Host "[3/5] No bootstrap key file found."
+        Write-Host "      Created empty local key file: $LocalKeysPath"
+        Write-Host "      Shared key file is bootstrap-only and will not be written."
+    }
 }
 
 function Get-WorktreePaths {
@@ -203,39 +156,7 @@ $envContent = Set-OrAddEnvVar -Content $envContent -Key "CORS_ORIGINS" -Value $c
 $envContent = Remove-ApiKeyEnvVars -Content $envContent
 Set-Content -Path ".\.env" -Value $envContent
 
-if (Has-SharedDeepSeekKey -Path $SharedKeysPath) {
-    Write-Host "[3/5] Shared key file exists: $SharedKeysPath"
-} else {
-    $candidateKey = Get-DeepSeekKeyFromKeysFile -Path ".\config\local\keys_config.yaml"
-
-    if (-not $candidateKey) {
-        $currentPath = [System.IO.Path]::GetFullPath((Get-Location).Path)
-        foreach ($worktreePath in Get-WorktreePaths) {
-            $full = [System.IO.Path]::GetFullPath($worktreePath)
-            if ($full -eq $currentPath) {
-                continue
-            }
-            $candidatePath = Join-Path $full "config\local\keys_config.yaml"
-            $candidateKey = Get-DeepSeekKeyFromKeysFile -Path $candidatePath
-            if ($candidateKey) {
-                break
-            }
-        }
-    }
-
-    if ($candidateKey) {
-        Write-SharedKeysFile -Path $SharedKeysPath -DeepSeekKey $candidateKey
-        Write-Host "[3/5] Shared key created from existing local keys config."
-        Write-Host "      Path: $SharedKeysPath"
-    } else {
-        Write-Host "[3/5] Shared key missing."
-        Write-Host "      Please create: $SharedKeysPath"
-        Write-Host "      Example content:"
-        Write-Host "      providers:"
-        Write-Host "        deepseek:"
-        Write-Host "          api_key: ""<your-key>"""
-    }
-}
+Ensure-LocalKeysConfig -LocalKeysPath ".\config\local\keys_config.yaml" -SharedKeysPath $SharedKeysPath
 
 if (-not $SkipInstall) {
     Write-Host "[4/5] Installing backend dependencies..."

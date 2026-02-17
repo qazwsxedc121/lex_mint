@@ -337,3 +337,53 @@ class TestModelConfigService:
         # Short key
         masked_short = service._mask_api_key("short")
         assert masked_short == "****"
+
+    @pytest.mark.asyncio
+    async def test_shared_keys_path_is_read_only(self, temp_config_dir, sample_model_config):
+        """Shared key file must never be modified by runtime key operations."""
+        config_path = temp_config_dir / "models_config.yaml"
+        shared_keys_path = temp_config_dir / "shared" / "keys_config.yaml"
+        shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(sample_model_config, f)
+        with open(shared_keys_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump({"providers": {"deepseek": {"api_key": "old_value"}}}, f)
+
+        service = ModelConfigService(config_path, shared_keys_path)
+
+        with pytest.raises(PermissionError, match="bootstrap-only"):
+            await service.set_api_key("deepseek", "new_value")
+
+        with open(shared_keys_path, 'r', encoding='utf-8') as f:
+            shared_data = yaml.safe_load(f)
+        assert shared_data["providers"]["deepseek"]["api_key"] == "old_value"
+
+    @pytest.mark.asyncio
+    async def test_default_keys_path_bootstraps_from_shared_once(self, temp_config_dir):
+        """Default key path should be local, bootstrapped from shared file."""
+        config_local_path = temp_config_dir / "config" / "local"
+        config_defaults_path = temp_config_dir / "config" / "defaults"
+        legacy_config_path = temp_config_dir / "config"
+        shared_keys_path = temp_config_dir / "home" / ".lex_mint" / "keys_config.yaml"
+
+        config_defaults_path.mkdir(parents=True, exist_ok=True)
+        shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
+
+        shared_payload = {"providers": {"openai": {"api_key": "shared_key_value"}}}
+        with open(shared_keys_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(shared_payload, f)
+
+        with patch("src.api.services.model_config_service.config_local_dir", return_value=config_local_path), \
+                patch("src.api.services.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
+                patch("src.api.services.model_config_service.legacy_config_dir", return_value=legacy_config_path), \
+                patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+            service = ModelConfigService()
+
+        expected_local_keys = config_local_path / "keys_config.yaml"
+        assert service.keys_path == expected_local_keys
+        assert expected_local_keys.exists()
+
+        with open(expected_local_keys, 'r', encoding='utf-8') as f:
+            local_data = yaml.safe_load(f)
+        assert local_data == shared_payload
