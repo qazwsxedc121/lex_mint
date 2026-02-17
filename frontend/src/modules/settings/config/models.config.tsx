@@ -8,6 +8,21 @@ import type { CrudSettingsConfig } from './types';
 import type { Model } from '../../../types/model';
 import i18n from '../../../i18n';
 
+const normalizeTags = (rawValue: unknown): string[] => {
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .map((tag) => String(tag).trim().toLowerCase())
+      .filter(Boolean);
+  }
+  if (typeof rawValue === 'string') {
+    return rawValue
+      .split(',')
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+};
+
 export const modelsConfig: CrudSettingsConfig<Model> = {
   type: 'crud',
   get title() { return i18n.t('settings:models.title'); },
@@ -43,10 +58,29 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       hideOnMobile: true
     },
     {
-      key: 'group',
-      get label() { return i18n.t('settings:models.col.group'); },
+      key: 'tags',
+      get label() { return i18n.t('settings:models.col.tags'); },
       sortable: true,
-      hideOnMobile: true
+      hideOnMobile: true,
+      sortFn: (a, b) => normalizeTags(a.tags).join(',').localeCompare(normalizeTags(b.tags).join(',')),
+      render: (value) => {
+        const tags = normalizeTags(value);
+        if (tags.length === 0) {
+          return <span className="text-gray-400 dark:text-gray-500">-</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        );
+      }
     }
   ],
 
@@ -91,11 +125,10 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     },
     {
       type: 'text',
-      name: 'group',
-      get label() { return i18n.t('settings:models.field.group'); },
-      get placeholder() { return i18n.t('settings:models.field.group.placeholder'); },
-      required: true,
-      get helpText() { return i18n.t('settings:models.field.group.help'); }
+      name: 'tags',
+      get label() { return i18n.t('settings:models.field.tags'); },
+      get placeholder() { return i18n.t('settings:models.field.tags.placeholder'); },
+      get helpText() { return i18n.t('settings:models.field.tags.help'); }
     },
     {
       type: 'checkbox',
@@ -139,11 +172,10 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     },
     {
       type: 'text',
-      name: 'group',
-      get label() { return i18n.t('settings:models.field.group'); },
-      get placeholder() { return i18n.t('settings:models.field.group.placeholder'); },
-      required: true,
-      get helpText() { return i18n.t('settings:models.field.group.help'); }
+      name: 'tags',
+      get label() { return i18n.t('settings:models.field.tags'); },
+      get placeholder() { return i18n.t('settings:models.field.tags.placeholder'); },
+      get helpText() { return i18n.t('settings:models.field.tags.help'); }
     },
     {
       type: 'checkbox',

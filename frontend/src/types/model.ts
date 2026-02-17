@@ -55,7 +55,7 @@ export interface Model {
   id: string;
   name: string;
   provider_id: string;
-  group: string;
+  tags: string[];
   enabled: boolean;
 
   // Model capabilities (overrides provider defaults)

@@ -242,7 +242,7 @@ class TestModelConfigService:
             id="deepseek-coder",
             name="DeepSeek Coder",
             provider_id="deepseek",
-            group="chat",
+            tags=["chat"],
             enabled=True
         )
 
@@ -261,7 +261,7 @@ class TestModelConfigService:
             "id": "deepseek-coder",
             "name": "DeepSeek Coder",
             "provider_id": "deepseek",
-            "group": "chat",
+            "tags": ["chat"],
             "enabled": True
         })
 

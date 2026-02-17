@@ -147,15 +147,68 @@ class ModelConfigService:
         capabilities: Optional[ModelCapabilities],
         enabled: bool,
     ) -> dict[str, Any]:
-        group = "reasoning" if "reason" in model_id.lower() else "chat"
+        tags = self._derive_tags_for_model(model_id=model_id, capabilities=capabilities)
         return {
             "id": model_id,
             "name": model_name,
             "provider_id": provider_id,
-            "group": group,
+            "tags": tags,
             "enabled": enabled,
             "capabilities": capabilities.model_dump(mode="json") if capabilities else None,
         }
+
+    @staticmethod
+    def _normalize_tag_list(raw_tags: Any) -> list[str]:
+        """Normalize tags from string/list into lower-case unique list."""
+        if isinstance(raw_tags, str):
+            candidates = [part.strip() for part in raw_tags.split(",")]
+        elif isinstance(raw_tags, list):
+            candidates = [str(part).strip() for part in raw_tags]
+        elif raw_tags is None:
+            candidates = []
+        else:
+            candidates = [str(raw_tags).strip()]
+
+        normalized: list[str] = []
+        seen = set()
+        for tag in candidates:
+            clean_tag = tag.lower()
+            if not clean_tag or clean_tag in seen:
+                continue
+            normalized.append(clean_tag)
+            seen.add(clean_tag)
+        return normalized
+
+    def _derive_tags_for_model(
+        self,
+        *,
+        model_id: str,
+        capabilities: Optional[ModelCapabilities],
+        fallback_group: Optional[str] = None,
+    ) -> list[str]:
+        """Infer useful tags for built-in and migrated models."""
+        tags: list[str] = []
+        if fallback_group:
+            tags.extend(self._normalize_tag_list(fallback_group))
+
+        if "reason" in model_id.lower():
+            tags.append("reasoning")
+        elif not tags:
+            tags.append("chat")
+
+        if capabilities:
+            if capabilities.reasoning:
+                tags.append("reasoning")
+            if capabilities.vision:
+                tags.append("vision")
+            if capabilities.function_calling:
+                tags.append("function-calling")
+            if capabilities.file_upload:
+                tags.append("file-upload")
+            if capabilities.image_output:
+                tags.append("image-output")
+
+        return self._normalize_tag_list(tags)
 
     def _sync_builtin_entries(self) -> None:
         """
@@ -183,6 +236,31 @@ class ModelConfigService:
             models = []
             data["models"] = models
 
+        changed = False
+
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            model_capabilities = None
+            if isinstance(model.get("capabilities"), dict):
+                try:
+                    model_capabilities = ModelCapabilities(**model["capabilities"])
+                except Exception:
+                    model_capabilities = None
+            existing_tags = self._normalize_tag_list(model.get("tags"))
+            inferred_tags = self._derive_tags_for_model(
+                model_id=str(model.get("id", "")),
+                capabilities=model_capabilities,
+                fallback_group=model.get("group"),
+            )
+            merged_tags = existing_tags or inferred_tags
+            if model.get("tags") != merged_tags:
+                model["tags"] = merged_tags
+                changed = True
+            if "group" in model:
+                model.pop("group", None)
+                changed = True
+
         default_config = data.get("default") or {}
         default_provider = default_config.get("provider")
         default_model = default_config.get("model")
@@ -197,8 +275,6 @@ class ModelConfigService:
             for m in models
             if isinstance(m, dict) and m.get("provider_id") and m.get("id")
         }
-
-        changed = False
 
         for definition in get_all_builtin_providers().values():
             if definition.id not in existing_provider_ids:

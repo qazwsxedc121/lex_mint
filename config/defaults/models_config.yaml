@@ -158,7 +158,6 @@ models:
 - id: deepseek-chat
   name: DeepSeek Chat
   provider_id: deepseek
-  group: chat
   enabled: true
   capabilities:
     context_length: 64000
@@ -168,10 +167,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: deepseek-reasoner
   name: DeepSeek Reasoner
   provider_id: deepseek
-  group: reasoning
   enabled: true
   capabilities:
     context_length: 64000
@@ -181,10 +183,11 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - reasoning
 - id: glm-5
   name: GLM-5
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -194,10 +197,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: glm-4.7
   name: GLM-4.7
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -207,10 +214,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: glm-4.6
   name: GLM-4.6
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -220,10 +231,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: glm-4.6-flash
   name: GLM-4.6 Flash
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -233,10 +248,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: glm-4.6v
   name: GLM-4.6V
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -246,10 +265,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
 - id: glm-4.5
   name: GLM-4.5
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -259,10 +281,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: glm-4.5-air
   name: GLM-4.5 Air
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -272,10 +297,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: glm-4.5-flash
   name: GLM-4.5 Flash
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -285,10 +313,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: glm-z1-air
   name: GLM-Z1 Air
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -298,10 +329,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: glm-z1-airx
   name: GLM-Z1 AirX
   provider_id: zhipu
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -311,10 +345,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: gpt-4-turbo
   name: GPT-4 Turbo
   provider_id: openai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -324,10 +361,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
 - id: gpt-4o
   name: GPT-4o
   provider_id: openai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -337,10 +377,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
 - id: gpt-4o-mini
   name: GPT-4o Mini
   provider_id: openai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -350,10 +393,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
 - id: o1
   name: OpenAI o1
   provider_id: openai
-  group: chat
   enabled: false
   capabilities:
     context_length: 200000
@@ -363,10 +409,12 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
 - id: o1-mini
   name: OpenAI o1 Mini
   provider_id: openai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -376,10 +424,12 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
 - id: claude-sonnet-4-5-20250929
   name: Claude Sonnet 4.5
   provider_id: anthropic
-  group: chat
   enabled: false
   capabilities:
     context_length: 200000
@@ -389,10 +439,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: claude-opus-4-5-20251101
   name: Claude Opus 4.5
   provider_id: anthropic
-  group: chat
   enabled: false
   capabilities:
     context_length: 200000
@@ -402,10 +456,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: claude-sonnet-4-20250514
   name: Claude Sonnet 4
   provider_id: anthropic
-  group: chat
   enabled: false
   capabilities:
     context_length: 200000
@@ -415,10 +473,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: claude-haiku-4-5-20250630
   name: Claude Haiku 4.5
   provider_id: anthropic
-  group: chat
   enabled: false
   capabilities:
     context_length: 200000
@@ -428,10 +490,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
 - id: claude-3-5-sonnet-20241022
   name: Claude 3.5 Sonnet (Legacy)
   provider_id: anthropic
-  group: chat
   enabled: false
   capabilities:
     context_length: 200000
@@ -441,10 +506,14 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - vision
+  - function-calling
 - id: grok-4
   name: Grok 4
   provider_id: xai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -454,10 +523,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: grok-4-fast
   name: Grok 4.1 Fast
   provider_id: xai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -467,10 +539,13 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
 - id: grok-3
   name: Grok 3
   provider_id: xai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -480,10 +555,12 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - function-calling
 - id: grok-3-mini
   name: Grok 3 Mini
   provider_id: xai
-  group: chat
   enabled: false
   capabilities:
     context_length: 128000
@@ -493,6 +570,9 @@ models:
     streaming: true
     file_upload: false
     image_output: false
+  tags:
+  - chat
+  - function-calling
 reasoning_supported_patterns:
 - deepseek-chat
 - glm-
