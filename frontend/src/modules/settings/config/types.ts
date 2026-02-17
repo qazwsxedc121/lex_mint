@@ -168,6 +168,25 @@ export interface TemplateVariablesFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Preset field: renders a button group that batch-applies effects to other fields.
+ * The preset value itself is NOT persisted -- strip it via `transformSave`.
+ */
+export interface PresetFieldConfig extends BaseFieldConfig {
+  type: 'preset';
+  /** Available presets */
+  options: Array<{
+    /** Unique preset identifier */
+    value: string;
+    /** Display label */
+    label: string;
+    /** Short description shown below label */
+    description?: string;
+    /** Field values to apply when this preset is selected */
+    effects: Record<string, any>;
+  }>;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -179,7 +198,8 @@ export type FieldConfig =
   | TextareaFieldConfig
   | IconPickerFieldConfig
   | MultiSelectFieldConfig
-  | TemplateVariablesFieldConfig;
+  | TemplateVariablesFieldConfig
+  | PresetFieldConfig;
 
 // ==================== Table Configuration ====================
 

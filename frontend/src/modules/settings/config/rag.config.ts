@@ -19,6 +19,32 @@ export const ragConfig: SimpleConfigSettingsConfig = {
 
   fields: [
     {
+      type: 'preset',
+      name: 'retrieval_preset',
+      get label() { return i18n.t('settings:rag.field.retrievalPreset'); },
+      get helpText() { return i18n.t('settings:rag.field.retrievalPreset.help'); },
+      options: [
+        {
+          value: 'fast',
+          get label() { return i18n.t('settings:rag.opt.presetFast'); },
+          get description() { return i18n.t('settings:rag.opt.presetFast.desc'); },
+          effects: { top_k: 3, recall_k: 10, max_per_doc: 1, score_threshold: 0.4 }
+        },
+        {
+          value: 'balanced',
+          get label() { return i18n.t('settings:rag.opt.presetBalanced'); },
+          get description() { return i18n.t('settings:rag.opt.presetBalanced.desc'); },
+          effects: { top_k: 5, recall_k: 20, max_per_doc: 2, score_threshold: 0.3 }
+        },
+        {
+          value: 'deep',
+          get label() { return i18n.t('settings:rag.opt.presetDeep'); },
+          get description() { return i18n.t('settings:rag.opt.presetDeep.desc'); },
+          effects: { top_k: 10, recall_k: 50, max_per_doc: 3, score_threshold: 0.2 }
+        }
+      ]
+    },
+    {
       type: 'select',
       name: 'embedding_provider',
       get label() { return i18n.t('settings:rag.field.embeddingProvider'); },
@@ -381,5 +407,10 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get helpText() { return i18n.t('settings:rag.field.rerankWeight.help'); },
       condition: (formData) => formData.rerank_enabled === true,
     }
-  ]
+  ],
+
+  transformSave: (data: any) => {
+    const { retrieval_preset, ...rest } = data;
+    return rest;
+  }
 };
