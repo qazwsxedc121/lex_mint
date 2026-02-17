@@ -113,7 +113,6 @@ class TestCallLLMStream:
         mock_provider = Mock()
         mock_provider.id = "deepseek"
         mock_provider.base_url = "https://api.deepseek.com"
-        mock_provider.api_key_env = "DEEPSEEK_API_KEY"
 
         # Mock capabilities
         mock_capabilities = Mock()
@@ -188,7 +187,6 @@ class TestCallLLMStream:
         mock_provider = Mock()
         mock_provider.id = "deepseek"
         mock_provider.base_url = "https://api.deepseek.com"
-        mock_provider.api_key_env = "DEEPSEEK_API_KEY"
 
         mock_capabilities = Mock()
         mock_capabilities.reasoning = False
@@ -244,7 +242,6 @@ class TestCallLLMStream:
         mock_provider = Mock()
         mock_provider.id = "deepseek"
         mock_provider.base_url = "https://api.deepseek.com"
-        mock_provider.api_key_env = "DEEPSEEK_API_KEY"
 
         # Enable reasoning capability
         mock_capabilities = Mock()
@@ -342,3 +339,4 @@ class TestCallLLMStream:
 
         # Verify error was logged
         mock_llm_logger.log_error.assert_called_once()
+

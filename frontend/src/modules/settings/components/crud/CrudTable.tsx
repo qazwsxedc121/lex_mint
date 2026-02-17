@@ -93,7 +93,11 @@ export function CrudTable<T = any>({
           return (
             <div className="flex items-center gap-2 justify-end">
               {/* Set Default */}
-              {showSetDefault && onSetDefault && (
+              {showSetDefault &&
+                onSetDefault &&
+                (config.defaultActionVisibility?.setDefault
+                  ? config.defaultActionVisibility.setDefault(item, context)
+                  : true) && (
                 <button
                   onClick={() => onSetDefault(item)}
                   disabled={isItemDefault}
@@ -109,7 +113,10 @@ export function CrudTable<T = any>({
               )}
 
               {/* Edit */}
-              {showEdit && (
+              {showEdit &&
+                (config.defaultActionVisibility?.edit
+                  ? config.defaultActionVisibility.edit(item, context)
+                  : true) && (
                 <button
                   onClick={() => onEdit(item)}
                   className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
@@ -120,7 +127,10 @@ export function CrudTable<T = any>({
               )}
 
               {/* Delete */}
-              {showDelete && (
+              {showDelete &&
+                (config.defaultActionVisibility?.delete
+                  ? config.defaultActionVisibility.delete(item, context)
+                  : true) && (
                 <button
                   onClick={() => onDelete(item)}
                   disabled={isItemDefault}

@@ -47,7 +47,7 @@ npm run lint
 
 ## Security and Configuration Tips
 - Do not commit secrets; use `.env` and `.env.example`.
-- Required: `DEEPSEEK_API_KEY`. Optional: `API_PORT`, `CORS_ORIGINS`.
+- API keys are stored in `$HOME/.lex_mint/keys_config.yaml`. Optional env config: `API_PORT`, `CORS_ORIGINS`.
 - Conversations and logs may contain user data; handle with care.
 
 ## Platform and Tooling Notes

@@ -142,7 +142,8 @@ agents-17dcab8b61/
 
 - `models_config.yaml` - LLM providers, models, pricing, capabilities
 - `assistants_config.yaml` - Assistant profiles with system prompts
-- `keys_config.yaml` - API key management configuration
+- `defaults/keys_config.yaml.example` - API key file template
+- Runtime key file location: `~/.lex_mint/keys_config.yaml`
 
 ## Conversation Storage (`conversations/`)
 
@@ -174,7 +175,7 @@ Response content...
 
 - `pyproject.toml` - Python project metadata, Ruff, MyPy, Pytest config
 - `requirements.txt` - Python dependencies
-- `.env` - Environment variables (API keys, configuration)
+- `.env` - Environment variables (ports and runtime config)
 - `CLAUDE.md` - Development guidelines for Claude Code
 - `QUICKSTART.txt` - Quick start instructions
 

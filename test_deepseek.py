@@ -1,16 +1,24 @@
 """Simple script to verify DeepSeek API connection."""
 
-import os
+from pathlib import Path
 from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
+import yaml
 
-load_dotenv()
 
-api_key = os.getenv("DEEPSEEK_API_KEY")
+def load_deepseek_key() -> str | None:
+    path = Path.home() / ".lex_mint" / "keys_config.yaml"
+    if not path.exists():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return None
+    return data.get("providers", {}).get("deepseek", {}).get("api_key")
 
+api_key = load_deepseek_key()
 if not api_key:
-    print("Error: DEEPSEEK_API_KEY not found in environment variables")
-    print("Please create a .env file with your DeepSeek API key")
+    print("Error: DeepSeek API key not found")
+    print("Please set key in ~/.lex_mint/keys_config.yaml")
     exit(1)
 
 print("Testing DeepSeek API connection...")

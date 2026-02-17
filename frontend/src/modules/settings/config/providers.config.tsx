@@ -118,13 +118,6 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get helpText() { return i18n.t('settings:providers.field.apiKey.help'); }
     },
     {
-      type: 'text',
-      name: 'api_key_env',
-      get label() { return i18n.t('settings:providers.field.apiKeyEnv'); },
-      get placeholder() { return i18n.t('settings:providers.field.apiKeyEnv.placeholder'); },
-      get helpText() { return i18n.t('settings:providers.field.apiKeyEnv.help'); }
-    },
-    {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:providers.field.enabled'); },
@@ -176,13 +169,6 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get helpText() { return i18n.t('settings:providers.field.apiKey.editHelp'); }
     },
     {
-      type: 'text',
-      name: 'api_key_env',
-      get label() { return i18n.t('settings:providers.field.apiKeyEnv'); },
-      get placeholder() { return i18n.t('settings:providers.field.apiKeyEnv.placeholder'); },
-      get helpText() { return i18n.t('settings:providers.field.apiKeyEnv.help'); }
-    },
-    {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:providers.field.enabled'); },
@@ -196,6 +182,11 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
     edit: true,
     delete: true,
     setDefault: false // Providers don't have a default
+  },
+
+  // Built-in providers are preloaded and should not be deleted in UI.
+  defaultActionVisibility: {
+    delete: (item) => item.type !== 'builtin'
   }
 
   // TODO: Add custom actions for:

@@ -6,27 +6,27 @@ echo "=" 60
 
 echo ""
 echo "[Test 1] Python version"
-./venv/Scripts/python --version
+./venv/Scripts/python.exe --version
 if [ $? -eq 0 ]; then echo "OK: python command works"; else echo "FAIL: python command"; exit 1; fi
 
 echo ""
 echo "[Test 2] Pip version"
-./venv/Scripts/pip --version
+./venv/Scripts/python.exe -m pip --version
 if [ $? -eq 0 ]; then echo "OK: pip command works"; else echo "FAIL: pip command"; exit 1; fi
 
 echo ""
 echo "[Test 3] Pytest version"
-./venv/Scripts/pytest --version
+./venv/Scripts/python.exe -m pytest --version
 if [ $? -eq 0 ]; then echo "OK: pytest command works"; else echo "FAIL: pytest command"; exit 1; fi
 
 echo ""
 echo "[Test 4] Uvicorn version"
-./venv/Scripts/uvicorn --version
+./venv/Scripts/python.exe -m uvicorn --version
 if [ $? -eq 0 ]; then echo "OK: uvicorn command works"; else echo "FAIL: uvicorn command"; exit 1; fi
 
 echo ""
 echo "[Test 5] Run Python script"
-./venv/Scripts/python test_composite_key.py > /dev/null 2>&1
+./venv/Scripts/python.exe test_composite_key.py > /dev/null 2>&1
 if [ $? -eq 0 ]; then echo "OK: python script execution works"; else echo "FAIL: python script execution"; exit 1; fi
 
 echo ""

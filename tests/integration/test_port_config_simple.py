@@ -24,14 +24,10 @@ def test_config_requires_api_port():
     if 'API_PORT' in os.environ:
         del os.environ['API_PORT']
 
-    os.environ['DEEPSEEK_API_KEY'] = 'test_key'
-
     from src.api.config import Settings
     with pytest.raises(ValidationError):
         Settings()
     print("[OK] API_PORT is required")
-
-    del os.environ['DEEPSEEK_API_KEY']
 
 
 def test_config_env_override():
@@ -40,7 +36,6 @@ def test_config_env_override():
 
     test_port = 9999
     os.environ['API_PORT'] = str(test_port)
-    os.environ['DEEPSEEK_API_KEY'] = 'test_key'
 
     # Force reload
     import importlib
@@ -53,7 +48,6 @@ def test_config_env_override():
     print(f"[OK] API_PORT={test_port} correctly overrides default")
 
     del os.environ['API_PORT']
-    del os.environ['DEEPSEEK_API_KEY']
 
 
 def test_dotenv_loading():

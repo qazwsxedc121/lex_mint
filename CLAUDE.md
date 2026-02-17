@@ -230,7 +230,8 @@ For detailed documentation, see `docs/`:
 
 Required `.env` file:
 ```
-DEEPSEEK_API_KEY=your_key_here
+# API keys are NOT stored in .env
+# Use $HOME/.lex_mint/keys_config.yaml instead
 ```
 
 Optional for API configuration:
