@@ -27,6 +27,9 @@ class RagConfigResponse(BaseModel):
     embedding_local_gguf_n_threads: int
     embedding_local_gguf_n_gpu_layers: int
     embedding_local_gguf_normalize: bool
+    embedding_batch_size: int
+    embedding_batch_delay_seconds: float
+    embedding_batch_max_retries: int
     chunk_size: int
     chunk_overlap: int
     retrieval_mode: str
@@ -65,6 +68,9 @@ class RagConfigUpdate(BaseModel):
     embedding_local_gguf_n_threads: Optional[int] = Field(None, ge=0, le=256)
     embedding_local_gguf_n_gpu_layers: Optional[int] = Field(None, ge=0, le=1024)
     embedding_local_gguf_normalize: Optional[bool] = None
+    embedding_batch_size: Optional[int] = Field(None, ge=1, le=1000)
+    embedding_batch_delay_seconds: Optional[float] = Field(None, ge=0.0, le=60.0)
+    embedding_batch_max_retries: Optional[int] = Field(None, ge=0, le=20)
     chunk_size: Optional[int] = Field(None, ge=100, le=10000)
     chunk_overlap: Optional[int] = Field(None, ge=0, le=5000)
     retrieval_mode: Optional[Literal["vector", "bm25", "hybrid"]] = None
