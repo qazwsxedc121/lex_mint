@@ -24,6 +24,7 @@ from src.providers.types import ProviderConfig
 from ..paths import (
     config_defaults_dir,
     config_local_dir,
+    local_keys_config_path,
     shared_keys_config_path,
     legacy_config_dir,
     ensure_local_file,
@@ -42,8 +43,8 @@ class ModelConfigService:
         初始化配置服务
 
         Args:
-            config_path: 配置文件路径，默认为项目根目录的 models_config.yaml
-            keys_path: 密钥文件路径，默认使用用户目录 ~/.lex_mint/keys_config.yaml
+            config_path: 配置文件路径，默认使用项目内 config/local/models_config.yaml
+            keys_path: 密钥文件路径，默认使用项目内 config/local/keys_config.yaml
         """
         self.defaults_path: Optional[Path] = None
         self.legacy_models_paths: list[Path] = []
@@ -56,11 +57,12 @@ class ModelConfigService:
             self.legacy_models_paths = [legacy_config_dir() / "models_config.yaml"]
             config_path = config_local_dir() / "models_config.yaml"
         if keys_path is None:
+            # Runtime key writes are local-only; shared home keys are bootstrap source.
             self.legacy_keys_paths = [
-                config_local_dir() / "keys_config.yaml",
+                shared_keys_config_path(),
                 legacy_config_dir() / "keys_config.yaml",
             ]
-            keys_path = shared_keys_config_path()
+            keys_path = local_keys_config_path()
         self.config_path = config_path
         self.keys_path = keys_path
         self._ensure_config_exists()
@@ -364,11 +366,22 @@ class ModelConfigService:
                 )
                 return
 
+            if self._is_shared_keys_path(self.keys_path):
+                logger.warning(
+                    "Refusing to create shared key file at %s; "
+                    "runtime writes must use config/local/keys_config.yaml",
+                    self.keys_path,
+                )
+                return
+
             with open(self.keys_path, 'w', encoding='utf-8') as f:
                 f.write(initial_text)
 
     async def load_keys_config(self) -> dict:
         """加载密钥配置文件"""
+        if not self.keys_path.exists():
+            return {"providers": {}}
+
         async with aiofiles.open(self.keys_path, 'r', encoding='utf-8') as f:
             content = await f.read()
             data = yaml.safe_load(content)
@@ -380,6 +393,8 @@ class ModelConfigService:
 
         使用临时文件 + 替换的方式确保原子性
         """
+        self._assert_keys_path_writable()
+
         # 先写入临时文件
         temp_path = self.keys_path.with_suffix('.yaml.tmp')
         async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
@@ -392,6 +407,23 @@ class ModelConfigService:
 
         # 原子性替换
         temp_path.replace(self.keys_path)
+
+    @staticmethod
+    def _same_path(path_a: Path, path_b: Path) -> bool:
+        try:
+            return path_a.expanduser().resolve() == path_b.expanduser().resolve()
+        except Exception:
+            return str(path_a.expanduser()) == str(path_b.expanduser())
+
+    def _is_shared_keys_path(self, path: Path) -> bool:
+        return self._same_path(path, shared_keys_config_path())
+
+    def _assert_keys_path_writable(self) -> None:
+        if self._is_shared_keys_path(self.keys_path):
+            raise PermissionError(
+                "Shared key file (~/.lex_mint/keys_config.yaml) is bootstrap-only. "
+                "Runtime writes are allowed only in config/local/keys_config.yaml."
+            )
 
     async def get_api_key(self, provider_id: str) -> Optional[str]:
         """
@@ -943,7 +975,7 @@ class ModelConfigService:
         if self.provider_requires_api_key(provider):
             raise RuntimeError(
                 f"API key not found for provider '{provider.id}'. "
-                "Please set it via the UI (stored in ~/.lex_mint/keys_config.yaml)."
+                "Please set it via the UI (stored in config/local/keys_config.yaml)."
             )
 
         return ""
