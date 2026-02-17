@@ -9,10 +9,11 @@ FIRST TIME SETUP
 ====================================
 
 1. Configure API Key
-   - Open .env file with Notepad
-   - Find this line: DEEPSEEK_API_KEY=your_key_here
-   - Replace "your_key_here" with your DeepSeek API key
-   - Save and close
+   - Create file: %USERPROFILE%\.lex_mint\keys_config.yaml
+   - Put your key in:
+     providers:
+       deepseek:
+         api_key: "your_key_here"
 
 2. Install Dependencies (First time only)
    - Double-click install.bat
@@ -72,7 +73,7 @@ Q: "Virtual environment not found" error?
 A: Run install.bat first
 
 Q: Cannot send messages?
-A: Check if API key in .env is correct
+A: Check if API key in %USERPROFILE%\.lex_mint\keys_config.yaml is correct
 
 Q: How to backup conversations?
 A: Copy the entire conversations folder

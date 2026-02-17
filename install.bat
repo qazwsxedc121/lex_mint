@@ -63,7 +63,8 @@ echo [4/4] Checking configuration file...
 if not exist ".env" (
     echo [WARNING] .env file not found
     copy .env.example .env >nul 2>&1
-    echo     Please edit .env file and add your DEEPSEEK_API_KEY
+    echo     Please edit .env file for API_PORT/CORS settings if needed
+    echo     API keys are stored in %USERPROFILE%\.lex_mint\keys_config.yaml
     echo.
     notepad .env
 ) else (

@@ -90,7 +90,6 @@ class TestModelConfigService:
             "type": "builtin",
             "protocol": "openai",
             "base_url": "https://api.openai.com/v1",
-            "api_key_env": "OPENAI_API_KEY",
             "enabled": True
         }
         new_provider = Provider(**new_provider_dict)
@@ -121,7 +120,6 @@ class TestModelConfigService:
             type="builtin",
             protocol="openai",
             base_url="https://test.com",
-            api_key_env="TEST_KEY",
             enabled=True
         )
 
@@ -138,7 +136,6 @@ class TestModelConfigService:
             "type": "builtin",
             "protocol": "openai",
             "base_url": "https://api.openai.com/v1",
-            "api_key_env": "OPENAI_API_KEY",
             "enabled": True
         })
 

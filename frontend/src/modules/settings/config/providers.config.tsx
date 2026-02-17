@@ -118,13 +118,6 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get helpText() { return i18n.t('settings:providers.field.apiKey.help'); }
     },
     {
-      type: 'text',
-      name: 'api_key_env',
-      get label() { return i18n.t('settings:providers.field.apiKeyEnv'); },
-      get placeholder() { return i18n.t('settings:providers.field.apiKeyEnv.placeholder'); },
-      get helpText() { return i18n.t('settings:providers.field.apiKeyEnv.help'); }
-    },
-    {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:providers.field.enabled'); },
@@ -174,13 +167,6 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get label() { return i18n.t('settings:providers.field.apiKey'); },
       placeholder: '••••••••',
       get helpText() { return i18n.t('settings:providers.field.apiKey.editHelp'); }
-    },
-    {
-      type: 'text',
-      name: 'api_key_env',
-      get label() { return i18n.t('settings:providers.field.apiKeyEnv'); },
-      get placeholder() { return i18n.t('settings:providers.field.apiKeyEnv.placeholder'); },
-      get helpText() { return i18n.t('settings:providers.field.apiKeyEnv.help'); }
     },
     {
       type: 'checkbox',

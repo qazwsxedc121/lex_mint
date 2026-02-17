@@ -16,7 +16,6 @@ class Provider(BaseModel):
     type: ProviderType = Field(default=ProviderType.BUILTIN, description="提供商来源类型")
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
     base_url: str = Field(..., description="API 基础 URL")
-    api_key_env: str = Field(default="", description="API 密钥环境变量名")
     api_keys: List[str] = Field(default_factory=list, description="多 Key 轮询列表")
     enabled: bool = Field(default=True, description="是否启用")
 

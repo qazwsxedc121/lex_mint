@@ -140,7 +140,6 @@ class ProviderDefinition(BaseModel):
     name: str = Field(..., description="Display name")
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API protocol type")
     base_url: str = Field(..., description="Default API base URL")
-    api_key_env: str = Field(..., description="Environment variable name for API key")
     sdk_class: str = Field(default="openai", description="SDK adapter class to use")
     default_capabilities: ModelCapabilities = Field(
         default_factory=ModelCapabilities,
@@ -170,7 +169,6 @@ class ProviderConfig(BaseModel):
     # === API configuration ===
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API protocol type")
     base_url: str = Field(..., description="API base URL")
-    api_key_env: str = Field(default="", description="Environment variable name for API key")
     api_keys: List[str] = Field(default_factory=list, description="Multiple API keys for rotation")
 
     # === State ===

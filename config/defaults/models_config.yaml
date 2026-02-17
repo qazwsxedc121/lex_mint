@@ -7,7 +7,6 @@ providers:
   type: builtin
   protocol: openai
   base_url: https://api.deepseek.com
-  api_key_env: DEEPSEEK_API_KEY
   api_keys: []
   enabled: true
   default_capabilities:
@@ -29,7 +28,6 @@ providers:
   type: builtin
   protocol: openai
   base_url: https://openrouter.ai/api/v1
-  api_key_env: OPENROUTER_API_KEY
   api_keys: []
   enabled: true
   default_capabilities:
@@ -51,7 +49,6 @@ providers:
   type: builtin
   protocol: anthropic
   base_url: http://a
-  api_key_env: A_API_KEY
   api_keys: []
   enabled: true
   default_capabilities: null
@@ -107,3 +104,4 @@ models:
   capabilities: null
 reasoning_supported_patterns:
 - deepseek-chat
+

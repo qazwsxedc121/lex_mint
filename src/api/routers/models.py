@@ -23,10 +23,9 @@ from ..services.model_config_service import ModelConfigService
 from src.providers import (
     BUILTIN_PROVIDERS,
     ModelCapabilities,
-    AdapterRegistry,
     get_builtin_provider,
 )
-from src.providers.types import ProviderDefinition, ApiProtocol, ProviderType
+from src.providers.types import ApiProtocol
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -47,7 +46,6 @@ class BuiltinProviderInfo(BaseModel):
     name: str
     protocol: str
     base_url: str
-    api_key_env: str
     sdk_class: str
     supports_model_list: bool
     default_capabilities: ModelCapabilities
@@ -78,7 +76,6 @@ async def get_builtin_providers():
             name=definition.name,
             protocol=definition.protocol.value,
             base_url=definition.base_url,
-            api_key_env=definition.api_key_env,
             sdk_class=definition.sdk_class,
             supports_model_list=definition.supports_model_list,
             default_capabilities=definition.default_capabilities,
@@ -112,7 +109,6 @@ async def get_builtin_provider_info(provider_id: str):
         name=definition.name,
         protocol=definition.protocol.value,
         base_url=definition.base_url,
-        api_key_env=definition.api_key_env,
         sdk_class=definition.sdk_class,
         supports_model_list=definition.supports_model_list,
         default_capabilities=definition.default_capabilities,
@@ -159,7 +155,6 @@ async def create_provider(
             type=provider_data.type,
             protocol=provider_data.protocol,
             base_url=provider_data.base_url,
-            api_key_env=f"{provider_data.id.upper()}_API_KEY",  # 生成默认环境变量名
             enabled=provider_data.enabled,
             default_capabilities=provider_data.default_capabilities,
             auto_append_path=provider_data.auto_append_path,

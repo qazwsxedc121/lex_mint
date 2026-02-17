@@ -10,9 +10,6 @@ import os
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # LLM Configuration
-    deepseek_api_key: str
-
     # API Configuration
     api_host: str = "0.0.0.0"
     api_port: int
@@ -45,7 +42,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore",
     )
 
     @field_validator("projects_browse_roots", mode="before")

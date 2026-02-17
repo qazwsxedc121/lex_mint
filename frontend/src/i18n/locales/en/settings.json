@@ -278,11 +278,8 @@
   "providers.field.baseUrl.help": "API endpoint base URL",
   "providers.field.apiKey": "API Key",
   "providers.field.apiKey.placeholder": "sk-...",
-  "providers.field.apiKey.help": "API key for authentication (leave empty to use environment variable)",
+  "providers.field.apiKey.help": "API key for authentication (stored in ~/.lex_mint/keys_config.yaml)",
   "providers.field.apiKey.editHelp": "API key for authentication (leave unchanged if masked)",
-  "providers.field.apiKeyEnv": "API Key Env Var",
-  "providers.field.apiKeyEnv.placeholder": "MY_PROVIDER_API_KEY",
-  "providers.field.apiKeyEnv.help": "Environment variable name for API key",
   "providers.field.enabled": "Enable this provider",
 
   "knowledgeBases.title": "Knowledge Bases",

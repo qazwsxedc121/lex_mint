@@ -21,7 +21,7 @@ if not exist "frontend\node_modules" (
 REM Check .env file
 if not exist ".env" (
     echo [WARNING] .env file not found
-    echo [TIP] Please make sure DEEPSEEK_API_KEY is configured
+    echo [TIP] API keys are configured in %USERPROFILE%\.lex_mint\keys_config.yaml
     echo.
     pause
 )

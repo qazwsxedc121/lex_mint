@@ -1,6 +1,5 @@
 """Shared pytest fixtures for all tests."""
 
-import os
 import pytest
 import tempfile
 import shutil
@@ -61,18 +60,6 @@ def sample_messages():
 
 
 @pytest.fixture
-def mock_env(monkeypatch):
-    """Mock environment variables."""
-    test_env = {
-        "DEEPSEEK_API_KEY": "test_deepseek_key_12345",
-        "OPENAI_API_KEY": "test_openai_key_67890"
-    }
-    for key, value in test_env.items():
-        monkeypatch.setenv(key, value)
-    return test_env
-
-
-@pytest.fixture
 def sample_model_config():
     """Sample model configuration for testing."""
     return {
@@ -87,7 +74,6 @@ def sample_model_config():
                 "type": "builtin",
                 "protocol": "openai",
                 "base_url": "https://api.deepseek.com",
-                "api_key_env": "DEEPSEEK_API_KEY",
                 "enabled": True,
                 "sdk_class": "deepseek"
             }

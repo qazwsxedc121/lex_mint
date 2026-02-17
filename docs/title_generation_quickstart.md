@@ -7,7 +7,7 @@ This guide will help you quickly test the new title generation feature.
 1. Backend dependencies installed (`./venv/Scripts/pip install -r requirements.txt`)
 2. Frontend dependencies installed (`cd frontend && npm install`)
 3. At least one model configured in `config/models_config.yaml`
-4. API keys configured in `.env` file
+4. API keys configured in `~/.lex_mint/keys_config.yaml`
 
 ## Quick Test (5 Minutes)
 
@@ -102,7 +102,7 @@ Look for lines with `[TitleGen]`:
 
 **Common issues:**
 1. **Model not configured**: Add the model to `config/models_config.yaml`
-2. **API key missing**: Add API key to `.env` file
+2. **API key missing**: Add API key to `~/.lex_mint/keys_config.yaml`
 3. **Feature disabled**: Check Settings > Title Generation > Enable checkbox
 4. **Threshold not met**: Default is 1 round (2 messages total)
 

@@ -3,7 +3,6 @@
 
 负责加载、保存和管理 LLM 提供商和模型配置
 """
-import os
 import yaml
 import aiofiles
 import logging
@@ -18,13 +17,13 @@ from src.providers import (
     ProviderType,
     ApiProtocol,
     get_builtin_provider,
-    BUILTIN_PROVIDERS,
 )
 from src.providers.types import ProviderConfig
 
 from ..paths import (
     config_defaults_dir,
     config_local_dir,
+    shared_keys_config_path,
     legacy_config_dir,
     ensure_local_file,
 )
@@ -41,7 +40,7 @@ class ModelConfigService:
 
         Args:
             config_path: 配置文件路径，默认为项目根目录的 models_config.yaml
-            keys_path: 密钥文件路径，默认为项目根目录的 keys_config.yaml
+            keys_path: 密钥文件路径，默认使用用户目录 ~/.lex_mint/keys_config.yaml
         """
         self.defaults_path: Optional[Path] = None
         self.legacy_models_paths: list[Path] = []
@@ -54,8 +53,11 @@ class ModelConfigService:
             self.legacy_models_paths = [legacy_config_dir() / "models_config.yaml"]
             config_path = config_local_dir() / "models_config.yaml"
         if keys_path is None:
-            self.legacy_keys_paths = [legacy_config_dir() / "keys_config.yaml"]
-            keys_path = config_local_dir() / "keys_config.yaml"
+            self.legacy_keys_paths = [
+                config_local_dir() / "keys_config.yaml",
+                legacy_config_dir() / "keys_config.yaml",
+            ]
+            keys_path = shared_keys_config_path()
         self.config_path = config_path
         self.keys_path = keys_path
         self._ensure_config_exists()
@@ -93,7 +95,6 @@ class ModelConfigService:
                     "type": "builtin",
                     "protocol": "openai",
                     "base_url": "https://api.deepseek.com",
-                    "api_key_env": "DEEPSEEK_API_KEY",
                     "enabled": True,
                     "sdk_class": "deepseek",
                     "default_capabilities": {
@@ -109,7 +110,6 @@ class ModelConfigService:
                     "type": "builtin",
                     "protocol": "openai",
                     "base_url": "https://api.openai.com/v1",
-                    "api_key_env": "OPENAI_API_KEY",
                     "enabled": False,
                     "sdk_class": "openai",
                     "default_capabilities": {
@@ -126,7 +126,6 @@ class ModelConfigService:
                     "type": "builtin",
                     "protocol": "openai",
                     "base_url": "https://openrouter.ai/api/v1",
-                    "api_key_env": "OPENROUTER_API_KEY",
                     "enabled": True,
                     "sdk_class": "openai",
                     "supports_model_list": True,
@@ -795,8 +794,6 @@ class ModelConfigService:
             RuntimeError: when provider requires API key but none is configured.
         """
         api_key = self.get_api_key_sync(provider.id)
-        if not api_key:
-            api_key = os.getenv(provider.api_key_env or "")
 
         if api_key:
             return api_key
@@ -804,7 +801,7 @@ class ModelConfigService:
         if self.provider_requires_api_key(provider):
             raise RuntimeError(
                 f"API key not found for provider '{provider.id}'. "
-                f"Please set it via the UI or environment variable: {provider.api_key_env}"
+                "Please set it via the UI (stored in ~/.lex_mint/keys_config.yaml)."
             )
 
         return ""
@@ -825,7 +822,6 @@ class ModelConfigService:
             type=provider.type if hasattr(provider, 'type') and provider.type else ProviderType.BUILTIN,
             protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
             base_url=provider.base_url,
-            api_key_env=provider.api_key_env or "",
             enabled=provider.enabled,
             default_capabilities=provider.default_capabilities,
             sdk_class=provider.sdk_class if hasattr(provider, 'sdk_class') else None,
@@ -869,7 +865,7 @@ class ModelConfigService:
 
         Raises:
             ValueError: 如果模型不存在或配置无效
-            RuntimeError: 如果 API 密钥环境变量不存在
+            RuntimeError: 如果 API 密钥未配置
         """
         # 同步加载配置
         with open(self.config_path, 'r', encoding='utf-8') as f:

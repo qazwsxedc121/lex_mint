@@ -36,7 +36,6 @@ export interface Provider {
   type?: ProviderType;           // builtin or custom
   protocol?: ApiProtocol;        // API protocol type
   base_url: string;
-  api_key_env: string;
   api_keys?: string[];           // Multiple keys for rotation
   enabled: boolean;
   has_api_key?: boolean;         // Flag indicating if API key is configured
@@ -80,7 +79,6 @@ export interface BuiltinProviderInfo {
   name: string;
   protocol: string;
   base_url: string;
-  api_key_env: string;
   sdk_class: string;
   supports_model_list: boolean;
   default_capabilities: ModelCapabilities;

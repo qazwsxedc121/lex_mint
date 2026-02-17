@@ -278,11 +278,8 @@
   "providers.field.baseUrl.help": "API 端点基础 URL",
   "providers.field.apiKey": "API 密钥",
   "providers.field.apiKey.placeholder": "sk-...",
-  "providers.field.apiKey.help": "认证用 API 密钥（留空则使用环境变量）",
+  "providers.field.apiKey.help": "认证用 API 密钥（保存在 ~/.lex_mint/keys_config.yaml）",
   "providers.field.apiKey.editHelp": "认证用 API 密钥（已遮罩则无需修改）",
-  "providers.field.apiKeyEnv": "API 密钥环境变量",
-  "providers.field.apiKeyEnv.placeholder": "MY_PROVIDER_API_KEY",
-  "providers.field.apiKeyEnv.help": "API 密钥的环境变量名",
   "providers.field.enabled": "启用此服务商",
 
   "knowledgeBases.title": "知识库",
