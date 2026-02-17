@@ -130,6 +130,34 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     },
     {
       type: 'number',
+      name: 'embedding_batch_size',
+      get label() { return i18n.t('settings:rag.field.embeddingBatchSize'); },
+      min: 1,
+      max: 1000,
+      defaultValue: 64,
+      get helpText() { return i18n.t('settings:rag.field.embeddingBatchSize.help'); }
+    },
+    {
+      type: 'number',
+      name: 'embedding_batch_delay_seconds',
+      get label() { return i18n.t('settings:rag.field.embeddingBatchDelaySeconds'); },
+      min: 0,
+      max: 60,
+      step: 0.1,
+      defaultValue: 0.5,
+      get helpText() { return i18n.t('settings:rag.field.embeddingBatchDelaySeconds.help'); }
+    },
+    {
+      type: 'number',
+      name: 'embedding_batch_max_retries',
+      get label() { return i18n.t('settings:rag.field.embeddingBatchMaxRetries'); },
+      min: 0,
+      max: 20,
+      defaultValue: 3,
+      get helpText() { return i18n.t('settings:rag.field.embeddingBatchMaxRetries.help'); }
+    },
+    {
+      type: 'number',
       name: 'chunk_size',
       get label() { return i18n.t('settings:rag.field.chunkSize'); },
       min: 100,
