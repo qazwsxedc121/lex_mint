@@ -594,6 +594,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
       <div data-name="message-bubble-content-wrapper" className={isUser ? 'max-w-[80%]' : 'w-full'}>
+        {/* Group chat: assistant identity label */}
+        {!isUser && message.assistant_name && (
+          <div data-name="message-bubble-assistant-label" className="flex items-center gap-1.5 mb-1 ml-1">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{message.assistant_name}</span>
+          </div>
+        )}
         <div
           data-name="message-bubble-content"
           className={`rounded-lg px-4 py-3 ${

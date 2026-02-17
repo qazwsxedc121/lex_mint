@@ -92,9 +92,10 @@ export async function createSession(
   assistantId?: string,
   contextType: string = 'chat',
   projectId?: string,
-  temporary: boolean = false
+  temporary: boolean = false,
+  groupAssistants?: string[]
 ): Promise<string> {
-  const body: { model_id?: string; assistant_id?: string; temporary?: boolean } = {};
+  const body: { model_id?: string; assistant_id?: string; temporary?: boolean; group_assistants?: string[] } = {};
   if (assistantId) {
     body.assistant_id = assistantId;
   } else if (modelId) {
@@ -102,6 +103,9 @@ export async function createSession(
   }
   if (temporary) {
     body.temporary = true;
+  }
+  if (groupAssistants && groupAssistants.length >= 2) {
+    body.group_assistants = groupAssistants;
   }
 
   // Build query params
@@ -651,7 +655,9 @@ export async function sendMessageStream(
   onFollowupQuestions?: (questions: string[]) => void,
   onContextInfo?: (info: ContextInfo) => void,
   onThinkingDuration?: (durationMs: number) => void,
-  fileReferences?: Array<{ path: string; project_id: string }>
+  fileReferences?: Array<{ path: string; project_id: string }>,
+  onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
+  onAssistantDone?: (assistantId: string) => void
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -763,6 +769,18 @@ export async function sendMessageStream(
           // Handle thinking_duration event
           if (data.type === 'thinking_duration' && onThinkingDuration) {
             onThinkingDuration(data.duration_ms);
+            continue;
+          }
+
+          // Handle assistant_start event (group chat)
+          if (data.type === 'assistant_start' && onAssistantStart) {
+            onAssistantStart(data.assistant_id, data.name, data.icon);
+            continue;
+          }
+
+          // Handle assistant_done event (group chat)
+          if (data.type === 'assistant_done' && onAssistantDone) {
+            onAssistantDone(data.assistant_id);
             continue;
           }
 

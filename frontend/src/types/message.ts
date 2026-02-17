@@ -99,6 +99,9 @@ export interface Message {
   sources?: SearchSource[];
   thinkingDurationMs?: number;
   compareResponses?: CompareModelResponse[];
+  assistant_id?: string;       // Group chat: which assistant generated this message
+  assistant_name?: string;     // Group chat: assistant display name
+  assistant_icon?: string;     // Group chat: Lucide icon key
 }
 
 export interface Session {
@@ -109,6 +112,7 @@ export interface Session {
   message_count?: number;
   temporary?: boolean;
   folder_id?: string;  // Chat folder ID (optional)
+  group_assistants?: string[];  // Group chat: list of assistant IDs
 }
 
 export interface ParamOverrides {
@@ -133,6 +137,7 @@ export interface SessionDetail {
   total_cost?: CostInfo;
   temporary?: boolean;
   compare_data?: Record<string, { responses: CompareModelResponse[] }>;
+  group_assistants?: string[];  // Group chat: list of assistant IDs
   state: {
     messages: Message[];
     current_step: number;

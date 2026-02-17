@@ -23,7 +23,7 @@
 [X] i18n
 [X] RAG Reorder
 [] RAG by tool use
-[] RAG word search (BM25)
+[X] RAG word search (BM25)
 [X] conversation in Project path
 [X] 数学公式
 [] SVG渲染
@@ -44,3 +44,8 @@
 [X] 超长分段总结
 [X] 翻译文本自动检查语言/自动中英互译
 [X] 增强模板参数
+[X] 向量数据库可选sqlite vec
+[] 增强提供商选择,提供默认服务商
+[] 服务商接入智谱
+[] RAG批量上传
+[] 批量删除知识

@@ -26,6 +26,10 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.createSession(modelId, assistantId, contextType, projectId, temporary || false);
     },
 
+    createGroupSession: async (groupAssistants: string[]) => {
+      return api.createSession(undefined, undefined, contextType, projectId, false, groupAssistants);
+    },
+
     listSessions: async () => {
       return api.listSessions(contextType, projectId);
     },
@@ -86,7 +90,9 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       onFollowupQuestions?,
       onContextInfo?,
       onThinkingDuration?,
-      fileReferences?
+      fileReferences?,
+      onAssistantStart?,
+      onAssistantDone?
     ) => {
       return api.sendMessageStream(
         sessionId,
@@ -109,7 +115,9 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         onFollowupQuestions,
         onContextInfo,
         onThinkingDuration,
-        fileReferences
+        fileReferences,
+        onAssistantStart,
+        onAssistantDone
       );
     },
 

@@ -11,6 +11,8 @@ export const defaultChatAPI: ChatAPI = {
   getSession: api.getSession,
   createSession: (modelId?: string, assistantId?: string, temporary?: boolean) =>
     api.createSession(modelId, assistantId, 'chat', undefined, temporary || false),
+  createGroupSession: (groupAssistants: string[]) =>
+    api.createSession(undefined, undefined, 'chat', undefined, false, groupAssistants),
   listSessions: api.listSessions,
   deleteSession: api.deleteSession,
   saveTemporarySession: api.saveTemporarySession,
@@ -30,7 +32,8 @@ export const defaultChatAPI: ChatAPI = {
     onChunk, onDone, onError,
     abortControllerRef?, reasoningEffort?, onUsage?, onSources?,
     attachments?, onUserMessageId?, onAssistantMessageId?,
-    useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?
+    useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?,
+    onAssistantStart?, onAssistantDone?
   ) => {
     return api.sendMessageStream(
       sessionId, message, truncateAfterIndex, skipUserMessage,
@@ -43,7 +46,9 @@ export const defaultChatAPI: ChatAPI = {
       onFollowupQuestions,
       onContextInfo,
       onThinkingDuration,
-      fileReferences
+      fileReferences,
+      onAssistantStart,
+      onAssistantDone
     );
   },
   deleteMessage: api.deleteMessage,

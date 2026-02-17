@@ -15,7 +15,7 @@ import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
 import type { Message } from '../../../types/message';
-import { LightBulbIcon } from '@heroicons/react/24/outline';
+import { LightBulbIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 
 export interface ChatViewProps {
@@ -68,6 +68,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     hasActiveOverrides,
     updateParamOverrides,
     generateFollowups,
+    groupAssistants,
   } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
@@ -172,6 +173,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       console.error('Branch failed:', err);
     }
   };
+
+  const isGroupChat = groupAssistants && groupAssistants.length >= 2;
 
   if (!currentSessionId) {
     return (
@@ -278,11 +281,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         hasActiveOverrides={hasActiveOverrides}
         onParamOverridesChange={updateParamOverrides}
         assistantSelector={
-          <AssistantSelector
-            sessionId={currentSessionId}
-            currentAssistantId={currentAssistantId || undefined}
-            onAssistantChange={handleAssistantChange}
-          />
+          isGroupChat ? (
+            <div data-name="group-chat-participants" className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+              <UsersIcon className="w-4 h-4" />
+              <span>{t('groupChat.participants', { count: groupAssistants.length })}</span>
+            </div>
+          ) : (
+            <AssistantSelector
+              sessionId={currentSessionId}
+              currentAssistantId={currentAssistantId || undefined}
+              onAssistantChange={handleAssistantChange}
+            />
+          )
         }
       />
     </div>

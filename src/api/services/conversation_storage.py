@@ -46,7 +46,8 @@ class ConversationStorage:
         assistant_id: Optional[str] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None,
-        temporary: bool = False
+        temporary: bool = False,
+        group_assistants: Optional[List[str]] = None
     ) -> str:
         """Create a new conversation session.
 
@@ -115,6 +116,9 @@ class ConversationStorage:
 
         if temporary:
             metadata["temporary"] = True
+
+        if group_assistants and len(group_assistants) >= 2:
+            metadata["group_assistants"] = group_assistants
 
         post.metadata = metadata
 
@@ -198,7 +202,7 @@ class ConversationStorage:
             assistant_id = default_assistant.id
             model_id = default_assistant.model_id
 
-        return {
+        result = {
             "session_id": post.metadata["session_id"],
             "title": post.metadata.get("title", "未命名对话"),
             "created_at": post.metadata["created_at"],
@@ -214,6 +218,13 @@ class ConversationStorage:
             }
         }
 
+        # Include group_assistants if present
+        group_assistants = post.metadata.get("group_assistants")
+        if group_assistants:
+            result["group_assistants"] = group_assistants
+
+        return result
+
     async def append_message(
         self,
         session_id: str,
@@ -224,7 +235,8 @@ class ConversationStorage:
         cost: Optional[CostInfo] = None,
         sources: Optional[List[Dict]] = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        assistant_id: Optional[str] = None
     ) -> str:
         """Append a message to conversation file.
 
@@ -272,6 +284,10 @@ class ConversationStorage:
 
         # Add message_id as HTML comment
         new_message += f"\n<!-- message_id: \"{message_id}\" -->\n"
+
+        # Add assistant_id as HTML comment for group chat messages
+        if role == "assistant" and assistant_id:
+            new_message += f"<!-- assistant_id: \"{assistant_id}\" -->\n"
 
         # Add attachment metadata as HTML comments (for user messages)
         if role == "user" and attachments:
@@ -455,14 +471,20 @@ class ConversationStorage:
                 mtime = os.path.getmtime(filepath)
                 updated_at = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
 
-                sessions.append({
+                session_entry = {
                     "session_id": post.metadata["session_id"],
                     "title": post.metadata.get("title", "New Chat"),
                     "created_at": post.metadata["created_at"],
                     "updated_at": updated_at,
                     "message_count": message_count,
                     "folder_id": post.metadata.get("folder_id")  # Chat folder ID (optional)
-                })
+                }
+
+                group_assistants = post.metadata.get("group_assistants")
+                if group_assistants:
+                    session_entry["group_assistants"] = group_assistants
+
+                sessions.append(session_entry)
             except Exception as e:
                 # Skip corrupted files
                 print(f"Warning: Skipping corrupted file {filepath}: {e}")
@@ -1275,6 +1297,29 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
+    async def update_group_assistants(self, session_id: str, group_assistants: List[str], context_type: str = "chat", project_id: Optional[str] = None):
+        """Update the group_assistants list for a session.
+
+        Args:
+            session_id: Session UUID
+            group_assistants: List of assistant IDs (must have 2+ entries)
+            context_type: Context type ("chat" or "project")
+            project_id: Project ID (required when context_type="project")
+
+        Raises:
+            FileNotFoundError: If session doesn't exist
+            ValueError: If less than 2 assistants provided
+        """
+        if len(group_assistants) < 2:
+            raise ValueError("Group chat requires at least 2 assistants")
+
+        await self.update_session_metadata(
+            session_id=session_id,
+            metadata_updates={"group_assistants": group_assistants},
+            context_type=context_type,
+            project_id=project_id
+        )
+
     async def update_session_folder(self, session_id: str, folder_id: Optional[str], context_type: str = "chat", project_id: Optional[str] = None):
         """Update session's folder assignment.
 
@@ -1416,6 +1461,7 @@ class ConversationStorage:
                 cost_match = re.match(r'^<!-- cost: (.+) -->$', line.strip())
                 attachment_match = re.match(r'^<!-- attachment: (.+) -->$', line.strip())
                 message_id_match = re.match(r'^<!-- message_id: "(.+)" -->$', line.strip())
+                assistant_id_match = re.match(r'^<!-- assistant_id: "(.+)" -->$', line.strip())
                 sources_match = re.match(r'^<!-- sources: (.+) -->$', line.strip())
                 compression_meta_match = re.match(r'^<!-- compression_meta: (.+) -->$', line.strip())
 
@@ -1440,6 +1486,8 @@ class ConversationStorage:
                         pass
                 elif message_id_match:
                     current_message["message_id"] = message_id_match.group(1)
+                elif assistant_id_match:
+                    current_message["assistant_id"] = assistant_id_match.group(1)
                 elif sources_match:
                     try:
                         current_message["sources"] = json.loads(sources_match.group(1))

@@ -1014,6 +1014,216 @@ class AgentService:
             "max_rounds": max_rounds,
         }
 
+    async def process_group_message_stream(
+        self,
+        session_id: str,
+        user_message: str,
+        group_assistants: List[str],
+        skip_user_append: bool = False,
+        reasoning_effort: str = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None
+    ) -> AsyncIterator[Any]:
+        """Stream process user message with multiple assistants (group chat).
+
+        Each assistant responds in turn (round-robin), seeing all previous
+        responses in the conversation including earlier assistants' replies.
+
+        Yields:
+            - {"type": "user_message_id", "message_id": ...}
+            - {"type": "assistant_start", "assistant_id": ..., "name": ..., "icon": ...}
+            - String chunks (assistant response text)
+            - {"type": "usage", "usage": {...}, "cost": {...}}
+            - {"type": "assistant_message_id", "message_id": ...}
+            - {"type": "assistant_done", "assistant_id": ...}
+            - {"done": True}
+        """
+        original_user_message = user_message
+        file_context_block = await self._build_file_context_block(file_references)
+        if file_context_block:
+            user_message = f"{file_context_block}\n\n{user_message}"
+
+        raw_user_message = original_user_message
+
+        # Process attachments
+        attachment_metadata = []
+        full_message_content = user_message
+
+        if attachments:
+            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+            message_index = len(session["state"]["messages"])
+
+            for idx, att in enumerate(attachments):
+                filename = att["filename"]
+                temp_path = att["temp_path"]
+                mime_type = att["mime_type"]
+                is_image = mime_type.startswith("image/")
+
+                attachment_metadata.append({
+                    "filename": filename,
+                    "size": att["size"],
+                    "mime_type": mime_type,
+                })
+
+                if not is_image:
+                    temp_file_path = self.file_service.attachments_dir / temp_path
+                    content = await self.file_service.get_file_content(temp_file_path)
+                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
+
+                await self.file_service.move_to_permanent(
+                    session_id, message_index, temp_path, filename
+                )
+
+        # Append user message
+        user_message_id = None
+        if not skip_user_append:
+            user_message_id = await self.storage.append_message(
+                session_id, "user", full_message_content,
+                attachments=attachment_metadata if attachment_metadata else None,
+                context_type=context_type,
+                project_id=project_id
+            )
+            yield {"type": "user_message_id", "message_id": user_message_id}
+
+        # Load assistant configs
+        from .assistant_config_service import AssistantConfigService
+        assistant_service = AssistantConfigService()
+
+        # Process each assistant sequentially
+        for assistant_id in group_assistants:
+            assistant_obj = await assistant_service.get_assistant(assistant_id)
+            if not assistant_obj:
+                logger.warning(f"[GroupChat] Assistant '{assistant_id}' not found, skipping")
+                continue
+
+            # Signal assistant start
+            yield {
+                "type": "assistant_start",
+                "assistant_id": assistant_id,
+                "name": assistant_obj.name,
+                "icon": assistant_obj.icon,
+            }
+
+            # Reload session to include previous assistants' responses
+            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+            messages = session["state"]["messages"]
+            model_id = assistant_obj.model_id
+
+            # Build per-assistant context
+            system_prompt = assistant_obj.system_prompt
+            max_rounds = assistant_obj.max_rounds
+            assistant_params = {
+                "temperature": assistant_obj.temperature,
+                "max_tokens": assistant_obj.max_tokens,
+                "top_p": assistant_obj.top_p,
+                "top_k": assistant_obj.top_k,
+                "frequency_penalty": assistant_obj.frequency_penalty,
+                "presence_penalty": assistant_obj.presence_penalty,
+            }
+
+            # Memory context (per-assistant)
+            assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
+            try:
+                memory_context, _ = self.memory_service.build_memory_context(
+                    query=raw_user_message,
+                    assistant_id=assistant_id,
+                    include_global=True,
+                    include_assistant=assistant_memory_enabled,
+                )
+                if memory_context:
+                    system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
+            except Exception as e:
+                logger.warning(f"[GroupChat] Memory retrieval failed for {assistant_id}: {e}")
+
+            # RAG context (per-assistant)
+            rag_context, _ = await self._build_rag_context_and_sources(
+                raw_user_message=raw_user_message,
+                assistant_id=assistant_id,
+                assistant_obj=assistant_obj,
+            )
+            if rag_context:
+                system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+
+            # Stream LLM response
+            full_response = ""
+            usage_data = None
+            cost_data = None
+
+            try:
+                async for chunk in call_llm_stream(
+                    messages,
+                    session_id=session_id,
+                    model_id=model_id,
+                    system_prompt=system_prompt,
+                    max_rounds=max_rounds,
+                    reasoning_effort=reasoning_effort,
+                    file_service=self.file_service,
+                    **assistant_params
+                ):
+                    if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                        usage_data = chunk["usage"]
+                        parts = model_id.split(":", 1)
+                        provider_id = parts[0] if len(parts) > 1 else ""
+                        simple_model_id = parts[1] if len(parts) > 1 else model_id
+                        cost_data = self.pricing_service.calculate_cost(
+                            provider_id, simple_model_id, usage_data
+                        )
+                        continue
+
+                    if isinstance(chunk, dict):
+                        # Forward context_info, thinking_duration events
+                        yield chunk
+                        continue
+
+                    full_response += chunk
+                    yield chunk
+
+            except asyncio.CancelledError:
+                if full_response:
+                    await self.storage.append_message(
+                        session_id, "assistant", full_response,
+                        assistant_id=assistant_id,
+                        context_type=context_type,
+                        project_id=project_id
+                    )
+                raise
+
+            # Save assistant message with assistant_id metadata
+            assistant_message_id = await self.storage.append_message(
+                session_id, "assistant", full_response,
+                usage=usage_data, cost=cost_data,
+                assistant_id=assistant_id,
+                context_type=context_type,
+                project_id=project_id
+            )
+
+            # Yield usage/cost
+            if usage_data:
+                usage_event = {"type": "usage", "usage": usage_data.model_dump()}
+                if cost_data:
+                    usage_event["cost"] = cost_data.model_dump()
+                yield usage_event
+
+            yield {"type": "assistant_message_id", "message_id": assistant_message_id}
+            yield {"type": "assistant_done", "assistant_id": assistant_id}
+
+        # Title generation (once, after all assistants)
+        is_temporary = session.get("temporary", False) if session else False
+        try:
+            from .title_generation_service import TitleGenerationService
+            title_service = TitleGenerationService(storage=self.storage)
+            updated_session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+            message_count = len(updated_session['state']['messages'])
+            current_title = updated_session['title']
+            if not is_temporary and title_service.should_generate_title(message_count, current_title):
+                asyncio.create_task(title_service.generate_title_async(session_id))
+        except Exception as e:
+            logger.warning(f"[GroupChat] Title generation failed: {e}")
+
     async def process_compare_stream(
         self,
         session_id: str,
