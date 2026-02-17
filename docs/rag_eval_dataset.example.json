@@ -1,0 +1,31 @@
+{
+  "name": "rag-eval-example",
+  "description": "Example labeled dataset for retrieval quality checks.",
+  "default_kb_ids": [
+    "demo-kb"
+  ],
+  "cases": [
+    {
+      "id": "vector-backend-default",
+      "query": "What is the default vector backend for RAG storage?",
+      "expected": {
+        "keywords": [
+          "sqlite_vec",
+          "vector_store_backend"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "bm25-path-config",
+      "query": "Where is the BM25 sqlite file configured?",
+      "expected": {
+        "keywords": [
+          "bm25_sqlite_path",
+          "rag_bm25.sqlite3"
+        ]
+      },
+      "top_k": 5
+    }
+  ]
+}
