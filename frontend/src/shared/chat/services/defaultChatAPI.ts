@@ -34,7 +34,7 @@ export const defaultChatAPI: ChatAPI = {
     abortControllerRef?, reasoningEffort?, onUsage?, onSources?,
     attachments?, onUserMessageId?, onAssistantMessageId?,
     useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?,
-    onAssistantStart?, onAssistantDone?
+    onAssistantStart?, onAssistantDone?, onGroupEvent?
   ) => {
     return api.sendMessageStream(
       sessionId, message, truncateAfterIndex, skipUserMessage,
@@ -49,7 +49,8 @@ export const defaultChatAPI: ChatAPI = {
       onThinkingDuration,
       fileReferences,
       onAssistantStart,
-      onAssistantDone
+      onAssistantDone,
+      onGroupEvent
     );
   },
   deleteMessage: api.deleteMessage,

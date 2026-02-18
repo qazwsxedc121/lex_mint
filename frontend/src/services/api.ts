@@ -657,7 +657,21 @@ export async function sendMessageStream(
   onThinkingDuration?: (durationMs: number) => void,
   fileReferences?: Array<{ path: string; project_id: string }>,
   onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
-  onAssistantDone?: (assistantId: string) => void
+  onAssistantDone?: (assistantId: string) => void,
+  onGroupEvent?: (event: {
+    type: string;
+    assistant_id?: string;
+    assistant_turn_id?: string;
+    name?: string;
+    icon?: string;
+    chunk?: string;
+    message_id?: string;
+    usage?: TokenUsage;
+    cost?: CostInfo;
+    sources?: SearchSource[];
+    duration_ms?: number;
+    [key: string]: unknown;
+  }) => void
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -731,14 +745,24 @@ export async function sendMessageStream(
           }
 
           // Handle usage/cost event
-          if (data.type === 'usage' && data.usage && onUsage) {
-            onUsage(data.usage, data.cost);
+          if (data.type === 'usage' && data.usage) {
+            if (onUsage) {
+              onUsage(data.usage, data.cost);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
           // Handle sources event
-          if (data.type === 'sources' && data.sources && onSources) {
-            onSources(data.sources);
+          if (data.type === 'sources' && data.sources) {
+            if (onSources) {
+              onSources(data.sources);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
@@ -749,8 +773,13 @@ export async function sendMessageStream(
           }
 
           // Handle assistant_message_id event
-          if (data.type === 'assistant_message_id' && data.message_id && onAssistantMessageId) {
-            onAssistantMessageId(data.message_id);
+          if (data.type === 'assistant_message_id' && data.message_id) {
+            if (onAssistantMessageId) {
+              onAssistantMessageId(data.message_id);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
@@ -767,20 +796,43 @@ export async function sendMessageStream(
           }
 
           // Handle thinking_duration event
-          if (data.type === 'thinking_duration' && onThinkingDuration) {
-            onThinkingDuration(data.duration_ms);
+          if (data.type === 'thinking_duration') {
+            if (onThinkingDuration) {
+              onThinkingDuration(data.duration_ms);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
           // Handle assistant_start event (group chat)
-          if (data.type === 'assistant_start' && onAssistantStart) {
-            onAssistantStart(data.assistant_id, data.name, data.icon);
+          if (data.type === 'assistant_start') {
+            if (onGroupEvent) {
+              onGroupEvent(data);
+            } else if (onAssistantStart) {
+              onAssistantStart(data.assistant_id, data.name, data.icon);
+            }
             continue;
           }
 
           // Handle assistant_done event (group chat)
-          if (data.type === 'assistant_done' && onAssistantDone) {
-            onAssistantDone(data.assistant_id);
+          if (data.type === 'assistant_done') {
+            if (onGroupEvent) {
+              onGroupEvent(data);
+            } else if (onAssistantDone) {
+              onAssistantDone(data.assistant_id);
+            }
+            continue;
+          }
+
+          // Handle assistant_chunk event (group chat)
+          if (data.type === 'assistant_chunk' && data.chunk) {
+            if (onGroupEvent) {
+              onGroupEvent(data);
+            } else {
+              onChunk(data.chunk);
+            }
             continue;
           }
 

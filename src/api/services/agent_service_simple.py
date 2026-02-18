@@ -3,6 +3,7 @@
 from typing import Dict, AsyncIterator, Optional, Any, List, Tuple
 import logging
 import asyncio
+import uuid
 
 from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
 from src.providers.types import TokenUsage, CostInfo
@@ -1014,6 +1015,67 @@ class AgentService:
             "max_rounds": max_rounds,
         }
 
+    @staticmethod
+    def _build_group_identity_prompt(
+        current_assistant_id: str,
+        current_assistant_name: str,
+        group_assistants: List[str],
+        assistant_name_map: Dict[str, str],
+    ) -> str:
+        """Build explicit role and participant instructions for group chat rounds."""
+        participants: List[str] = []
+        for index, participant_id in enumerate(group_assistants, start=1):
+            participant_name = assistant_name_map.get(participant_id, participant_id)
+            marker = " (you)" if participant_id == current_assistant_id else ""
+            participants.append(f"{index}. {participant_name} [{participant_id}]{marker}")
+
+        participants_block = "\n".join(participants) if participants else "unknown"
+        return (
+            "Group chat identity:\n"
+            f"You are {current_assistant_name} [{current_assistant_id}] in a multi-assistant discussion.\n"
+            "Participants and speaking order:\n"
+            f"{participants_block}\n\n"
+            "Role rules:\n"
+            "- Do not claim other assistants' statements as your own.\n"
+            "- When responding, continue from your own perspective and style.\n"
+            "- Never output internal role labels or metadata markers to the user."
+        )
+
+    @staticmethod
+    def _build_group_history_hint(
+        messages: List[Dict[str, Any]],
+        current_assistant_id: str,
+        assistant_name_map: Dict[str, str],
+        max_turns: int = 12,
+    ) -> str:
+        """Build a compact speaker-labeled assistant turn summary for disambiguation."""
+        turn_lines: List[str] = []
+        for message in messages:
+            if message.get("role") != "assistant":
+                continue
+
+            speaker_id = message.get("assistant_id")
+            if not speaker_id:
+                continue
+
+            speaker_name = assistant_name_map.get(speaker_id, speaker_id)
+            ownership = "self" if speaker_id == current_assistant_id else "other"
+            content = (message.get("content") or "").replace("\n", " ").strip()
+            if len(content) > 120:
+                content = f"{content[:120]}..."
+            turn_lines.append(f"- {speaker_name} ({ownership}): {content}")
+
+        if not turn_lines:
+            return ""
+
+        recent_lines = turn_lines[-max_turns:]
+        return (
+            "Assistant turn history:\n"
+            "Use this speaker mapping to distinguish your own prior replies from other assistants:\n"
+            f"{chr(10).join(recent_lines)}\n"
+            "These labels are internal guidance only; do not output them verbatim."
+        )
+
     async def process_group_message_stream(
         self,
         session_id: str,
@@ -1092,18 +1154,27 @@ class AgentService:
         # Load assistant configs
         from .assistant_config_service import AssistantConfigService
         assistant_service = AssistantConfigService()
+        assistant_name_map: Dict[str, str] = {}
+        assistant_config_map: Dict[str, Any] = {}
+        for group_assistant_id in group_assistants:
+            assistant_obj = await assistant_service.get_assistant(group_assistant_id)
+            if assistant_obj:
+                assistant_config_map[group_assistant_id] = assistant_obj
+                assistant_name_map[group_assistant_id] = assistant_obj.name
 
         # Process each assistant sequentially
         for assistant_id in group_assistants:
-            assistant_obj = await assistant_service.get_assistant(assistant_id)
+            assistant_obj = assistant_config_map.get(assistant_id)
             if not assistant_obj:
                 logger.warning(f"[GroupChat] Assistant '{assistant_id}' not found, skipping")
                 continue
+            assistant_turn_id = str(uuid.uuid4())
 
             # Signal assistant start
             yield {
                 "type": "assistant_start",
                 "assistant_id": assistant_id,
+                "assistant_turn_id": assistant_turn_id,
                 "name": assistant_obj.name,
                 "icon": assistant_obj.icon,
             }
@@ -1112,6 +1183,11 @@ class AgentService:
             session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
             messages = session["state"]["messages"]
             model_id = assistant_obj.model_id
+            history_hint = self._build_group_history_hint(
+                messages=messages,
+                current_assistant_id=assistant_id,
+                assistant_name_map=assistant_name_map,
+            )
 
             # Build per-assistant context
             system_prompt = assistant_obj.system_prompt
@@ -1124,6 +1200,18 @@ class AgentService:
                 "frequency_penalty": assistant_obj.frequency_penalty,
                 "presence_penalty": assistant_obj.presence_penalty,
             }
+            identity_prompt = self._build_group_identity_prompt(
+                current_assistant_id=assistant_id,
+                current_assistant_name=assistant_obj.name,
+                group_assistants=group_assistants,
+                assistant_name_map=assistant_name_map,
+            )
+            prompt_parts = [identity_prompt]
+            if history_hint:
+                prompt_parts.append(history_hint)
+            if system_prompt:
+                prompt_parts.append(system_prompt)
+            system_prompt = "\n\n".join(prompt_parts)
 
             # Memory context (per-assistant)
             assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
@@ -1176,11 +1264,19 @@ class AgentService:
 
                     if isinstance(chunk, dict):
                         # Forward context_info, thinking_duration events
-                        yield chunk
+                        event = dict(chunk)
+                        event["assistant_id"] = assistant_id
+                        event["assistant_turn_id"] = assistant_turn_id
+                        yield event
                         continue
 
                     full_response += chunk
-                    yield chunk
+                    yield {
+                        "type": "assistant_chunk",
+                        "assistant_id": assistant_id,
+                        "assistant_turn_id": assistant_turn_id,
+                        "chunk": chunk,
+                    }
 
             except asyncio.CancelledError:
                 if full_response:
@@ -1203,13 +1299,27 @@ class AgentService:
 
             # Yield usage/cost
             if usage_data:
-                usage_event = {"type": "usage", "usage": usage_data.model_dump()}
+                usage_event = {
+                    "type": "usage",
+                    "assistant_id": assistant_id,
+                    "assistant_turn_id": assistant_turn_id,
+                    "usage": usage_data.model_dump(),
+                }
                 if cost_data:
                     usage_event["cost"] = cost_data.model_dump()
                 yield usage_event
 
-            yield {"type": "assistant_message_id", "message_id": assistant_message_id}
-            yield {"type": "assistant_done", "assistant_id": assistant_id}
+            yield {
+                "type": "assistant_message_id",
+                "assistant_id": assistant_id,
+                "assistant_turn_id": assistant_turn_id,
+                "message_id": assistant_message_id,
+            }
+            yield {
+                "type": "assistant_done",
+                "assistant_id": assistant_id,
+                "assistant_turn_id": assistant_turn_id,
+            }
 
         # Title generation (once, after all assistants)
         is_temporary = session.get("temporary", False) if session else False

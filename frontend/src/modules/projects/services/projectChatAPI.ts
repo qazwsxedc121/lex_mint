@@ -96,7 +96,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       onThinkingDuration?,
       fileReferences?,
       onAssistantStart?,
-      onAssistantDone?
+      onAssistantDone?,
+      onGroupEvent?
     ) => {
       return api.sendMessageStream(
         sessionId,
@@ -121,7 +122,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         onThinkingDuration,
         fileReferences,
         onAssistantStart,
-        onAssistantDone
+        onAssistantDone,
+        onGroupEvent
       );
     },
 

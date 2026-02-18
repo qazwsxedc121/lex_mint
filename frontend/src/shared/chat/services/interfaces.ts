@@ -59,7 +59,21 @@ export interface ChatAPI {
     onThinkingDuration?: (durationMs: number) => void,
     fileReferences?: Array<{ path: string; project_id: string }>,
     onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
-    onAssistantDone?: (assistantId: string) => void
+    onAssistantDone?: (assistantId: string) => void,
+    onGroupEvent?: (event: {
+      type: string;
+      assistant_id?: string;
+      assistant_turn_id?: string;
+      name?: string;
+      icon?: string;
+      chunk?: string;
+      message_id?: string;
+      usage?: TokenUsage;
+      cost?: CostInfo;
+      sources?: SearchSource[];
+      duration_ms?: number;
+      [key: string]: unknown;
+    }) => void
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;

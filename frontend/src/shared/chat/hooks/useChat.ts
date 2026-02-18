@@ -216,7 +216,7 @@ export function useChat(sessionId: string | null) {
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
 
-    const isGroupChat = groupAssistants && groupAssistants.length >= 2;
+    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
 
     // Optimistically add user message to UI (without message_id, wait for backend)
     const userMessage: Message = {
@@ -232,7 +232,7 @@ export function useChat(sessionId: string | null) {
     setMessages(prev => [...prev, userMessage]);
 
     // For single-assistant: add placeholder. For group chat: no placeholder (added on assistant_start).
-    if (!isGroupChat) {
+    if (!initialIsGroupChat) {
       const assistantMessage: Message = {
         role: 'assistant',
         content: '',
@@ -247,19 +247,59 @@ export function useChat(sessionId: string | null) {
 
     let streamedContent = '';
     let latestUserMessageId: string | null = null;
-    let activeAssistantId: string | null = null;
+    let activeAssistantTurnId: string | null = null;
+    let runtimeIsGroupChat = initialIsGroupChat;
+
+    const activateRuntimeGroupChatMode = () => {
+      if (runtimeIsGroupChat) {
+        return;
+      }
+      runtimeIsGroupChat = true;
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        // If a single-chat placeholder was created before group metadata loaded,
+        // remove it once group events are detected.
+        if (
+          lastMessage &&
+          lastMessage.role === 'assistant' &&
+          !lastMessage.assistant_id &&
+          !lastMessage.message_id &&
+          !lastMessage.content.trim()
+        ) {
+          newMessages.pop();
+          return newMessages;
+        }
+        return prev;
+      });
+    };
 
     const updateAssistantMessage = (
       updater: (message: Message) => Message,
-      assistantIdSnapshot?: string | null
+      options?: { assistantId?: string | null; assistantTurnId?: string | null; allowSingleFallback?: boolean }
     ) => {
       setMessages(prev => {
         const newMessages = [...prev];
         let targetIndex = -1;
+        const assistantTurnId = options?.assistantTurnId;
+        const assistantId = options?.assistantId;
+        const allowSingleFallback = options?.allowSingleFallback ?? true;
+        const hasGroupAssistantMessages = newMessages.some(
+          (message) => message.role === 'assistant' && !!message.assistant_id
+        );
 
-        if (assistantIdSnapshot) {
+        if (assistantTurnId) {
           for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantIdSnapshot) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_turn_id === assistantTurnId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0 && assistantId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantId) {
               targetIndex = i;
               break;
             }
@@ -267,8 +307,11 @@ export function useChat(sessionId: string | null) {
         }
 
         if (targetIndex < 0) {
+          if (!allowSingleFallback || runtimeIsGroupChat || hasGroupAssistantMessages) {
+            return prev;
+          }
           for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant') {
+            if (newMessages[i].role === 'assistant' && !newMessages[i].assistant_id) {
               targetIndex = i;
               break;
             }
@@ -291,18 +334,18 @@ export function useChat(sessionId: string | null) {
         null,
         false,
         (chunk: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           streamedContent += chunk;
-          // Capture current value immediately so a later onAssistantStart reset
-          // doesn't wipe this assistant's content when React flushes batched updates.
           const contentSnapshot = streamedContent;
-          const assistantIdSnapshot = activeAssistantId;
           updateAssistantMessage(
             (message) => ({ ...message, content: contentSnapshot }),
-            assistantIdSnapshot
+            { allowSingleFallback: true }
           );
         },
         () => {
-          activeAssistantId = null;
+          activeAssistantTurnId = null;
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
@@ -311,22 +354,23 @@ export function useChat(sessionId: string | null) {
           }
         },
         (error: string) => {
-          activeAssistantId = null;
+          activeAssistantTurnId = null;
           setError(error);
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
           // Remove optimistic messages: for group chat only user msg, for single both user+assistant
-          setMessages(prev => prev.slice(0, isGroupChat ? -1 : -2));
+          setMessages(prev => prev.slice(0, runtimeIsGroupChat ? -1 : -2));
         },
         abortControllerRef,
         options?.reasoningEffort,
         (usage: TokenUsage, cost?: CostInfo) => {
-          // Update the last assistant message with usage/cost data
-          const assistantIdSnapshot = activeAssistantId;
+          if (runtimeIsGroupChat) {
+            return;
+          }
           updateAssistantMessage(
             (message) => ({ ...message, usage, cost }),
-            assistantIdSnapshot
+            { allowSingleFallback: true }
           );
           // Update session totals
           setTotalUsage(prev => prev ? {
@@ -344,10 +388,12 @@ export function useChat(sessionId: string | null) {
           setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
-          const assistantIdSnapshot = activeAssistantId;
+          if (runtimeIsGroupChat) {
+            return;
+          }
           updateAssistantMessage(
             (message) => ({ ...message, sources }),
-            assistantIdSnapshot
+            { allowSingleFallback: true }
           );
         },
         options?.attachments,
@@ -356,22 +402,40 @@ export function useChat(sessionId: string | null) {
           // Backend returned user message ID, update the user message
           setMessages(prev => {
             const newMessages = [...prev];
-            if (newMessages.length >= 2) {
-              newMessages[newMessages.length - 2] = {
-                ...newMessages[newMessages.length - 2],
+            let userMessageIndex = -1;
+            for (let i = newMessages.length - 1; i >= 0; i--) {
+              if (newMessages[i].role === 'user' && !newMessages[i].message_id) {
+                userMessageIndex = i;
+                break;
+              }
+            }
+            if (userMessageIndex < 0) {
+              for (let i = newMessages.length - 1; i >= 0; i--) {
+                if (newMessages[i].role === 'user') {
+                  userMessageIndex = i;
+                  break;
+                }
+              }
+            }
+            if (userMessageIndex >= 0) {
+              newMessages[userMessageIndex] = {
+                ...newMessages[userMessageIndex],
                 message_id: userMessageId
               };
+              return newMessages;
             }
-            return newMessages;
+            return prev;
           });
           void hydrateUserMessageFromServer(userMessageId);
         },
         (assistantMessageId: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           // Backend returned assistant message ID, update the assistant message
-          const assistantIdSnapshot = activeAssistantId;
           updateAssistantMessage(
             (message) => ({ ...message, message_id: assistantMessageId }),
-            assistantIdSnapshot
+            { allowSingleFallback: true }
           );
         },
         options?.useWebSearch,
@@ -383,19 +447,23 @@ export function useChat(sessionId: string | null) {
           setContextInfo(info);
         },
         (durationMs: number) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           // Backend returned thinking duration
-          const assistantIdSnapshot = activeAssistantId;
           updateAssistantMessage(
             (message) => ({ ...message, thinkingDurationMs: durationMs }),
-            assistantIdSnapshot
+            { allowSingleFallback: true }
           );
         },
         options?.fileReferences,
         // Group chat: onAssistantStart
         (assistantId: string, name: string, icon?: string) => {
+          if (!runtimeIsGroupChat) {
+            activateRuntimeGroupChatMode();
+          }
           // Reset streamed content for new assistant
-          activeAssistantId = assistantId;
-          streamedContent = '';
+          activeAssistantTurnId = null;
           // Add new empty assistant message with identity
           const newAssistantMsg: Message = {
             role: 'assistant',
@@ -424,19 +492,151 @@ export function useChat(sessionId: string | null) {
           });
         },
         // Group chat: onAssistantDone
-        (assistantId: string) => {
-          if (activeAssistantId === assistantId) {
-            activeAssistantId = null;
+        () => {
+          // Controlled by onGroupEvent when available.
+        },
+        (event) => {
+          const isGroupEventType = (
+            event.type === 'assistant_start' ||
+            event.type === 'assistant_chunk' ||
+            event.type === 'assistant_done' ||
+            event.type === 'assistant_message_id' ||
+            event.type === 'usage' ||
+            event.type === 'sources' ||
+            event.type === 'thinking_duration'
+          );
+          const hasGroupIdentity =
+            typeof event.assistant_turn_id === 'string' ||
+            typeof event.assistant_id === 'string';
+          if (isGroupEventType && hasGroupIdentity) {
+            activateRuntimeGroupChatMode();
+          }
+          if (!runtimeIsGroupChat) {
+            return;
+          }
+          switch (event.type) {
+            case 'assistant_start': {
+              const assistantId = typeof event.assistant_id === 'string' ? event.assistant_id : null;
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const assistantName = typeof event.name === 'string' ? event.name : '';
+              const assistantIcon = typeof event.icon === 'string' ? event.icon : undefined;
+              if (!assistantId || !assistantTurnId) {
+                return;
+              }
+              activeAssistantTurnId = assistantTurnId;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const exists = newMessages.some(
+                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
+                );
+                if (exists) {
+                  return prev;
+                }
+                newMessages.push({
+                  role: 'assistant',
+                  content: '',
+                  created_at: nowTimestamp(),
+                  assistant_id: assistantId,
+                  assistant_turn_id: assistantTurnId,
+                  assistant_name: assistantName || undefined,
+                  assistant_icon: assistantIcon,
+                });
+                return newMessages;
+              });
+              return;
+            }
+            case 'assistant_chunk': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const chunk = typeof event.chunk === 'string' ? event.chunk : '';
+              if (!assistantTurnId || !chunk) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'usage': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const usage = event.usage as TokenUsage | undefined;
+              const cost = event.cost as CostInfo | undefined;
+              if (!assistantTurnId || !usage) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, usage, cost }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              setTotalUsage(prev => prev ? {
+                prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
+                completion_tokens: prev.completion_tokens + usage.completion_tokens,
+                total_tokens: prev.total_tokens + usage.total_tokens,
+              } : usage);
+              if (cost) {
+                setTotalCost(prev => prev ? {
+                  ...prev,
+                  total_cost: prev.total_cost + cost.total_cost,
+                } : cost);
+              }
+              setLastPromptTokens(usage.prompt_tokens);
+              return;
+            }
+            case 'sources': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const sources = event.sources as Message['sources'];
+              if (!assistantTurnId || !sources) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, sources }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'thinking_duration': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const durationMs = typeof event.duration_ms === 'number' ? event.duration_ms : null;
+              if (!assistantTurnId || durationMs === null) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, thinkingDurationMs: durationMs }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_message_id': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const messageId = typeof event.message_id === 'string' ? event.message_id : null;
+              if (!assistantTurnId || !messageId) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, message_id: messageId }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_done': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              if (assistantTurnId && activeAssistantTurnId === assistantTurnId) {
+                activeAssistantTurnId = null;
+              }
+              return;
+            }
+            default:
+              return;
           }
         }
       );
     } catch (err) {
-      activeAssistantId = null;
+      activeAssistantTurnId = null;
       setError(err instanceof Error ? err.message : 'Failed to send message');
       setLoading(false);
       setIsStreaming(false);
       isProcessingRef.current = false;
-      setMessages(prev => prev.slice(0, isGroupChat ? -1 : -2));
+      setMessages(prev => prev.slice(0, runtimeIsGroupChat ? -1 : -2));
     }
   };
 
@@ -814,23 +1014,103 @@ export function useChat(sessionId: string | null) {
 
     isProcessingRef.current = true;
     const originalMessages = [...messages];
+    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
 
     // Keep messages up to and including truncateIndex
     const truncatedMessages = messages.slice(0, truncateIndex + 1);
     setMessages(truncatedMessages);
 
-    const assistantMessage: Message = {
-      role: 'assistant',  // No UUID, wait for backend
-      content: '',
-      created_at: nowTimestamp(),
-    };
-    setMessages(prev => [...prev, assistantMessage]);
+    if (!initialIsGroupChat) {
+      const assistantMessage: Message = {
+        role: 'assistant',  // No UUID, wait for backend
+        content: '',
+        created_at: nowTimestamp(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     setLoading(true);
     setIsStreaming(true);
     setError(null);
 
     let streamedContent = '';
+    let runtimeIsGroupChat = initialIsGroupChat;
+    let activeAssistantTurnId: string | null = null;
+
+    const activateRuntimeGroupChatMode = () => {
+      if (runtimeIsGroupChat) {
+        return;
+      }
+      runtimeIsGroupChat = true;
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (
+          lastMessage &&
+          lastMessage.role === 'assistant' &&
+          !lastMessage.assistant_id &&
+          !lastMessage.message_id &&
+          !lastMessage.content.trim()
+        ) {
+          newMessages.pop();
+          return newMessages;
+        }
+        return prev;
+      });
+    };
+
+    const updateAssistantMessage = (
+      updater: (message: Message) => Message,
+      options?: { assistantId?: string | null; assistantTurnId?: string | null; allowSingleFallback?: boolean }
+    ) => {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        let targetIndex = -1;
+        const assistantTurnId = options?.assistantTurnId;
+        const assistantId = options?.assistantId;
+        const allowSingleFallback = options?.allowSingleFallback ?? true;
+        const hasGroupAssistantMessages = newMessages.some(
+          (message) => message.role === 'assistant' && !!message.assistant_id
+        );
+
+        if (assistantTurnId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_turn_id === assistantTurnId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0 && assistantId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          if (!allowSingleFallback || runtimeIsGroupChat || hasGroupAssistantMessages) {
+            return prev;
+          }
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && !newMessages[i].assistant_id) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          return prev;
+        }
+
+        newMessages[targetIndex] = updater(newMessages[targetIndex]);
+        return newMessages;
+      });
+    };
 
     try {
       await api.sendMessageStream(
@@ -839,22 +1119,23 @@ export function useChat(sessionId: string | null) {
         truncateIndex,
         true, // skip user message since it already exists
         (chunk: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           streamedContent += chunk;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
-            }
-            return newMessages;
-          });
+          updateAssistantMessage(
+            (message) => ({ ...message, role: 'assistant', content: streamedContent }),
+            { allowSingleFallback: true }
+          );
         },
         () => {
+          activeAssistantTurnId = null;
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
         },
         (error: string) => {
+          activeAssistantTurnId = null;
           setError(error);
           setLoading(false);
           setIsStreaming(false);
@@ -864,52 +1145,37 @@ export function useChat(sessionId: string | null) {
         abortControllerRef,
         undefined,
         (usage: TokenUsage, cost?: CostInfo) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
-            }
-            return newMessages;
-          });
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, usage, cost }),
+            { allowSingleFallback: true }
+          );
           setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
-            }
-            return newMessages;
-          });
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, sources }),
+            { allowSingleFallback: true }
+          );
         },
         undefined,
-        (userMessageId: string) => {
-          // Backend returned user message ID
-          setMessages(prev => {
-            const newMessages = [...prev];
-            if (newMessages.length >= 2) {
-              newMessages[newMessages.length - 2] = {
-                ...newMessages[newMessages.length - 2],
-                message_id: userMessageId
-              };
-            }
-            return newMessages;
-          });
+        () => {
+          // Regenerate uses skip_user_message=true, no user message should be appended.
         },
         (assistantMessageId: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           // Backend returned assistant message ID
-          setMessages(prev => {
-            const newMessages = [...prev];
-            if (newMessages.length >= 1) {
-              newMessages[newMessages.length - 1] = {
-                ...newMessages[newMessages.length - 1],
-                message_id: assistantMessageId
-              };
-            }
-            return newMessages;
-          });
+          updateAssistantMessage(
+            (message) => ({ ...message, message_id: assistantMessageId }),
+            { allowSingleFallback: true }
+          );
         },
         undefined,
         undefined,
@@ -917,17 +1183,162 @@ export function useChat(sessionId: string | null) {
           setContextInfo(info);
         },
         (durationMs: number) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, thinkingDurationMs: durationMs }),
+            { allowSingleFallback: true }
+          );
+        },
+        undefined,
+        (assistantId: string, name: string, icon?: string) => {
+          if (!runtimeIsGroupChat) {
+            activateRuntimeGroupChatMode();
+          }
+          activeAssistantTurnId = null;
           setMessages(prev => {
             const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
-            }
+            newMessages.push({
+              role: 'assistant',
+              content: '',
+              created_at: nowTimestamp(),
+              assistant_id: assistantId,
+              assistant_name: name,
+              assistant_icon: icon,
+            });
             return newMessages;
           });
+        },
+        () => {
+          // Controlled by onGroupEvent when available.
+        },
+        (event) => {
+          const isGroupEventType = (
+            event.type === 'assistant_start' ||
+            event.type === 'assistant_chunk' ||
+            event.type === 'assistant_done' ||
+            event.type === 'assistant_message_id' ||
+            event.type === 'usage' ||
+            event.type === 'sources' ||
+            event.type === 'thinking_duration'
+          );
+          const hasGroupIdentity =
+            typeof event.assistant_turn_id === 'string' ||
+            typeof event.assistant_id === 'string';
+          if (isGroupEventType && hasGroupIdentity) {
+            activateRuntimeGroupChatMode();
+          }
+          if (!runtimeIsGroupChat) {
+            return;
+          }
+          switch (event.type) {
+            case 'assistant_start': {
+              const assistantId = typeof event.assistant_id === 'string' ? event.assistant_id : null;
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const assistantName = typeof event.name === 'string' ? event.name : '';
+              const assistantIcon = typeof event.icon === 'string' ? event.icon : undefined;
+              if (!assistantId || !assistantTurnId) {
+                return;
+              }
+              activeAssistantTurnId = assistantTurnId;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const exists = newMessages.some(
+                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
+                );
+                if (exists) {
+                  return prev;
+                }
+                newMessages.push({
+                  role: 'assistant',
+                  content: '',
+                  created_at: nowTimestamp(),
+                  assistant_id: assistantId,
+                  assistant_turn_id: assistantTurnId,
+                  assistant_name: assistantName || undefined,
+                  assistant_icon: assistantIcon,
+                });
+                return newMessages;
+              });
+              return;
+            }
+            case 'assistant_chunk': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const chunk = typeof event.chunk === 'string' ? event.chunk : '';
+              if (!assistantTurnId || !chunk) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'usage': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const usage = event.usage as TokenUsage | undefined;
+              const cost = event.cost as CostInfo | undefined;
+              if (!assistantTurnId || !usage) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, usage, cost }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              setLastPromptTokens(usage.prompt_tokens);
+              return;
+            }
+            case 'sources': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const sources = event.sources as Message['sources'];
+              if (!assistantTurnId || !sources) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, sources }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'thinking_duration': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const durationMs = typeof event.duration_ms === 'number' ? event.duration_ms : null;
+              if (!assistantTurnId || durationMs === null) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, thinkingDurationMs: durationMs }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_message_id': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const messageIdFromEvent = typeof event.message_id === 'string' ? event.message_id : null;
+              if (!assistantTurnId || !messageIdFromEvent) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, message_id: messageIdFromEvent }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_done': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              if (assistantTurnId && activeAssistantTurnId === assistantTurnId) {
+                activeAssistantTurnId = null;
+              }
+              return;
+            }
+            default:
+              return;
+          }
         }
       );
     } catch (err) {
+      activeAssistantTurnId = null;
       setError(err instanceof Error ? err.message : 'Failed to regenerate message');
       setLoading(false);
       setIsStreaming(false);

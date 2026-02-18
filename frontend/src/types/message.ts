@@ -102,6 +102,7 @@ export interface Message {
   assistant_id?: string;       // Group chat: which assistant generated this message
   assistant_name?: string;     // Group chat: assistant display name
   assistant_icon?: string;     // Group chat: Lucide icon key
+  assistant_turn_id?: string;  // Group chat: transient stream turn id for precise UI updates
 }
 
 export interface Session {
