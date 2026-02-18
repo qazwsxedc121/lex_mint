@@ -95,13 +95,14 @@ export function Table<T = any>({
             {columns.map((column) => (
               <th
                 key={column.key}
-                onClick={() => handleSort(column)}
+                onClick={() => column.onHeaderClick ? column.onHeaderClick() : handleSort(column)}
                 className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${
-                  column.sortable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : ''
+                  column.sortable || column.onHeaderClick ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : ''
                 } ${column.hideOnMobile ? 'hidden md:table-cell' : ''} ${column.width || ''}`}
               >
                 <div className="flex items-center gap-1">
                   {column.label}
+                  {column.headerExtra}
                   {column.sortable && sortKey === column.key && (
                     <span className="text-blue-600 dark:text-blue-400">
                       {sortDirection === 'asc' ? '↑' : '↓'}

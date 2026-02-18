@@ -4,7 +4,7 @@
  * Table with filter, actions, and default indicator for CRUD pages.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PencilIcon, TrashIcon, StarIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
@@ -47,22 +47,42 @@ export function CrudTable<T = any>({
   getItemId
 }: CrudTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
   const { t } = useTranslation('settings');
 
-  // Filter items based on search
-  const filteredItems = useMemo(() => {
-    if (!searchTerm || !config.enableSearch) return items;
+  // Cycle status filter: all → enabled → disabled → all
+  const cycleStatusFilter = useCallback(() => {
+    setStatusFilter(prev =>
+      prev === 'all' ? 'enabled' : prev === 'enabled' ? 'disabled' : 'all'
+    );
+  }, []);
 
-    if (config.filterFn) {
-      return items.filter(item => config.filterFn!(item, searchTerm));
+  // Filter items based on search and status
+  const filteredItems = useMemo(() => {
+    let result = items;
+
+    // Apply status filter
+    if (config.statusKey && statusFilter !== 'all') {
+      result = result.filter(item => {
+        const enabled = !!(item as any)[config.statusKey!];
+        return statusFilter === 'enabled' ? enabled : !enabled;
+      });
     }
 
-    // Default filter: search in all string fields
-    return items.filter(item => {
-      const itemStr = JSON.stringify(item).toLowerCase();
-      return itemStr.includes(searchTerm.toLowerCase());
-    });
-  }, [items, searchTerm, config]);
+    // Apply search filter
+    if (searchTerm && config.enableSearch) {
+      if (config.filterFn) {
+        result = result.filter(item => config.filterFn!(item, searchTerm));
+      } else {
+        result = result.filter(item => {
+          const itemStr = JSON.stringify(item).toLowerCase();
+          return itemStr.includes(searchTerm.toLowerCase());
+        });
+      }
+    }
+
+    return result;
+  }, [items, searchTerm, statusFilter, config]);
 
   // Build columns with actions
   const columns: TableColumnConfig<T>[] = useMemo(() => {
@@ -72,9 +92,27 @@ export function CrudTable<T = any>({
     if (config.statusKey) {
       const hasStatusColumn = cols.some(c => c.key === config.statusKey);
       if (!hasStatusColumn) {
+        const filterLabel = statusFilter === 'all'
+          ? t('common:statusAll')
+          : statusFilter === 'enabled'
+          ? t('common:enabled')
+          : t('common:disabled');
+
         cols.push({
           key: config.statusKey,
           label: t('common:status'),
+          onHeaderClick: cycleStatusFilter,
+          headerExtra: (
+            <span className={`ml-1 px-1.5 py-0.5 text-[10px] rounded-full normal-case font-normal ${
+              statusFilter === 'all'
+                ? 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                : statusFilter === 'enabled'
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                : 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200'
+            }`}>
+              {filterLabel}
+            </span>
+          ),
           render: (value, row) => (
             <StatusToggle
               enabled={!!value}
@@ -197,7 +235,7 @@ export function CrudTable<T = any>({
     }
 
     return cols;
-  }, [config, defaultItemId, onEdit, onDelete, onSetDefault, onToggleStatus, togglingIds, context, getItemId, t]);
+  }, [config, defaultItemId, onEdit, onDelete, onSetDefault, onToggleStatus, togglingIds, statusFilter, cycleStatusFilter, context, getItemId, t]);
 
   return (
     <div data-name="crud-table">

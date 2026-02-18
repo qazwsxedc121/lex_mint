@@ -237,6 +237,10 @@ export interface TableColumnConfig<T = any> {
   sortFn?: (a: T, b: T) => number;
   /** Whether to hide on mobile */
   hideOnMobile?: boolean;
+  /** Custom header click handler (overrides sort behavior) */
+  onHeaderClick?: () => void;
+  /** Extra content rendered after the label in the header */
+  headerExtra?: ReactNode;
 }
 
 /**
