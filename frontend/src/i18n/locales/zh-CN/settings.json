@@ -177,6 +177,9 @@
   "documents.reprocessAll": "全部重新处理",
   "documents.deleteAll": "全部删除",
   "documents.uploading": "上传中...",
+  "documents.currentFileProgress": "当前文件：{{name}}（{{percent}}%）",
+  "documents.batchProgress": "批量进度：已成功 {{done}} / {{total}}（{{overall}}%）",
+  "documents.batchProgressWithFailed": "批量进度：已成功 {{done}} / {{total}}（{{overall}}%），失败 {{failed}}",
   "documents.dropOrClick": "拖拽文件到此处或点击上传",
   "documents.supportedTypes": "支持格式：TXT、MD、PDF、DOCX、HTML",
   "documents.loadingDocs": "正在加载文档...",
@@ -186,6 +189,7 @@
   "documents.size": "大小",
   "documents.chunks": "分块数",
   "documents.reprocess": "重新处理",
+  "documents.uploadFailedSome": "{{count}} 个文件上传失败：{{files}}",
 
   "configField.builtin": "内置",
   "configField.custom": "自定义",
