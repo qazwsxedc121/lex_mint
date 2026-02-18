@@ -24,6 +24,7 @@ export const defaultChatAPI: ChatAPI = {
     api.copySession(sessionId, 'chat', undefined, targetContextType, targetProjectId),
   branchSession: api.branchSession,
   updateSessionAssistant: api.updateSessionAssistant,
+  updateGroupAssistants: api.updateGroupAssistants,
   updateSessionParamOverrides: api.updateSessionParamOverrides,
 
   // Message operations

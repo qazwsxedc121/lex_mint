@@ -15,7 +15,7 @@ import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
 import type { Message } from '../../../types/message';
-import { LightBulbIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, LightBulbIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 
 type GroupAssistantStatus = 'waiting' | 'thinking' | 'done';
@@ -43,6 +43,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const wasStreamingRef = useRef(false);
   const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
   const [groupAssistantNameMap, setGroupAssistantNameMap] = useState<Record<string, string>>({});
+  const [isSavingGroupOrder, setIsSavingGroupOrder] = useState(false);
+  const [draggingAssistantId, setDraggingAssistantId] = useState<string | null>(null);
+  const [dragOverAssistantId, setDragOverAssistantId] = useState<string | null>(null);
   const {
     messages,
     loading,
@@ -72,6 +75,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     updateParamOverrides,
     generateFollowups,
     groupAssistants,
+    updateGroupAssistantOrder,
   } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
@@ -178,6 +182,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   };
 
   const isGroupChat = groupAssistants && groupAssistants.length >= 2;
+  const canReorderGroupAssistants = !!isGroupChat && !isGenerating && !isSavingGroupOrder;
   const groupAssistantProgress = useMemo(() => {
     if (!isGroupChat || !groupAssistants) return [];
 
@@ -223,6 +228,54 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const activeGroupAssistant = groupAssistantProgress.find((assistant) => assistant.status === 'thinking');
   const completedAssistantCount = groupAssistantProgress.filter((assistant) => assistant.status === 'done').length;
+
+  const clearGroupDragState = () => {
+    setDraggingAssistantId(null);
+    setDragOverAssistantId(null);
+  };
+
+  const handleAssistantChipDragStart = (event: React.DragEvent<HTMLDivElement>, assistantId: string) => {
+    if (!canReorderGroupAssistants) return;
+    setDraggingAssistantId(assistantId);
+    setDragOverAssistantId(assistantId);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', assistantId);
+  };
+
+  const handleAssistantChipDragOver = (event: React.DragEvent<HTMLDivElement>, assistantId: string) => {
+    if (!canReorderGroupAssistants) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (dragOverAssistantId !== assistantId) {
+      setDragOverAssistantId(assistantId);
+    }
+  };
+
+  const handleAssistantChipDrop = async (event: React.DragEvent<HTMLDivElement>, targetAssistantId: string) => {
+    event.preventDefault();
+    if (!canReorderGroupAssistants || !groupAssistants) return;
+
+    const sourceAssistantId = draggingAssistantId || event.dataTransfer.getData('text/plain');
+    clearGroupDragState();
+    if (!sourceAssistantId || sourceAssistantId === targetAssistantId) return;
+
+    const sourceIndex = groupAssistants.indexOf(sourceAssistantId);
+    const targetIndex = groupAssistants.indexOf(targetAssistantId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+
+    const nextOrder = [...groupAssistants];
+    const [movedAssistant] = nextOrder.splice(sourceIndex, 1);
+    nextOrder.splice(targetIndex, 0, movedAssistant);
+
+    try {
+      setIsSavingGroupOrder(true);
+      await updateGroupAssistantOrder(nextOrder);
+    } catch (err) {
+      console.error('Failed to reorder group assistants:', err);
+    } finally {
+      setIsSavingGroupOrder(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -300,19 +353,42 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
               <UsersIcon className="w-3.5 h-3.5" />
               <span>{t('groupChat.roundRobinMode')}</span>
             </div>
-            <span>{t('groupChat.progress', { done: completedAssistantCount, total: groupAssistantProgress.length })}</span>
+            <div className="flex items-center gap-2">
+              <span>{t('groupChat.progress', { done: completedAssistantCount, total: groupAssistantProgress.length })}</span>
+              {isSavingGroupOrder && (
+                <span className="rounded-full border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 text-[10px] text-blue-700 dark:text-blue-300">
+                  {t('groupChat.reorderSaving')}
+                </span>
+              )}
+            </div>
+          </div>
+          <div data-name="group-chat-reorder-hint" className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            {isGenerating ? t('groupChat.reorderDisabled') : t('groupChat.reorderHint')}
           </div>
           <div data-name="group-chat-status-list" className="mt-2 flex gap-2 overflow-x-auto pb-1">
             {groupAssistantProgress.map((assistant) => (
               <div
                 key={assistant.assistantId}
                 data-name="group-chat-status-chip"
+                draggable={canReorderGroupAssistants}
+                onDragStart={(event) => handleAssistantChipDragStart(event, assistant.assistantId)}
+                onDragOver={(event) => handleAssistantChipDragOver(event, assistant.assistantId)}
+                onDrop={(event) => void handleAssistantChipDrop(event, assistant.assistantId)}
+                onDragEnd={clearGroupDragState}
                 className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs whitespace-nowrap ${
                   assistant.status === 'thinking'
                     ? 'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200'
                     : assistant.status === 'done'
                       ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-200'
                       : 'border-gray-300 dark:border-gray-600 bg-white/80 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                } ${
+                  canReorderGroupAssistants ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-80'
+                } ${
+                  draggingAssistantId === assistant.assistantId ? 'opacity-45' : ''
+                } ${
+                  draggingAssistantId && dragOverAssistantId === assistant.assistantId && draggingAssistantId !== assistant.assistantId
+                    ? 'ring-2 ring-blue-400 dark:ring-blue-500'
+                    : ''
                 }`}
               >
                 <span className="text-[10px] font-semibold opacity-70">#{assistant.order}</span>
@@ -326,6 +402,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                   }`}
                 />
                 <span className="font-medium">{assistant.name}</span>
+                <Bars3Icon className="w-3.5 h-3.5 opacity-60" />
               </div>
             ))}
           </div>

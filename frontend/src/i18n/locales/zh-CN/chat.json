@@ -152,5 +152,8 @@
   "groupChat.participants": "{{count}} 个助手",
   "groupChat.roundRobinMode": "轮流回复",
   "groupChat.progress": "已完成 {{done}}/{{total}}",
-  "groupChat.replying": "{{name}} 回复中"
+  "groupChat.replying": "{{name}} 回复中",
+  "groupChat.reorderHint": "可拖动助手标签，调整下一轮发言顺序。",
+  "groupChat.reorderDisabled": "请等待本轮回复完成后再调整发言顺序。",
+  "groupChat.reorderSaving": "正在保存顺序..."
 }

@@ -1164,6 +1164,26 @@ export async function updateSessionAssistant(sessionId: string, assistantId: str
 }
 
 /**
+ * Update group assistant order for a session.
+ */
+export async function updateGroupAssistants(
+  sessionId: string,
+  groupAssistants: string[],
+  contextType: string = 'chat',
+  projectId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/group-assistants?${params.toString()}`, {
+    group_assistants: groupAssistants,
+  });
+}
+
+/**
  * Update session parameter overrides.
  */
 export async function updateSessionParamOverrides(

@@ -152,5 +152,8 @@
   "groupChat.participants": "{{count}} assistants",
   "groupChat.roundRobinMode": "Round-robin replies",
   "groupChat.progress": "{{done}}/{{total}} completed",
-  "groupChat.replying": "{{name}} is replying"
+  "groupChat.replying": "{{name}} is replying",
+  "groupChat.reorderHint": "Drag chips to change speaking order for the next round.",
+  "groupChat.reorderDisabled": "Finish current generation to reorder speaking order.",
+  "groupChat.reorderSaving": "Saving order..."
 }

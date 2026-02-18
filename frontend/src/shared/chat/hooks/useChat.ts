@@ -1022,6 +1022,26 @@ export function useChat(sessionId: string | null) {
     setParamOverrides({});
   };
 
+  const updateGroupAssistantOrder = async (nextGroupAssistants: string[]) => {
+    if (!sessionId || nextGroupAssistants.length < 2) return;
+    const previousOrder = groupAssistants;
+    if (!previousOrder || previousOrder.length < 2) return;
+
+    const orderUnchanged =
+      previousOrder.length === nextGroupAssistants.length &&
+      previousOrder.every((assistantId, index) => assistantId === nextGroupAssistants[index]);
+    if (orderUnchanged) return;
+
+    setGroupAssistants(nextGroupAssistants);
+    try {
+      await api.updateGroupAssistants(sessionId, nextGroupAssistants);
+    } catch (err) {
+      setGroupAssistants(previousOrder);
+      setError(err instanceof Error ? err.message : 'Failed to update group assistant order');
+      throw err;
+    }
+  };
+
   const updateParamOverrides = async (overrides: ParamOverrides) => {
     if (!sessionId) return;
     try {
@@ -1143,6 +1163,7 @@ export function useChat(sessionId: string | null) {
     stopGeneration,
     updateModelId,
     updateAssistantId,
+    updateGroupAssistantOrder,
     clearFollowupQuestions,
     generateFollowups,
     paramOverrides,
