@@ -212,6 +212,7 @@ class AgentService:
         raw_user_message: str,
         assistant_id: Optional[str],
         assistant_obj: Optional[Any] = None,
+        runtime_model_id: Optional[str] = None,
     ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
         """Build RAG context and source metadata for the current assistant."""
         rag_sources: List[Dict[str, Any]] = []
@@ -236,6 +237,7 @@ class AgentService:
             rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
                 raw_user_message,
                 kb_ids,
+                runtime_model_id=runtime_model_id,
             )
             rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
             if not rag_results:
@@ -387,6 +389,7 @@ class AgentService:
             raw_user_message=raw_user_message,
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
         )
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
@@ -668,6 +671,7 @@ class AgentService:
             raw_user_message=raw_user_message,
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
         )
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
@@ -988,6 +992,7 @@ class AgentService:
             raw_user_message=raw_user_message,
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
         )
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
@@ -1144,6 +1149,7 @@ class AgentService:
                 raw_user_message=raw_user_message,
                 assistant_id=assistant_id,
                 assistant_obj=assistant_obj,
+                runtime_model_id=model_id,
             )
             if rag_context:
                 system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context

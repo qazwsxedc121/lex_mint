@@ -46,6 +46,15 @@ class RagConfigResponse(BaseModel):
     bm25_weight: float
     max_per_doc: int
     reorder_strategy: str
+    query_transform_enabled: bool
+    query_transform_mode: str
+    query_transform_model_id: str
+    query_transform_timeout_seconds: int
+    query_transform_guard_enabled: bool
+    query_transform_guard_max_new_terms: int
+    query_transform_crag_enabled: bool
+    query_transform_crag_lower_threshold: float
+    query_transform_crag_upper_threshold: float
     rerank_enabled: bool
     rerank_api_model: str
     rerank_api_base_url: str
@@ -90,6 +99,15 @@ class RagConfigUpdate(BaseModel):
     bm25_weight: Optional[float] = Field(None, ge=0.0, le=10.0)
     max_per_doc: Optional[int] = Field(None, ge=0, le=20)
     reorder_strategy: Optional[Literal["none", "long_context"]] = None
+    query_transform_enabled: Optional[bool] = None
+    query_transform_mode: Optional[Literal["none", "rewrite"]] = None
+    query_transform_model_id: Optional[str] = None
+    query_transform_timeout_seconds: Optional[int] = Field(None, ge=1, le=30)
+    query_transform_guard_enabled: Optional[bool] = None
+    query_transform_guard_max_new_terms: Optional[int] = Field(None, ge=0, le=20)
+    query_transform_crag_enabled: Optional[bool] = None
+    query_transform_crag_lower_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    query_transform_crag_upper_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     rerank_enabled: Optional[bool] = None
     rerank_api_model: Optional[str] = None
     rerank_api_base_url: Optional[str] = None
@@ -145,6 +163,26 @@ async def update_config(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported reorder strategy: {update_dict['reorder_strategy']}"
+                )
+        if 'query_transform_mode' in update_dict:
+            allowed_modes = {"none", "rewrite"}
+            if update_dict['query_transform_mode'] not in allowed_modes:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported query transform mode: {update_dict['query_transform_mode']}"
+                )
+        if 'query_transform_crag_lower_threshold' in update_dict or 'query_transform_crag_upper_threshold' in update_dict:
+            current = service.get_flat_config()
+            lower_value = float(
+                update_dict.get('query_transform_crag_lower_threshold', current['query_transform_crag_lower_threshold'])
+            )
+            upper_value = float(
+                update_dict.get('query_transform_crag_upper_threshold', current['query_transform_crag_upper_threshold'])
+            )
+            if lower_value >= upper_value:
+                raise HTTPException(
+                    status_code=400,
+                    detail="query_transform_crag_lower_threshold must be smaller than query_transform_crag_upper_threshold"
                 )
         if 'fusion_strategy' in update_dict:
             allowed_fusion = {"rrf"}

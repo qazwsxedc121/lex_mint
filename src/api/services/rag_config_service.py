@@ -55,6 +55,15 @@ class RetrievalConfig:
     bm25_weight: float = 1.0
     max_per_doc: int = 2
     reorder_strategy: str = "long_context"
+    query_transform_enabled: bool = False
+    query_transform_mode: str = "rewrite"
+    query_transform_model_id: str = "auto"
+    query_transform_timeout_seconds: int = 4
+    query_transform_guard_enabled: bool = True
+    query_transform_guard_max_new_terms: int = 2
+    query_transform_crag_enabled: bool = True
+    query_transform_crag_lower_threshold: float = 0.35
+    query_transform_crag_upper_threshold: float = 0.75
     rerank_enabled: bool = False
     rerank_api_model: str = "jina-reranker-v2-base-multilingual"
     rerank_api_base_url: str = "https://api.jina.ai/v1/rerank"
@@ -131,6 +140,15 @@ class RagConfigService:
                     'bm25_weight': 1.0,
                     'max_per_doc': 2,
                     'reorder_strategy': 'long_context',
+                    'query_transform_enabled': False,
+                    'query_transform_mode': 'rewrite',
+                    'query_transform_model_id': 'auto',
+                    'query_transform_timeout_seconds': 4,
+                    'query_transform_guard_enabled': True,
+                    'query_transform_guard_max_new_terms': 2,
+                    'query_transform_crag_enabled': True,
+                    'query_transform_crag_lower_threshold': 0.35,
+                    'query_transform_crag_upper_threshold': 0.75,
                     'rerank_enabled': False,
                     'rerank_api_model': 'jina-reranker-v2-base-multilingual',
                     'rerank_api_base_url': 'https://api.jina.ai/v1/rerank',
@@ -210,6 +228,24 @@ class RagConfigService:
                     bm25_weight=retrieval_data.get('bm25_weight', 1.0),
                     max_per_doc=retrieval_data.get('max_per_doc', 2),
                     reorder_strategy=retrieval_data.get('reorder_strategy', 'long_context'),
+                    query_transform_enabled=retrieval_data.get('query_transform_enabled', False),
+                    query_transform_mode=retrieval_data.get('query_transform_mode', 'rewrite'),
+                    query_transform_model_id=retrieval_data.get('query_transform_model_id', 'auto'),
+                    query_transform_timeout_seconds=retrieval_data.get('query_transform_timeout_seconds', 4),
+                    query_transform_guard_enabled=retrieval_data.get('query_transform_guard_enabled', True),
+                    query_transform_guard_max_new_terms=retrieval_data.get(
+                        'query_transform_guard_max_new_terms',
+                        2,
+                    ),
+                    query_transform_crag_enabled=retrieval_data.get('query_transform_crag_enabled', True),
+                    query_transform_crag_lower_threshold=retrieval_data.get(
+                        'query_transform_crag_lower_threshold',
+                        0.35,
+                    ),
+                    query_transform_crag_upper_threshold=retrieval_data.get(
+                        'query_transform_crag_upper_threshold',
+                        0.75,
+                    ),
                     rerank_enabled=retrieval_data.get('rerank_enabled', False),
                     rerank_api_model=retrieval_data.get(
                         'rerank_api_model',
@@ -298,6 +334,15 @@ class RagConfigService:
             'bm25_weight': self.config.retrieval.bm25_weight,
             'max_per_doc': self.config.retrieval.max_per_doc,
             'reorder_strategy': self.config.retrieval.reorder_strategy,
+            'query_transform_enabled': self.config.retrieval.query_transform_enabled,
+            'query_transform_mode': self.config.retrieval.query_transform_mode,
+            'query_transform_model_id': self.config.retrieval.query_transform_model_id,
+            'query_transform_timeout_seconds': self.config.retrieval.query_transform_timeout_seconds,
+            'query_transform_guard_enabled': self.config.retrieval.query_transform_guard_enabled,
+            'query_transform_guard_max_new_terms': self.config.retrieval.query_transform_guard_max_new_terms,
+            'query_transform_crag_enabled': self.config.retrieval.query_transform_crag_enabled,
+            'query_transform_crag_lower_threshold': self.config.retrieval.query_transform_crag_lower_threshold,
+            'query_transform_crag_upper_threshold': self.config.retrieval.query_transform_crag_upper_threshold,
             'rerank_enabled': self.config.retrieval.rerank_enabled,
             'rerank_api_model': self.config.retrieval.rerank_api_model,
             'rerank_api_base_url': self.config.retrieval.rerank_api_base_url,
@@ -344,6 +389,15 @@ class RagConfigService:
             'bm25_weight': ('retrieval', 'bm25_weight'),
             'max_per_doc': ('retrieval', 'max_per_doc'),
             'reorder_strategy': ('retrieval', 'reorder_strategy'),
+            'query_transform_enabled': ('retrieval', 'query_transform_enabled'),
+            'query_transform_mode': ('retrieval', 'query_transform_mode'),
+            'query_transform_model_id': ('retrieval', 'query_transform_model_id'),
+            'query_transform_timeout_seconds': ('retrieval', 'query_transform_timeout_seconds'),
+            'query_transform_guard_enabled': ('retrieval', 'query_transform_guard_enabled'),
+            'query_transform_guard_max_new_terms': ('retrieval', 'query_transform_guard_max_new_terms'),
+            'query_transform_crag_enabled': ('retrieval', 'query_transform_crag_enabled'),
+            'query_transform_crag_lower_threshold': ('retrieval', 'query_transform_crag_lower_threshold'),
+            'query_transform_crag_upper_threshold': ('retrieval', 'query_transform_crag_upper_threshold'),
             'rerank_enabled': ('retrieval', 'rerank_enabled'),
             'rerank_api_model': ('retrieval', 'rerank_api_model'),
             'rerank_api_base_url': ('retrieval', 'rerank_api_base_url'),

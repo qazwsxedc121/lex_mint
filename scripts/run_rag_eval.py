@@ -333,6 +333,7 @@ async def _evaluate_mode(
     top_k_override: Optional[int],
     score_threshold_override: Optional[float],
     bm25_min_term_coverage_override: Optional[float],
+    runtime_model_id: Optional[str],
 ) -> Dict[str, Any]:
     service = RagService()
     retrieval_cfg = service.rag_config_service.config.retrieval
@@ -371,6 +372,7 @@ async def _evaluate_mode(
                 kb_ids=case.kb_ids,
                 top_k=local_top_k,
                 score_threshold=local_threshold,
+                runtime_model_id=runtime_model_id,
             )
             row = _evaluate_case(case, results, local_top_k)
             row.update(
@@ -447,6 +449,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional output directory (default: data/benchmarks/rag_eval_<timestamp>).",
     )
+    parser.add_argument(
+        "--runtime-model-id",
+        type=str,
+        default=None,
+        help=(
+            "Optional runtime model id passed into retrieval. "
+            "Useful when query transform model is set to auto."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -478,6 +489,7 @@ async def _main() -> None:
             top_k_override=args.top_k,
             score_threshold_override=args.score_threshold,
             bm25_min_term_coverage_override=args.bm25_min_term_coverage,
+            runtime_model_id=args.runtime_model_id,
         )
         mode_outputs.append(mode_result)
         (output_dir / f"mode_{mode}_cases.json").write_text(

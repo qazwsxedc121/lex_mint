@@ -233,6 +233,100 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get helpText() { return i18n.t('settings:rag.field.chunkOverlap.help'); }
     },
     {
+      type: 'checkbox',
+      name: 'query_transform_enabled',
+      label: 'Enable Query Transform',
+      defaultValue: false,
+      helpText: 'Rewrite user query before retrieval to improve recall on complex questions.'
+    },
+    {
+      type: 'select',
+      name: 'query_transform_mode',
+      label: 'Query Transform Mode',
+      defaultValue: 'rewrite',
+      options: [
+        { value: 'none', label: 'None' },
+        { value: 'rewrite', label: 'Rewrite' }
+      ],
+      required: true,
+      condition: (formData) => formData.query_transform_enabled === true,
+      helpText: 'Current MVP mode supports single-query rewrite.'
+    },
+    {
+      type: 'text',
+      name: 'query_transform_model_id',
+      label: 'Query Transform Model',
+      placeholder: 'auto or provider:model',
+      defaultValue: 'auto',
+      condition: (formData) => formData.query_transform_enabled === true,
+      helpText: 'Use auto to follow the current chat model. Or set a fixed model id.'
+    },
+    {
+      type: 'number',
+      name: 'query_transform_timeout_seconds',
+      label: 'Query Transform Timeout (s)',
+      min: 1,
+      max: 30,
+      defaultValue: 4,
+      required: true,
+      condition: (formData) => formData.query_transform_enabled === true,
+      helpText: 'If timeout or error occurs, system falls back to the original query.'
+    },
+    {
+      type: 'checkbox',
+      name: 'query_transform_guard_enabled',
+      label: 'Enable Rewrite Guard',
+      defaultValue: true,
+      condition: (formData) => formData.query_transform_enabled === true,
+      helpText: 'Block unsafe rewrites that add too many unseen terms or drop key constraints.'
+    },
+    {
+      type: 'number',
+      name: 'query_transform_guard_max_new_terms',
+      label: 'Rewrite Guard Max New Terms',
+      min: 0,
+      max: 20,
+      defaultValue: 2,
+      required: true,
+      condition: (formData) =>
+        formData.query_transform_enabled === true && formData.query_transform_guard_enabled === true,
+      helpText: 'If rewritten query introduces more than this number of new key terms, fallback to original.'
+    },
+    {
+      type: 'checkbox',
+      name: 'query_transform_crag_enabled',
+      label: 'Enable CRAG Quality Gate',
+      defaultValue: true,
+      condition: (formData) => formData.query_transform_enabled === true,
+      helpText: 'Evaluate rewritten-query retrieval quality and fallback to original query when needed.'
+    },
+    {
+      type: 'number',
+      name: 'query_transform_crag_lower_threshold',
+      label: 'CRAG Lower Threshold',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      defaultValue: 0.35,
+      required: true,
+      condition: (formData) =>
+        formData.query_transform_enabled === true && formData.query_transform_crag_enabled === true,
+      helpText: 'Below this score, rewritten query is treated as low quality.'
+    },
+    {
+      type: 'number',
+      name: 'query_transform_crag_upper_threshold',
+      label: 'CRAG Upper Threshold',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      defaultValue: 0.75,
+      required: true,
+      condition: (formData) =>
+        formData.query_transform_enabled === true && formData.query_transform_crag_enabled === true,
+      helpText: 'Between lower and upper thresholds, rewritten query is ambiguous and compared with original.'
+    },
+    {
       type: 'select',
       name: 'retrieval_mode',
       get label() { return i18n.t('settings:rag.field.retrievalMode'); },

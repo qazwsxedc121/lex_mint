@@ -358,3 +358,188 @@ def test_retrieve_with_diagnostics_caches_sqlite_query_embedding(monkeypatch):
     assert diagnostics["vector_raw_count"] == 2
     assert fake_embedding_service.calls == 1
     assert seen_embeddings == [(1.0, 0.0), (1.0, 0.0)]
+
+
+def test_retrieve_applies_query_transform_with_runtime_model(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_mode = "rewrite"
+    service.rag_config_service.config.retrieval.query_transform_model_id = "auto"
+    service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
+    service.rag_config_service.config.retrieval.query_transform_crag_enabled = False
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def fake_transform_query(
+        *,
+        query,
+        enabled,
+        mode,
+        configured_model_id,
+        runtime_model_id,
+        timeout_seconds,
+        guard_enabled,
+        guard_max_new_terms,
+    ):
+        assert query == "original question"
+        assert enabled is True
+        assert mode == "rewrite"
+        assert configured_model_id == "auto"
+        assert runtime_model_id == "openrouter:openai/gpt-4o-mini"
+        assert timeout_seconds == 4
+        assert guard_enabled is True
+        assert guard_max_new_terms == 2
+        return SimpleNamespace(
+            effective_query="rewritten question",
+            applied=True,
+            mode="rewrite",
+            resolved_model_id=runtime_model_id,
+            guard_blocked=False,
+            guard_reason="",
+        )
+
+    service.query_transform_service = SimpleNamespace(transform_query=fake_transform_query)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        return [RagResult("chunk", 0.9, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="openrouter:openai/gpt-4o-mini",
+        )
+    )
+
+    assert len(results) == 1
+    assert seen_queries == ["rewritten question"]
+    assert diagnostics["query_transform_enabled"] is True
+    assert diagnostics["query_transform_mode"] == "rewrite"
+    assert diagnostics["query_transform_applied"] is True
+    assert diagnostics["query_effective"] == "rewritten question"
+    assert diagnostics["query_transform_model_id"] == "openrouter:openai/gpt-4o-mini"
+
+
+def test_retrieve_query_transform_failure_falls_back_to_original(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_mode = "rewrite"
+    service.rag_config_service.config.retrieval.query_transform_model_id = "auto"
+    service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def failing_transform_query(**kwargs):
+        _ = kwargs
+        raise RuntimeError("transform boom")
+
+    service.query_transform_service = SimpleNamespace(transform_query=failing_transform_query)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        return [RagResult("chunk", 0.9, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="openrouter:openai/gpt-4o-mini",
+        )
+    )
+
+    assert len(results) == 1
+    assert seen_queries == ["original question"]
+    assert diagnostics["query_transform_applied"] is False
+    assert diagnostics["query_effective"] == "original question"
+
+
+def test_retrieve_crag_gate_falls_back_to_original_when_rewrite_low_quality(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_mode = "rewrite"
+    service.rag_config_service.config.retrieval.query_transform_model_id = "auto"
+    service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
+    service.rag_config_service.config.retrieval.query_transform_crag_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_crag_lower_threshold = 0.35
+    service.rag_config_service.config.retrieval.query_transform_crag_upper_threshold = 0.75
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def fake_transform_query(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(
+            effective_query="rewritten question",
+            applied=True,
+            mode="rewrite",
+            resolved_model_id="deepseek:deepseek-chat",
+            guard_blocked=False,
+            guard_reason="",
+        )
+
+    service.query_transform_service = SimpleNamespace(transform_query=fake_transform_query)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        if query == "rewritten question":
+            return []
+        return [RagResult("chunk", 0.9, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="deepseek:deepseek-chat",
+        )
+    )
+
+    assert len(results) == 1
+    assert [item.doc_id for item in results] == ["doc_a"]
+    assert seen_queries == ["rewritten question", "original question"]
+    assert diagnostics["query_effective"] == "original question"
+    assert diagnostics["query_transform_applied"] is True
+    assert diagnostics["query_transform_crag_enabled"] is True
+    assert diagnostics["query_transform_crag_quality_label"] == "incorrect"
+    assert diagnostics["query_transform_crag_decision"] == "fallback_original"
