@@ -160,6 +160,73 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         supports_model_list=True,
     ),
 
+    "gemini": ProviderDefinition(
+        id="gemini",
+        name="Google Gemini",
+        protocol=ApiProtocol.GEMINI,
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        sdk_class="gemini",
+        url_suffix="",
+        auto_append_path=False,
+        supports_model_list=True,
+        default_capabilities=ModelCapabilities(
+            context_length=1048576,
+            vision=True,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        builtin_models=[
+            ModelDefinition(
+                id="gemini-2.5-pro",
+                name="Gemini 2.5 Pro",
+                capabilities=ModelCapabilities(
+                    context_length=1048576,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="gemini-2.5-flash",
+                name="Gemini 2.5 Flash",
+                capabilities=ModelCapabilities(
+                    context_length=1048576,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="gemini-2.0-flash",
+                name="Gemini 2.0 Flash",
+                capabilities=ModelCapabilities(
+                    context_length=1048576,
+                    vision=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="gemini-1.5-pro",
+                name="Gemini 1.5 Pro",
+                capabilities=ModelCapabilities(
+                    context_length=2097152,
+                    vision=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="gemini-1.5-flash",
+                name="Gemini 1.5 Flash",
+                capabilities=ModelCapabilities(
+                    context_length=1048576,
+                    vision=True,
+                    function_calling=True,
+                )
+            ),
+        ],
+    ),
+
     "volcengine": ProviderDefinition(
         id="volcengine",
         name="Volcano Engine (Doubao)",

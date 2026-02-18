@@ -53,9 +53,11 @@ class BuiltinProviderInfo(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    """模型信息"""
+    """模型信息（含可选的能力和标签）"""
     id: str
     name: str
+    capabilities: Optional[dict] = None
+    tags: Optional[List[str]] = None
 
 
 @router.get("/providers/builtin", response_model=List[BuiltinProviderInfo])
@@ -469,19 +471,29 @@ async def fetch_provider_models(
             detail=f"Provider '{provider_id}' does not support model listing"
         )
 
-    # Get API key
-    api_key = await service.get_api_key(provider_id)
-    if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No API key configured for provider '{provider_id}'"
-        )
+    # Get API key (optional - some providers like OpenRouter have public model lists)
+    api_key = await service.get_api_key(provider_id) or ""
 
     # Get adapter and fetch models
     adapter = service.get_adapter_for_provider(provider)
     try:
         models = await adapter.fetch_models(provider.base_url, api_key)
-        return [ModelInfo(id=m["id"], name=m.get("name", m["id"])) for m in models]
+        if not models and not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No models found. Try configuring an API key for provider '{provider_id}'"
+            )
+        return [
+            ModelInfo(
+                id=m["id"],
+                name=m.get("name", m["id"]),
+                capabilities=m.get("capabilities"),
+                tags=m.get("tags"),
+            )
+            for m in models
+        ]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

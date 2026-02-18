@@ -168,6 +168,63 @@ class OpenAIAdapter(BaseLLMAdapter):
             }
         }
 
+    @staticmethod
+    def _parse_model_metadata(model: dict) -> dict | None:
+        """
+        Parse rich model metadata from provider API responses.
+
+        Detects OpenRouter-style responses (architecture, supported_parameters)
+        and extracts capabilities and tags.
+
+        Returns:
+            Dict with 'capabilities' and 'tags', or None if no rich metadata.
+        """
+        architecture = model.get("architecture")
+        supported_params = model.get("supported_parameters")
+        context_length = model.get("context_length")
+
+        # Only parse if rich metadata is present (e.g. OpenRouter)
+        if not architecture and not supported_params and not context_length:
+            return None
+
+        input_modalities = (architecture or {}).get("input_modalities", [])
+        output_modalities = (architecture or {}).get("output_modalities", [])
+        params = supported_params or []
+
+        has_vision = "image" in input_modalities
+        has_function_calling = "tools" in params
+        has_reasoning = "reasoning" in params or "include_reasoning" in params
+        has_image_output = "image" in output_modalities
+        has_file_upload = "file" in input_modalities
+        has_streaming = True  # Assumed for OpenAI-compatible APIs
+
+        capabilities = {
+            "context_length": context_length or 4096,
+            "vision": has_vision,
+            "function_calling": has_function_calling,
+            "reasoning": has_reasoning,
+            "streaming": has_streaming,
+            "file_upload": has_file_upload,
+            "image_output": has_image_output,
+        }
+
+        # Derive tags from capabilities
+        tags = []
+        if has_vision:
+            tags.append("vision")
+        if has_function_calling:
+            tags.append("function-calling")
+        if has_reasoning:
+            tags.append("reasoning")
+        if has_image_output:
+            tags.append("image-output")
+        if has_file_upload:
+            tags.append("file-upload")
+        if not tags:
+            tags.append("chat")
+
+        return {"capabilities": capabilities, "tags": tags}
+
     async def fetch_models(
         self,
         base_url: str,
@@ -192,10 +249,14 @@ class OpenAIAdapter(BaseLLMAdapter):
                 url = f"{url}/v1"
             models_url = f"{url}/models"
 
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     models_url,
-                    headers={"Authorization": f"Bearer {api_key}"}
+                    headers=headers,
                 )
                 response.raise_for_status()
 
@@ -203,10 +264,18 @@ class OpenAIAdapter(BaseLLMAdapter):
                 models = []
                 for model in data.get("data", []):
                     model_id = model.get("id", "")
-                    models.append({
+                    entry = {
                         "id": model_id,
                         "name": model.get("name", model_id),
-                    })
+                    }
+
+                    # Parse rich metadata if available (e.g. OpenRouter)
+                    caps_and_tags = self._parse_model_metadata(model)
+                    if caps_and_tags:
+                        entry["capabilities"] = caps_and_tags["capabilities"]
+                        entry["tags"] = caps_and_tags["tags"]
+
+                    models.append(entry)
 
                 return sorted(models, key=lambda x: x["id"])
 

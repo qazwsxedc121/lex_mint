@@ -11,30 +11,11 @@ from typing import AsyncIterator, List, Dict, Any, Optional
 from langchain_core.messages import BaseMessage
 
 from .reasoning_openai import ChatReasoningOpenAI
+from .utils import extract_tool_calls
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_tool_calls(payload: Any) -> List[Any]:
-    """Extract tool call payload from LangChain chunks/responses."""
-    tool_calls: List[Any] = []
-
-    if hasattr(payload, "tool_calls") and payload.tool_calls:
-        tool_calls.extend(payload.tool_calls)
-
-    if hasattr(payload, "tool_call_chunks") and payload.tool_call_chunks:
-        tool_calls.extend(payload.tool_call_chunks)
-
-    if hasattr(payload, "additional_kwargs") and payload.additional_kwargs:
-        ak = payload.additional_kwargs
-        if isinstance(ak, dict):
-            ak_tool_calls = ak.get("tool_calls")
-            if ak_tool_calls:
-                tool_calls.extend(ak_tool_calls)
-
-    return tool_calls
 
 
 class VolcEngineAdapter(BaseLLMAdapter):
@@ -152,7 +133,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
         async for chunk in llm.astream(messages):
             content = chunk.content if hasattr(chunk, "content") else ""
             thinking = ""
-            tool_calls = _extract_tool_calls(chunk)
+            tool_calls = extract_tool_calls(chunk)
 
             if hasattr(chunk, "additional_kwargs") and chunk.additional_kwargs:
                 thinking = chunk.additional_kwargs.get("reasoning_content", "")
@@ -189,7 +170,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
         return LLMResponse(
             content=response.content,
             thinking=thinking,
-            tool_calls=_extract_tool_calls(response),
+            tool_calls=extract_tool_calls(response),
             usage=usage,
             raw=response,
         )
