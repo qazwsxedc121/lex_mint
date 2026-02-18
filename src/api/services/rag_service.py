@@ -4,10 +4,11 @@ RAG Service
 Handles retrieval-augmented generation: query embedding, similarity search,
 result merging, and context formatting.
 """
+import asyncio
 import logging
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -412,54 +413,137 @@ class RagService:
         vector_results: List[RagResult] = []
         bm25_results: List[RagResult] = []
         searched_kb_count = 0
+        kb_lookup_tasks = [kb_service.get_knowledge_base(kb_id) for kb_id in kb_ids]
+        kb_lookup_results = await asyncio.gather(*kb_lookup_tasks, return_exceptions=True)
 
-        for kb_id in kb_ids:
-            try:
-                # Check if KB exists and is enabled
-                kb = await kb_service.get_knowledge_base(kb_id)
-                if not kb or not kb.enabled:
-                    logger.info("[RAG] kb=%s skipped (missing or disabled)", kb_id)
-                    continue
-                logger.info(
-                    "[RAG] kb=%s enabled=%s embedding_model=%s doc_count=%s",
-                    kb_id,
-                    kb.enabled,
-                    kb.embedding_model,
-                    kb.document_count,
-                )
-                searched_kb_count += 1
+        enabled_kbs: List[Tuple[str, Any]] = []
+        for kb_id, kb_lookup in zip(kb_ids, kb_lookup_results):
+            if isinstance(kb_lookup, Exception):
+                logger.warning(f"RAG lookup failed for KB {kb_id}: {kb_lookup}")
+                continue
+            kb = kb_lookup
+            if not kb or not kb.enabled:
+                logger.info("[RAG] kb=%s skipped (missing or disabled)", kb_id)
+                continue
+            logger.info(
+                "[RAG] kb=%s enabled=%s embedding_model=%s doc_count=%s",
+                kb_id,
+                kb.enabled,
+                kb.embedding_model,
+                kb.document_count,
+            )
+            searched_kb_count += 1
+            enabled_kbs.append((kb_id, kb))
 
-                if retrieval_mode in {"vector", "hybrid"}:
-                    kb_vector_results = self._search_collection(
-                        kb_id=kb_id,
-                        query=query,
-                        top_k=vector_recall_k,
-                        score_threshold=effective_threshold,
-                        override_model=kb.embedding_model,
+        query_embedding_cache: Dict[str, Sequence[float]] = {}
+        if enabled_kbs and retrieval_mode in {"vector", "hybrid"} and vector_backend == "sqlite_vec":
+            model_cache_targets: Dict[str, Optional[str]] = {}
+            for _, kb in enabled_kbs:
+                override_model = getattr(kb, "embedding_model", None)
+                cache_key = (str(override_model).strip() if override_model else "") or "__default__"
+                if cache_key not in model_cache_targets:
+                    model_cache_targets[cache_key] = override_model
+
+            for cache_key, override_model in model_cache_targets.items():
+                try:
+                    embedding_fn = self.embedding_service.get_embedding_function(override_model)
+                    if not hasattr(embedding_fn, "embed_query"):
+                        logger.warning(
+                            "sqlite_vec cache skipped for model=%s: embed_query() unavailable",
+                            override_model or "default",
+                        )
+                        continue
+                    query_embedding_cache[cache_key] = embedding_fn.embed_query(query)
+                except Exception as e:
+                    logger.warning(
+                        "sqlite_vec cache embed failed for model=%s: %s",
+                        override_model or "default",
+                        e,
                     )
-                    if kb_vector_results:
-                        best_score = max(r.score for r in kb_vector_results)
-                        logger.info("[RAG] kb=%s vector_results=%d best_score=%.4f", kb_id, len(kb_vector_results), best_score)
+
+        async def _retrieve_single_kb(kb_id: str, kb: Any) -> Tuple[List[RagResult], List[RagResult]]:
+            local_vector_results: List[RagResult] = []
+            local_bm25_results: List[RagResult] = []
+            channel_jobs: List[Tuple[str, Any]] = []
+
+            if retrieval_mode in {"vector", "hybrid"}:
+                vector_kwargs: Dict[str, Any] = {
+                    "kb_id": kb_id,
+                    "query": query,
+                    "top_k": vector_recall_k,
+                    "score_threshold": effective_threshold,
+                    "override_model": kb.embedding_model,
+                }
+                if vector_backend == "sqlite_vec":
+                    cache_key = (str(kb.embedding_model).strip() if kb.embedding_model else "") or "__default__"
+                    cached_embedding = query_embedding_cache.get(cache_key)
+                    if cached_embedding is not None:
+                        vector_kwargs["query_embedding"] = cached_embedding
+                channel_jobs.append(("vector", asyncio.to_thread(self._search_collection, **vector_kwargs)))
+
+            if retrieval_mode in {"bm25", "hybrid"}:
+                channel_jobs.append(
+                    (
+                        "bm25",
+                        asyncio.to_thread(
+                            self._search_bm25_collection,
+                            kb_id=kb_id,
+                            query=query,
+                            top_k=bm25_recall_k,
+                            min_term_coverage=bm25_min_term_coverage,
+                        ),
+                    )
+                )
+
+            if not channel_jobs:
+                return local_vector_results, local_bm25_results
+
+            channel_results = await asyncio.gather(
+                *(job for _, job in channel_jobs),
+                return_exceptions=True,
+            )
+            for (channel, _), payload in zip(channel_jobs, channel_results):
+                if isinstance(payload, Exception):
+                    logger.warning(f"RAG {channel} search failed for KB {kb_id}: {payload}")
+                    continue
+
+                if channel == "vector":
+                    local_vector_results = list(payload or [])
+                    if local_vector_results:
+                        best_score = max(r.score for r in local_vector_results)
+                        logger.info(
+                            "[RAG] kb=%s vector_results=%d best_score=%.4f",
+                            kb_id,
+                            len(local_vector_results),
+                            best_score,
+                        )
                     else:
                         logger.info("[RAG] kb=%s vector_results=0", kb_id)
-                    vector_results.extend(kb_vector_results)
+                    continue
 
-                if retrieval_mode in {"bm25", "hybrid"}:
-                    kb_bm25_results = self._search_bm25_collection(
-                        kb_id=kb_id,
-                        query=query,
-                        top_k=bm25_recall_k,
-                        min_term_coverage=bm25_min_term_coverage,
+                local_bm25_results = list(payload or [])
+                if local_bm25_results:
+                    best_score = max(r.score for r in local_bm25_results)
+                    logger.info(
+                        "[RAG] kb=%s bm25_results=%d best_score=%.4f",
+                        kb_id,
+                        len(local_bm25_results),
+                        best_score,
                     )
-                    if kb_bm25_results:
-                        best_score = max(r.score for r in kb_bm25_results)
-                        logger.info("[RAG] kb=%s bm25_results=%d best_score=%.4f", kb_id, len(kb_bm25_results), best_score)
-                    else:
-                        logger.info("[RAG] kb=%s bm25_results=0", kb_id)
-                    bm25_results.extend(kb_bm25_results)
-            except Exception as e:
-                logger.warning(f"RAG search failed for KB {kb_id}: {e}")
+                else:
+                    logger.info("[RAG] kb=%s bm25_results=0", kb_id)
+
+            return local_vector_results, local_bm25_results
+
+        kb_retrieval_tasks = [_retrieve_single_kb(kb_id, kb) for kb_id, kb in enabled_kbs]
+        kb_retrieval_results = await asyncio.gather(*kb_retrieval_tasks, return_exceptions=True)
+        for (kb_id, _), result in zip(enabled_kbs, kb_retrieval_results):
+            if isinstance(result, Exception):
+                logger.warning(f"RAG search failed for KB {kb_id}: {result}")
                 continue
+            kb_vector_results, kb_bm25_results = result
+            vector_results.extend(kb_vector_results)
+            bm25_results.extend(kb_bm25_results)
 
         vector_results.sort(key=lambda r: r.score, reverse=True)
         bm25_results.sort(key=lambda r: r.score, reverse=True)
@@ -575,6 +659,7 @@ class RagService:
         top_k: int,
         score_threshold: float,
         override_model: Optional[str] = None,
+        query_embedding: Optional[Sequence[float]] = None,
     ) -> List[RagResult]:
         """Search a single collection in the configured vector backend."""
         backend = str(
@@ -582,12 +667,17 @@ class RagService:
             or "chroma"
         ).lower()
         if backend == "sqlite_vec":
+            sqlite_kwargs: Dict[str, Any] = {
+                "kb_id": kb_id,
+                "query": query,
+                "top_k": top_k,
+                "score_threshold": score_threshold,
+                "override_model": override_model,
+            }
+            if query_embedding is not None:
+                sqlite_kwargs["query_embedding"] = query_embedding
             return self._search_collection_sqlite_vec(
-                kb_id=kb_id,
-                query=query,
-                top_k=top_k,
-                score_threshold=score_threshold,
-                override_model=override_model,
+                **sqlite_kwargs,
             )
         return self._search_collection_chroma(
             kb_id=kb_id,
@@ -684,17 +774,18 @@ class RagService:
         top_k: int,
         score_threshold: float,
         override_model: Optional[str] = None,
+        query_embedding: Optional[Sequence[float]] = None,
     ) -> List[RagResult]:
         """Search a single SQLite vector collection."""
         from .sqlite_vec_service import SqliteVecService
 
-        embedding_fn = self.embedding_service.get_embedding_function(override_model)
-        if not hasattr(embedding_fn, "embed_query"):
-            logger.warning("sqlite_vec search failed for kb=%s: embedding function lacks embed_query()", kb_id)
-            return []
-
         try:
-            query_embedding = embedding_fn.embed_query(query)
+            if query_embedding is None:
+                embedding_fn = self.embedding_service.get_embedding_function(override_model)
+                if not hasattr(embedding_fn, "embed_query"):
+                    logger.warning("sqlite_vec search failed for kb=%s: embedding function lacks embed_query()", kb_id)
+                    return []
+                query_embedding = embedding_fn.embed_query(query)
             sqlite_vec = SqliteVecService()
             rows = sqlite_vec.search(
                 kb_id=kb_id,

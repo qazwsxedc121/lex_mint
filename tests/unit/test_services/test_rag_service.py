@@ -294,3 +294,67 @@ def test_search_collection_dispatches_to_sqlite_vec(monkeypatch):
     result = service._search_collection("kb1", "hello", 5, 0.1, None)
     assert len(result) == 1
     assert result[0].doc_id == "doc_sqlite"
+
+
+def test_retrieve_with_diagnostics_caches_sqlite_query_embedding(monkeypatch):
+    service = _build_service(
+        top_k=2,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=2,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.storage.vector_store_backend = "sqlite_vec"
+
+    class _KbLookup:
+        async def get_knowledge_base(self, kb_id: str):
+            return SimpleNamespace(
+                id=kb_id,
+                enabled=True,
+                embedding_model="shared-model",
+                document_count=1,
+            )
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _KbLookup,
+    )
+
+    class _FakeEmbeddingFn:
+        def embed_query(self, _query: str):
+            return [1.0, 0.0]
+
+    class _FakeEmbeddingService:
+        def __init__(self):
+            self.calls = 0
+
+        def get_embedding_function(self, override_model=None):
+            _ = override_model
+            self.calls += 1
+            return _FakeEmbeddingFn()
+
+    fake_embedding_service = _FakeEmbeddingService()
+    service.embedding_service = fake_embedding_service
+
+    seen_embeddings = []
+
+    def fake_search_collection(
+        kb_id,
+        query,
+        top_k,
+        score_threshold,
+        override_model=None,
+        query_embedding=None,
+    ):
+        _ = query, top_k, score_threshold, override_model
+        seen_embeddings.append(tuple(query_embedding or []))
+        return [RagResult(f"chunk-{kb_id}", 0.9, kb_id, f"doc-{kb_id}", f"{kb_id}.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("query", ["kb_a", "kb_b"]))
+
+    assert len(results) == 2
+    assert diagnostics["vector_raw_count"] == 2
+    assert fake_embedding_service.calls == 1
+    assert seen_embeddings == [(1.0, 0.0), (1.0, 0.0)]
