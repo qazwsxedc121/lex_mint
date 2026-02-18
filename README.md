@@ -74,6 +74,14 @@ Backend (Windows, use venv executables directly):
 ./venv/Scripts/uvicorn src.api.main:app --reload --port 8988
 ```
 
+Optional NVIDIA GPU build for `llama-cpp-python` (keep this machine-specific):
+
+```powershell
+$env:CMAKE_ARGS='-DGGML_CUDA=on'
+$env:FORCE_CMAKE='1'
+./venv/Scripts/pip install --upgrade --force-reinstall -r requirements.gpu_nvidia.txt
+```
+
 Frontend:
 
 ```powershell
