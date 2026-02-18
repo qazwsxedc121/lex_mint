@@ -708,7 +708,7 @@ const TemplateVariablesField: React.FC<{
 /** Max icons shown per page in the grid to keep rendering fast */
 const PAGE_SIZE = 200;
 
-/** Model ID field with provider-based model discovery */
+/** Model ID field with provider-based model discovery and search */
 const ModelIdField: React.FC<{
   config: Extract<FieldConfig, { type: 'model-id' }>;
   value: string;
@@ -725,7 +725,21 @@ const ModelIdField: React.FC<{
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter models based on search query (matches id, name, and tags)
+  const filteredModels = useMemo(() => {
+    if (!searchQuery.trim()) return availableModels;
+    const query = searchQuery.toLowerCase();
+    return availableModels.filter(
+      (model) =>
+        model.id.toLowerCase().includes(query) ||
+        model.name.toLowerCase().includes(query) ||
+        (model.tags && model.tags.some((tag) => tag.toLowerCase().includes(query)))
+    );
+  }, [availableModels, searchQuery]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -738,16 +752,25 @@ const ModelIdField: React.FC<{
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (showDropdown && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showDropdown]);
+
   // Reset models when provider changes
   useEffect(() => {
     setAvailableModels([]);
     setFetchError(false);
+    setSearchQuery('');
   }, [providerId]);
 
   const handleFetch = useCallback(async () => {
     if (!providerId || isFetching) return;
     setIsFetching(true);
     setFetchError(false);
+    setSearchQuery('');
     try {
       const models = await fetchProviderModels(providerId);
       setAvailableModels(models);
@@ -761,13 +784,21 @@ const ModelIdField: React.FC<{
   }, [providerId, isFetching]);
 
   const handleSelectModel = (model: ModelInfo) => {
-    // Batch update: set both id and name fields
-    onChange({
+    // Batch update: set id, name, and auto-populate capabilities/tags if available
+    const updates: Record<string, any> = {
       __batchUpdate: true,
       [config.name]: model.id,
       [nameField]: model.name,
-    });
+    };
+    if (model.capabilities) {
+      updates.capabilities = model.capabilities;
+    }
+    if (model.tags && model.tags.length > 0) {
+      updates.tags = model.tags.join(', ');
+    }
+    onChange(updates);
     setShowDropdown(false);
+    setSearchQuery('');
   };
 
   return (
@@ -814,20 +845,58 @@ const ModelIdField: React.FC<{
       )}
 
       {showDropdown && availableModels.length > 0 && (
-        <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
-          {availableModels.map((model) => (
-            <button
-              key={model.id}
-              type="button"
-              onClick={() => handleSelectModel(model)}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
-            >
-              <div className="font-medium text-gray-900 dark:text-white">{model.id}</div>
-              {model.name !== model.id && (
-                <div className="text-xs text-gray-500 dark:text-gray-400">{model.name}</div>
-              )}
-            </button>
-          ))}
+        <div className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
+          {/* Search input */}
+          <div className="sticky top-0 p-2 border-b border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('models.field.id.searchPlaceholder')}
+              className="w-full px-2 py-1.5 text-sm border rounded
+                border-gray-300 dark:border-gray-600
+                bg-gray-50 dark:bg-gray-700
+                text-gray-900 dark:text-white
+                placeholder-gray-400 dark:placeholder-gray-500
+                focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400"
+            />
+            <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {filteredModels.length} / {availableModels.length}
+            </div>
+          </div>
+          {/* Model list */}
+          <div className="max-h-60 overflow-y-auto">
+            {filteredModels.length > 0 ? (
+              filteredModels.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => handleSelectModel(model)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                >
+                  <div className="font-medium text-gray-900 dark:text-white">{model.id}</div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {model.name !== model.id && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">{model.name}</span>
+                    )}
+                    {model.tags && model.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded px-1 py-0 text-[10px] leading-4 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-4 text-sm text-center text-gray-400 dark:text-gray-500">
+                {t('models.field.id.noSearchResults')}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

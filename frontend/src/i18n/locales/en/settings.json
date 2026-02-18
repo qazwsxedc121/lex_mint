@@ -259,6 +259,8 @@
   "models.field.id.help": "Model identifier as used by the provider. Click the refresh button to browse available models.",
   "models.field.id.fetchTitle": "Fetch available models from provider",
   "models.field.id.fetchError": "Could not fetch models from this provider. You can still type a model ID manually.",
+  "models.field.id.searchPlaceholder": "Search models...",
+  "models.field.id.noSearchResults": "No models match your search",
   "models.field.providerId": "Provider",
   "models.field.providerId.help": "Provider that hosts this model",
   "models.field.name": "Display Name",

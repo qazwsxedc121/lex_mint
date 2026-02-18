@@ -86,7 +86,14 @@
       "WebFetch(domain:open.bigmodel.cn)",
       "WebFetch(domain:docs.bigmodel.cn)",
       "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:docs.z.ai)"
+      "WebFetch(domain:docs.z.ai)",
+      "Bash(cd:*)",
+      "WebFetch(domain:openrouter.ai)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:docs.ollama.com)",
+      "WebFetch(domain:docs.together.ai)",
+      "mcp__chrome-devtools__list_network_requests",
+      "mcp__chrome-devtools__get_network_request"
     ]
   }
 }

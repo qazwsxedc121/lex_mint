@@ -88,6 +88,7 @@ function Get-ProcessExitCodeOrNull {
   }
 }
 
+$srcDir = Join-Path $projectRoot "src"
 $backendArgs = @(
   "-m",
   "uvicorn",
@@ -95,7 +96,10 @@ $backendArgs = @(
   "--host",
   "0.0.0.0",
   "--port",
-  $apiPort
+  $apiPort,
+  "--reload",
+  "--reload-dir",
+  $srcDir
 )
 
 $viteScript = Join-Path $projectRoot "frontend\node_modules\vite\bin\vite.js"

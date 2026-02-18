@@ -89,6 +89,8 @@ export interface BuiltinProviderInfo {
 export interface ModelInfo {
   id: string;
   name: string;
+  capabilities?: ModelCapabilities;
+  tags?: string[];
 }
 
 // Capabilities response
