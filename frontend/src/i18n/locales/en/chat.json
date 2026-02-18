@@ -149,5 +149,8 @@
   "groupChat.selectHint": "Select at least 2 assistants to start a group chat.",
   "groupChat.noAssistants": "No enabled assistants available.",
   "groupChat.create": "Create",
-  "groupChat.participants": "{{count}} assistants"
+  "groupChat.participants": "{{count}} assistants",
+  "groupChat.roundRobinMode": "Round-robin replies",
+  "groupChat.progress": "{{done}}/{{total}} completed",
+  "groupChat.replying": "{{name}} is replying"
 }

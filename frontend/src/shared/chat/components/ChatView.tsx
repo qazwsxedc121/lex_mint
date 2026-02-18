@@ -4,7 +4,7 @@
  * Version 2.0: Uses currentSessionId from service
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { AssistantSelector } from './AssistantSelector';
@@ -17,6 +17,8 @@ import type { UploadedFile } from '../../../types/message';
 import type { Message } from '../../../types/message';
 import { LightBulbIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
+
+type GroupAssistantStatus = 'waiting' | 'thinking' | 'done';
 
 export interface ChatViewProps {
   /**
@@ -40,6 +42,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const wasStreamingRef = useRef(false);
   const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
+  const [groupAssistantNameMap, setGroupAssistantNameMap] = useState<Record<string, string>>({});
   const {
     messages,
     loading,
@@ -175,6 +178,79 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   };
 
   const isGroupChat = groupAssistants && groupAssistants.length >= 2;
+  const groupAssistantProgress = useMemo(() => {
+    if (!isGroupChat || !groupAssistants) return [];
+
+    const assistantNameFallbackMap = new Map<string, string>();
+    for (const message of messages) {
+      if (message.role === 'assistant' && message.assistant_id && message.assistant_name && !assistantNameFallbackMap.has(message.assistant_id)) {
+        assistantNameFallbackMap.set(message.assistant_id, message.assistant_name);
+      }
+    }
+
+    const activeAssistantId = isGenerating
+      ? [...messages]
+          .reverse()
+          .find((message) => message.role === 'assistant' && message.assistant_id && !message.message_id)
+          ?.assistant_id ?? null
+      : null;
+
+    const doneAssistantIds = new Set(
+      messages
+        .filter((message) => message.role === 'assistant' && message.assistant_id && (message.message_id || message.content.trim().length > 0))
+        .map((message) => message.assistant_id as string)
+    );
+
+    return groupAssistants.map((assistantId, index) => {
+      let status: GroupAssistantStatus = 'waiting';
+      if (assistantId === activeAssistantId) {
+        status = 'thinking';
+      } else if (doneAssistantIds.has(assistantId)) {
+        status = 'done';
+      }
+
+      return {
+        assistantId,
+        order: index + 1,
+        status,
+        name:
+          groupAssistantNameMap[assistantId] ||
+          assistantNameFallbackMap.get(assistantId) ||
+          `AI-${assistantId.slice(0, 4)}`,
+      };
+    });
+  }, [groupAssistants, groupAssistantNameMap, isGenerating, isGroupChat, messages]);
+
+  const activeGroupAssistant = groupAssistantProgress.find((assistant) => assistant.status === 'thinking');
+  const completedAssistantCount = groupAssistantProgress.filter((assistant) => assistant.status === 'done').length;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isGroupChat || !groupAssistants) {
+      setGroupAssistantNameMap({});
+      return;
+    }
+
+    api.listAssistants()
+      .then((assistants) => {
+        if (cancelled) return;
+        const nameMap: Record<string, string> = {};
+        assistants.forEach((assistant) => {
+          nameMap[assistant.id] = assistant.name;
+        });
+        setGroupAssistantNameMap(nameMap);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGroupAssistantNameMap({});
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, groupAssistants, isGroupChat]);
 
   if (!currentSessionId) {
     return (
@@ -214,6 +290,47 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       )}
 
       {/* Messages */}
+      {isGroupChat && (
+        <div
+          data-name="group-chat-status-bar"
+          className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-cyan-50/80 via-white to-sky-50/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800"
+        >
+          <div data-name="group-chat-status-header" className="flex items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-300">
+            <div className="flex items-center gap-1.5">
+              <UsersIcon className="w-3.5 h-3.5" />
+              <span>{t('groupChat.roundRobinMode')}</span>
+            </div>
+            <span>{t('groupChat.progress', { done: completedAssistantCount, total: groupAssistantProgress.length })}</span>
+          </div>
+          <div data-name="group-chat-status-list" className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {groupAssistantProgress.map((assistant) => (
+              <div
+                key={assistant.assistantId}
+                data-name="group-chat-status-chip"
+                className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs whitespace-nowrap ${
+                  assistant.status === 'thinking'
+                    ? 'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200'
+                    : assistant.status === 'done'
+                      ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-200'
+                      : 'border-gray-300 dark:border-gray-600 bg-white/80 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                }`}
+              >
+                <span className="text-[10px] font-semibold opacity-70">#{assistant.order}</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    assistant.status === 'thinking'
+                      ? 'bg-amber-400 animate-pulse'
+                      : assistant.status === 'done'
+                        ? 'bg-emerald-500'
+                        : 'bg-gray-300 dark:bg-gray-500'
+                  }`}
+                />
+                <span className="font-medium">{assistant.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <MessageList
         messages={messages}
         loading={loading}
@@ -284,7 +401,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
           isGroupChat ? (
             <div data-name="group-chat-participants" className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
               <UsersIcon className="w-4 h-4" />
-              <span>{t('groupChat.participants', { count: groupAssistants.length })}</span>
+              <span>
+                {activeGroupAssistant
+                  ? t('groupChat.replying', { name: activeGroupAssistant.name })
+                  : t('groupChat.participants', { count: groupAssistants.length })}
+              </span>
             </div>
           ) : (
             <AssistantSelector

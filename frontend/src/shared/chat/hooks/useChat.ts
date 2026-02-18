@@ -65,6 +65,38 @@ export function useChat(sessionId: string | null) {
       const session = await api.getSession(sessionId);
       let loadedMessages = session.state.messages;
 
+      if (session.group_assistants && session.group_assistants.length >= 2) {
+        const needsAssistantMetadata = loadedMessages.some(
+          (msg) =>
+            msg.role === 'assistant' &&
+            msg.assistant_id &&
+            (!msg.assistant_name || !msg.assistant_icon)
+        );
+
+        if (needsAssistantMetadata) {
+          try {
+            const assistants = await api.listAssistants();
+            const assistantMap = new Map(assistants.map((assistant) => [assistant.id, assistant]));
+            loadedMessages = loadedMessages.map((msg) => {
+              if (msg.role !== 'assistant' || !msg.assistant_id) {
+                return msg;
+              }
+              const assistant = assistantMap.get(msg.assistant_id);
+              if (!assistant) {
+                return msg;
+              }
+              return {
+                ...msg,
+                assistant_name: msg.assistant_name || assistant.name,
+                assistant_icon: msg.assistant_icon || assistant.icon,
+              };
+            });
+          } catch {
+            // Keep loaded messages as-is when assistant metadata cannot be fetched.
+          }
+        }
+      }
+
       // Merge comparison data into messages
       if (session.compare_data) {
         loadedMessages = loadedMessages.map(msg => {

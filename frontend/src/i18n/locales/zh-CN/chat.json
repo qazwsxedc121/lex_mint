@@ -149,5 +149,8 @@
   "groupChat.selectHint": "选择至少 2 个助手来开始群聊。",
   "groupChat.noAssistants": "没有可用的助手。",
   "groupChat.create": "创建",
-  "groupChat.participants": "{{count}} 个助手"
+  "groupChat.participants": "{{count}} 个助手",
+  "groupChat.roundRobinMode": "轮流回复",
+  "groupChat.progress": "已完成 {{done}}/{{total}}",
+  "groupChat.replying": "{{name}} 回复中"
 }

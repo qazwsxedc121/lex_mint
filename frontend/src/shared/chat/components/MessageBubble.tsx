@@ -18,6 +18,7 @@ import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
 import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
+import { getAssistantIcon } from '../../constants/assistantIcons';
 import {
   buildFileReferencePreview,
   ensureFileReferencePreviewConfigLoaded,
@@ -260,6 +261,51 @@ function formatMessageTime(timestamp: string | undefined): string | null {
   return null;
 }
 
+const GROUP_ASSISTANT_STYLE_TOKENS = [
+  {
+    avatar: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200',
+    label: 'text-rose-700 dark:text-rose-300',
+    accent: 'border-l-rose-400 dark:border-l-rose-500',
+    surface: 'bg-rose-50/70 dark:bg-rose-900/15',
+  },
+  {
+    avatar: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200',
+    label: 'text-emerald-700 dark:text-emerald-300',
+    accent: 'border-l-emerald-400 dark:border-l-emerald-500',
+    surface: 'bg-emerald-50/70 dark:bg-emerald-900/15',
+  },
+  {
+    avatar: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200',
+    label: 'text-sky-700 dark:text-sky-300',
+    accent: 'border-l-sky-400 dark:border-l-sky-500',
+    surface: 'bg-sky-50/70 dark:bg-sky-900/15',
+  },
+  {
+    avatar: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
+    label: 'text-amber-700 dark:text-amber-300',
+    accent: 'border-l-amber-400 dark:border-l-amber-500',
+    surface: 'bg-amber-50/70 dark:bg-amber-900/15',
+  },
+];
+
+function getAssistantStyle(seed: string | undefined) {
+  if (!seed) {
+    return {
+      avatar: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+      label: 'text-gray-500 dark:text-gray-400',
+      accent: 'border-l-gray-300 dark:border-l-gray-600',
+      surface: 'bg-gray-200 dark:bg-gray-700',
+    };
+  }
+
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % GROUP_ASSISTANT_STYLE_TOKENS.length;
+  return GROUP_ASSISTANT_STYLE_TOKENS[index];
+}
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   messageId,
@@ -278,6 +324,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isUser = message.role === 'user';
   const isSeparator = message.role === 'separator';
   const isSummary = message.role === 'summary';
+  const isGroupAssistantMessage = !isUser && !!message.assistant_id;
+  const assistantDisplayName = message.assistant_name || (message.assistant_id ? `AI-${message.assistant_id.slice(0, 4)}` : '');
+  const assistantStyle = useMemo(
+    () => getAssistantStyle(message.assistant_id || message.assistant_name),
+    [message.assistant_id, message.assistant_name]
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isCopied, setIsCopied] = useState(false);
@@ -595,9 +647,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     <div data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
       <div data-name="message-bubble-content-wrapper" className={isUser ? 'max-w-[80%]' : 'w-full'}>
         {/* Group chat: assistant identity label */}
-        {!isUser && message.assistant_name && (
+        {!isUser && assistantDisplayName && (
           <div data-name="message-bubble-assistant-label" className="flex items-center gap-1.5 mb-1 ml-1">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{message.assistant_name}</span>
+            <span
+              data-name="message-bubble-assistant-avatar"
+              className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${assistantStyle.avatar}`}
+            >
+              {React.createElement(getAssistantIcon(message.assistant_icon), { className: 'w-3 h-3' })}
+            </span>
+            <span className={`text-xs font-semibold ${isGroupAssistantMessage ? assistantStyle.label : 'text-gray-500 dark:text-gray-400'}`}>
+              {assistantDisplayName}
+            </span>
           </div>
         )}
         <div
@@ -605,7 +665,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           className={`rounded-lg px-4 py-3 ${
             isUser
               ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+              : isGroupAssistantMessage
+                ? `border border-gray-200 dark:border-gray-600 border-l-4 ${assistantStyle.accent} ${assistantStyle.surface} text-gray-900 dark:text-gray-100`
+                : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
           }`}
         >
           {isEditing ? (
