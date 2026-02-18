@@ -10,6 +10,7 @@ from .ollama_adapter import OllamaAdapter
 from .xai_adapter import XAIAdapter
 from .zhipu_adapter import ZhipuAdapter
 from .volcengine_adapter import VolcEngineAdapter
+from .gemini_adapter import GeminiAdapter
 
 __all__ = [
     "OpenAIAdapter",
@@ -19,4 +20,5 @@ __all__ = [
     "XAIAdapter",
     "ZhipuAdapter",
     "VolcEngineAdapter",
+    "GeminiAdapter",
 ]
