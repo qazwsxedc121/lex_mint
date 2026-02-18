@@ -215,6 +215,42 @@ export function useChat(sessionId: string | null) {
 
     let streamedContent = '';
     let latestUserMessageId: string | null = null;
+    let activeAssistantId: string | null = null;
+
+    const updateAssistantMessage = (
+      updater: (message: Message) => Message,
+      assistantIdSnapshot?: string | null
+    ) => {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        let targetIndex = -1;
+
+        if (assistantIdSnapshot) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantIdSnapshot) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant') {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          return prev;
+        }
+
+        newMessages[targetIndex] = updater(newMessages[targetIndex]);
+        return newMessages;
+      });
+    };
 
     try {
       await api.sendMessageStream(
@@ -224,16 +260,17 @@ export function useChat(sessionId: string | null) {
         false,
         (chunk: string) => {
           streamedContent += chunk;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
-            }
-            return newMessages;
-          });
+          // Capture current value immediately so a later onAssistantStart reset
+          // doesn't wipe this assistant's content when React flushes batched updates.
+          const contentSnapshot = streamedContent;
+          const assistantIdSnapshot = activeAssistantId;
+          updateAssistantMessage(
+            (message) => ({ ...message, content: contentSnapshot }),
+            assistantIdSnapshot
+          );
         },
         () => {
+          activeAssistantId = null;
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
@@ -242,6 +279,7 @@ export function useChat(sessionId: string | null) {
           }
         },
         (error: string) => {
+          activeAssistantId = null;
           setError(error);
           setLoading(false);
           setIsStreaming(false);
@@ -253,14 +291,11 @@ export function useChat(sessionId: string | null) {
         options?.reasoningEffort,
         (usage: TokenUsage, cost?: CostInfo) => {
           // Update the last assistant message with usage/cost data
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
-            }
-            return newMessages;
-          });
+          const assistantIdSnapshot = activeAssistantId;
+          updateAssistantMessage(
+            (message) => ({ ...message, usage, cost }),
+            assistantIdSnapshot
+          );
           // Update session totals
           setTotalUsage(prev => prev ? {
             prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
@@ -277,14 +312,11 @@ export function useChat(sessionId: string | null) {
           setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
-            }
-            return newMessages;
-          });
+          const assistantIdSnapshot = activeAssistantId;
+          updateAssistantMessage(
+            (message) => ({ ...message, sources }),
+            assistantIdSnapshot
+          );
         },
         options?.attachments,
         (userMessageId: string) => {
@@ -304,16 +336,11 @@ export function useChat(sessionId: string | null) {
         },
         (assistantMessageId: string) => {
           // Backend returned assistant message ID, update the assistant message
-          setMessages(prev => {
-            const newMessages = [...prev];
-            if (newMessages.length >= 1) {
-              newMessages[newMessages.length - 1] = {
-                ...newMessages[newMessages.length - 1],
-                message_id: assistantMessageId
-              };
-            }
-            return newMessages;
-          });
+          const assistantIdSnapshot = activeAssistantId;
+          updateAssistantMessage(
+            (message) => ({ ...message, message_id: assistantMessageId }),
+            assistantIdSnapshot
+          );
         },
         options?.useWebSearch,
         (questions: string[]) => {
@@ -325,19 +352,17 @@ export function useChat(sessionId: string | null) {
         },
         (durationMs: number) => {
           // Backend returned thinking duration
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
-            }
-            return newMessages;
-          });
+          const assistantIdSnapshot = activeAssistantId;
+          updateAssistantMessage(
+            (message) => ({ ...message, thinkingDurationMs: durationMs }),
+            assistantIdSnapshot
+          );
         },
         options?.fileReferences,
         // Group chat: onAssistantStart
         (assistantId: string, name: string, icon?: string) => {
           // Reset streamed content for new assistant
+          activeAssistantId = assistantId;
           streamedContent = '';
           // Add new empty assistant message with identity
           const newAssistantMsg: Message = {
@@ -348,14 +373,33 @@ export function useChat(sessionId: string | null) {
             assistant_name: name,
             assistant_icon: icon,
           };
-          setMessages(prev => [...prev, newAssistantMsg]);
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMessage = newMessages[newMessages.length - 1];
+            // If group metadata loaded late, remove the single-chat placeholder
+            // before appending the first assistant in group mode.
+            if (
+              lastMessage &&
+              lastMessage.role === 'assistant' &&
+              !lastMessage.assistant_id &&
+              !lastMessage.message_id &&
+              !lastMessage.content.trim()
+            ) {
+              newMessages.pop();
+            }
+            newMessages.push(newAssistantMsg);
+            return newMessages;
+          });
         },
         // Group chat: onAssistantDone
-        (_assistantId: string) => {
-          // Nothing special needed; message is already updated via onChunk/onUsage/onAssistantMessageId
+        (assistantId: string) => {
+          if (activeAssistantId === assistantId) {
+            activeAssistantId = null;
+          }
         }
       );
     } catch (err) {
+      activeAssistantId = null;
       setError(err instanceof Error ? err.message : 'Failed to send message');
       setLoading(false);
       setIsStreaming(false);
