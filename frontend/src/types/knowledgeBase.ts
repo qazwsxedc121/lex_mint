@@ -82,6 +82,9 @@ export interface RagConfig {
   bm25_weight: number;
   max_per_doc: number;
   reorder_strategy: 'none' | 'long_context';
+  context_neighbor_window: number;
+  context_neighbor_max_total: number;
+  context_neighbor_dedup_coverage: number;
   query_transform_enabled: boolean;
   query_transform_mode: 'none' | 'rewrite';
   query_transform_model_id: string;

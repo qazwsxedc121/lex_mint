@@ -487,6 +487,37 @@ export const ragConfig: SimpleConfigSettingsConfig = {
       get helpText() { return i18n.t('settings:rag.field.reorderStrategy.help'); }
     },
     {
+      type: 'number',
+      name: 'context_neighbor_window',
+      label: '邻居扩展窗口',
+      min: 0,
+      max: 10,
+      defaultValue: 0,
+      required: true,
+      helpText: '按 chunk_index 扩展相邻片段。0 表示关闭，2 表示命中后可补前后各 2 段。'
+    },
+    {
+      type: 'number',
+      name: 'context_neighbor_max_total',
+      label: '邻居扩展上限',
+      min: 0,
+      max: 200,
+      defaultValue: 0,
+      required: true,
+      helpText: '邻居扩展后的总片段上限（含原始命中）。0 表示按窗口自动估算。'
+    },
+    {
+      type: 'number',
+      name: 'context_neighbor_dedup_coverage',
+      label: '邻居去重覆盖阈值',
+      min: 0.5,
+      max: 1,
+      step: 0.01,
+      defaultValue: 0.9,
+      required: true,
+      helpText: '候选邻居内容被已选内容覆盖到该比例时会被丢弃，越小去重越激进。'
+    },
+    {
       type: 'checkbox',
       name: 'rerank_enabled',
       get label() { return i18n.t('settings:rag.field.rerankEnabled'); },

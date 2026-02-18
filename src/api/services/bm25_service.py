@@ -337,3 +337,43 @@ class Bm25Service:
                 }
             )
         return items
+
+    def list_document_chunks_in_range(
+        self,
+        *,
+        kb_id: str,
+        doc_id: str,
+        start_index: int,
+        end_index: int,
+        limit: int = 256,
+    ) -> List[Dict[str, object]]:
+        """List chunks for one document within an inclusive chunk index range."""
+        safe_start = max(0, int(start_index))
+        safe_end = max(safe_start, int(end_index))
+        safe_limit = max(1, min(int(limit), 2000))
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT chunk_id, kb_id, doc_id, filename, chunk_index, content
+                FROM rag_bm25_chunks
+                WHERE kb_id = ? AND doc_id = ? AND chunk_index >= ? AND chunk_index <= ?
+                ORDER BY chunk_index ASC
+                LIMIT ?
+                """,
+                (kb_id, doc_id, safe_start, safe_end, safe_limit),
+            ).fetchall()
+
+        items: List[Dict[str, object]] = []
+        for row in rows:
+            items.append(
+                {
+                    "chunk_id": str(row["chunk_id"]),
+                    "kb_id": str(row["kb_id"]),
+                    "doc_id": str(row["doc_id"]),
+                    "filename": str(row["filename"]),
+                    "chunk_index": int(row["chunk_index"]),
+                    "content": str(row["content"] or ""),
+                }
+            )
+        return items

@@ -121,6 +121,150 @@ class RagService:
         return results
 
     @staticmethod
+    def _normalize_overlap_text(text: str) -> str:
+        return " ".join(str(text or "").split()).strip().lower()
+
+    @staticmethod
+    def _edge_overlap_chars(
+        left: str,
+        right: str,
+        *,
+        min_overlap: int = 24,
+        max_overlap: int = 1600,
+    ) -> int:
+        left_text = str(left or "")
+        right_text = str(right or "")
+        if not left_text or not right_text:
+            return 0
+        max_len = min(len(left_text), len(right_text), max_overlap)
+        for overlap in range(max_len, max(min_overlap - 1, 0), -1):
+            if left_text[-overlap:] == right_text[:overlap]:
+                return overlap
+        return 0
+
+    @staticmethod
+    def _is_redundant_neighbor_content(
+        *,
+        candidate_text: str,
+        accepted_norm_texts: List[str],
+        coverage_threshold: float,
+    ) -> bool:
+        candidate_norm = RagService._normalize_overlap_text(candidate_text)
+        if not candidate_norm:
+            return True
+
+        for existing in accepted_norm_texts:
+            if candidate_norm == existing:
+                return True
+            # Containment catches near-duplicate overlap chunks quickly.
+            if len(candidate_norm) >= 80 and candidate_norm in existing:
+                return True
+
+            overlap = max(
+                RagService._edge_overlap_chars(candidate_norm, existing),
+                RagService._edge_overlap_chars(existing, candidate_norm),
+            )
+            if len(candidate_norm) >= 80 and (overlap / max(1, len(candidate_norm))) >= coverage_threshold:
+                return True
+
+        return False
+
+    def _expand_with_neighbor_chunks(
+        self,
+        *,
+        seeds: List[RagResult],
+        neighbor_window: int,
+        neighbor_max_total: int,
+        neighbor_dedup_coverage: float,
+    ) -> Tuple[List[RagResult], Dict[str, int]]:
+        stats = {
+            "neighbor_added_count": 0,
+            "neighbor_duplicate_filtered": 0,
+            "neighbor_redundant_filtered": 0,
+        }
+        if not seeds or neighbor_window <= 0:
+            return seeds, stats
+
+        effective_max_total = int(neighbor_max_total or 0)
+        if effective_max_total <= 0:
+            effective_max_total = len(seeds) * (1 + (2 * neighbor_window))
+        effective_max_total = max(len(seeds), min(effective_max_total, 500))
+
+        accepted = self._deduplicate_results(list(seeds))
+        seed_snapshot = list(accepted)
+        seen_keys = {self._result_identity(item) for item in accepted}
+        accepted_norm_texts = [self._normalize_overlap_text(item.content) for item in accepted]
+
+        for seed in seed_snapshot:
+            if len(accepted) >= effective_max_total:
+                break
+            if not seed.doc_id:
+                continue
+
+            start_index = max(0, int(seed.chunk_index) - neighbor_window)
+            end_index = int(seed.chunk_index) + neighbor_window
+            try:
+                rows = self.bm25_service.list_document_chunks_in_range(
+                    kb_id=seed.kb_id,
+                    doc_id=seed.doc_id,
+                    start_index=start_index,
+                    end_index=end_index,
+                    limit=max(8, (neighbor_window * 4) + 4),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Neighbor expansion failed for kb=%s doc=%s index=%s: %s",
+                    seed.kb_id,
+                    seed.doc_id,
+                    seed.chunk_index,
+                    e,
+                )
+                continue
+
+            rows.sort(
+                key=lambda row: (
+                    abs(int(row.get("chunk_index", 0) or 0) - int(seed.chunk_index)),
+                    int(row.get("chunk_index", 0) or 0),
+                )
+            )
+
+            for row in rows:
+                if len(accepted) >= effective_max_total:
+                    break
+                row_index = int(row.get("chunk_index", 0) or 0)
+                if row_index == int(seed.chunk_index):
+                    continue
+
+                candidate = RagResult(
+                    content=str(row.get("content") or ""),
+                    score=max(0.0, float(seed.score) - (0.0001 * abs(row_index - int(seed.chunk_index)))),
+                    kb_id=str(row.get("kb_id") or seed.kb_id),
+                    doc_id=str(row.get("doc_id") or seed.doc_id),
+                    filename=str(row.get("filename") or seed.filename),
+                    chunk_index=row_index,
+                )
+                identity = self._result_identity(candidate)
+                if identity in seen_keys:
+                    stats["neighbor_duplicate_filtered"] += 1
+                    continue
+
+                if self._is_redundant_neighbor_content(
+                    candidate_text=candidate.content,
+                    accepted_norm_texts=accepted_norm_texts,
+                    coverage_threshold=neighbor_dedup_coverage,
+                ):
+                    stats["neighbor_redundant_filtered"] += 1
+                    continue
+
+                accepted.append(candidate)
+                seen_keys.add(identity)
+                normalized = self._normalize_overlap_text(candidate.content)
+                accepted_norm_texts.append(normalized)
+                stats["neighbor_added_count"] += 1
+
+        return accepted, stats
+
+    @staticmethod
     def _compute_query_quality_score(diagnostics: Dict[str, Any]) -> float:
         """Heuristic retrieval quality score for CRAG-style query routing."""
         top_k = max(1, int(diagnostics.get("top_k", 1) or 1))
@@ -218,6 +362,14 @@ class RagService:
         recall_k = int(diagnostics.get("recall_k", top_k) or top_k)
         reorder_strategy = str(diagnostics.get("reorder_strategy", "long_context") or "long_context")
         max_per_doc = int(diagnostics.get("max_per_doc", 0) or 0)
+        context_neighbor_window = int(diagnostics.get("context_neighbor_window", 0) or 0)
+        context_neighbor_max_total = int(diagnostics.get("context_neighbor_max_total", 0) or 0)
+        context_neighbor_dedup_coverage = float(
+            diagnostics.get("context_neighbor_dedup_coverage", 0.9) or 0.0
+        )
+        neighbor_added_count = int(diagnostics.get("neighbor_added_count", 0) or 0)
+        neighbor_duplicate_filtered = int(diagnostics.get("neighbor_duplicate_filtered", 0) or 0)
+        neighbor_redundant_filtered = int(diagnostics.get("neighbor_redundant_filtered", 0) or 0)
         score_threshold = float(diagnostics.get("score_threshold", 0.0) or 0.0)
         kb_count = int(diagnostics.get("searched_kb_count", 0) or 0)
         requested_kb_count = int(diagnostics.get("requested_kb_count", kb_count) or kb_count)
@@ -266,6 +418,7 @@ class RagService:
             "snippet": (
                 f"raw {raw_count} -> dedup {deduped_count} -> "
                 f"diversified {diversified_count} -> selected {selected_count} | "
+                f"neighbor +{neighbor_added_count} | "
                 f"qt {query_transform_mode}:{query_transform_applied} "
                 f"{query_transform_crag_decision or 'direct'}"
             ),
@@ -278,6 +431,12 @@ class RagService:
             "score_threshold": score_threshold,
             "max_per_doc": max_per_doc,
             "reorder_strategy": reorder_strategy,
+            "context_neighbor_window": context_neighbor_window,
+            "context_neighbor_max_total": context_neighbor_max_total,
+            "context_neighbor_dedup_coverage": context_neighbor_dedup_coverage,
+            "neighbor_added_count": neighbor_added_count,
+            "neighbor_duplicate_filtered": neighbor_duplicate_filtered,
+            "neighbor_redundant_filtered": neighbor_redundant_filtered,
             "searched_kb_count": kb_count,
             "requested_kb_count": requested_kb_count,
             "best_score": best_score,
@@ -438,6 +597,14 @@ class RagService:
         reorder_strategy = str(getattr(config.retrieval, "reorder_strategy", "long_context") or "long_context").lower()
         if reorder_strategy not in {"none", "long_context"}:
             reorder_strategy = "long_context"
+        context_neighbor_window = int(getattr(config.retrieval, "context_neighbor_window", 0) or 0)
+        context_neighbor_window = max(0, min(10, context_neighbor_window))
+        context_neighbor_max_total = int(getattr(config.retrieval, "context_neighbor_max_total", 0) or 0)
+        context_neighbor_max_total = max(0, min(200, context_neighbor_max_total))
+        context_neighbor_dedup_coverage = float(
+            getattr(config.retrieval, "context_neighbor_dedup_coverage", 0.9) or 0.9
+        )
+        context_neighbor_dedup_coverage = max(0.5, min(1.0, context_neighbor_dedup_coverage))
         query_transform_enabled = bool(getattr(config.retrieval, "query_transform_enabled", False))
         query_transform_mode = str(getattr(config.retrieval, "query_transform_mode", "none") or "none").lower()
         if query_transform_mode not in {"none", "rewrite"}:
@@ -730,7 +897,21 @@ class RagService:
         )
         diversified_results = self._apply_doc_diversity(ranked_results, configured_max_per_doc)
         selected_results = diversified_results[:effective_top_k]
-        reordered_results = self._reorder_results(selected_results, reorder_strategy)
+        expanded_results, neighbor_stats = self._expand_with_neighbor_chunks(
+            seeds=selected_results,
+            neighbor_window=context_neighbor_window,
+            neighbor_max_total=context_neighbor_max_total,
+            neighbor_dedup_coverage=context_neighbor_dedup_coverage,
+        )
+        reordered_seed_results = self._reorder_results(selected_results, reorder_strategy)
+        seed_keys = {self._result_identity(item) for item in selected_results}
+        neighbor_results = [
+            item
+            for item in expanded_results
+            if self._result_identity(item) not in seed_keys
+        ]
+        # Keep retrieval ranking anchored on seed hits; neighbors are context-only append.
+        reordered_results = self._deduplicate_results(reordered_seed_results + neighbor_results)
         best_score = max(
             (
                 item.final_score if item.final_score is not None else item.score
@@ -759,6 +940,16 @@ class RagService:
             "score_threshold": float(effective_threshold),
             "max_per_doc": configured_max_per_doc,
             "reorder_strategy": reorder_strategy,
+            "context_neighbor_window": context_neighbor_window,
+            "context_neighbor_max_total": context_neighbor_max_total,
+            "context_neighbor_dedup_coverage": context_neighbor_dedup_coverage,
+            "neighbor_added_count": int(neighbor_stats.get("neighbor_added_count", 0) or 0),
+            "neighbor_duplicate_filtered": int(
+                neighbor_stats.get("neighbor_duplicate_filtered", 0) or 0
+            ),
+            "neighbor_redundant_filtered": int(
+                neighbor_stats.get("neighbor_redundant_filtered", 0) or 0
+            ),
             "query_original": original_query,
             "query_effective": effective_query,
             "query_transform_enabled": query_transform_enabled,
@@ -878,7 +1069,7 @@ class RagService:
         else:
             logger.info("[RAG] retrieve done: total=0")
         logger.info(
-            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s query_transform=%s/%s applied=%s model=%s guard_blocked=%s crag=%s/%s/%s rerank=%s/%s(%.2f) kb=%d/%d",
+            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s neighbor=+%d dup=%d overlap=%d query_transform=%s/%s applied=%s model=%s guard_blocked=%s crag=%s/%s/%s rerank=%s/%s(%.2f) kb=%d/%d",
             final_diagnostics["retrieval_mode"],
             final_diagnostics["raw_count"],
             final_diagnostics["vector_raw_count"],
@@ -894,6 +1085,9 @@ class RagService:
             final_diagnostics["score_threshold"],
             final_diagnostics["max_per_doc"],
             final_diagnostics["reorder_strategy"],
+            final_diagnostics.get("neighbor_added_count", 0),
+            final_diagnostics.get("neighbor_duplicate_filtered", 0),
+            final_diagnostics.get("neighbor_redundant_filtered", 0),
             final_diagnostics["query_transform_enabled"],
             final_diagnostics["query_transform_mode"],
             final_diagnostics["query_transform_applied"],
@@ -1126,22 +1320,106 @@ class RagService:
         if not results:
             return ""
 
+        def _stitch_text_pair(left: str, right: str) -> str:
+            left_text = str(left or "").strip()
+            right_text = str(right or "").strip()
+            if not left_text:
+                return right_text
+            if not right_text:
+                return left_text
+
+            left_norm = RagService._normalize_overlap_text(left_text)
+            right_norm = RagService._normalize_overlap_text(right_text)
+            if left_norm == right_norm or right_norm in left_norm:
+                return left_text
+            if left_norm in right_norm:
+                return right_text
+
+            overlap = RagService._edge_overlap_chars(left_text, right_text, min_overlap=3, max_overlap=2000)
+            overlap_ratio = overlap / max(1, min(len(left_text), len(right_text)))
+            if overlap > 0 and (overlap >= 20 or overlap_ratio >= 0.25):
+                return left_text + right_text[overlap:]
+            return f"{left_text}\n\n{right_text}"
+
+        def _build_stitched_segments(items: List[RagResult]) -> List[Dict[str, Any]]:
+            groups: Dict[str, Dict[str, Any]] = {}
+            for rank, item in enumerate(items):
+                key = RagService._doc_identity(item)
+                entry = groups.get(key)
+                if entry is None:
+                    entry = {
+                        "first_rank": rank,
+                        "kb_id": item.kb_id,
+                        "doc_id": item.doc_id,
+                        "filename": item.filename,
+                        "items": [],
+                    }
+                    groups[key] = entry
+                entry["items"].append(item)
+
+            ordered_groups = sorted(groups.values(), key=lambda row: int(row.get("first_rank", 0)))
+            segments: List[Dict[str, Any]] = []
+            for group in ordered_groups:
+                doc_items = sorted(
+                    list(group.get("items", [])),
+                    key=lambda item: int(item.chunk_index),
+                )
+                if not doc_items:
+                    continue
+
+                segment_start = int(doc_items[0].chunk_index)
+                segment_end = int(doc_items[0].chunk_index)
+                segment_text = str(doc_items[0].content or "")
+                for item in doc_items[1:]:
+                    idx = int(item.chunk_index)
+                    text = str(item.content or "")
+                    if idx - segment_end <= 2:
+                        segment_text = _stitch_text_pair(segment_text, text)
+                        segment_end = max(segment_end, idx)
+                    else:
+                        segments.append(
+                            {
+                                "kb_id": group["kb_id"],
+                                "doc_id": group["doc_id"],
+                                "filename": group["filename"],
+                                "start_chunk_index": segment_start,
+                                "end_chunk_index": segment_end,
+                                "content": segment_text,
+                            }
+                        )
+                        segment_start = idx
+                        segment_end = idx
+                        segment_text = text
+
+                segments.append(
+                    {
+                        "kb_id": group["kb_id"],
+                        "doc_id": group["doc_id"],
+                        "filename": group["filename"],
+                        "start_chunk_index": segment_start,
+                        "end_chunk_index": segment_end,
+                        "content": segment_text,
+                    }
+                )
+            return segments
+
+        stitched_segments = _build_stitched_segments(results)
         lines = [
             "Knowledge base context (use this information to answer the user's question):",
             f"Query: {query}",
         ]
 
-        seen_filenames = set()
-        for index, result in enumerate(results, start=1):
-            content = result.content.strip()
-            if len(content) > 800:
-                content = content[:800] + "..."
+        for index, segment in enumerate(stitched_segments, start=1):
+            content = str(segment.get("content") or "").strip()
+            if len(content) > 1200:
+                content = content[:1200] + "..."
 
-            source_label = result.filename
-            if source_label not in seen_filenames:
-                seen_filenames.add(source_label)
+            source_label = str(segment.get("filename") or "")
+            start_idx = int(segment.get("start_chunk_index", 0) or 0)
+            end_idx = int(segment.get("end_chunk_index", 0) or 0)
+            chunk_label = str(start_idx) if start_idx == end_idx else f"{start_idx}-{end_idx}"
 
-            lines.append(f"[{index}] From: {source_label}")
+            lines.append(f"[{index}] From: {source_label} (chunk {chunk_label})")
             lines.append(f"Content: {content}")
 
         return "\n".join(lines)
