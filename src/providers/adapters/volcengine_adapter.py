@@ -87,15 +87,19 @@ class VolcEngineAdapter(BaseLLMAdapter):
 
         model_kwargs: Dict[str, Any] = {}
         extra_body: Dict[str, Any] = {}
+        disable_thinking = bool(kwargs.get("disable_thinking", False))
 
         # Doubao thinking mode uses `thinking.type`.
         # Must go through extra_body since OpenAI SDK rejects unknown params.
-        if thinking_enabled:
+        if disable_thinking:
+            extra_body["thinking"] = {"type": "disabled"}
+            logger.info(f"Volcengine thinking mode disabled for {model}")
+        elif thinking_enabled:
             extra_body["thinking"] = {"type": "enabled"}
             logger.info(f"Volcengine thinking mode enabled for {model}")
 
         # Reasoning effort (Volcengine supports minimal/low/medium/high).
-        if reasoning_effort:
+        if reasoning_effort and not disable_thinking:
             if reasoning_effort in self._EFFORT_LEVELS:
                 extra_body["reasoning_effort"] = reasoning_effort
                 logger.info(f"Volcengine reasoning_effort={reasoning_effort} for {model}")
@@ -104,6 +108,8 @@ class VolcEngineAdapter(BaseLLMAdapter):
                     f"Invalid reasoning_effort '{reasoning_effort}' for Volcengine. "
                     f"Valid: {self._EFFORT_LEVELS}. Ignoring."
                 )
+        elif reasoning_effort and disable_thinking:
+            logger.info(f"Volcengine reasoning_effort ignored because thinking is disabled for {model}")
 
         # Sampling and OpenAI-compatible extras.
         passthrough_keys = [

@@ -77,6 +77,38 @@ def get_storage() -> ConversationStorage:
     return create_storage_with_project_resolver(settings.conversations_dir)
 
 
+async def _normalize_and_validate_group_assistants(group_assistants: Optional[List[str]]) -> Optional[List[str]]:
+    """Normalize and validate group assistant IDs for create/update operations."""
+    if group_assistants is None:
+        return None
+
+    normalized: List[str] = []
+    seen = set()
+    for assistant_id in group_assistants:
+        if not isinstance(assistant_id, str):
+            raise HTTPException(status_code=400, detail="assistant IDs must be strings")
+        cleaned = assistant_id.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalized.append(cleaned)
+
+    if len(normalized) < 2:
+        raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique assistants")
+
+    # Validate all assistant IDs exist and are enabled
+    from ..services.assistant_config_service import AssistantConfigService
+    assistant_service = AssistantConfigService()
+    for assistant_id in normalized:
+        assistant = await assistant_service.get_assistant(assistant_id)
+        if not assistant:
+            raise HTTPException(status_code=400, detail=f"Assistant '{assistant_id}' not found")
+        if not assistant.enabled:
+            raise HTTPException(status_code=400, detail=f"Assistant '{assistant_id}' is not enabled")
+
+    return normalized
+
+
 @router.post("", response_model=Dict[str, str])
 async def create_session(
     request: Optional[CreateSessionRequest] = None,
@@ -105,6 +137,7 @@ async def create_session(
     model_id = request.model_id if request else None
     temporary = request.temporary if request else False
     group_assistants = request.group_assistants if request else None
+    group_assistants = await _normalize_and_validate_group_assistants(group_assistants)
     logger.info(f"Creating new session (assistant: {assistant_id or 'default'}, model: {model_id or 'default'}, temporary: {temporary}, group: {len(group_assistants) if group_assistants else 0})...")
 
     try:
@@ -435,23 +468,12 @@ async def update_group_assistants(
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    if len(request.group_assistants) < 2:
-        raise HTTPException(status_code=400, detail="Group chat requires at least 2 assistants")
+    group_assistants = await _normalize_and_validate_group_assistants(request.group_assistants)
 
-    # Validate all assistant IDs exist and are enabled
-    from ..services.assistant_config_service import AssistantConfigService
-    assistant_service = AssistantConfigService()
-    for aid in request.group_assistants:
-        assistant = await assistant_service.get_assistant(aid)
-        if not assistant:
-            raise HTTPException(status_code=400, detail=f"Assistant '{aid}' not found")
-        if not assistant.enabled:
-            raise HTTPException(status_code=400, detail=f"Assistant '{aid}' is not enabled")
-
-    logger.info(f"Updating group assistants for session {session_id[:16]}: {request.group_assistants}")
+    logger.info(f"Updating group assistants for session {session_id[:16]}: {group_assistants}")
     try:
         await storage.update_group_assistants(
-            session_id, request.group_assistants,
+            session_id, group_assistants,
             context_type=context_type, project_id=project_id
         )
         return {"message": "Group assistants updated"}

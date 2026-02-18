@@ -10,6 +10,7 @@ import {
   DocumentDuplicateIcon,
   SparklesIcon,
   ChatBubbleLeftRightIcon,
+  UsersIcon,
   ArrowDownTrayIcon,
   ArrowRightOnRectangleIcon,
   FolderIcon,
@@ -91,6 +92,8 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
   setEditTitle,
 }) => {
   const { t } = useTranslation('chat');
+  const groupParticipantCount = session.group_assistants?.length ?? 0;
+  const isGroupSession = groupParticipantCount >= 2;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: session.session_id,
     data: {
@@ -155,13 +158,24 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
             </div>
           ) : (
             <>
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                {generatingTitleId === session.session_id ? (
-                  <span className="text-gray-500 dark:text-gray-400">{t('session.generating')}</span>
-                ) : (
-                  session.title
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                  {generatingTitleId === session.session_id ? (
+                    <span className="text-gray-500 dark:text-gray-400">{t('session.generating')}</span>
+                  ) : (
+                    session.title
+                  )}
+                </p>
+                {isGroupSession && (
+                  <span
+                    data-name="session-group-badge"
+                    className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 dark:border-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+                  >
+                    <UsersIcon className="h-3 w-3" />
+                    <span>{groupParticipantCount}</span>
+                  </span>
                 )}
-              </p>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
                 <ChatBubbleLeftRightIcon className="w-3 h-3" />
                 <span>{session.message_count || 0}</span>

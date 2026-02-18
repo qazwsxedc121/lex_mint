@@ -15,6 +15,25 @@ interface GroupChatCreateModalProps {
   onCreated: (sessionId: string) => void;
 }
 
+function extractErrorDetail(error: unknown): string | null {
+  if (!error || typeof error !== 'object') {
+    return error instanceof Error ? error.message : null;
+  }
+
+  const payload = error as { response?: { data?: { detail?: unknown } }; message?: string };
+  const detail = payload.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: string };
+    if (first && typeof first.msg === 'string' && first.msg.trim()) {
+      return first.msg;
+    }
+  }
+  return typeof payload.message === 'string' && payload.message.trim() ? payload.message : null;
+}
+
 export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   open,
   onClose,
@@ -25,14 +44,32 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [toastError, setToastError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setSelected(new Set());
-    api.listAssistants().then(list => {
-      setAssistants(list.filter(a => a.enabled));
-    });
-  }, [open, api]);
+    setToastError(null);
+    api.listAssistants()
+      .then(list => {
+        setAssistants(list.filter(a => a.enabled));
+      })
+      .catch((err: unknown) => {
+        const detail = extractErrorDetail(err);
+        setAssistants([]);
+        setToastError(
+          detail
+            ? t('groupChat.loadAssistantsFailedWithDetail', { error: detail })
+            : t('groupChat.loadAssistantsFailed')
+        );
+      });
+  }, [open, api, t]);
+
+  useEffect(() => {
+    if (!toastError) return;
+    const timer = window.setTimeout(() => setToastError(null), 3600);
+    return () => window.clearTimeout(timer);
+  }, [toastError]);
 
   const toggle = (id: string) => {
     setSelected(prev => {
@@ -52,8 +89,13 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
       );
       onCreated(sessionId);
       onClose();
-    } catch {
-      // Error handled silently
+    } catch (err: unknown) {
+      const detail = extractErrorDetail(err);
+      setToastError(
+        detail
+          ? t('groupChat.createFailedWithDetail', { error: detail })
+          : t('groupChat.createFailed')
+      );
     } finally {
       setLoading(false);
     }
@@ -67,6 +109,14 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
+      {toastError && (
+        <div
+          data-name="group-chat-modal-toast-error"
+          className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xl rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 shadow-md dark:border-red-700 dark:bg-red-900/70 dark:text-red-100"
+        >
+          {toastError}
+        </div>
+      )}
       <div
         data-name="group-chat-modal"
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4"

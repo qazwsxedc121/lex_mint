@@ -87,10 +87,14 @@ class ZhipuAdapter(BaseLLMAdapter):
 
         model_kwargs: Dict[str, Any] = {}
         extra_body: Dict[str, Any] = {}
+        disable_thinking = bool(kwargs.get("disable_thinking", False))
 
         # GLM thinking mode uses `thinking.type`.
         # Must go through extra_body since OpenAI SDK rejects unknown params.
-        if thinking_enabled:
+        if disable_thinking:
+            extra_body["thinking"] = {"type": "disabled"}
+            logger.info(f"Zhipu thinking mode disabled for {model}")
+        elif thinking_enabled:
             extra_body["thinking"] = {"type": "enabled"}
             logger.info(f"Zhipu thinking mode enabled for {model}")
 
@@ -231,4 +235,3 @@ class ZhipuAdapter(BaseLLMAdapter):
             logger.warning(f"Failed to fetch Zhipu models, using curated list: {e}")
 
         return sorted(self._CURATED_MODELS, key=lambda x: x["id"])
-

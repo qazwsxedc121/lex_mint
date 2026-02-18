@@ -1167,6 +1167,19 @@ class AgentService:
                 assistant_config_map[group_assistant_id] = assistant_obj
                 assistant_name_map[group_assistant_id] = assistant_obj.name
 
+        search_sources: List[Dict[str, Any]] = []
+        search_context = None
+        if use_web_search:
+            query = (search_query or raw_user_message).strip()
+            if query:
+                try:
+                    sources = await self.search_service.search(query)
+                    search_sources = [s.model_dump() for s in sources]
+                    if sources:
+                        search_context = self.search_service.build_search_context(query, sources)
+                except Exception as e:
+                    logger.warning(f"[GroupChat] Web search failed: {e}")
+
         # Process each assistant sequentially
         for assistant_id in group_assistants:
             assistant_obj = assistant_config_map.get(assistant_id)
@@ -1241,6 +1254,8 @@ class AgentService:
             )
             if rag_context:
                 system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+            if search_context:
+                system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
 
             # Stream LLM response
             full_response = ""
@@ -1298,6 +1313,7 @@ class AgentService:
             assistant_message_id = await self.storage.append_message(
                 session_id, "assistant", full_response,
                 usage=usage_data, cost=cost_data,
+                sources=search_sources if search_sources else None,
                 assistant_id=assistant_id,
                 context_type=context_type,
                 project_id=project_id
@@ -1314,6 +1330,14 @@ class AgentService:
                 if cost_data:
                     usage_event["cost"] = cost_data.model_dump()
                 yield usage_event
+
+            if search_sources:
+                yield {
+                    "type": "sources",
+                    "assistant_id": assistant_id,
+                    "assistant_turn_id": assistant_turn_id,
+                    "sources": search_sources,
+                }
 
             yield {
                 "type": "assistant_message_id",

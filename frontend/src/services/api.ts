@@ -685,9 +685,12 @@ export async function sendMessageStream(
       message,
       truncate_after_index: truncateAfterIndex,
       skip_user_message: skipUserMessage,
-      reasoning_effort: reasoningEffort || null,
       context_type: contextType,
     };
+
+    if (reasoningEffort !== undefined && reasoningEffort !== '') {
+      requestBody.reasoning_effort = reasoningEffort;
+    }
 
     if (projectId) {
       requestBody.project_id = projectId;
@@ -901,10 +904,13 @@ export async function sendCompareStream(
       session_id: sessionId,
       message,
       model_ids: modelIds,
-      reasoning_effort: options?.reasoningEffort || null,
       context_type: options?.contextType || 'chat',
       use_web_search: options?.useWebSearch || false,
     };
+
+    if (options?.reasoningEffort !== undefined && options.reasoningEffort !== '') {
+      requestBody.reasoning_effort = options.reasoningEffort;
+    }
 
     if (options?.projectId) {
       requestBody.project_id = options.projectId;

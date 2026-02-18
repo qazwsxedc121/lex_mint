@@ -117,8 +117,22 @@ class ConversationStorage:
         if temporary:
             metadata["temporary"] = True
 
-        if group_assistants and len(group_assistants) >= 2:
-            metadata["group_assistants"] = group_assistants
+        if group_assistants is not None:
+            normalized_group_assistants: List[str] = []
+            seen_group_assistants = set()
+            for assistant_id in group_assistants:
+                if not isinstance(assistant_id, str):
+                    continue
+                cleaned = assistant_id.strip()
+                if not cleaned or cleaned in seen_group_assistants:
+                    continue
+                seen_group_assistants.add(cleaned)
+                normalized_group_assistants.append(cleaned)
+
+            if len(normalized_group_assistants) < 2:
+                raise ValueError("Group chat requires at least 2 unique assistants")
+
+            metadata["group_assistants"] = normalized_group_assistants
 
         post.metadata = metadata
 
@@ -1310,12 +1324,23 @@ class ConversationStorage:
             FileNotFoundError: If session doesn't exist
             ValueError: If less than 2 assistants provided
         """
-        if len(group_assistants) < 2:
-            raise ValueError("Group chat requires at least 2 assistants")
+        normalized_group_assistants: List[str] = []
+        seen_group_assistants = set()
+        for assistant_id in group_assistants:
+            if not isinstance(assistant_id, str):
+                continue
+            cleaned = assistant_id.strip()
+            if not cleaned or cleaned in seen_group_assistants:
+                continue
+            seen_group_assistants.add(cleaned)
+            normalized_group_assistants.append(cleaned)
+
+        if len(normalized_group_assistants) < 2:
+            raise ValueError("Group chat requires at least 2 unique assistants")
 
         await self.update_session_metadata(
             session_id=session_id,
-            metadata_updates={"group_assistants": group_assistants},
+            metadata_updates={"group_assistants": normalized_group_assistants},
             context_type=context_type,
             project_id=project_id
         )

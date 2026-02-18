@@ -54,12 +54,16 @@ class DeepSeekAdapter(BaseLLMAdapter):
             "streaming": streaming,
             "stream_usage": True,
         }
+        disable_thinking = bool(kwargs.get("disable_thinking", False))
 
-        # Enable thinking mode if requested
-        if thinking_enabled:
-            llm_kwargs["model_kwargs"] = {
-                "extra_body": {"thinking": {"type": "enabled"}}
-            }
+        # DeepSeek thinking mode uses `thinking.type` in extra_body.
+        # Use explicit disabled mode for reasoning_effort="none".
+        if disable_thinking:
+            llm_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+            llm_kwargs["temperature"] = temperature
+            logger.info(f"DeepSeek thinking mode disabled for {model}")
+        elif thinking_enabled:
+            llm_kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
             # Thinking mode doesn't support temperature
             logger.info(f"DeepSeek thinking mode enabled for {model}")
         else:
@@ -69,16 +73,13 @@ class DeepSeekAdapter(BaseLLMAdapter):
         if "max_tokens" in kwargs:
             llm_kwargs["max_tokens"] = kwargs["max_tokens"]
 
-        # Add sampling parameters via model_kwargs (merge with existing thinking mode kwargs)
+        # Add sampling parameters via model_kwargs.
         extra_model_kwargs = {}
         for key in ["top_p", "frequency_penalty", "presence_penalty"]:
             if key in kwargs:
                 extra_model_kwargs[key] = kwargs[key]
         if extra_model_kwargs:
-            if "model_kwargs" in llm_kwargs:
-                llm_kwargs["model_kwargs"].update(extra_model_kwargs)
-            else:
-                llm_kwargs["model_kwargs"] = extra_model_kwargs
+            llm_kwargs["model_kwargs"] = extra_model_kwargs
 
         return ChatDeepSeek(**llm_kwargs)
 
