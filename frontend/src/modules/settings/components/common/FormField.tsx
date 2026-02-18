@@ -4,7 +4,7 @@
  * Generic form field renderer supporting all field types defined in config.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FieldConfig, ConfigContext } from '../../config/types';
 import type {
@@ -16,6 +16,8 @@ import {
   ASSISTANT_ICON_KEYS,
   getAssistantIcon,
 } from '../../../../shared/constants/assistantIcons';
+import { fetchProviderModels } from '../../../../services/api';
+import type { ModelInfo } from '../../../../types/model';
 
 const TEMPLATE_VARIABLE_TYPE_OPTIONS: PromptTemplateVariableType[] = ['text', 'number', 'boolean', 'select'];
 
@@ -312,6 +314,17 @@ export const FormField: React.FC<FormFieldProps> = ({
               );
             })}
           </div>
+        );
+
+      case 'model-id':
+        return (
+          <ModelIdField
+            config={config}
+            value={value}
+            onChange={onChange}
+            formData={formData}
+            inputClasses={inputClasses}
+          />
         );
 
       default:
@@ -694,6 +707,132 @@ const TemplateVariablesField: React.FC<{
 
 /** Max icons shown per page in the grid to keep rendering fast */
 const PAGE_SIZE = 200;
+
+/** Model ID field with provider-based model discovery */
+const ModelIdField: React.FC<{
+  config: Extract<FieldConfig, { type: 'model-id' }>;
+  value: string;
+  onChange: (value: any) => void;
+  formData: any;
+  inputClasses: string;
+}> = ({ config, value, onChange, formData, inputClasses }) => {
+  const { t } = useTranslation('settings');
+  const providerField = config.providerField || 'provider_id';
+  const nameField = config.nameField || 'name';
+  const providerId = formData[providerField] || '';
+
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Reset models when provider changes
+  useEffect(() => {
+    setAvailableModels([]);
+    setFetchError(false);
+  }, [providerId]);
+
+  const handleFetch = useCallback(async () => {
+    if (!providerId || isFetching) return;
+    setIsFetching(true);
+    setFetchError(false);
+    try {
+      const models = await fetchProviderModels(providerId);
+      setAvailableModels(models);
+      setShowDropdown(models.length > 0);
+    } catch {
+      setFetchError(true);
+      setAvailableModels([]);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [providerId, isFetching]);
+
+  const handleSelectModel = (model: ModelInfo) => {
+    // Batch update: set both id and name fields
+    onChange({
+      __batchUpdate: true,
+      [config.name]: model.id,
+      [nameField]: model.name,
+    });
+    setShowDropdown(false);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef} data-name="model-id-field">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={config.placeholder}
+          required={config.required}
+          disabled={config.disabled}
+          className={`${inputClasses} flex-1`}
+        />
+        <button
+          type="button"
+          onClick={handleFetch}
+          disabled={!providerId || isFetching || config.disabled}
+          title={t('models.field.id.fetchTitle')}
+          className="px-3 py-2 text-sm font-medium border rounded-md transition-colors
+            border-gray-300 dark:border-gray-600
+            bg-white dark:bg-gray-700
+            text-gray-700 dark:text-gray-300
+            hover:bg-gray-50 dark:hover:bg-gray-600
+            disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isFetching ? (
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {fetchError && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+          {t('models.field.id.fetchError')}
+        </p>
+      )}
+
+      {showDropdown && availableModels.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
+          {availableModels.map((model) => (
+            <button
+              key={model.id}
+              type="button"
+              onClick={() => handleSelectModel(model)}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+            >
+              <div className="font-medium text-gray-900 dark:text-white">{model.id}</div>
+              {model.name !== model.id && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">{model.name}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /** Collapsible icon picker with search */
 const IconPickerField: React.FC<{

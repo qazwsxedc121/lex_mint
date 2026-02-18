@@ -9,6 +9,7 @@ from .anthropic_adapter import AnthropicAdapter
 from .ollama_adapter import OllamaAdapter
 from .xai_adapter import XAIAdapter
 from .zhipu_adapter import ZhipuAdapter
+from .volcengine_adapter import VolcEngineAdapter
 
 __all__ = [
     "OpenAIAdapter",
@@ -17,4 +18,5 @@ __all__ = [
     "OllamaAdapter",
     "XAIAdapter",
     "ZhipuAdapter",
+    "VolcEngineAdapter",
 ]

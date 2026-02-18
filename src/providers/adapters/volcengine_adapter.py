@@ -1,12 +1,12 @@
 """
-Zhipu (GLM) OpenAI-Compatible Adapter.
+Volcano Engine (Doubao) OpenAI-Compatible Adapter.
 
-Adapter for Zhipu GLM models via OpenAI-compatible API.
-Supports thinking mode, tool calls, tool stream, structured output,
-and image understanding through pass-through request parameters.
+Adapter for Doubao models via Volcano Engine Ark platform's OpenAI-compatible API.
+Supports thinking mode, reasoning effort levels, tool calls, and streaming
+through pass-through request parameters.
 """
 import logging
-from typing import AsyncIterator, List, Dict, Any
+from typing import AsyncIterator, List, Dict, Any, Optional
 
 from langchain_core.messages import BaseMessage
 
@@ -37,28 +37,27 @@ def _extract_tool_calls(payload: Any) -> List[Any]:
     return tool_calls
 
 
-class ZhipuAdapter(BaseLLMAdapter):
+class VolcEngineAdapter(BaseLLMAdapter):
     """
-    Adapter for Zhipu GLM OpenAI-compatible API.
+    Adapter for Volcano Engine (Doubao) OpenAI-compatible API.
 
     Uses ChatReasoningOpenAI (a ChatOpenAI subclass that parses
-    reasoning_content) with base_url + api_key, and passes GLM-specific
-    capabilities (thinking, tool_stream, response_format, web_search, etc.)
+    reasoning_content) with the Ark platform base_url + api_key, and passes
+    Doubao-specific capabilities (thinking, reasoning_effort, etc.)
     via extra_body / model_kwargs.
     """
 
     _CURATED_MODELS: List[Dict[str, str]] = [
-        {"id": "glm-5", "name": "GLM-5"},
-        {"id": "glm-4.7", "name": "GLM-4.7"},
-        {"id": "glm-4.6", "name": "GLM-4.6"},
-        {"id": "glm-4.6-flash", "name": "GLM-4.6 Flash"},
-        {"id": "glm-4.6v", "name": "GLM-4.6V"},
-        {"id": "glm-4.5", "name": "GLM-4.5"},
-        {"id": "glm-4.5-air", "name": "GLM-4.5 Air"},
-        {"id": "glm-4.5-flash", "name": "GLM-4.5 Flash"},
-        {"id": "glm-z1-air", "name": "GLM-Z1 Air"},
-        {"id": "glm-z1-airx", "name": "GLM-Z1 AirX"},
+        {"id": "doubao-seed-2-0-pro-260215", "name": "Doubao Seed 2.0 Pro"},
+        {"id": "doubao-seed-2-0-lite-260215", "name": "Doubao Seed 2.0 Lite"},
+        {"id": "doubao-seed-2-0-mini-260215", "name": "Doubao Seed 2.0 Mini"},
+        {"id": "doubao-seed-2-0-code-preview-260215", "name": "Doubao Seed 2.0 Code"},
+        {"id": "doubao-1-5-pro-256k-250115", "name": "Doubao 1.5 Pro 256K"},
+        {"id": "doubao-1-5-pro-32k-250115", "name": "Doubao 1.5 Pro 32K"},
     ]
+
+    # Volcengine supports 4-level reasoning effort
+    _EFFORT_LEVELS = {"minimal", "low", "medium", "high"}
 
     def create_llm(
         self,
@@ -68,9 +67,10 @@ class ZhipuAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
+        reasoning_effort: Optional[str] = None,
         **kwargs
     ) -> ChatReasoningOpenAI:
-        """Create ChatReasoningOpenAI client for Zhipu OpenAI-compatible endpoint."""
+        """Create ChatReasoningOpenAI client for Volcano Engine Ark endpoint."""
         llm_kwargs: Dict[str, Any] = {
             "model": model,
             "temperature": temperature,
@@ -88,34 +88,39 @@ class ZhipuAdapter(BaseLLMAdapter):
         model_kwargs: Dict[str, Any] = {}
         extra_body: Dict[str, Any] = {}
 
-        # GLM thinking mode uses `thinking.type`.
+        # Doubao thinking mode uses `thinking.type`.
         # Must go through extra_body since OpenAI SDK rejects unknown params.
         if thinking_enabled:
             extra_body["thinking"] = {"type": "enabled"}
-            logger.info(f"Zhipu thinking mode enabled for {model}")
+            logger.info(f"Volcengine thinking mode enabled for {model}")
+
+        # Reasoning effort (Volcengine supports minimal/low/medium/high).
+        if reasoning_effort:
+            if reasoning_effort in self._EFFORT_LEVELS:
+                extra_body["reasoning_effort"] = reasoning_effort
+                logger.info(f"Volcengine reasoning_effort={reasoning_effort} for {model}")
+            else:
+                logger.warning(
+                    f"Invalid reasoning_effort '{reasoning_effort}' for Volcengine. "
+                    f"Valid: {self._EFFORT_LEVELS}. Ignoring."
+                )
 
         # Sampling and OpenAI-compatible extras.
         passthrough_keys = [
             "top_p",
-            "top_k",
             "frequency_penalty",
             "presence_penalty",
             "stop",
             "seed",
-            "user",
-            "user_id",
         ]
         for key in passthrough_keys:
             if key in kwargs and kwargs[key] is not None:
                 model_kwargs[key] = kwargs[key]
 
-        # GLM capability passthrough (tools, web_search, structured output, etc.).
+        # Feature passthrough (tools, etc.).
         feature_keys = [
             "tools",
             "tool_choice",
-            "parallel_tool_calls",
-            "tool_stream",
-            "response_format",
         ]
         for key in feature_keys:
             if key in kwargs and kwargs[key] is not None:
@@ -135,7 +140,7 @@ class ZhipuAdapter(BaseLLMAdapter):
         messages: List[BaseMessage],
         **kwargs
     ) -> AsyncIterator[StreamChunk]:
-        """Stream Zhipu responses, including reasoning and tool-call chunks."""
+        """Stream Volcengine responses, including reasoning and tool-call chunks."""
         usage_data = None
 
         async for chunk in llm.astream(messages):
@@ -164,7 +169,7 @@ class ZhipuAdapter(BaseLLMAdapter):
         messages: List[BaseMessage],
         **kwargs
     ) -> LLMResponse:
-        """Invoke Zhipu and return normalized full response."""
+        """Invoke Volcengine and return normalized full response."""
         response = await llm.ainvoke(messages)
 
         thinking = ""
@@ -184,12 +189,24 @@ class ZhipuAdapter(BaseLLMAdapter):
         )
 
     def supports_thinking(self) -> bool:
-        """GLM supports thinking mode via `thinking.type=enabled`."""
+        """Doubao supports thinking mode via `thinking.type=enabled`."""
         return True
 
     def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
-        """GLM thinking mode is toggle-based, not effort-based."""
-        return {"thinking": {"type": "enabled"}}
+        """
+        Doubao supports both thinking toggle and reasoning effort levels.
+
+        Args:
+            effort: Reasoning effort level (minimal, low, medium, high)
+
+        Returns:
+            Dict with thinking and reasoning_effort parameters
+        """
+        effort_value = effort if effort in self._EFFORT_LEVELS else "medium"
+        return {
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": effort_value,
+        }
 
     async def fetch_models(
         self,
@@ -197,9 +214,9 @@ class ZhipuAdapter(BaseLLMAdapter):
         api_key: str
     ) -> List[Dict[str, str]]:
         """
-        Fetch available models from Zhipu /models endpoint.
+        Fetch available models from Volcengine /models endpoint.
 
-        Falls back to curated list on any error.
+        Filters to active models only. Falls back to curated list on any error.
         """
         import httpx
 
@@ -218,17 +235,21 @@ class ZhipuAdapter(BaseLLMAdapter):
                 models = []
                 for model in data.get("data", []):
                     model_id = model.get("id", "")
-                    if model_id:
-                        models.append({
-                            "id": model_id,
-                            "name": model.get("name", model_id),
-                        })
+                    if not model_id:
+                        continue
+
+                    # Only include active models
+                    status = model.get("status", "").lower()
+                    if status and status != "active":
+                        continue
+
+                    name = model.get("name", model_id)
+                    models.append({"id": model_id, "name": name})
 
                 if models:
                     return sorted(models, key=lambda x: x["id"])
 
         except Exception as e:
-            logger.warning(f"Failed to fetch Zhipu models, using curated list: {e}")
+            logger.warning(f"Failed to fetch Volcengine models, using curated list: {e}")
 
         return sorted(self._CURATED_MODELS, key=lambda x: x["id"])
-
