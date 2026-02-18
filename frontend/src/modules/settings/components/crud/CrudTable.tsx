@@ -8,7 +8,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PencilIcon, TrashIcon, StarIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
-import { Table, StatusBadge } from '../common';
+import { Table, StatusToggle } from '../common';
 import type { CrudSettingsConfig, TableColumnConfig, ConfigContext } from '../../config/types';
 
 interface CrudTableProps<T> {
@@ -24,6 +24,10 @@ interface CrudTableProps<T> {
   onDelete: (item: T) => void;
   /** Set default handler */
   onSetDefault?: (item: T) => void;
+  /** Toggle status handler */
+  onToggleStatus?: (item: T) => void;
+  /** Set of item IDs currently being toggled */
+  togglingIds?: Set<string>;
   /** Context for cell renderers */
   context: ConfigContext;
   /** Get item ID */
@@ -37,6 +41,8 @@ export function CrudTable<T = any>({
   onEdit,
   onDelete,
   onSetDefault,
+  onToggleStatus,
+  togglingIds,
   context,
   getItemId
 }: CrudTableProps<T>) {
@@ -69,7 +75,13 @@ export function CrudTable<T = any>({
         cols.push({
           key: config.statusKey,
           label: t('common:status'),
-          render: (value) => <StatusBadge enabled={value} />
+          render: (value, row) => (
+            <StatusToggle
+              enabled={!!value}
+              onToggle={() => onToggleStatus?.(row)}
+              loading={togglingIds?.has(getItemId(row))}
+            />
+          )
         });
       }
     }
@@ -185,7 +197,7 @@ export function CrudTable<T = any>({
     }
 
     return cols;
-  }, [config, defaultItemId, onEdit, onDelete, onSetDefault, context, getItemId, t]);
+  }, [config, defaultItemId, onEdit, onDelete, onSetDefault, onToggleStatus, togglingIds, context, getItemId, t]);
 
   return (
     <div data-name="crud-table">
