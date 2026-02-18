@@ -51,6 +51,7 @@ export interface SearchSource {
   recall_k?: number;
   vector_recall_k?: number;
   bm25_recall_k?: number;
+  bm25_min_term_coverage?: number;
   fusion_top_k?: number;
   fusion_strategy?: 'rrf';
   retrieval_mode?: 'vector' | 'bm25' | 'hybrid';
@@ -65,6 +66,18 @@ export interface SearchSource {
   best_score?: number;
   vector_raw_count?: number;
   bm25_raw_count?: number;
+  query_transform_enabled?: boolean;
+  query_transform_mode?: 'none' | 'rewrite';
+  query_transform_applied?: boolean;
+  query_transform_model_id?: string;
+  query_transform_guard_blocked?: boolean;
+  query_transform_guard_reason?: string;
+  query_transform_crag_enabled?: boolean;
+  query_transform_crag_quality_score?: number;
+  query_transform_crag_quality_label?: 'correct' | 'ambiguous' | 'incorrect' | 'skipped';
+  query_transform_crag_decision?: string;
+  query_original?: string;
+  query_effective?: string;
   rerank_enabled?: boolean;
   rerank_applied?: boolean;
   rerank_weight?: number;

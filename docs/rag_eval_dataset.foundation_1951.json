@@ -1,0 +1,420 @@
+{
+  "name": "rag-eval-foundation-1951",
+  "description": "Labeled retrieval cases for Foundation (1951), chapter-split files from data/novel_rag.",
+  "default_kb_ids": [
+    "foundation-1951"
+  ],
+  "cases": [
+    {
+      "id": "f1951_001_hyperspace_arrival",
+      "query": "盖尔第一次前往川陀时，对超空间旅行的体验是什么？",
+      "expected": {
+        "filenames": [
+          "002_第一章.md"
+        ],
+        "keywords": [
+          "超空间跃迁",
+          "盖尔·多尼克"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_002_open_sky_phobia",
+      "query": "盖尔去观景塔后，为什么说川陀本地人可能会神经过敏？",
+      "expected": {
+        "filenames": [
+          "004_第三章.md"
+        ],
+        "keywords": [
+          "直达高塔",
+          "神经过敏"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_003_trantor_collapse_prob",
+      "query": "谢顿给出的川陀在三个世纪内毁灭概率是多少？",
+      "expected": {
+        "filenames": [
+          "005_第四章.md"
+        ],
+        "keywords": [
+          "千分之九二五",
+          "三个世纪"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_004_commission_origin",
+      "query": "公共安全委员会是在什么历史背景下掌权的？",
+      "expected": {
+        "filenames": [
+          "006_第五章.md"
+        ],
+        "keywords": [
+          "恩腾皇朝",
+          "克里昂一世",
+          "公共安全委员会"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_005_terminus_intro",
+      "query": "端点星在地理与资源上有什么特征？",
+      "expected": {
+        "filenames": [
+          "010_第一章.md"
+        ],
+        "keywords": [
+          "端点星",
+          "自然资源极为贫乏"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_006_anacreon_envoy",
+      "query": "安纳克瑞昂派到端点星的特使是谁？",
+      "expected": {
+        "filenames": [
+          "011_第二章.md"
+        ],
+        "keywords": [
+          "安瑟姆·浩·若缀克",
+          "安纳克瑞昂国王"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_007_lord_dorwin",
+      "query": "道尔文大人有什么典型外貌和说话特征？",
+      "expected": {
+        "filenames": [
+          "013_第四章.md"
+        ],
+        "keywords": [
+          "道尔文大人",
+          "嗜抽鼻烟",
+          "蓬松鬓须"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_008_seldon_vault_first_visit",
+      "query": "第一次穹窿会议里，哈定看到现场有什么不寻常安排？",
+      "expected": {
+        "filenames": [
+          "016_第七章.md"
+        ],
+        "keywords": [
+          "穹窿中所准备的椅子",
+          "哈定"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_009_four_kingdoms",
+      "query": "四王国是怎样形成的，哪一个最强？",
+      "expected": {
+        "filenames": [
+          "017_第一章.md"
+        ],
+        "keywords": [
+          "四王国",
+          "安纳克瑞昂王国"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_010_action_party",
+      "query": "行动党中非常活跃的人物有哪些？",
+      "expected": {
+        "filenames": [
+          "020_第四章.md"
+        ],
+        "keywords": [
+          "行动党",
+          "路易斯·玻特",
+          "赛犬·瑟麦克"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_011_anacreon_chaplain",
+      "query": "温尼斯号上的首席随军教士是谁？",
+      "expected": {
+        "filenames": [
+          "023_第七章.md"
+        ],
+        "keywords": [
+          "泰欧·艾波拉特",
+          "温尼斯号",
+          "随军教士"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_012_lefkin_video_call",
+      "query": "雷夫金王子出现在视讯电话时，摄政王有什么反应？",
+      "expected": {
+        "filenames": [
+          "024_第八章.md"
+        ],
+        "keywords": [
+          "雷夫金王子",
+          "视讯电话",
+          "摄政王"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_013_vault_crowd_after_30_years",
+      "query": "三十年后再进穹窿时，现场人群情况如何？",
+      "expected": {
+        "filenames": [
+          "025_第九章.md"
+        ],
+        "keywords": [
+          "穹窿中挤满了人潮",
+          "三十年前"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_014_trader_role",
+      "query": "基地时代的行商被如何定义？他们通常怎么出行？",
+      "expected": {
+        "filenames": [
+          "026_第一章.md"
+        ],
+        "keywords": [
+          "行商",
+          "银河外缘",
+          "太空船"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_015_askone_intercept",
+      "query": "彭耶慈进入阿斯康边界时遭遇了什么？",
+      "expected": {
+        "filenames": [
+          "027_第二章.md"
+        ],
+        "keywords": [
+          "彭耶慈",
+          "阿斯康",
+          "警戒战舰"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_016_gorov_in_prison",
+      "query": "彭耶慈在牢里见到谁，双方第一句交流是什么语境？",
+      "expected": {
+        "filenames": [
+          "028_第三章.md"
+        ],
+        "keywords": [
+          "艾斯克·哥罗夫",
+          "牢门",
+          "彭耶慈"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_017_gold_to_grand_duke",
+      "query": "谁说了“还有黄金要献给您”，这是在什么场景？",
+      "expected": {
+        "filenames": [
+          "029_第四章.md"
+        ],
+        "keywords": [
+          "还有黄金要献给您",
+          "大公",
+          "表演"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_018_ransom_release",
+      "query": "哥罗夫被释放时赎金是多少，释放发生在第几天？",
+      "expected": {
+        "filenames": [
+          "031_第六章.md"
+        ],
+        "keywords": [
+          "第三十天",
+          "五百磅",
+          "赎金"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_019_mallow_intro",
+      "query": "侯伯·马洛在百科全书中的定位是什么？",
+      "expected": {
+        "filenames": [
+          "032_第一章.md"
+        ],
+        "keywords": [
+          "侯伯·马洛",
+          "商业王侯"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_020_korell_politics",
+      "query": "柯瑞尔政体被如何评价，为什么说它名为共和国？",
+      "expected": {
+        "filenames": [
+          "035_第四章.md"
+        ],
+        "keywords": [
+          "柯瑞尔",
+          "共和国之名",
+          "独裁专政"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_021_lisea_dialog",
+      "query": "领袖夫人莉西雅首次出场时的语气和措辞有什么特点？",
+      "expected": {
+        "filenames": [
+          "037_第六章.md"
+        ],
+        "keywords": [
+          "莉西雅",
+          "仁慈高贵的丈夫",
+          "花园走走"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_022_captain_mission_packet",
+      "query": "马洛离舰前交给卓特上尉哪些物件？",
+      "expected": {
+        "filenames": [
+          "040_第九章.md"
+        ],
+        "keywords": [
+          "卓特上尉",
+          "微缩胶片",
+          "银色的小球"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_023_onum_barr",
+      "query": "欧南·巴尔为何被描述为“老得无所畏惧”？",
+      "expected": {
+        "filenames": [
+          "041_第十章.md"
+        ],
+        "keywords": [
+          "欧南·巴尔",
+          "老得无所畏惧",
+          "书籍"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_024_oily_technician",
+      "query": "马洛在该行星见到的技官有什么外观细节？",
+      "expected": {
+        "filenames": [
+          "042_第十一章.md"
+        ],
+        "keywords": [
+          "技官",
+          "戴了好几个戒指",
+          "粉红色的光芒"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_025_mallow_trial",
+      "query": "马洛公审进行到第几天，市议厅现场是什么状态？",
+      "expected": {
+        "filenames": [
+          "045_第十四章.md"
+        ],
+        "keywords": [
+          "公审已经进行到了第四天",
+          "市议厅",
+          "爆满"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_026_mallow_mayor_campaign",
+      "query": "安可·杰尔如何劝马洛不要参选市长？",
+      "expected": {
+        "filenames": [
+          "046_第十五章.md"
+        ],
+        "keywords": [
+          "安可·杰尔",
+          "竞选市长",
+          "反覆无常"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_027_dark_nebula_shock",
+      "query": "黑暗星云号上的上尉看到什么后极度恐惧？",
+      "expected": {
+        "filenames": [
+          "048_第十七章.md"
+        ],
+        "keywords": [
+          "黑暗星云号",
+          "那是什么东西",
+          "巨型星舰"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "f1951_028_mallow_as_mayor",
+      "query": "马洛当上市长两年后，最关心的战损问题是什么？",
+      "expected": {
+        "filenames": [
+          "049_第十八章.md"
+        ],
+        "keywords": [
+          "当了两年的市长",
+          "我们损失了多少艘星舰",
+          "杰尔问道"
+        ]
+      },
+      "top_k": 5
+    }
+  ]
+}

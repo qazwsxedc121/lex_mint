@@ -1,7 +1,7 @@
 """
 Document Processing Service
 
-Pipeline: Upload -> Extract Text -> Chunk -> Embed -> Store in ChromaDB
+Pipeline: Upload -> Extract Text -> Chunk -> Embed -> Store in vector backend
 """
 import logging
 import random
@@ -35,7 +35,7 @@ class DocumentProcessingService:
         chunk_overlap: Optional[int] = None,
     ):
         """
-        Process a document: extract text, chunk, embed, store in ChromaDB.
+        Process a document: extract text, chunk, embed, store in vector backend.
 
         Args:
             kb_id: Knowledge base ID
@@ -77,16 +77,31 @@ class DocumentProcessingService:
             override_model = kb.embedding_model if kb and kb.embedding_model else None
             embedding_fn = self.embedding_service.get_embedding_function(override_model)
 
-            # Step 4: Store in ChromaDB
-            logger.info(f"Storing {len(chunks)} chunks in ChromaDB collection kb_{kb_id}")
-            await self._store_in_chromadb(
-                kb_id=kb_id,
-                doc_id=doc_id,
-                filename=filename,
-                file_type=file_type,
-                chunks=chunks,
-                embedding_fn=embedding_fn,
-            )
+            # Step 4: Store in configured vector backend
+            vector_backend = str(
+                getattr(self.rag_config_service.config.storage, "vector_store_backend", "chroma")
+                or "chroma"
+            ).lower()
+            if vector_backend == "sqlite_vec":
+                logger.info(f"Storing {len(chunks)} chunks in SQLite vector store for kb_{kb_id}")
+                await self._store_in_sqlite_vec(
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    filename=filename,
+                    file_type=file_type,
+                    chunks=chunks,
+                    embedding_fn=embedding_fn,
+                )
+            else:
+                logger.info(f"Storing {len(chunks)} chunks in ChromaDB collection kb_{kb_id}")
+                await self._store_in_chromadb(
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    filename=filename,
+                    file_type=file_type,
+                    chunks=chunks,
+                    embedding_fn=embedding_fn,
+                )
 
             # Step 5: Update document status to ready
             await kb_service.update_document_status(
@@ -416,3 +431,116 @@ class DocumentProcessingService:
                 )
         except Exception as e:
             logger.warning(f"Failed to cleanup stale chunks for doc {doc_id}: {e}")
+
+    async def _store_in_sqlite_vec(
+        self,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        file_type: str,
+        chunks: List[str],
+        embedding_fn,
+    ):
+        """Store document chunks in SQLite vector store."""
+        from .sqlite_vec_service import SqliteVecService
+
+        if not hasattr(embedding_fn, "embed_documents"):
+            raise ValueError("Embedding function does not support embed_documents() for sqlite_vec backend")
+
+        sqlite_vec_service = SqliteVecService()
+        ingest_id = uuid.uuid4().hex[:8]
+        ids = [f"{doc_id}_{ingest_id}_chunk_{i}" for i in range(len(chunks))]
+
+        batch_size = max(1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64))
+        batch_delay = max(
+            0.0,
+            float(getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0),
+        )
+        max_retries = int(getattr(self.rag_config_service.config.embedding, "batch_max_retries", 3) or 0)
+        max_delay = 60.0
+
+        total = len(chunks)
+        chunk_rows: List[dict] = []
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch_texts = chunks[start:end]
+            batch_ids = ids[start:end]
+
+            attempt = 0
+            retry_delay = batch_delay or 0.5
+            while True:
+                try:
+                    batch_vectors = embedding_fn.embed_documents(batch_texts)
+                    if len(batch_vectors) != len(batch_texts):
+                        raise ValueError(
+                            f"Embedding result count mismatch: expected {len(batch_texts)}, got {len(batch_vectors)}"
+                        )
+                    for offset, vector in enumerate(batch_vectors):
+                        chunk_rows.append(
+                            {
+                                "chunk_id": batch_ids[offset],
+                                "chunk_index": start + offset,
+                                "content": batch_texts[offset],
+                                "embedding": vector,
+                            }
+                        )
+                    logger.info(f"Embedded chunks {start + 1}-{end} of {total} for kb_{kb_id}")
+                    break
+                except Exception as e:
+                    message = str(e).lower()
+                    is_rate_limit = "rate limit" in message or "429" in message
+                    attempt += 1
+                    enforce_retries = max_retries > 0 and not is_rate_limit
+                    if enforce_retries and attempt > max_retries:
+                        raise e
+
+                    if is_rate_limit:
+                        retry_delay = max(retry_delay, 5.0)
+                    wait_seconds = min(max_delay, max(retry_delay, batch_delay, 0.5))
+                    wait_seconds *= random.uniform(0.8, 1.2)
+                    max_label = "inf" if is_rate_limit or max_retries <= 0 else str(max_retries)
+                    logger.warning(
+                        f"Embedding batch {start + 1}-{end} failed "
+                        f"(attempt {attempt}/{max_label}). Retrying in {wait_seconds:.2f}s: {e}"
+                    )
+                    await asyncio.sleep(wait_seconds)
+                    retry_delay = min(max_delay, max(retry_delay * 2, batch_delay, 0.5))
+
+            if batch_delay > 0 and end < total:
+                await asyncio.sleep(batch_delay)
+
+        sqlite_vec_service.upsert_chunks(
+            kb_id=kb_id,
+            doc_id=doc_id,
+            filename=filename,
+            file_type=file_type,
+            ingest_id=ingest_id,
+            chunk_rows=chunk_rows,
+        )
+
+        bm25_chunks = [
+            {
+                "chunk_id": ids[index],
+                "chunk_index": index,
+                "content": chunks[index],
+            }
+            for index in range(total)
+        ]
+        try:
+            self.bm25_service.upsert_document_chunks(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=filename,
+                chunks=bm25_chunks,
+            )
+        except Exception:
+            sqlite_vec_service.delete_chunks_by_ids(kb_id=kb_id, chunk_ids=ids)
+            raise
+
+        deleted = sqlite_vec_service.delete_stale_document_chunks(
+            kb_id=kb_id,
+            doc_id=doc_id,
+            keep_chunk_ids=ids,
+        )
+        if deleted:
+            logger.info(f"Removed {deleted} stale SQLite chunks for doc {doc_id} in kb_{kb_id}")

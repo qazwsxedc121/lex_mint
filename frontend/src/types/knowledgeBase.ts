@@ -74,6 +74,7 @@ export interface RagConfig {
   recall_k: number;
   vector_recall_k: number;
   bm25_recall_k: number;
+  bm25_min_term_coverage: number;
   fusion_top_k: number;
   fusion_strategy: 'rrf';
   rrf_k: number;
@@ -81,6 +82,15 @@ export interface RagConfig {
   bm25_weight: number;
   max_per_doc: number;
   reorder_strategy: 'none' | 'long_context';
+  query_transform_enabled: boolean;
+  query_transform_mode: 'none' | 'rewrite';
+  query_transform_model_id: string;
+  query_transform_timeout_seconds: number;
+  query_transform_guard_enabled: boolean;
+  query_transform_guard_max_new_terms: number;
+  query_transform_crag_enabled: boolean;
+  query_transform_crag_lower_threshold: number;
+  query_transform_crag_upper_threshold: number;
   rerank_enabled: boolean;
   rerank_api_model: string;
   rerank_api_base_url: string;

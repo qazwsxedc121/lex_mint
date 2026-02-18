@@ -107,6 +107,46 @@ class Bm25Service:
         escaped = [f"\"{tok.replace('\"', '\"\"')}\"" for tok in tokens]
         return " OR ".join(escaped)
 
+    @classmethod
+    def _significant_query_terms(cls, query: str) -> List[str]:
+        tokens = cls.tokenize_text(query)
+        if not tokens:
+            return []
+
+        seen = set()
+        terms: List[str] = []
+        for tok in tokens:
+            if tok in seen:
+                continue
+            seen.add(tok)
+            if len(tok) >= 2:
+                terms.append(tok)
+
+        if terms:
+            return terms
+
+        # Fallback for short-token queries so filtering does not hide all results.
+        short_terms: List[str] = []
+        for tok in tokens:
+            if not tok or tok in short_terms:
+                continue
+            short_terms.append(tok)
+        return short_terms
+
+    @staticmethod
+    def _calculate_term_coverage(query_terms: List[str], tokenized_text: str) -> tuple[float, int]:
+        if not query_terms:
+            return 1.0, 0
+        if not tokenized_text:
+            return 0.0, 0
+
+        chunk_terms = {tok for tok in tokenized_text.split(" ") if tok}
+        if not chunk_terms:
+            return 0.0, 0
+
+        matched_count = sum(1 for tok in query_terms if tok in chunk_terms)
+        return matched_count / max(1, len(query_terms)), matched_count
+
     def upsert_document_chunks(
         self,
         *,
@@ -211,12 +251,24 @@ class Bm25Service:
                 cursor.execute(f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})", chunk_ids)
             conn.commit()
 
-    def search(self, *, kb_id: str, query: str, top_k: int) -> List[Dict[str, object]]:
+    def search(
+        self,
+        *,
+        kb_id: str,
+        query: str,
+        top_k: int,
+        min_term_coverage: float = 0.0,
+    ) -> List[Dict[str, object]]:
         match_expr = self._build_match_expression(query)
         if not match_expr:
             return []
 
         safe_top_k = max(1, int(top_k))
+        safe_min_term_coverage = max(0.0, min(1.0, float(min_term_coverage or 0.0)))
+        fetch_k = safe_top_k
+        if safe_min_term_coverage > 0:
+            fetch_k = min(max(safe_top_k * 5, safe_top_k), 1000)
+
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -227,6 +279,7 @@ class Bm25Service:
                     c.filename,
                     c.chunk_index,
                     c.content,
+                    c.tokenized,
                     bm25(rag_bm25_fts) AS bm25_score
                 FROM rag_bm25_fts
                 JOIN rag_bm25_chunks c ON c.chunk_id = rag_bm25_fts.chunk_id
@@ -234,13 +287,32 @@ class Bm25Service:
                 ORDER BY bm25_score ASC
                 LIMIT ?
                 """,
-                (match_expr, kb_id, safe_top_k),
+                (match_expr, kb_id, fetch_k),
             ).fetchall()
 
         if not rows:
             return []
 
-        raw_scores = [float(row["bm25_score"]) for row in rows]
+        filtered_rows: List[tuple[sqlite3.Row, float, int]] = []
+        if safe_min_term_coverage > 0:
+            query_terms = self._significant_query_terms(query)
+            for row in rows:
+                coverage, matched_count = self._calculate_term_coverage(
+                    query_terms,
+                    str(row["tokenized"] or ""),
+                )
+                if coverage + 1e-12 < safe_min_term_coverage:
+                    continue
+                filtered_rows.append((row, coverage, matched_count))
+                if len(filtered_rows) >= safe_top_k:
+                    break
+        else:
+            filtered_rows = [(row, 1.0, 0) for row in rows[:safe_top_k]]
+
+        if not filtered_rows:
+            return []
+
+        raw_scores = [float(row["bm25_score"]) for row, _, _ in filtered_rows]
         min_score = min(raw_scores)
         max_score = max(raw_scores)
         if max_score - min_score <= 1e-12:
@@ -249,7 +321,7 @@ class Bm25Service:
             normalized = [(max_score - val) / (max_score - min_score) for val in raw_scores]
 
         items: List[Dict[str, object]] = []
-        for index, row in enumerate(rows):
+        for index, (row, coverage, matched_count) in enumerate(filtered_rows):
             items.append(
                 {
                     "chunk_id": str(row["chunk_id"]),
@@ -260,6 +332,8 @@ class Bm25Service:
                     "content": str(row["content"]),
                     "score": float(normalized[index]),
                     "bm25_score": float(row["bm25_score"]),
+                    "term_coverage": float(coverage),
+                    "matched_query_terms": int(matched_count),
                 }
             )
         return items

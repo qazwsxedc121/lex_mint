@@ -123,18 +123,25 @@ async def startup_event():
     if cleaned:
         logger.info("Cleaned up %s temporary session(s)", cleaned)
 
-    # Ensure ChromaDB persist directory exists.
+    # Ensure vector-store paths exist.
     from .services.rag_config_service import RagConfigService
 
     try:
         rag_cfg = RagConfigService()
-        persist_dir = Path(rag_cfg.config.storage.persist_directory)
-        if not persist_dir.is_absolute():
-            persist_dir = Path(__file__).parent.parent.parent / persist_dir
-        persist_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("ChromaDB storage directory ready: %s", persist_dir)
+        backend = str(getattr(rag_cfg.config.storage, "vector_store_backend", "chroma") or "chroma").lower()
+        if backend == "sqlite_vec":
+            from .services.sqlite_vec_service import SqliteVecService
+
+            sqlite_vec = SqliteVecService()
+            logger.info("SQLite vector storage ready: %s", sqlite_vec.db_path)
+        else:
+            persist_dir = Path(rag_cfg.config.storage.persist_directory)
+            if not persist_dir.is_absolute():
+                persist_dir = Path(__file__).parent.parent.parent / persist_dir
+            persist_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("ChromaDB storage directory ready: %s", persist_dir)
     except Exception as e:
-        logger.warning("Failed to initialize ChromaDB directory: %s", e)
+        logger.warning("Failed to initialize vector storage: %s", e)
 
 
 @app.get("/api/health")

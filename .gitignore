@@ -55,6 +55,7 @@ logs/
 conversations/
 attachments/
 knowledge_bases/
+data/
 data/chromadb/
 data/knowledge_bases/
 

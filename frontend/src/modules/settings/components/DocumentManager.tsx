@@ -51,6 +51,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [reprocessingAll, setReprocessingAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,6 +126,38 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (documents.length === 0) {
+      setError(t('documents.noDocsForDelete'));
+      return;
+    }
+    if (!confirm(t('documents.confirmDeleteAll', { count: documents.length }))) {
+      return;
+    }
+
+    setDeletingAll(true);
+    setError(null);
+    let failed = 0;
+    try {
+      for (const doc of documents) {
+        try {
+          await api.deleteDocument(kbId, doc.id);
+        } catch {
+          failed += 1;
+        }
+      }
+      await loadDocuments();
+      if (failed > 0) {
+        setError(t('documents.failedToDeleteSome', { count: failed }));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('documents.failedToDeleteAll');
+      setError(message);
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const handleReprocess = async (docId: string) => {
     try {
       await api.reprocessDocument(kbId, docId);
@@ -175,15 +208,26 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
           {t('documents.title')}
         </h3>
-        <button
-          type="button"
-          onClick={handleReprocessAll}
-          disabled={reprocessingAll || documents.length === 0}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60"
-        >
-          <ArrowPathIcon className="h-4 w-4" />
-          {reprocessingAll ? t('documents.reprocessing') : t('documents.reprocessAll')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleReprocessAll}
+            disabled={reprocessingAll || deletingAll || documents.length === 0}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            {reprocessingAll ? t('documents.reprocessing') : t('documents.reprocessAll')}
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteAll}
+            disabled={deletingAll || reprocessingAll || documents.length === 0}
+            className="inline-flex items-center gap-2 rounded-md border border-red-300 dark:border-red-800 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60"
+          >
+            <TrashIcon className="h-4 w-4" />
+            {deletingAll ? t('documents.deletingAll') : t('documents.deleteAll')}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -289,7 +333,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                           onClick={() => handleReprocess(doc.id)}
                           className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                           title={t('documents.reprocess')}
-                          disabled={doc.status === 'processing'}
+                          disabled={doc.status === 'processing' || deletingAll}
                         >
                           <ArrowPathIcon className="h-4 w-4" />
                         </button>
@@ -297,6 +341,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                           onClick={() => handleDelete(doc.id)}
                           className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                           title={t('common:delete')}
+                          disabled={deletingAll}
                         >
                           <TrashIcon className="h-4 w-4" />
                         </button>
