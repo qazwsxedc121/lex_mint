@@ -142,5 +142,12 @@
   "fileReference.proximityLabel.sibling": "Sibling directory",
   "fileReference.proximityLabel.project-wide": "Project",
   "fileReference.fileNotFound": "File not found",
-  "fileReference.readError": "Could not read file"
+  "fileReference.readError": "Could not read file",
+
+  "sidebar.groupChat": "Group Chat",
+  "groupChat.createTitle": "Create Group Chat",
+  "groupChat.selectHint": "Select at least 2 assistants to start a group chat.",
+  "groupChat.noAssistants": "No enabled assistants available.",
+  "groupChat.create": "Create",
+  "groupChat.participants": "{{count}} assistants"
 }

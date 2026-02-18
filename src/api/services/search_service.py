@@ -119,7 +119,7 @@ class SearchService:
     async def _search_tavily(self, query: str) -> List[SearchSource]:
         api_key = await self.model_config_service.get_api_key("tavily")
         if not api_key:
-            logger.warning("Tavily API key not found in ~/.lex_mint/keys_config.yaml")
+            logger.warning("Tavily API key not found in config/local/keys_config.yaml")
             return []
 
         payload = {

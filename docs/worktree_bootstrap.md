@@ -16,9 +16,10 @@
 - `.env` 需要手动初始化（或脚本生成）
 - `config/local/*.yaml` 与 `data/state/*.yaml` 会在后端首次启动时自动生成
 
-## 一次性配置共享 key（推荐）
+## 一次性配置共享 key（仅用于初始化）
 
-将 API key 放在用户目录的共享文件中，后续每个 worktree 自动复用。
+将 API key 放在用户目录的共享文件中，作为新 worktree 的初始化来源。
+**运行时只会写 `config/local/keys_config.yaml`，不会写共享文件。**
 
 1) 创建目录和文件（只做一次）：
 
@@ -31,7 +32,8 @@ providers:
 "@
 ```
 
-2) 之后每个 worktree 初始化时，脚本优先使用这个共享文件，不再依赖 `.env` 保存 API key。
+2) 之后每个 worktree 初始化时，脚本会优先读取这个共享文件来初始化 `config/local/keys_config.yaml`。
+   共享文件仅用于 bootstrap，不会被脚本或后端写回。
 
 ## 每个 worktree 的标准初始化命令
 
@@ -65,10 +67,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 89
 脚本会做这些事：
 - 创建/检查 `venv`（`python -m venv .\venv --upgrade-deps`）
 - 从 `.env.example` 生成 `.env`（如不存在）
-- 设置 `API_PORT`
+- 设置 `API_PORT` 与 `FRONTEND_PORT`
 - 设置 `CORS_ORIGINS`（JSON 数组格式，避免后端解析报错）
-- 读取/写入共享 key 文件：`$HOME\.lex_mint\keys_config.yaml`
-- 若共享 key 缺失，脚本会尝试从当前/其他 worktree 的 `config/local/keys_config.yaml` 自动迁移
+- 只写本地 key 文件：`config/local/keys_config.yaml`
+- 可从共享文件 `$HOME\.lex_mint\keys_config.yaml` 或其他 worktree 的 `config/local/keys_config.yaml` 初始化本地 key
+- 共享 key 文件永远只读（bootstrap-only）
 - 安装后端与前端依赖
 
 可选参数：
@@ -114,5 +117,5 @@ Invoke-WebRequest http://127.0.0.1:<FRONTEND_PORT> -UseBasicParsing
 
 3) 还是提示 key 缺失  
 检查：
-- `$HOME\.lex_mint\keys_config.yaml` 是否存在且包含：
+- `config/local/keys_config.yaml` 是否存在且包含：
   `providers.deepseek.api_key`

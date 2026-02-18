@@ -143,7 +143,8 @@ agents-17dcab8b61/
 - `models_config.yaml` - LLM providers, models, pricing, capabilities
 - `assistants_config.yaml` - Assistant profiles with system prompts
 - `defaults/keys_config.yaml.example` - API key file template
-- Runtime key file location: `~/.lex_mint/keys_config.yaml`
+- Runtime key file location: `config/local/keys_config.yaml`
+- Shared bootstrap key file (read-only): `~/.lex_mint/keys_config.yaml`
 
 ## Conversation Storage (`conversations/`)
 

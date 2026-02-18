@@ -4,6 +4,7 @@ LLM 模型配置数据模型
 定义提供商、模型和配置的 Pydantic 模型
 """
 from pydantic import BaseModel, Field
+from pydantic import model_validator
 from typing import List, Optional
 
 from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
@@ -41,7 +42,7 @@ class Model(BaseModel):
     id: str = Field(..., description="模型唯一标识（模型ID）")
     name: str = Field(..., description="模型显示名称")
     provider_id: str = Field(..., description="所属提供商ID")
-    group: str = Field(default="通用", description="模型分组名称")
+    tags: List[str] = Field(default_factory=list, description="模型标签")
     enabled: bool = Field(default=True, description="是否启用")
 
     # Model capabilities (overrides provider defaults)
@@ -49,6 +50,39 @@ class Model(BaseModel):
         default=None,
         description="模型能力（覆盖 provider 默认值）"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_tags(cls, data):
+        """向后兼容 group 字段，并规范化 tags。"""
+        if not isinstance(data, dict):
+            return data
+
+        raw_tags = data.get("tags")
+        if raw_tags is None:
+            raw_tags = data.get("group")
+
+        if isinstance(raw_tags, str):
+            candidates = [part.strip() for part in raw_tags.split(",")]
+        elif isinstance(raw_tags, list):
+            candidates = [str(part).strip() for part in raw_tags]
+        elif raw_tags is None:
+            candidates = []
+        else:
+            candidates = [str(raw_tags).strip()]
+
+        normalized: List[str] = []
+        seen = set()
+        for tag in candidates:
+            clean_tag = tag.lower()
+            if not clean_tag or clean_tag in seen:
+                continue
+            normalized.append(clean_tag)
+            seen.add(clean_tag)
+
+        data["tags"] = normalized
+        data.pop("group", None)
+        return data
 
 
 class DefaultConfig(BaseModel):

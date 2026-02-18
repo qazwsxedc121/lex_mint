@@ -218,7 +218,7 @@ src/
 | 动态模型发现 | 支持 (Ollama 模型列表) | 支持 (supports_model_list) | 无差距 |
 | 模型能力追踪 | 基本支持 | 完整 (context_length, vision, function_calling 等) | 无差距 |
 | **费用追踪** | 有限 | **支持 (PricingService 逐消息计算)** | **本项目优势** |
-| 模型分组 | 支持 | 支持 (group 字段) | 无差距 |
+| 模型标签 | 支持 | 支持 (tags 字段) | 无差距 |
 | 自定义参数 | 支持 | 支持 (temperature, top_p, top_k 等) | 无差距 |
 | **会话级参数覆盖** | 有限 | **支持 (frontmatter param_overrides)** | **本项目优势** |
 | **推理深度控制** | 不支持 | **支持 (reasoning_effort 参数)** | **本项目优势** |

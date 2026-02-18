@@ -17,12 +17,14 @@ from src.providers import (
     ProviderType,
     ApiProtocol,
     get_builtin_provider,
+    get_all_builtin_providers,
 )
 from src.providers.types import ProviderConfig
 
 from ..paths import (
     config_defaults_dir,
     config_local_dir,
+    local_keys_config_path,
     shared_keys_config_path,
     legacy_config_dir,
     ensure_local_file,
@@ -34,13 +36,15 @@ logger = logging.getLogger(__name__)
 class ModelConfigService:
     """模型配置管理服务"""
 
+    _DEFAULT_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
+
     def __init__(self, config_path: Path = None, keys_path: Path = None):
         """
         初始化配置服务
 
         Args:
-            config_path: 配置文件路径，默认为项目根目录的 models_config.yaml
-            keys_path: 密钥文件路径，默认使用用户目录 ~/.lex_mint/keys_config.yaml
+            config_path: 配置文件路径，默认使用项目内 config/local/models_config.yaml
+            keys_path: 密钥文件路径，默认使用项目内 config/local/keys_config.yaml
         """
         self.defaults_path: Optional[Path] = None
         self.legacy_models_paths: list[Path] = []
@@ -53,14 +57,16 @@ class ModelConfigService:
             self.legacy_models_paths = [legacy_config_dir() / "models_config.yaml"]
             config_path = config_local_dir() / "models_config.yaml"
         if keys_path is None:
+            # Runtime key writes are local-only; shared home keys are bootstrap source.
             self.legacy_keys_paths = [
-                config_local_dir() / "keys_config.yaml",
+                shared_keys_config_path(),
                 legacy_config_dir() / "keys_config.yaml",
             ]
-            keys_path = shared_keys_config_path()
+            keys_path = local_keys_config_path()
         self.config_path = config_path
         self.keys_path = keys_path
         self._ensure_config_exists()
+        self._sync_builtin_entries()
         self._ensure_keys_config_exists()
 
     def _ensure_config_exists(self):
@@ -83,104 +89,240 @@ class ModelConfigService:
 
     def _get_default_config(self) -> dict:
         """获取默认配置"""
+        providers: list[dict[str, Any]] = []
+        models: list[dict[str, Any]] = []
+
+        for definition in get_all_builtin_providers().values():
+            providers.append(
+                self._provider_from_definition(
+                    definition,
+                    enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
+                )
+            )
+            for model_definition in definition.builtin_models:
+                is_default_deepseek = (
+                    definition.id == "deepseek"
+                    and model_definition.id in {"deepseek-chat", "deepseek-reasoner"}
+                )
+                models.append(
+                    self._model_from_definition(
+                        provider_id=definition.id,
+                        model_id=model_definition.id,
+                        model_name=model_definition.name,
+                        capabilities=model_definition.capabilities,
+                        enabled=is_default_deepseek,
+                    )
+                )
+
         return {
             "default": {
                 "provider": "deepseek",
                 "model": "deepseek-chat"
             },
-            "providers": [
-                {
-                    "id": "deepseek",
-                    "name": "DeepSeek",
-                    "type": "builtin",
-                    "protocol": "openai",
-                    "base_url": "https://api.deepseek.com",
-                    "enabled": True,
-                    "sdk_class": "deepseek",
-                    "default_capabilities": {
-                        "context_length": 64000,
-                        "reasoning": True,
-                        "function_calling": True,
-                        "streaming": True,
-                    }
-                },
-                {
-                    "id": "openai",
-                    "name": "OpenAI",
-                    "type": "builtin",
-                    "protocol": "openai",
-                    "base_url": "https://api.openai.com/v1",
-                    "enabled": False,
-                    "sdk_class": "openai",
-                    "default_capabilities": {
-                        "context_length": 128000,
-                        "vision": True,
-                        "function_calling": True,
-                        "reasoning": True,
-                        "streaming": True,
-                    }
-                },
-                {
-                    "id": "openrouter",
-                    "name": "OpenRouter",
-                    "type": "builtin",
-                    "protocol": "openai",
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "enabled": True,
-                    "sdk_class": "openai",
-                    "supports_model_list": True,
-                    "default_capabilities": {
-                        "context_length": 128000,
-                        "function_calling": True,
-                        "streaming": True,
-                    }
-                }
-            ],
-            "models": [
-                {
-                    "id": "deepseek-chat",
-                    "name": "DeepSeek Chat",
-                    "provider_id": "deepseek",
-                    "group": "chat",
-                    "enabled": True,
-                    "capabilities": {
-                        "context_length": 64000,
-                        "reasoning": True,
-                        "function_calling": True,
-                    }
-                },
-                {
-                    "id": "deepseek-reasoner",
-                    "name": "DeepSeek Reasoner",
-                    "provider_id": "deepseek",
-                    "group": "reasoning",
-                    "enabled": True,
-                    "capabilities": {
-                        "context_length": 64000,
-                        "reasoning": True,
-                    }
-                },
-                {
-                    "id": "gpt-4-turbo",
-                    "name": "GPT-4 Turbo",
-                    "provider_id": "openai",
-                    "group": "chat",
-                    "enabled": False,
-                    "capabilities": {
-                        "context_length": 128000,
-                        "vision": True,
-                        "function_calling": True,
-                    }
-                },
-                {
-                    "id": "gpt-3.5-turbo",
-                    "name": "GPT-3.5 Turbo",
-                    "provider_id": "openai",
-                    "group": "chat",
-                    "enabled": False
-                }
-            ]
+            "providers": providers,
+            "models": models,
+            "reasoning_supported_patterns": ["deepseek-chat", "glm-"],
         }
+
+    def _provider_from_definition(self, definition, enabled: bool) -> dict[str, Any]:
+        return {
+            "id": definition.id,
+            "name": definition.name,
+            "type": "builtin",
+            "protocol": definition.protocol.value,
+            "base_url": definition.base_url,
+            "api_keys": [],
+            "enabled": enabled,
+            "default_capabilities": definition.default_capabilities.model_dump(mode="json"),
+            "url_suffix": definition.url_suffix,
+            "auto_append_path": definition.auto_append_path,
+            "supports_model_list": definition.supports_model_list,
+            "sdk_class": definition.sdk_class,
+        }
+
+    def _model_from_definition(
+        self,
+        *,
+        provider_id: str,
+        model_id: str,
+        model_name: str,
+        capabilities: Optional[ModelCapabilities],
+        enabled: bool,
+    ) -> dict[str, Any]:
+        tags = self._derive_tags_for_model(model_id=model_id, capabilities=capabilities)
+        return {
+            "id": model_id,
+            "name": model_name,
+            "provider_id": provider_id,
+            "tags": tags,
+            "enabled": enabled,
+            "capabilities": capabilities.model_dump(mode="json") if capabilities else None,
+        }
+
+    @staticmethod
+    def _normalize_tag_list(raw_tags: Any) -> list[str]:
+        """Normalize tags from string/list into lower-case unique list."""
+        if isinstance(raw_tags, str):
+            candidates = [part.strip() for part in raw_tags.split(",")]
+        elif isinstance(raw_tags, list):
+            candidates = [str(part).strip() for part in raw_tags]
+        elif raw_tags is None:
+            candidates = []
+        else:
+            candidates = [str(raw_tags).strip()]
+
+        normalized: list[str] = []
+        seen = set()
+        for tag in candidates:
+            clean_tag = tag.lower()
+            if not clean_tag or clean_tag in seen:
+                continue
+            normalized.append(clean_tag)
+            seen.add(clean_tag)
+        return normalized
+
+    def _derive_tags_for_model(
+        self,
+        *,
+        model_id: str,
+        capabilities: Optional[ModelCapabilities],
+        fallback_group: Optional[str] = None,
+    ) -> list[str]:
+        """Infer useful tags for built-in and migrated models."""
+        tags: list[str] = []
+        if fallback_group:
+            tags.extend(self._normalize_tag_list(fallback_group))
+
+        if "reason" in model_id.lower():
+            tags.append("reasoning")
+        elif not tags:
+            tags.append("chat")
+
+        if capabilities:
+            if capabilities.reasoning:
+                tags.append("reasoning")
+            if capabilities.vision:
+                tags.append("vision")
+            if capabilities.function_calling:
+                tags.append("function-calling")
+            if capabilities.file_upload:
+                tags.append("file-upload")
+            if capabilities.image_output:
+                tags.append("image-output")
+
+        return self._normalize_tag_list(tags)
+
+    def _sync_builtin_entries(self) -> None:
+        """
+        Ensure built-in providers/models always exist in local config.
+
+        Only adds missing entries; never overwrites existing user edits.
+        """
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning(f"Failed to read model config for builtin sync: {e}")
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        providers = data.get("providers")
+        if not isinstance(providers, list):
+            providers = []
+            data["providers"] = providers
+
+        models = data.get("models")
+        if not isinstance(models, list):
+            models = []
+            data["models"] = models
+
+        changed = False
+
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            model_capabilities = None
+            if isinstance(model.get("capabilities"), dict):
+                try:
+                    model_capabilities = ModelCapabilities(**model["capabilities"])
+                except Exception:
+                    model_capabilities = None
+            existing_tags = self._normalize_tag_list(model.get("tags"))
+            inferred_tags = self._derive_tags_for_model(
+                model_id=str(model.get("id", "")),
+                capabilities=model_capabilities,
+                fallback_group=model.get("group"),
+            )
+            merged_tags = existing_tags or inferred_tags
+            if model.get("tags") != merged_tags:
+                model["tags"] = merged_tags
+                changed = True
+            if "group" in model:
+                model.pop("group", None)
+                changed = True
+
+        default_config = data.get("default") or {}
+        default_provider = default_config.get("provider")
+        default_model = default_config.get("model")
+
+        existing_provider_ids = {
+            p.get("id")
+            for p in providers
+            if isinstance(p, dict) and p.get("id")
+        }
+        existing_model_keys = {
+            (m.get("provider_id"), m.get("id"))
+            for m in models
+            if isinstance(m, dict) and m.get("provider_id") and m.get("id")
+        }
+
+        for definition in get_all_builtin_providers().values():
+            if definition.id not in existing_provider_ids:
+                providers.append(
+                    self._provider_from_definition(
+                        definition,
+                        enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
+                    )
+                )
+                existing_provider_ids.add(definition.id)
+                changed = True
+
+            for model_definition in definition.builtin_models:
+                key = (definition.id, model_definition.id)
+                if key in existing_model_keys:
+                    continue
+
+                is_default_model = (
+                    default_provider == definition.id and default_model == model_definition.id
+                )
+                models.append(
+                    self._model_from_definition(
+                        provider_id=definition.id,
+                        model_id=model_definition.id,
+                        model_name=model_definition.name,
+                        capabilities=model_definition.capabilities,
+                        enabled=is_default_model,
+                    )
+                )
+                existing_model_keys.add(key)
+                changed = True
+
+        reasoning_patterns = data.get("reasoning_supported_patterns")
+        if not isinstance(reasoning_patterns, list):
+            reasoning_patterns = []
+            data["reasoning_supported_patterns"] = reasoning_patterns
+            changed = True
+
+        for pattern in ["deepseek-chat", "glm-"]:
+            if pattern not in reasoning_patterns:
+                reasoning_patterns.append(pattern)
+                changed = True
+
+        if changed:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 
     async def load_config(self) -> ModelsConfig:
         """加载配置文件"""
@@ -224,11 +366,22 @@ class ModelConfigService:
                 )
                 return
 
+            if self._is_shared_keys_path(self.keys_path):
+                logger.warning(
+                    "Refusing to create shared key file at %s; "
+                    "runtime writes must use config/local/keys_config.yaml",
+                    self.keys_path,
+                )
+                return
+
             with open(self.keys_path, 'w', encoding='utf-8') as f:
                 f.write(initial_text)
 
     async def load_keys_config(self) -> dict:
         """加载密钥配置文件"""
+        if not self.keys_path.exists():
+            return {"providers": {}}
+
         async with aiofiles.open(self.keys_path, 'r', encoding='utf-8') as f:
             content = await f.read()
             data = yaml.safe_load(content)
@@ -240,6 +393,8 @@ class ModelConfigService:
 
         使用临时文件 + 替换的方式确保原子性
         """
+        self._assert_keys_path_writable()
+
         # 先写入临时文件
         temp_path = self.keys_path.with_suffix('.yaml.tmp')
         async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
@@ -252,6 +407,23 @@ class ModelConfigService:
 
         # 原子性替换
         temp_path.replace(self.keys_path)
+
+    @staticmethod
+    def _same_path(path_a: Path, path_b: Path) -> bool:
+        try:
+            return path_a.expanduser().resolve() == path_b.expanduser().resolve()
+        except Exception:
+            return str(path_a.expanduser()) == str(path_b.expanduser())
+
+    def _is_shared_keys_path(self, path: Path) -> bool:
+        return self._same_path(path, shared_keys_config_path())
+
+    def _assert_keys_path_writable(self) -> None:
+        if self._is_shared_keys_path(self.keys_path):
+            raise PermissionError(
+                "Shared key file (~/.lex_mint/keys_config.yaml) is bootstrap-only. "
+                "Runtime writes are allowed only in config/local/keys_config.yaml."
+            )
 
     async def get_api_key(self, provider_id: str) -> Optional[str]:
         """
@@ -407,6 +579,8 @@ class ModelConfigService:
         # 检查是否是默认提供商
         if config.default.provider == provider_id:
             raise ValueError(f"Cannot delete default provider '{provider_id}'")
+        if get_builtin_provider(provider_id):
+            raise ValueError(f"Cannot delete built-in provider '{provider_id}', disable it instead")
 
         # 删除提供商
         config.providers = [p for p in config.providers if p.id != provider_id]
@@ -801,7 +975,7 @@ class ModelConfigService:
         if self.provider_requires_api_key(provider):
             raise RuntimeError(
                 f"API key not found for provider '{provider.id}'. "
-                "Please set it via the UI (stored in ~/.lex_mint/keys_config.yaml)."
+                "Please set it via the UI (stored in config/local/keys_config.yaml)."
             )
 
         return ""

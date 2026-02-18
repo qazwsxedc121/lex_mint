@@ -142,5 +142,12 @@
   "fileReference.proximityLabel.sibling": "兄弟目录",
   "fileReference.proximityLabel.project-wide": "项目",
   "fileReference.fileNotFound": "文件未找到",
-  "fileReference.readError": "无法读取文件"
+  "fileReference.readError": "无法读取文件",
+
+  "sidebar.groupChat": "群聊",
+  "groupChat.createTitle": "创建群聊",
+  "groupChat.selectHint": "选择至少 2 个助手来开始群聊。",
+  "groupChat.noAssistants": "没有可用的助手。",
+  "groupChat.create": "创建",
+  "groupChat.participants": "{{count}} 个助手"
 }

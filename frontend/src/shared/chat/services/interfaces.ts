@@ -24,6 +24,7 @@ export interface ChatAPI {
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
   createSession(modelId?: string, assistantId?: string, temporary?: boolean): Promise<string>;
+  createGroupSession(groupAssistants: string[]): Promise<string>;
   listSessions(): Promise<Session[]>;
   deleteSession(sessionId: string): Promise<void>;
   saveTemporarySession(sessionId: string): Promise<void>;
@@ -55,7 +56,9 @@ export interface ChatAPI {
     onFollowupQuestions?: (questions: string[]) => void,
     onContextInfo?: (info: ContextInfo) => void,
     onThinkingDuration?: (durationMs: number) => void,
-    fileReferences?: Array<{ path: string; project_id: string }>
+    fileReferences?: Array<{ path: string; project_id: string }>,
+    onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
+    onAssistantDone?: (assistantId: string) => void
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;

@@ -182,6 +182,11 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
     edit: true,
     delete: true,
     setDefault: false // Providers don't have a default
+  },
+
+  // Built-in providers are preloaded and should not be deleted in UI.
+  defaultActionVisibility: {
+    delete: (item) => item.type !== 'builtin'
   }
 
   // TODO: Add custom actions for:

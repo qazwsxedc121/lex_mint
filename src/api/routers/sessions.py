@@ -28,6 +28,7 @@ class CreateSessionRequest(BaseModel):
     model_id: Optional[str] = None  # 向后兼容
     assistant_id: Optional[str] = None  # 新方式：使用助手
     temporary: bool = False
+    group_assistants: Optional[List[str]] = None  # Group chat: list of assistant IDs
 
 
 class UpdateModelRequest(BaseModel):
@@ -103,7 +104,8 @@ async def create_session(
     assistant_id = request.assistant_id if request else None
     model_id = request.model_id if request else None
     temporary = request.temporary if request else False
-    logger.info(f"📝 创建新会话（助手: {assistant_id or '默认'}, 模型: {model_id or '默认'}, 临时: {temporary}）...")
+    group_assistants = request.group_assistants if request else None
+    logger.info(f"Creating new session (assistant: {assistant_id or 'default'}, model: {model_id or 'default'}, temporary: {temporary}, group: {len(group_assistants) if group_assistants else 0})...")
 
     try:
         session_id = await storage.create_session(
@@ -111,7 +113,8 @@ async def create_session(
             assistant_id=assistant_id,
             context_type=context_type,
             project_id=project_id,
-            temporary=temporary
+            temporary=temporary,
+            group_assistants=group_assistants
         )
         logger.info(f"✅ 新会话已创建: {session_id}")
         return {"session_id": session_id}
@@ -398,6 +401,63 @@ async def update_session_assistant(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         logger.error(f"❌ 助手错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class UpdateGroupAssistantsRequest(BaseModel):
+    """Update group assistants request"""
+    group_assistants: List[str]
+
+
+@router.put("/{session_id}/group-assistants", response_model=Dict[str, str])
+async def update_group_assistants(
+    session_id: str,
+    request: UpdateGroupAssistantsRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Update the group assistants list for a session.
+
+    Args:
+        session_id: Session UUID
+        request: Contains list of assistant IDs (min 2)
+        context_type: Context type ("chat" or "project")
+        project_id: Project ID (required when context_type="project")
+
+    Returns:
+        {"message": "Group assistants updated"}
+
+    Raises:
+        404: Session not found
+        400: Invalid assistant IDs or less than 2 provided
+    """
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    if len(request.group_assistants) < 2:
+        raise HTTPException(status_code=400, detail="Group chat requires at least 2 assistants")
+
+    # Validate all assistant IDs exist and are enabled
+    from ..services.assistant_config_service import AssistantConfigService
+    assistant_service = AssistantConfigService()
+    for aid in request.group_assistants:
+        assistant = await assistant_service.get_assistant(aid)
+        if not assistant:
+            raise HTTPException(status_code=400, detail=f"Assistant '{aid}' not found")
+        if not assistant.enabled:
+            raise HTTPException(status_code=400, detail=f"Assistant '{aid}' is not enabled")
+
+    logger.info(f"Updating group assistants for session {session_id[:16]}: {request.group_assistants}")
+    try:
+        await storage.update_group_assistants(
+            session_id, request.group_assistants,
+            context_type=context_type, project_id=project_id
+        )
+        return {"message": "Group assistants updated"}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 

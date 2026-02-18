@@ -4,7 +4,7 @@ set -euo pipefail
 API_PORT=""
 
 if [[ -f ".env" ]]; then
-  API_PORT=$(grep -E "^API_PORT=" .env | head -n1 | cut -d= -f2- || true)
+  API_PORT=$(grep -E "^API_PORT=" .env | head -n1 | cut -d= -f2- | tr -d '\r' || true)
 fi
 
 if [[ -z "${API_PORT}" ]]; then
@@ -35,17 +35,16 @@ echo "[2/2] Starting server..."
 echo
 echo "==============================================================================="
 echo "Server URL: http://0.0.0.0:${API_PORT}"
-echo "Frontend URL: http://localhost:${API_PORT}"
+echo "Backend URL: http://localhost:${API_PORT}"
 echo "API Docs: http://localhost:${API_PORT}/docs"
 echo
 echo "Tip: set API_PORT in .env to change the port"
 echo "==============================================================================="
 echo
 
-if [[ ! -d "venv" ]]; then
+if [[ ! -x "venv/bin/python" ]]; then
   echo "venv not found. Create it first."
   exit 1
 fi
 
-source "venv/bin/activate"
-python run_server_debug.py
+./venv/bin/python run_server_debug.py

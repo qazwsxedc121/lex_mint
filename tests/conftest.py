@@ -83,7 +83,7 @@ def sample_model_config():
                 "id": "deepseek-chat",
                 "name": "DeepSeek Chat",
                 "provider_id": "deepseek",
-                "group": "chat",
+                "tags": ["chat"],
                 "enabled": True
             }
         ]

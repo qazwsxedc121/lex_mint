@@ -37,6 +37,7 @@ export function useChat(sessionId: string | null) {
   const [lastPromptTokens, setLastPromptTokens] = useState<number | null>(null);
   const [paramOverrides, setParamOverrides] = useState<ParamOverrides>({});
   const [isTemporary, setIsTemporary] = useState(false);
+  const [groupAssistants, setGroupAssistants] = useState<string[] | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -53,6 +54,7 @@ export function useChat(sessionId: string | null) {
       setLastPromptTokens(null);
       setParamOverrides({});
       setIsTemporary(false);
+      setGroupAssistants(null);
       return;
     }
 
@@ -83,6 +85,7 @@ export function useChat(sessionId: string | null) {
       setTotalCost(session.total_cost || null);
       setParamOverrides(session.param_overrides || {});
       setIsTemporary(session.temporary || false);
+      setGroupAssistants(session.group_assistants || null);
 
       // Derive lastPromptTokens from last assistant message's usage
       const msgs = session.state.messages;
@@ -181,6 +184,8 @@ export function useChat(sessionId: string | null) {
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
 
+    const isGroupChat = groupAssistants && groupAssistants.length >= 2;
+
     // Optimistically add user message to UI (without message_id, wait for backend)
     const userMessage: Message = {
       role: 'user',
@@ -194,13 +199,15 @@ export function useChat(sessionId: string | null) {
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Add placeholder for assistant message (without message_id, wait for backend)
-    const assistantMessage: Message = {
-      role: 'assistant',
-      content: '',
-      created_at: nowTimestamp(),
-    };
-    setMessages(prev => [...prev, assistantMessage]);
+    // For single-assistant: add placeholder. For group chat: no placeholder (added on assistant_start).
+    if (!isGroupChat) {
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: '',
+        created_at: nowTimestamp(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     setLoading(true);
     setIsStreaming(true);
@@ -239,7 +246,8 @@ export function useChat(sessionId: string | null) {
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
-          setMessages(prev => prev.slice(0, -2));
+          // Remove optimistic messages: for group chat only user msg, for single both user+assistant
+          setMessages(prev => prev.slice(0, isGroupChat ? -1 : -2));
         },
         abortControllerRef,
         options?.reasoningEffort,
@@ -326,14 +334,33 @@ export function useChat(sessionId: string | null) {
             return newMessages;
           });
         },
-        options?.fileReferences
+        options?.fileReferences,
+        // Group chat: onAssistantStart
+        (assistantId: string, name: string, icon?: string) => {
+          // Reset streamed content for new assistant
+          streamedContent = '';
+          // Add new empty assistant message with identity
+          const newAssistantMsg: Message = {
+            role: 'assistant',
+            content: '',
+            created_at: nowTimestamp(),
+            assistant_id: assistantId,
+            assistant_name: name,
+            assistant_icon: icon,
+          };
+          setMessages(prev => [...prev, newAssistantMsg]);
+        },
+        // Group chat: onAssistantDone
+        (_assistantId: string) => {
+          // Nothing special needed; message is already updated via onChunk/onUsage/onAssistantMessageId
+        }
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
       setLoading(false);
       setIsStreaming(false);
       isProcessingRef.current = false;
-      setMessages(prev => prev.slice(0, -2));
+      setMessages(prev => prev.slice(0, isGroupChat ? -1 : -2));
     }
   };
 
@@ -1045,5 +1072,6 @@ export function useChat(sessionId: string | null) {
     paramOverrides,
     hasActiveOverrides,
     updateParamOverrides,
+    groupAssistants,
   };
 }
