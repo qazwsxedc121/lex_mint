@@ -801,7 +801,8 @@ class ModelConfigService:
         self,
         base_url: str,
         api_key: str,
-        model_id: str = "gpt-3.5-turbo"
+        model_id: str = "gpt-3.5-turbo",
+        provider: Optional[Provider] = None
     ) -> tuple[bool, str]:
         """
         测试提供商连接是否有效
@@ -810,45 +811,30 @@ class ModelConfigService:
             base_url: API基础URL
             api_key: API密钥
             model_id: 用于测试的模型ID（默认使用通用的模型名）
+            provider: 提供商配置（用于选择正确的适配器）
 
         Returns:
             (是否成功, 消息)
         """
-        try:
-            # 创建临时 LLM 实例
-            test_llm = ChatOpenAI(
-                model=model_id,
-                temperature=0.0,
+        # Resolve the correct adapter for this provider
+        if provider:
+            provider_cfg = ProviderConfig(
+                id=provider.id,
+                name=provider.name,
+                type=provider.type,
+                protocol=provider.protocol,
                 base_url=base_url,
-                api_key=api_key,
-                timeout=10.0,  # 10秒超时
-                max_retries=0  # 不重试
+                sdk_class=provider.sdk_class,
             )
+            adapter = AdapterRegistry.get_for_provider(provider_cfg)
+        else:
+            adapter = AdapterRegistry.get("openai")
 
-            # 发送简单的测试消息
-            from langchain_core.messages import HumanMessage
-            response = await test_llm.ainvoke([
-                HumanMessage(content="test")
-            ])
-
-            if response and response.content:
-                return True, "Connection successful"
-            else:
-                return False, "No response from API"
-
-        except Exception as e:
-            error_msg = str(e)
-            # 简化错误信息
-            if "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
-                return False, "Authentication failed: Invalid API key"
-            elif "not found" in error_msg.lower() or "404" in error_msg:
-                return False, "API endpoint not found: Check base URL"
-            elif "timeout" in error_msg.lower():
-                return False, "Connection timeout: API not responding"
-            elif "connection" in error_msg.lower():
-                return False, f"Connection error: {error_msg}"
-            else:
-                return False, f"Test failed: {error_msg}"
+        return await adapter.test_connection(
+            base_url=base_url,
+            api_key=api_key,
+            model_id=model_id,
+        )
 
     # ==================== Provider 抽象层支持 ====================
 

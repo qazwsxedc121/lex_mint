@@ -6,8 +6,10 @@
  * and builtin provider picker can be added later.
  */
 
+import { SignalIcon } from '@heroicons/react/24/outline';
 import type { CrudSettingsConfig } from './types';
 import type { Provider } from '../../../types/model';
+import { testProviderStoredConnection } from '../../../services/api';
 import i18n from '../../../i18n';
 
 export const providersConfig: CrudSettingsConfig<Provider> = {
@@ -187,10 +189,32 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
   // Built-in providers are preloaded and should not be deleted in UI.
   defaultActionVisibility: {
     delete: (item) => item.type !== 'builtin'
-  }
+  },
+
+  // Row actions
+  rowActions: [
+    {
+      id: 'test-connection',
+      label: '',
+      icon: SignalIcon,
+      get tooltip() { return i18n.t('settings:providers.action.testConnection'); },
+      disabled: (item: Provider) => !item.has_api_key,
+      onClick: async (item: Provider) => {
+        try {
+          const result = await testProviderStoredConnection(item.id, item.base_url);
+          if (result.success) {
+            alert(i18n.t('settings:testConnection.success') + '\n' + result.message);
+          } else {
+            alert(i18n.t('settings:testConnection.failed') + '\n' + result.message);
+          }
+        } catch (err: any) {
+          alert(i18n.t('settings:testConnection.failed') + '\n' + (err.message || String(err)));
+        }
+      }
+    }
+  ]
 
   // TODO: Add custom actions for:
   // - Builtin provider picker
-  // - Test connection
   // - Fetch available models
 };

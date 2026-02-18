@@ -270,6 +270,7 @@
   "models.field.tags.placeholder": "例如 chat, reasoning, vision",
   "models.field.tags.help": "逗号分隔，支持多标签（如 reasoning,function-calling）",
   "models.field.enabled": "启用此模型",
+  "models.action.testConnection": "测试连接",
 
   "providers.title": "服务商列表",
   "providers.description": "内置服务商已预置；“添加”仅用于自定义服务商。",
@@ -295,6 +296,10 @@
   "providers.field.apiKey.help": "认证用 API 密钥（保存在 ~/.lex_mint/keys_config.yaml）",
   "providers.field.apiKey.editHelp": "认证用 API 密钥（已遮罩则无需修改）",
   "providers.field.enabled": "启用此服务商",
+  "providers.action.testConnection": "测试连接",
+
+  "testConnection.success": "连接成功！",
+  "testConnection.failed": "连接失败：",
 
   "knowledgeBases.title": "知识库",
   "knowledgeBases.description": "管理用于 RAG（检索增强生成）的知识库",
