@@ -16,6 +16,7 @@ from .adapters import (
     OllamaAdapter,
     XAIAdapter,
     ZhipuAdapter,
+    VolcEngineAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class AdapterRegistry:
         "ollama": OllamaAdapter,
         "xai": XAIAdapter,
         "zhipu": ZhipuAdapter,
+        "volcengine": VolcEngineAdapter,
     }
 
     # Mapping of API protocols to default adapter classes

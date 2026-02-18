@@ -160,6 +160,80 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         supports_model_list=False,
     ),
 
+    "volcengine": ProviderDefinition(
+        id="volcengine",
+        name="Volcano Engine (Doubao)",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://ark.cn-beijing.volces.com/api/v3",
+        sdk_class="volcengine",
+        url_suffix="",
+        auto_append_path=False,
+        default_capabilities=ModelCapabilities(
+            context_length=128000,
+            vision=True,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        builtin_models=[
+            ModelDefinition(
+                id="doubao-seed-2-0-pro-260215",
+                name="Doubao Seed 2.0 Pro",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="doubao-seed-2-0-lite-260215",
+                name="Doubao Seed 2.0 Lite",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    vision=True,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="doubao-seed-2-0-mini-260215",
+                name="Doubao Seed 2.0 Mini",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="doubao-seed-2-0-code-preview-260215",
+                name="Doubao Seed 2.0 Code",
+                capabilities=ModelCapabilities(
+                    context_length=128000,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="doubao-1-5-pro-256k-250115",
+                name="Doubao 1.5 Pro 256K",
+                capabilities=ModelCapabilities(
+                    context_length=256000,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="doubao-1-5-pro-32k-250115",
+                name="Doubao 1.5 Pro 32K",
+                capabilities=ModelCapabilities(
+                    context_length=32000,
+                    function_calling=True,
+                )
+            ),
+        ],
+        supports_model_list=False,
+    ),
+
     "openai": ProviderDefinition(
         id="openai",
         name="OpenAI",

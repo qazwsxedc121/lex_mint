@@ -76,7 +76,17 @@
       "mcp__chrome-devtools__get_console_message",
       "mcp__chrome-devtools__evaluate_script",
       "Bash(npx playwright install chromium)",
-      "Bash(npx playwright test:*)"
+      "Bash(npx playwright test:*)",
+      "WebFetch(domain:www.volcengine.com)",
+      "WebFetch(domain:docs.cherry-ai.com)",
+      "WebFetch(domain:docs.litellm.ai)",
+      "WebFetch(domain:docs.cline.bot)",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__fill",
+      "WebFetch(domain:open.bigmodel.cn)",
+      "WebFetch(domain:docs.bigmodel.cn)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.z.ai)"
     ]
   }
 }
