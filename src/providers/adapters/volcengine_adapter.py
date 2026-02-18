@@ -214,9 +214,42 @@ class VolcEngineAdapter(BaseLLMAdapter):
         api_key: str
     ) -> List[Dict[str, str]]:
         """
-        Return curated Doubao model list.
+        Fetch available models from Volcengine /models endpoint.
 
-        The Ark platform does not provide a stable public /models endpoint,
-        so we return a maintained built-in set.
+        Filters to active models only. Falls back to curated list on any error.
         """
+        import httpx
+
+        try:
+            url = base_url.rstrip("/")
+            models_url = f"{url}/models"
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    models_url,
+                    headers={"Authorization": f"Bearer {api_key}"}
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                models = []
+                for model in data.get("data", []):
+                    model_id = model.get("id", "")
+                    if not model_id:
+                        continue
+
+                    # Only include active models
+                    status = model.get("status", "").lower()
+                    if status and status != "active":
+                        continue
+
+                    name = model.get("name", model_id)
+                    models.append({"id": model_id, "name": name})
+
+                if models:
+                    return sorted(models, key=lambda x: x["id"])
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch Volcengine models, using curated list: {e}")
+
         return sorted(self._CURATED_MODELS, key=lambda x: x["id"])

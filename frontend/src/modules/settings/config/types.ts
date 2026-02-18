@@ -187,6 +187,21 @@ export interface PresetFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Model ID field with async provider-model discovery.
+ * Fetches available models from the provider API and shows them
+ * as selectable suggestions alongside a free-text input.
+ */
+export interface ModelIdFieldConfig extends BaseFieldConfig {
+  type: 'model-id';
+  /** Default value */
+  defaultValue?: string;
+  /** Form field that holds the provider ID (default: 'provider_id') */
+  providerField?: string;
+  /** Form field to auto-fill with the display name (default: 'name') */
+  nameField?: string;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -199,7 +214,8 @@ export type FieldConfig =
   | IconPickerFieldConfig
   | MultiSelectFieldConfig
   | TemplateVariablesFieldConfig
-  | PresetFieldConfig;
+  | PresetFieldConfig
+  | ModelIdFieldConfig;
 
 // ==================== Table Configuration ====================
 

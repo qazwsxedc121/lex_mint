@@ -157,7 +157,7 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
                 )
             ),
         ],
-        supports_model_list=False,
+        supports_model_list=True,
     ),
 
     "volcengine": ProviderDefinition(
@@ -231,7 +231,7 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
                 )
             ),
         ],
-        supports_model_list=False,
+        supports_model_list=True,
     ),
 
     "openai": ProviderDefinition(

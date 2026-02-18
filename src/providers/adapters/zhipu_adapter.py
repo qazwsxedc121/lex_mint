@@ -197,10 +197,38 @@ class ZhipuAdapter(BaseLLMAdapter):
         api_key: str
     ) -> List[Dict[str, str]]:
         """
-        Return curated GLM model list.
+        Fetch available models from Zhipu /models endpoint.
 
-        Zhipu docs do not currently provide a stable `/models` endpoint in the
-        OpenAI-compatible flow used here, so we return a maintained built-in set.
+        Falls back to curated list on any error.
         """
+        import httpx
+
+        try:
+            url = base_url.rstrip("/")
+            models_url = f"{url}/models"
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    models_url,
+                    headers={"Authorization": f"Bearer {api_key}"}
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                models = []
+                for model in data.get("data", []):
+                    model_id = model.get("id", "")
+                    if model_id:
+                        models.append({
+                            "id": model_id,
+                            "name": model.get("name", model_id),
+                        })
+
+                if models:
+                    return sorted(models, key=lambda x: x["id"])
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch Zhipu models, using curated list: {e}")
+
         return sorted(self._CURATED_MODELS, key=lambda x: x["id"])
 

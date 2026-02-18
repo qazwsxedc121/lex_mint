@@ -92,14 +92,6 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
   // Form fields
   createFields: [
     {
-      type: 'text',
-      name: 'id',
-      get label() { return i18n.t('settings:models.field.id'); },
-      get placeholder() { return i18n.t('settings:models.field.id.placeholder'); },
-      required: true,
-      get helpText() { return i18n.t('settings:models.field.id.help'); }
-    },
-    {
       type: 'select',
       name: 'provider_id',
       get label() { return i18n.t('settings:models.field.providerId'); },
@@ -116,25 +108,37 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       get helpText() { return i18n.t('settings:models.field.providerId.help'); }
     },
     {
+      type: 'model-id',
+      name: 'id',
+      get label() { return i18n.t('settings:models.field.id'); },
+      get placeholder() { return i18n.t('settings:models.field.id.placeholder'); },
+      required: true,
+      get helpText() { return i18n.t('settings:models.field.id.help'); },
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
       type: 'text',
       name: 'name',
       get label() { return i18n.t('settings:models.field.name'); },
       get placeholder() { return i18n.t('settings:models.field.name.placeholder'); },
       required: true,
-      get helpText() { return i18n.t('settings:models.field.name.help'); }
+      get helpText() { return i18n.t('settings:models.field.name.help'); },
+      condition: (formData) => !!formData.provider_id,
     },
     {
       type: 'text',
       name: 'tags',
       get label() { return i18n.t('settings:models.field.tags'); },
       get placeholder() { return i18n.t('settings:models.field.tags.placeholder'); },
-      get helpText() { return i18n.t('settings:models.field.tags.help'); }
+      get helpText() { return i18n.t('settings:models.field.tags.help'); },
+      condition: (formData) => !!formData.provider_id,
     },
     {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:models.field.enabled'); },
-      defaultValue: true
+      defaultValue: true,
+      condition: (formData) => !!formData.provider_id,
     }
   ],
 
