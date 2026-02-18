@@ -11,8 +11,8 @@ export const defaultChatAPI: ChatAPI = {
   getSession: api.getSession,
   createSession: (modelId?: string, assistantId?: string, temporary?: boolean) =>
     api.createSession(modelId, assistantId, 'chat', undefined, temporary || false),
-  createGroupSession: (groupAssistants: string[]) =>
-    api.createSession(undefined, undefined, 'chat', undefined, false, groupAssistants),
+  createGroupSession: (groupAssistants: string[], mode) =>
+    api.createSession(undefined, undefined, 'chat', undefined, false, groupAssistants, mode),
   listSessions: api.listSessions,
   deleteSession: api.deleteSession,
   saveTemporarySession: api.saveTemporarySession,

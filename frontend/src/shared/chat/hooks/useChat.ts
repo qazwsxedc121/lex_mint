@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo } from '../../../types/message';
+import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo, GroupChatMode } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 type SendMessageOptions = {
@@ -38,6 +38,7 @@ export function useChat(sessionId: string | null) {
   const [paramOverrides, setParamOverrides] = useState<ParamOverrides>({});
   const [isTemporary, setIsTemporary] = useState(false);
   const [groupAssistants, setGroupAssistants] = useState<string[] | null>(null);
+  const [groupMode, setGroupMode] = useState<GroupChatMode | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -55,6 +56,7 @@ export function useChat(sessionId: string | null) {
       setParamOverrides({});
       setIsTemporary(false);
       setGroupAssistants(null);
+      setGroupMode(null);
       return;
     }
 
@@ -118,6 +120,10 @@ export function useChat(sessionId: string | null) {
       setParamOverrides(session.param_overrides || {});
       setIsTemporary(session.temporary || false);
       setGroupAssistants(session.group_assistants || null);
+      setGroupMode(
+        session.group_mode ||
+        (session.group_assistants && session.group_assistants.length >= 2 ? 'round_robin' : null)
+      );
 
       // Derive lastPromptTokens from last assistant message's usage
       const msgs = session.state.messages;
@@ -140,6 +146,8 @@ export function useChat(sessionId: string | null) {
       setLastPromptTokens(null);
       setParamOverrides({});
       setIsTemporary(false);
+      setGroupAssistants(null);
+      setGroupMode(null);
     } finally {
       setLoading(false);
     }
@@ -1581,5 +1589,6 @@ export function useChat(sessionId: string | null) {
     hasActiveOverrides,
     updateParamOverrides,
     groupAssistants,
+    groupMode,
   };
 }

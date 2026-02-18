@@ -93,9 +93,16 @@ export async function createSession(
   contextType: string = 'chat',
   projectId?: string,
   temporary: boolean = false,
-  groupAssistants?: string[]
+  groupAssistants?: string[],
+  groupMode?: 'round_robin' | 'committee'
 ): Promise<string> {
-  const body: { model_id?: string; assistant_id?: string; temporary?: boolean; group_assistants?: string[] } = {};
+  const body: {
+    model_id?: string;
+    assistant_id?: string;
+    temporary?: boolean;
+    group_assistants?: string[];
+    group_mode?: 'round_robin' | 'committee';
+  } = {};
   if (assistantId) {
     body.assistant_id = assistantId;
   } else if (modelId) {
@@ -106,6 +113,7 @@ export async function createSession(
   }
   if (groupAssistants && groupAssistants.length >= 2) {
     body.group_assistants = groupAssistants;
+    body.group_mode = groupMode || 'round_robin';
   }
 
   // Build query params

@@ -110,6 +110,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     updateParamOverrides,
     generateFollowups,
     groupAssistants,
+    groupMode,
     updateGroupAssistantOrder,
   } = useChat(currentSessionId);
 
@@ -217,7 +218,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   };
 
   const isGroupChat = groupAssistants && groupAssistants.length >= 2;
-  const canReorderGroupAssistants = !!isGroupChat && !isGenerating && !isSavingGroupOrder && !isGroupOrderLocked;
+  const resolvedGroupMode = isGroupChat ? (groupMode || 'round_robin') : null;
+  const isRoundRobinGroupChat = resolvedGroupMode === 'round_robin';
+  const canReorderGroupAssistants = !!isRoundRobinGroupChat && !isGenerating && !isSavingGroupOrder && !isGroupOrderLocked;
   const canManageGroupAssistants = !!isGroupChat && !isGenerating && !isSavingGroupOrder && !isGroupOrderLocked;
   const groupAssistantProgress = useMemo(() => {
     if (!isGroupChat || !groupAssistants) return [];
@@ -275,7 +278,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const completedAssistantCount = groupAssistantProgress.filter((assistant) => assistant.status === 'done').length;
   const defaultGroupOrder = defaultGroupOrderRef.current;
   const canResetDefaultOrder = !!(
-    isGroupChat &&
+    isRoundRobinGroupChat &&
     groupAssistants &&
     defaultGroupOrder &&
     defaultGroupOrder.length >= 2 &&
@@ -374,7 +377,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   };
 
   const handleResetDefaultOrder = async () => {
-    if (!groupAssistants || !defaultGroupOrderRef.current || !canManageGroupAssistants) return;
+    if (!isRoundRobinGroupChat || !groupAssistants || !defaultGroupOrderRef.current || !canManageGroupAssistants) return;
     const nextAssistants = [...defaultGroupOrderRef.current];
     if (nextAssistants.length < 2) return;
     try {
@@ -385,6 +388,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   };
 
   const toggleGroupOrderLock = () => {
+    if (!isRoundRobinGroupChat) return;
     if (isGenerating || isSavingGroupOrder) return;
     setGroupManagerError(null);
     setIsGroupOrderLocked((prev) => !prev);
@@ -492,11 +496,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
           <div data-name="group-chat-status-header" className="flex items-center justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
             <div className="flex items-center gap-1.5">
               <UsersIcon className="w-3.5 h-3.5" />
-              <span>{t('groupChat.roundRobinMode')}</span>
+              <span>{isRoundRobinGroupChat ? t('groupChat.modeRoundRobin') : t('groupChat.modeCommittee')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span>{t('groupChat.progress', { done: completedAssistantCount, total: groupAssistantProgress.length })}</span>
-              {isSavingGroupOrder && (
+              {isRoundRobinGroupChat && isSavingGroupOrder && (
                 <span className="rounded-full border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 text-[10px] text-blue-700 dark:text-blue-300">
                   {t('groupChat.reorderSaving')}
                 </span>
@@ -513,24 +517,28 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
               >
                 <UserPlusIcon className="h-3.5 w-3.5" />
               </button>
-              <button
-                type="button"
-                onClick={() => void handleResetDefaultOrder()}
-                disabled={!canResetDefaultOrder || !canManageGroupAssistants}
-                title={t('groupChat.resetDefaultOrder')}
-                className="inline-flex items-center justify-center rounded-full border border-gray-300 bg-white/80 p-1 text-gray-600 hover:bg-white dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={toggleGroupOrderLock}
-                disabled={isGenerating || isSavingGroupOrder}
-                title={isGroupOrderLocked ? t('groupChat.unlockRoundOrder') : t('groupChat.lockRoundOrder')}
-                className="inline-flex items-center justify-center rounded-full border border-gray-300 bg-white/80 p-1 text-gray-600 hover:bg-white dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isGroupOrderLocked ? <LockOpenIcon className="h-3.5 w-3.5" /> : <LockClosedIcon className="h-3.5 w-3.5" />}
-              </button>
+              {isRoundRobinGroupChat && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleResetDefaultOrder()}
+                    disabled={!canResetDefaultOrder || !canManageGroupAssistants}
+                    title={t('groupChat.resetDefaultOrder')}
+                    className="inline-flex items-center justify-center rounded-full border border-gray-300 bg-white/80 p-1 text-gray-600 hover:bg-white dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleGroupOrderLock}
+                    disabled={isGenerating || isSavingGroupOrder}
+                    title={isGroupOrderLocked ? t('groupChat.unlockRoundOrder') : t('groupChat.lockRoundOrder')}
+                    className="inline-flex items-center justify-center rounded-full border border-gray-300 bg-white/80 p-1 text-gray-600 hover:bg-white dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isGroupOrderLocked ? <LockOpenIcon className="h-3.5 w-3.5" /> : <LockClosedIcon className="h-3.5 w-3.5" />}
+                  </button>
+                </>
+              )}
             </div>
           </div>
           {groupManagerError && (
@@ -543,7 +551,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
           )}
           <div
             data-name="group-chat-status-list"
-            title={isGroupOrderLocked ? t('groupChat.reorderLockedByUser') : isGenerating ? t('groupChat.reorderDisabled') : t('groupChat.reorderHint')}
+            title={
+              isRoundRobinGroupChat
+                ? (isGroupOrderLocked ? t('groupChat.reorderLockedByUser') : isGenerating ? t('groupChat.reorderDisabled') : t('groupChat.reorderHint'))
+                : t('groupChat.modeCommitteeHint')
+            }
             className="mt-1 flex gap-1.5 overflow-x-auto"
           >
             {groupAssistantProgress.map((assistant) => (
@@ -562,7 +574,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                       ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-200'
                       : 'border-gray-300 dark:border-gray-600 bg-white/80 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
                 } ${
-                  canReorderGroupAssistants ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-80'
+                  canReorderGroupAssistants ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
                 } ${
                   draggingAssistantId === assistant.assistantId ? 'opacity-45' : ''
                 } ${
@@ -571,7 +583,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                     : ''
                 }`}
               >
-                <span className="text-[10px] font-semibold opacity-70">#{assistant.order}</span>
+                {isRoundRobinGroupChat && <span className="text-[10px] font-semibold opacity-70">#{assistant.order}</span>}
                 <span
                   className={`w-2 h-2 rounded-full ${
                     assistant.status === 'thinking'
@@ -582,7 +594,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                   }`}
                 />
                 <span className="font-medium">{assistant.name}</span>
-                <Bars3Icon className="w-3.5 h-3.5 opacity-60" />
+                {isRoundRobinGroupChat && <Bars3Icon className="w-3.5 h-3.5 opacity-60" />}
               </div>
             ))}
           </div>
@@ -621,7 +633,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                       className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900/40"
                     >
                       <div className="min-w-0">
-                        <span className="mr-1 text-xs text-gray-400 dark:text-gray-500">#{index + 1}</span>
+                        {isRoundRobinGroupChat && <span className="mr-1 text-xs text-gray-400 dark:text-gray-500">#{index + 1}</span>}
                         <span className="truncate text-gray-800 dark:text-gray-200">
                           {groupAssistantNameMap[assistantId] || `AI-${assistantId.slice(0, 4)}`}
                         </span>
@@ -671,7 +683,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
             </div>
             <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-700">
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                {!canManageGroupAssistants ? t('groupChat.manageDisabled') : t('groupChat.reorderHint')}
+                {!canManageGroupAssistants
+                  ? t('groupChat.manageDisabled')
+                  : (isRoundRobinGroupChat ? t('groupChat.reorderHint') : t('groupChat.modeCommitteeHint'))}
               </p>
               <button
                 type="button"

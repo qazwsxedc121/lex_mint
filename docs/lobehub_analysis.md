@@ -2,8 +2,8 @@
 
 > 分析版本: LobeHub (lobe-chat) v2.1.20
 > 对比项目: Agents (LangGraph-based AI Agent System)
-> 报告日期: 2026-02-13
-> 更新说明: 基于当前代码实现，更新了 Agents 侧能力落地情况（RAG、翻译、TTS、记忆、导入导出、会话分组与分支等）
+> 报告日期: 2026-02-18
+> 更新说明: 基于当前代码实现，更新了 Agents 侧能力落地情况（多提供商扩展、Group Chat、RAG 混合检索增强、Docker 基础部署等）
 
 ---
 
@@ -31,7 +31,7 @@ LobeHub (lobe-chat) 是一个企业级 AI 对话与智能体平台，版本 v2.1
 
 ### 1.2 本项目 (Agents) 简介
 
-本项目是基于 LangGraph 的 AI 代理系统，采用 FastAPI + React 19 架构。对话主存储仍为 Markdown + YAML frontmatter，同时已引入 ChromaDB 作为 RAG/记忆向量层。支持 6 个 LLM 提供商（DeepSeek、OpenRouter、OpenAI、Anthropic、Ollama、XAI），并已落地知识库 RAG、会话全文搜索、消息原地编辑、会话分支、会话文件夹分组、对话导入导出（ChatGPT/Markdown）、对话内翻译、TTS、Prompt 模板、基础记忆系统、多模型对比等能力。
+本项目是基于 LangGraph 的 AI 代理系统，采用 FastAPI + React 19 架构。对话主存储仍为 Markdown + YAML frontmatter，同时 RAG/记忆检索层已扩展为 sqlite-vec/chroma + BM25 混合检索。当前内置 10 个 LLM 提供商定义（DeepSeek、Zhipu、Gemini、Volcengine、OpenAI、OpenRouter、Anthropic、Ollama、XAI、Together），并已落地知识库 RAG、会话全文搜索、消息原地编辑、会话分支、会话文件夹分组、对话导入导出（ChatGPT/Markdown）、对话内翻译、TTS、Prompt 模板、基础记忆系统、多模型对比、Group Chat 等能力。
 
 **核心定位**: 面向开发者的轻量级 AI 代理系统，强调简洁、可读、易同步。
 
@@ -54,14 +54,14 @@ LobeHub (lobe-chat) 是一个企业级 AI 对话与智能体平台，版本 v2.1
 | **CSS/UI** | Ant Design 6 + @lobehub/ui + antd-style (CSS-in-JS) | Tailwind CSS 4 |
 | **状态管理** | Zustand 5 + SWR 2.3 + TanStack Query 5 | Zustand 5 |
 | **类型安全 API** | tRPC 11.8 (端到端类型安全) | REST API (axios) |
-| **数据库/ORM** | Drizzle ORM + PostgreSQL | Markdown + YAML frontmatter + ChromaDB (向量层) |
+| **数据库/ORM** | Drizzle ORM + PostgreSQL | Markdown + YAML frontmatter + sqlite-vec/chroma + BM25 |
 | **认证** | Better Auth 1.4 (OAuth/OIDC/2FA/Passkey) | 无 |
 | **实时通信** | Vercel AI SDK (流式) | SSE (Server-Sent Events) |
 | **Agent 框架** | 自定义 Agent Runtime + LangChain | LangGraph 状态机 |
 | **包管理** | pnpm (monorepo, 40+ 内部包) | pip + npm |
 | **桌面端** | Electron | 无 |
 | **移动端** | PWA + 响应式 + 独立移动路由 | 无 |
-| **部署** | Vercel / Docker / 自托管 | 手动启动 (start.bat) |
+| **部署** | Vercel / Docker / 自托管 | 手动启动 + Docker Compose |
 | **国际化** | i18next (19 种语言, GPT-4o 辅助翻译) | i18next (2 种语言: en / zh-CN) |
 | **可观测性** | OpenTelemetry + LangFuse + LangSmith | 基础文件日志 + LangSmith 配置 |
 | **支付** | Stripe 集成 | 无 |
@@ -126,7 +126,7 @@ src/
 ├── agents/                  # LangGraph 状态机 Agent
 ├── providers/               # 多提供商适配器
 │   ├── registry.py          # AdapterRegistry
-│   └── adapters/            # 5 个适配器
+│   └── adapters/            # 8 个适配器
 └── config/                  # defaults/local 双层 YAML 配置 + data/state 运行态配置
 ```
 
@@ -136,7 +136,7 @@ src/
 |------|---------|--------|
 | 路由规模 | 40+ tRPC 模块 | 20 REST 路由 |
 | API 类型安全 | tRPC 端到端类型安全 | REST + 手动类型 |
-| 数据访问 | Repository 模式 + Drizzle ORM | 文件 I/O + Chroma 向量检索 |
+| 数据访问 | Repository 模式 + Drizzle ORM | 文件 I/O + sqlite-vec/chroma + BM25 检索 |
 | 包组织 | Monorepo (40+ 内部包) | 单体项目 |
 | 异步任务 | 独立 async router + Upstash QStash | 轻量后台任务 (`asyncio.create_task`) |
 | 代码分层 | Router → Service → Repository → DB | Router → Service → Storage |
@@ -209,7 +209,7 @@ RAG & Memory:
   ChromaDB collections         # kb_{id}, memory_main 等集合
 ```
 
-**对比**: LobeHub 的关系型数据库设计在复杂关联查询上仍有明显优势；本项目通过 “Markdown 主存储 + Chroma 向量层” 缩小了检索能力差距，同时保留了文件可读可迁移优势。
+**对比**: LobeHub 的关系型数据库设计在复杂关联查询上仍有明显优势；本项目通过 “Markdown 主存储 + sqlite-vec/chroma + BM25 混合检索层” 缩小了检索能力差距，同时保留了文件可读可迁移优势。
 
 ### 3.4 模型集成架构
 
@@ -222,7 +222,7 @@ RAG & Memory:
 
 **Agents (本项目)**:
 - Adapter Registry 模式 (`src/providers/registry.py`)
-- 5 个具体适配器，统一接口 `BaseLLMAdapter`
+- 8 个具体适配器，统一接口 `BaseLLMAdapter`
 - 复合模型 ID 格式 `provider_id:model_id`
 - 明确的能力声明 (vision, function_calling, reasoning, streaming)
 - API Key 通过环境变量 + YAML 管理
@@ -253,17 +253,18 @@ RAG & Memory:
 | 文件附件 | 支持 (多种格式) | 支持 | 无差距 |
 | 消息翻译 | 支持 (message_translates) | 支持对话内翻译（流式） | 差距缩小 |
 | 多模型并行回复 | 支持 (message_groups) | 支持 Compare 模式并行对比 | 中等差距 |
+| 多助手群聊 | 支持 | 支持 Group Chat（会话级多助手协作） | 差距缩小 |
 | Chain of Thought 展示 | 支持 (推理过程可视化) | 支持基础 Thinking Block 展示 | 差距缩小 |
 | 固定对话 | 支持 | 不支持 | 低优先级 |
 | Zen 模式 (无干扰) | 支持 | 不支持 | 低优先级 |
 
-**小结**: 核心对话能力差距已明显缩小。本项目已补齐编辑、分支、分组、搜索、导入导出、翻译和多模型对比等关键能力；LobeHub 仍在线程体系和生态级协作功能上领先。
+**小结**: 核心对话能力差距已明显缩小。本项目已补齐编辑、分支、分组、搜索、导入导出、翻译、多模型对比与多助手群聊等关键能力；LobeHub 仍在线程体系和生态级协作功能上领先。
 
 ### 4.2 模型管理与提供商集成
 
 | 功能 | LobeHub | Agents | 差距评估 |
 |------|---------|--------|---------|
-| 提供商数量 | 20+ (OpenAI, Anthropic, Google, Azure, AWS Bedrock, Ollama, DeepSeek, Groq, Mistral, Perplexity, Together AI, Fireworks, 零一万物, Moonshot, 通义千问, 百川, MiniMax, 讯飞星火 等) | 6 (DeepSeek, OpenRouter, OpenAI, Anthropic, Ollama, XAI) | 较大差距 |
+| 提供商数量 | 20+ (OpenAI, Anthropic, Google, Azure, AWS Bedrock, Ollama, DeepSeek, Groq, Mistral, Perplexity, Together AI, Fireworks, 零一万物, Moonshot, 通义千问, 百川, MiniMax, 讯飞星火 等) | 10 (DeepSeek, Zhipu, Gemini, Volcengine, OpenAI, OpenRouter, Anthropic, Ollama, XAI, Together) | 差距缩小 |
 | 模型 CRUD | 支持 (数据库持久化) | 支持 (YAML 配置) | 实现方式不同 |
 | 提供商 CRUD | 支持 (UI 管理) | 支持 (YAML 管理) | 实现方式不同 |
 | API Key 管理 | 数据库持久化 + UI 管理 | 环境变量 + YAML | 中等差距 |
@@ -274,15 +275,15 @@ RAG & Memory:
 | 多模型并行 | 支持 (同一消息多模型回复) | 支持 Compare 模式并行流式对比 | 中等差距 |
 | 模型市场/发现 | 支持 (内置模型列表) | 不支持 | 中等差距 |
 
-**小结**: LobeHub 的提供商覆盖面极广，特别是对国内大模型厂商的支持。本项目在费用追踪、参数覆盖、推理深度控制方面保持优势。
+**小结**: LobeHub 的提供商覆盖面仍更广，特别是生态与市场化支持更强；但本项目在提供商覆盖上已明显扩展，并在费用追踪、参数覆盖、推理深度控制方面保持优势。
 
 ### 4.3 数据存储与持久化
 
 | 功能 | LobeHub | Agents | 差距评估 |
 |------|---------|--------|---------|
-| 存储类型 | PostgreSQL + Drizzle ORM | Markdown + YAML + ChromaDB (向量层) | 根本差异 |
+| 存储类型 | PostgreSQL + Drizzle ORM | Markdown + YAML + sqlite-vec/chroma + BM25 | 根本差异 |
 | 表/模型数量 | 22+ 表 | 无关系表，按会话/知识库/记忆分文件与集合 | LobeHub 优势 |
-| 复杂查询 | SQL 全功能 + 关联查询 | 文件扫描 + 向量相似度检索 | LobeHub 优势 |
+| 复杂查询 | SQL 全功能 + 关联查询 | 文件扫描 + 向量/关键词混合检索 | LobeHub 优势 |
 | 数据迁移 | Drizzle Kit 自动迁移 | 不需要 | 各有利弊 |
 | **人类可读性** | 数据库 (不可直读) | **Markdown (可直读可编辑)** | **本项目优势** |
 | **跨设备同步** | 需要数据库复制/云同步 | **文件同步 (Dropbox/git)** | **本项目优势** |
@@ -417,9 +418,9 @@ RAG & Memory:
 
 | 功能 | LobeHub | Agents | 差距评估 |
 |------|---------|--------|---------|
-| Docker | 支持 | 无 | 较大差距 |
+| Docker | 支持 | 支持 (Dockerfile + docker-compose) | 差距缩小 |
 | Vercel 一键部署 | 支持 | 不适用 (FastAPI) | 不同生态 |
-| 自托管 | 支持 | 支持 (手动) | 差距 |
+| 自托管 | 支持 | 支持 (手动 + Docker) | 差距 |
 | Electron 桌面端 | 支持 | 无 | 较大差距 |
 | PWA | 支持 | 无 | 中等差距 |
 | OpenTelemetry | 支持 | 无 | 中等差距 |
@@ -448,14 +449,14 @@ RAG & Memory:
 | 数据存储 | ★★★★★ | ★★★☆☆ | 取舍：企业级查询 vs 简洁可读可同步 |
 | 认证权限 | ★★★★★ | ☆☆☆☆☆ | 本项目关键缺失 |
 | 插件/工具 | ★★★★★ | ★★★☆☆ | 生态仍有明显差距，但本项目工具能力已从“无”到“可用” |
-| RAG/知识库 | ★★★★☆ | ★★★☆☆ | 主链路已落地，差距转向生态深度 |
+| RAG/知识库 | ★★★★☆ | ★★★★☆ | 主链路已落地并进入混合检索增强阶段，差距转向生态深度 |
 | 音频功能 | ★★★★☆ | ★★☆☆☆ | 已支持 TTS，STT/语音对话仍缺失 |
 | 图像生成 | ★★★★☆ | ☆☆☆☆☆ | 完全缺失，非核心 |
 | Agent 生态 | ★★★★★ | ★★★☆☆ | LobeHub 有市场生态，本项目有 LangGraph 编排 |
 | 用户记忆 | ★★★★☆ | ★★★☆☆ | 已有可用记忆系统，进阶治理能力待增强 |
 | 前端功能 | ★★★★★ | ★★★★☆ | LobeHub 更丰富，本项目在开发者体验与实用功能进展明显 |
 | 多端支持 | ★★★★★ | ★☆☆☆☆ | 桌面端 + 移动端 + PWA 全覆盖 |
-| 部署运维 | ★★★★★ | ★☆☆☆☆ | 本项目需要加强 |
+| 部署运维 | ★★★★★ | ★★☆☆☆ | 已有 Docker 基础能力，但生产化治理仍需加强 |
 | 代码复杂度 | ★☆☆☆☆ (极高) | ★★★★★ (低) | 本项目优势：简洁可维护 |
 | 上手门槛 | ★★☆☆☆ (高) | ★★★★★ (低) | 本项目对开发者更友好 |
 
@@ -529,7 +530,7 @@ LobeHub 不仅实现了 RAG，还内置了 RAG 评估框架 (`rag_eval_datasets`
 
 | 功能 | 工程量 | 当前状态 | 建议 |
 |------|--------|----------|------|
-| Docker 容器化 | 低 | 未开始 | 保持最高优先级，补齐标准化部署 |
+| Docker 容器化 | 低 | 基础版已完成（Dockerfile + docker-compose） | 进入生产化完善（镜像优化、反向代理、分环境编排） |
 | 用户认证 (JWT/OAuth) | 中 | 未开始 | 若进入多用户场景，必须优先落地 |
 | MCP 客户端支持 | 高 | 未开始 | 作为平台能力长期投入，先做基础客户端 |
 
@@ -577,7 +578,7 @@ LobeHub 不仅实现了 RAG，还内置了 RAG 评估框架 (`rag_eval_datasets`
 
 ### Phase 3 - 待推进（平台化）
 
-- [ ] Docker 支持 (Dockerfile + docker-compose.yml)
+- [~] Docker 支持（基础版已完成，待生产化完善）
 - [ ] 用户认证与权限体系
 - [ ] MCP 客户端支持
 - [ ] STT 语音输入
@@ -620,7 +621,7 @@ LobeHub 不仅实现了 RAG，还内置了 RAG 评估框架 (`rag_eval_datasets`
 | `src/api/services/translation_service.py` | 翻译服务 |
 | `src/api/services/tts_service.py` | TTS 服务 |
 | `src/providers/registry.py` | 适配器注册表 |
-| `src/providers/adapters/` | 5 个 LLM 适配器 |
+| `src/providers/adapters/` | 8 个 LLM 适配器 |
 | `src/agents/` | LangGraph Agent 实现 |
 | `config/defaults/models_config.yaml` | 模型默认配置 |
 | `config/local/models_config.yaml` | 模型本地配置 |
@@ -635,15 +636,15 @@ LobeHub 不仅实现了 RAG，还内置了 RAG 评估框架 (`rag_eval_datasets`
 | 定位 | 全平台 AI Agent 生态 | 企业级 AI 对话平台 | 轻量级开发者 AI 工具 |
 | 前端 | React (Next.js) | Svelte (SvelteKit) | React (Vite SPA) |
 | 后端 | Next.js API + tRPC | FastAPI | FastAPI |
-| 数据库 | PostgreSQL | SQLite/PG/MySQL | Markdown + ChromaDB (向量层) |
+| 数据库 | PostgreSQL | SQLite/PG/MySQL | Markdown + sqlite-vec/chroma + BM25 |
 | 插件生态 | 10,000+ (最强) | 函数系统 (中等) | 无插件市场（内置工具能力） |
-| RAG | 内置 (PostgreSQL 嵌入) | 13 种向量 DB (最强) | ChromaDB + 知识库管理 |
+| RAG | 内置 (PostgreSQL 嵌入) | 13 种向量 DB (最强) | sqlite-vec/chroma + BM25 + 知识库管理 |
 | Agent 能力 | Agent 市场 + Runtime | 简单循环 | LangGraph 状态机 (最强) |
 | 多端 | Web + Desktop + Mobile | Web only | Web only |
 | 代码复杂度 | 极高 (40+ 包) | 高 (单体大文件) | 低 (最简洁) |
-| 部署复杂度 | 中 (Vercel/Docker) | 低 (Docker 一键) | 最低 (手动启动) |
+| 部署复杂度 | 中 (Vercel/Docker) | 低 (Docker 一键) | 低-中 (手动或 Docker Compose) |
 
 ### 9.4 分析版本信息
 
 - **LobeHub**: v2.1.20，源码位于 `learn_proj/lobehub`
-- **Agents 项目**: master 分支，最新提交 `6781c23`
+- **Agents 项目**: master 分支，最新提交 `fff33fd`

@@ -26,8 +26,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.createSession(modelId, assistantId, contextType, projectId, temporary || false);
     },
 
-    createGroupSession: async (groupAssistants: string[]) => {
-      return api.createSession(undefined, undefined, contextType, projectId, false, groupAssistants);
+    createGroupSession: async (groupAssistants: string[], mode) => {
+      return api.createSession(undefined, undefined, contextType, projectId, false, groupAssistants, mode);
     },
 
     listSessions: async () => {

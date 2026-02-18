@@ -91,6 +91,8 @@ export interface UploadedFile {
   temp_path: string;
 }
 
+export type GroupChatMode = 'round_robin' | 'committee';
+
 export interface CompareModelResponse {
   model_id: string;
   model_name: string;
@@ -127,6 +129,7 @@ export interface Session {
   temporary?: boolean;
   folder_id?: string;  // Chat folder ID (optional)
   group_assistants?: string[];  // Group chat: list of assistant IDs
+  group_mode?: GroupChatMode;  // Group chat mode
 }
 
 export interface ParamOverrides {
@@ -152,6 +155,7 @@ export interface SessionDetail {
   temporary?: boolean;
   compare_data?: Record<string, { responses: CompareModelResponse[] }>;
   group_assistants?: string[];  // Group chat: list of assistant IDs
+  group_mode?: GroupChatMode;  // Group chat mode
   state: {
     messages: Message[];
     current_step: number;

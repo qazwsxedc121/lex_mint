@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Assistant } from '../../../types/assistant';
+import type { GroupChatMode } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 interface GroupChatCreateModalProps {
@@ -42,13 +43,15 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   const { t } = useTranslation('chat');
   const { api } = useChatServices();
   const [assistants, setAssistants] = useState<Assistant[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedAssistantIds, setSelectedAssistantIds] = useState<string[]>([]);
+  const [groupMode, setGroupMode] = useState<GroupChatMode>('round_robin');
   const [loading, setLoading] = useState(false);
   const [toastError, setToastError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set());
+    setSelectedAssistantIds([]);
+    setGroupMode('round_robin');
     setToastError(null);
     api.listAssistants()
       .then(list => {
@@ -72,21 +75,32 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   }, [toastError]);
 
   const toggle = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+    setSelectedAssistantIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(assistantId => assistantId !== id);
+      }
+      return [...prev, id];
+    });
+  };
+
+  const moveSelectedAssistant = (assistantId: string, direction: 'up' | 'down') => {
+    setSelectedAssistantIds(prev => {
+      const currentIndex = prev.indexOf(assistantId);
+      if (currentIndex < 0) return prev;
+      const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [movedAssistantId] = next.splice(currentIndex, 1);
+      next.splice(nextIndex, 0, movedAssistantId);
       return next;
     });
   };
 
   const handleCreate = async () => {
-    if (selected.size < 2) return;
+    if (selectedAssistantIds.length < 2) return;
     setLoading(true);
     try {
-      const sessionId = await api.createGroupSession(
-        Array.from(selected)
-      );
+      const sessionId = await api.createGroupSession(selectedAssistantIds, groupMode);
       onCreated(sessionId);
       onClose();
     } catch (err: unknown) {
@@ -132,6 +146,41 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
         </div>
 
         <div className="px-4 py-3 max-h-80 overflow-y-auto">
+          <div className="mb-3 space-y-2">
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+              {t('groupChat.modeLabel')}
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 px-2.5 py-2 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/30">
+                <input
+                  type="radio"
+                  name="group-chat-mode"
+                  value="round_robin"
+                  checked={groupMode === 'round_robin'}
+                  onChange={() => setGroupMode('round_robin')}
+                  className="mt-0.5"
+                />
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-800 dark:text-gray-100">{t('groupChat.modeRoundRobin')}</div>
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">{t('groupChat.modeRoundRobinHint')}</div>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 px-2.5 py-2 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/30">
+                <input
+                  type="radio"
+                  name="group-chat-mode"
+                  value="committee"
+                  checked={groupMode === 'committee'}
+                  onChange={() => setGroupMode('committee')}
+                  className="mt-0.5"
+                />
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-800 dark:text-gray-100">{t('groupChat.modeCommittee')}</div>
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">{t('groupChat.modeCommitteeHint')}</div>
+                </div>
+              </label>
+            </div>
+          </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
             {t('groupChat.selectHint')}
           </p>
@@ -140,12 +189,12 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
               key={a.id}
               className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <input
-                type="checkbox"
-                checked={selected.has(a.id)}
-                onChange={() => toggle(a.id)}
-                className="rounded border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
+                <input
+                  type="checkbox"
+                  checked={selectedAssistantIds.includes(a.id)}
+                  onChange={() => toggle(a.id)}
+                  className="rounded border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
+                />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                   {a.name}
@@ -163,6 +212,50 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
               {t('groupChat.noAssistants')}
             </p>
           )}
+          {groupMode === 'round_robin' && selectedAssistantIds.length > 0 && (
+            <div className="mt-4 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
+              <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                {t('groupChat.createOrderTitle')}
+              </p>
+              <div className="space-y-1.5">
+                {selectedAssistantIds.map((assistantId, index) => {
+                  const assistant = assistants.find(item => item.id === assistantId);
+                  const assistantName = assistant?.name || `AI-${assistantId.slice(0, 4)}`;
+                  return (
+                    <div
+                      key={assistantId}
+                      className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900/40"
+                    >
+                      <div className="min-w-0">
+                        <span className="mr-1 text-gray-400 dark:text-gray-500">#{index + 1}</span>
+                        <span className="truncate text-gray-700 dark:text-gray-200">{assistantName}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveSelectedAssistant(assistantId, 'up')}
+                          disabled={index === 0}
+                          className="rounded border border-gray-300 p-0.5 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={t('groupChat.moveUp')}
+                        >
+                          <ArrowUpIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSelectedAssistant(assistantId, 'down')}
+                          disabled={index === selectedAssistantIds.length - 1}
+                          className="rounded border border-gray-300 p-0.5 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={t('groupChat.moveDown')}
+                        >
+                          <ArrowDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
@@ -174,7 +267,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
           </button>
           <button
             onClick={handleCreate}
-            disabled={selected.size < 2 || loading}
+            disabled={selectedAssistantIds.length < 2 || loading}
             className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? '...' : t('groupChat.create')}

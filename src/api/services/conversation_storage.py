@@ -47,7 +47,8 @@ class ConversationStorage:
         context_type: str = "chat",
         project_id: Optional[str] = None,
         temporary: bool = False,
-        group_assistants: Optional[List[str]] = None
+        group_assistants: Optional[List[str]] = None,
+        group_mode: Optional[str] = None,
     ) -> str:
         """Create a new conversation session.
 
@@ -133,6 +134,7 @@ class ConversationStorage:
                 raise ValueError("Group chat requires at least 2 unique assistants")
 
             metadata["group_assistants"] = normalized_group_assistants
+            metadata["group_mode"] = (group_mode or "round_robin").strip().lower()
 
         post.metadata = metadata
 
@@ -236,6 +238,7 @@ class ConversationStorage:
         group_assistants = post.metadata.get("group_assistants")
         if group_assistants:
             result["group_assistants"] = group_assistants
+            result["group_mode"] = post.metadata.get("group_mode", "round_robin")
 
         return result
 
@@ -497,6 +500,7 @@ class ConversationStorage:
                 group_assistants = post.metadata.get("group_assistants")
                 if group_assistants:
                     session_entry["group_assistants"] = group_assistants
+                    session_entry["group_mode"] = post.metadata.get("group_mode", "round_robin")
 
                 sessions.append(session_entry)
             except Exception as e:

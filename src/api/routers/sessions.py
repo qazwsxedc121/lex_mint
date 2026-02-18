@@ -29,6 +29,7 @@ class CreateSessionRequest(BaseModel):
     assistant_id: Optional[str] = None  # 新方式：使用助手
     temporary: bool = False
     group_assistants: Optional[List[str]] = None  # Group chat: list of assistant IDs
+    group_mode: Optional[str] = None  # Group chat mode: "round_robin" | "committee"
 
 
 class UpdateModelRequest(BaseModel):
@@ -109,6 +110,28 @@ async def _normalize_and_validate_group_assistants(group_assistants: Optional[Li
     return normalized
 
 
+def _normalize_and_validate_group_mode(
+    group_mode: Optional[str],
+    group_assistants: Optional[List[str]],
+) -> Optional[str]:
+    """Normalize and validate group mode for group chat sessions."""
+    if group_mode is None:
+        return "round_robin" if group_assistants else None
+
+    normalized_mode = group_mode.strip().lower()
+    allowed_modes = {"round_robin", "committee"}
+    if normalized_mode not in allowed_modes:
+        raise HTTPException(
+            status_code=400,
+            detail="group_mode must be one of: round_robin, committee",
+        )
+
+    if not group_assistants:
+        raise HTTPException(status_code=400, detail="group_mode requires group_assistants")
+
+    return normalized_mode
+
+
 @router.post("", response_model=Dict[str, str])
 async def create_session(
     request: Optional[CreateSessionRequest] = None,
@@ -138,7 +161,14 @@ async def create_session(
     temporary = request.temporary if request else False
     group_assistants = request.group_assistants if request else None
     group_assistants = await _normalize_and_validate_group_assistants(group_assistants)
-    logger.info(f"Creating new session (assistant: {assistant_id or 'default'}, model: {model_id or 'default'}, temporary: {temporary}, group: {len(group_assistants) if group_assistants else 0})...")
+    group_mode = _normalize_and_validate_group_mode(
+        request.group_mode if request else None,
+        group_assistants,
+    )
+    logger.info(
+        f"Creating new session (assistant: {assistant_id or 'default'}, model: {model_id or 'default'}, "
+        f"temporary: {temporary}, group: {len(group_assistants) if group_assistants else 0}, mode: {group_mode or 'n/a'})..."
+    )
 
     try:
         session_id = await storage.create_session(
@@ -147,7 +177,8 @@ async def create_session(
             context_type=context_type,
             project_id=project_id,
             temporary=temporary,
-            group_assistants=group_assistants
+            group_assistants=group_assistants,
+            group_mode=group_mode,
         )
         logger.info(f"✅ 新会话已创建: {session_id}")
         return {"session_id": session_id}

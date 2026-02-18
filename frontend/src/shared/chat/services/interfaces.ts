@@ -10,7 +10,8 @@ import type {
   SearchSource,
   UploadedFile,
   ParamOverrides,
-  ContextInfo
+  ContextInfo,
+  GroupChatMode,
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
@@ -24,7 +25,7 @@ export interface ChatAPI {
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
   createSession(modelId?: string, assistantId?: string, temporary?: boolean): Promise<string>;
-  createGroupSession(groupAssistants: string[]): Promise<string>;
+  createGroupSession(groupAssistants: string[], mode?: GroupChatMode): Promise<string>;
   listSessions(): Promise<Session[]>;
   deleteSession(sessionId: string): Promise<void>;
   saveTemporarySession(sessionId: string): Promise<void>;
