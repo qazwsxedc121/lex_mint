@@ -184,5 +184,9 @@
   "groupChat.reorderDisabled": "Finish current generation to reorder speaking order.",
   "groupChat.reorderLockedByUser": "Round order is locked. Unlock to reorder or edit participants.",
   "groupChat.reorderSaving": "Saving order...",
-  "groupChat.manageDisabled": "Participant changes are disabled while generating, saving, or order lock is enabled."
+  "groupChat.manageDisabled": "Participant changes are disabled while generating, saving, or order lock is enabled.",
+
+  "toolCall.calling": "Calling {{name}}...",
+  "toolCall.arguments": "Arguments",
+  "toolCall.result": "Result"
 }

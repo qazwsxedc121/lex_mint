@@ -746,13 +746,27 @@ class AgentService:
         print(f"[Step 3] Streaming LLM call...")
         logger.info(f"[Step 3] Streaming LLM call")
 
+        # Resolve tools if model supports function calling
+        llm_tools = None
+        try:
+            from .model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
+            merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
+            if merged_caps.function_calling:
+                from src.tools.registry import get_tool_registry
+                llm_tools = get_tool_registry().get_all_tools()
+                print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
+        except Exception as e:
+            logger.warning(f"Failed to resolve tools: {e}")
+
         # Collect full response for saving
         full_response = ""
         usage_data: Optional[TokenUsage] = None
         cost_data: Optional[CostInfo] = None
 
         try:
-            # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort and file_service
+            # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort, file_service, tools
             async for chunk in call_llm_stream(
                 messages,
                 session_id=session_id,
@@ -761,6 +775,7 @@ class AgentService:
                 max_rounds=max_rounds,
                 reasoning_effort=reasoning_effort,
                 file_service=self.file_service,  # Pass file_service for image attachment support
+                tools=llm_tools,
                 **assistant_params
             ):
                 # Check if this is a usage data dict
@@ -783,6 +798,11 @@ class AgentService:
 
                 # Forward thinking_duration event to frontend
                 if isinstance(chunk, dict) and chunk.get("type") == "thinking_duration":
+                    yield chunk
+                    continue
+
+                # Forward tool_calls and tool_results events to frontend
+                if isinstance(chunk, dict) and chunk.get("type") in ("tool_calls", "tool_results"):
                     yield chunk
                     continue
 

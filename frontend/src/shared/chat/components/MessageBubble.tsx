@@ -12,6 +12,7 @@ import type { Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { ThinkingBlock } from './ThinkingBlock';
+import { ToolCallBlock } from './ToolCallBlock';
 import { TranslationBlock } from './TranslationBlock';
 import { CompareResponseView } from './CompareResponseView';
 import { useChatServices } from '../services/ChatServiceProvider';
@@ -1012,6 +1013,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       isThinkingInProgress={isThinkingInProgress}
                       thinkingDurationMs={message.thinkingDurationMs}
                     />
+                  )}
+                  {/* Tool call block */}
+                  {message.toolCalls && message.toolCalls.length > 0 && (
+                    <ToolCallBlock toolCalls={message.toolCalls} />
                   )}
                   {/* Main content */}
                   <ReactMarkdown

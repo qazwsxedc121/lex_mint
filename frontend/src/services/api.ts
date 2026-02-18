@@ -664,6 +664,8 @@ export async function sendMessageStream(
   onContextInfo?: (info: ContextInfo) => void,
   onThinkingDuration?: (durationMs: number) => void,
   fileReferences?: Array<{ path: string; project_id: string }>,
+  onToolCalls?: (calls: Array<{ name: string; args: Record<string, unknown> }>) => void,
+  onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
   onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
   onAssistantDone?: (assistantId: string) => void,
   onGroupEvent?: (event: {
@@ -814,6 +816,18 @@ export async function sendMessageStream(
             if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
               onGroupEvent(data);
             }
+            continue;
+          }
+
+          // Handle tool_calls event
+          if (data.type === 'tool_calls' && data.calls && onToolCalls) {
+            onToolCalls(data.calls);
+            continue;
+          }
+
+          // Handle tool_results event
+          if (data.type === 'tool_results' && data.results && onToolResults) {
+            onToolResults(data.results);
             continue;
           }
 

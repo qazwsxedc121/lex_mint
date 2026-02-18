@@ -103,6 +103,13 @@ export interface CompareModelResponse {
   error?: string;
 }
 
+export interface ToolCallInfo {
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+  status: 'calling' | 'done' | 'error';
+}
+
 export interface Message {
   message_id?: string;  // UUID for each message (optional for backward compatibility)
   role: 'user' | 'assistant' | 'separator' | 'summary';
@@ -113,6 +120,7 @@ export interface Message {
   cost?: CostInfo;
   sources?: SearchSource[];
   thinkingDurationMs?: number;
+  toolCalls?: ToolCallInfo[];
   compareResponses?: CompareModelResponse[];
   assistant_id?: string;       // Group chat: which assistant generated this message
   assistant_name?: string;     // Group chat: assistant display name

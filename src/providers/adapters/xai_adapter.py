@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
+from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ class XAIAdapter(BaseLLMAdapter):
             yield StreamChunk(
                 content=content,
                 thinking=thinking,
+                tool_calls=extract_tool_calls(chunk),
                 usage=usage_data,
                 raw=chunk,
             )

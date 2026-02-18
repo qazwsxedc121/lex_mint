@@ -1,10 +1,11 @@
 """Simple LLM call service - without LangGraph"""
 
 import time
+import json
 import logging
 from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple
 from pathlib import Path
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage, trim_messages
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
@@ -376,7 +377,8 @@ async def call_llm_stream(
     frequency_penalty: Optional[float] = None,
     presence_penalty: Optional[float] = None,
     reasoning_effort: Optional[str] = None,
-    file_service: Optional[FileService] = None
+    file_service: Optional[FileService] = None,
+    tools: Optional[List] = None
 ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
     """
     Streaming LLM call, yields tokens one by one.
@@ -546,6 +548,18 @@ async def call_llm_stream(
         "context_window": context_window,
     }
 
+    # Bind tools to LLM if provided
+    llm_for_call = llm
+    if tools:
+        try:
+            llm_for_call = llm.bind_tools(tools)
+            print(f"[TOOLS] Bound {len(tools)} tools to LLM")
+            logger.info(f"Bound {len(tools)} tools to LLM")
+        except Exception as e:
+            logger.warning(f"Failed to bind tools: {e}, proceeding without tools")
+            llm_for_call = llm
+            tools = None
+
     try:
         print(f"[LLM] Streaming {len(langchain_messages)} messages to LLM API...")
         logger.info(f"Streaming LLM API call...")
@@ -553,41 +567,138 @@ async def call_llm_stream(
         # Collect full response for logging
         full_response = ""
         full_reasoning = ""
-        in_thinking_phase = False
-        thinking_ended = False
-        thinking_start_time: Optional[float] = None
         final_usage: Optional[TokenUsage] = None
 
-        # Stream via adapter (unified interface)
-        async for chunk in adapter.stream(llm, langchain_messages):
-            # Handle thinking/reasoning content
-            if chunk.thinking and not explicit_disable_reasoning:
-                full_reasoning += chunk.thinking
-                if not in_thinking_phase:
-                    in_thinking_phase = True
-                    thinking_start_time = time.time()
-                    yield "<think>"
-                yield chunk.thinking
+        MAX_TOOL_ROUNDS = 3
+        tool_round = 0
+        current_messages = list(langchain_messages)
 
-            # Handle regular content
-            if chunk.content:
-                if in_thinking_phase and not thinking_ended:
-                    thinking_ended = True
-                    duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
-                    yield "</think>"
-                    yield {"type": "thinking_duration", "duration_ms": duration_ms}
-                full_response += chunk.content
-                yield chunk.content
+        while True:
+            in_thinking_phase = False
+            thinking_ended = False
+            thinking_start_time: Optional[float] = None
+            round_content = ""
+            round_tool_calls: List[Dict[str, Any]] = []
+            # Merge raw LangChain chunks to get complete tool_calls after stream ends
+            merged_chunk = None
 
-            # Capture usage data (usually in final chunk)
-            if chunk.usage:
-                final_usage = chunk.usage
+            # Stream via adapter (unified interface)
+            active_llm = llm_for_call if tools else llm
+            async for chunk in adapter.stream(active_llm, current_messages):
+                # Handle thinking/reasoning content
+                if chunk.thinking and not explicit_disable_reasoning:
+                    full_reasoning += chunk.thinking
+                    if not in_thinking_phase:
+                        in_thinking_phase = True
+                        thinking_start_time = time.time()
+                        yield "<think>"
+                    yield chunk.thinking
 
-        # Close thinking tag if opened but no content followed
-        if in_thinking_phase and not thinking_ended:
-            duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
-            yield "</think>"
-            yield {"type": "thinking_duration", "duration_ms": duration_ms}
+                # Handle regular content
+                if chunk.content:
+                    if in_thinking_phase and not thinking_ended:
+                        thinking_ended = True
+                        duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                        yield "</think>"
+                        yield {"type": "thinking_duration", "duration_ms": duration_ms}
+                    round_content += chunk.content
+                    yield chunk.content
+
+                # Merge raw chunks for usage and tool_calls after stream ends
+                if chunk.raw is not None:
+                    try:
+                        merged_chunk = chunk.raw if merged_chunk is None else merged_chunk + chunk.raw
+                    except Exception:
+                        pass
+
+            # After stream ends: extract usage from merged chunk
+            if merged_chunk is not None:
+                extracted_usage = TokenUsage.extract_from_chunk(merged_chunk)
+                if extracted_usage:
+                    final_usage = extracted_usage
+
+            # After stream ends: extract complete tool_calls from merged chunk
+            if tools and merged_chunk is not None:
+                raw_tool_calls = getattr(merged_chunk, "tool_calls", None) or []
+                for tc in raw_tool_calls:
+                    if isinstance(tc, dict):
+                        tc_name = tc.get("name", "")
+                        tc_args = tc.get("args", {})
+                        tc_id = tc.get("id", "")
+                    else:
+                        tc_name = getattr(tc, "name", "") or ""
+                        tc_args = getattr(tc, "args", {}) or {}
+                        tc_id = getattr(tc, "id", "") or ""
+                    if tc_name:
+                        round_tool_calls.append({
+                            "name": tc_name,
+                            "args": tc_args if isinstance(tc_args, dict) else {},
+                            "id": tc_id or "",
+                        })
+
+            # Close thinking tag if opened but no content followed
+            if in_thinking_phase and not thinking_ended:
+                duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                yield "</think>"
+                yield {"type": "thinking_duration", "duration_ms": duration_ms}
+
+            full_response += round_content
+
+            # If no tool calls or tools not enabled, we're done
+            if not round_tool_calls or not tools:
+                break
+
+            # Tool call loop: execute tools and re-call LLM
+            tool_round += 1
+            if tool_round > MAX_TOOL_ROUNDS:
+                print(f"[TOOLS] Max tool rounds ({MAX_TOOL_ROUNDS}) reached, stopping")
+                logger.warning(f"Max tool call rounds reached")
+                break
+
+            print(f"[TOOLS] Round {tool_round}: executing {len(round_tool_calls)} tool(s)")
+            logger.info(f"Tool call round {tool_round}: {[tc['name'] for tc in round_tool_calls]}")
+
+            # Yield tool_calls event to frontend
+            yield {
+                "type": "tool_calls",
+                "calls": [{"name": tc["name"], "args": tc["args"]} for tc in round_tool_calls],
+            }
+
+            # Execute tools
+            from src.tools.registry import get_tool_registry
+            registry = get_tool_registry()
+            tool_results = []
+            for tc in round_tool_calls:
+                result = registry.execute_tool(tc["name"], tc["args"])
+                tool_results.append({
+                    "name": tc["name"],
+                    "result": result,
+                    "tool_call_id": tc["id"],
+                })
+                print(f"[TOOLS]   {tc['name']}({tc['args']}) -> {result[:100]}")
+
+            # Yield tool_results event to frontend
+            yield {
+                "type": "tool_results",
+                "results": tool_results,
+            }
+
+            # Append AI message with tool_calls and tool result messages
+            ai_tool_calls = [
+                {"name": tc["name"], "args": tc["args"], "id": tc["id"]}
+                for tc in round_tool_calls
+            ]
+            ai_msg = AIMessage(content=round_content, tool_calls=ai_tool_calls)
+            current_messages.append(ai_msg)
+
+            for tr in tool_results:
+                current_messages.append(
+                    ToolMessage(content=tr["result"], tool_call_id=tr["tool_call_id"])
+                )
+
+            # Reset for next round
+            round_content = ""
+            round_tool_calls = []
 
         # Yield usage data at the end
         if final_usage:

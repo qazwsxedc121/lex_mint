@@ -465,6 +465,34 @@ export function useChat(sessionId: string | null) {
           );
         },
         options?.fileReferences,
+        // Tool calls: onToolCalls
+        (calls: Array<{ name: string; args: Record<string, unknown> }>) => {
+          if (runtimeIsGroupChat) return;
+          // Add tool calls with 'calling' status
+          const toolCalls = calls.map(c => ({ name: c.name, args: c.args, status: 'calling' as const }));
+          updateAssistantMessage(
+            (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
+            { allowSingleFallback: true }
+          );
+        },
+        // Tool results: onToolResults
+        (results: Array<{ name: string; result: string; tool_call_id: string }>) => {
+          if (runtimeIsGroupChat) return;
+          // Update tool calls with results
+          updateAssistantMessage(
+            (message) => {
+              const updated = (message.toolCalls || []).map(tc => {
+                const match = results.find(r => r.name === tc.name && tc.status === 'calling');
+                if (match) {
+                  return { ...tc, result: match.result, status: 'done' as const };
+                }
+                return tc;
+              });
+              return { ...message, toolCalls: updated };
+            },
+            { allowSingleFallback: true }
+          );
+        },
         // Group chat: onAssistantStart
         (assistantId: string, name: string, icon?: string) => {
           if (!runtimeIsGroupChat) {
@@ -1200,6 +1228,32 @@ export function useChat(sessionId: string | null) {
           );
         },
         undefined,
+        // onToolCalls (regenerate)
+        (calls: Array<{ name: string; args: Record<string, unknown> }>) => {
+          if (runtimeIsGroupChat) return;
+          const toolCalls = calls.map(c => ({ name: c.name, args: c.args, status: 'calling' as const }));
+          updateAssistantMessage(
+            (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
+            { allowSingleFallback: true }
+          );
+        },
+        // onToolResults (regenerate)
+        (results: Array<{ name: string; result: string; tool_call_id: string }>) => {
+          if (runtimeIsGroupChat) return;
+          updateAssistantMessage(
+            (message) => {
+              const updated = (message.toolCalls || []).map(tc => {
+                const match = results.find(r => r.name === tc.name && tc.status === 'calling');
+                if (match) {
+                  return { ...tc, result: match.result, status: 'done' as const };
+                }
+                return tc;
+              });
+              return { ...message, toolCalls: updated };
+            },
+            { allowSingleFallback: true }
+          );
+        },
         (assistantId: string, name: string, icon?: string) => {
           if (!runtimeIsGroupChat) {
             activateRuntimeGroupChatMode();

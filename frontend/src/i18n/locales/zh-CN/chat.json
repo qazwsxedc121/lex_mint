@@ -184,5 +184,9 @@
   "groupChat.reorderDisabled": "请等待本轮回复完成后再调整发言顺序。",
   "groupChat.reorderLockedByUser": "已锁定本轮顺序。解除锁定后可调整或编辑参与者。",
   "groupChat.reorderSaving": "正在保存顺序...",
-  "groupChat.manageDisabled": "生成中、保存中或已锁定顺序时，无法修改参与者。"
+  "groupChat.manageDisabled": "生成中、保存中或已锁定顺序时，无法修改参与者。",
+
+  "toolCall.calling": "正在调用 {{name}}...",
+  "toolCall.arguments": "参数",
+  "toolCall.result": "结果"
 }
