@@ -801,7 +801,7 @@ class ModelConfigService:
         self,
         base_url: str,
         api_key: str,
-        model_id: str = "gpt-3.5-turbo",
+        model_id: str = None,
         provider: Optional[Provider] = None
     ) -> tuple[bool, str]:
         """

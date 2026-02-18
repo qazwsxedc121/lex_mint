@@ -1388,13 +1388,15 @@ export async function searchMemories(payload: MemorySearchRequest): Promise<Memo
 export async function testProviderConnection(
   baseUrl: string,
   apiKey: string,
-  modelId: string = 'gpt-3.5-turbo'
+  providerId?: string,
+  modelId?: string
 ): Promise<{ success: boolean; message: string }> {
   const response = await api.post<{ success: boolean; message: string }>(
     '/api/models/providers/test',
     {
       base_url: baseUrl,
       api_key: apiKey,
+      provider_id: providerId,
       model_id: modelId,
     }
   );
@@ -1407,7 +1409,7 @@ export async function testProviderConnection(
 export async function testProviderStoredConnection(
   providerId: string,
   baseUrl: string,
-  modelId: string = 'gpt-3.5-turbo'
+  modelId?: string
 ): Promise<{ success: boolean; message: string }> {
   const response = await api.post<{ success: boolean; message: string }>(
     '/api/models/providers/test-stored',

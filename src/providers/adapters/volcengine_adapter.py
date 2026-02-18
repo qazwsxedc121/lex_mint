@@ -28,6 +28,8 @@ class VolcEngineAdapter(BaseLLMAdapter):
     via extra_body / model_kwargs.
     """
 
+    _DEFAULT_TEST_MODEL = "doubao-1-5-pro-32k-250115"
+
     _CURATED_MODELS: List[Dict[str, str]] = [
         {"id": "doubao-seed-2-0-pro-260215", "name": "Doubao Seed 2.0 Pro"},
         {"id": "doubao-seed-2-0-lite-260215", "name": "Doubao Seed 2.0 Lite"},

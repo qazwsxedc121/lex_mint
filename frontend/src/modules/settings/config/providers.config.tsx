@@ -9,8 +9,56 @@
 import { SignalIcon } from '@heroicons/react/24/outline';
 import type { CrudSettingsConfig } from './types';
 import type { Provider } from '../../../types/model';
-import { testProviderStoredConnection } from '../../../services/api';
+import { fetchProviderModels, testProviderStoredConnection } from '../../../services/api';
 import i18n from '../../../i18n';
+
+const BAILIAN_PROVIDER_ID = 'bailian';
+const BAILIAN_DEFAULT_TEST_MODEL = 'qwen-plus';
+const PROMPT_MODEL_PREVIEW_LIMIT = 12;
+
+async function pickBailianTestModel(provider: Provider): Promise<string | undefined | null> {
+  try {
+    const models = await fetchProviderModels(provider.id);
+    const suggestedModel =
+      models.find((model) => model.id === BAILIAN_DEFAULT_TEST_MODEL)?.id ||
+      models[0]?.id ||
+      BAILIAN_DEFAULT_TEST_MODEL;
+
+    const previewLines = models
+      .slice(0, PROMPT_MODEL_PREVIEW_LIMIT)
+      .map((model, index) => `${index + 1}. ${model.id}`);
+    const restCount = Math.max(models.length - PROMPT_MODEL_PREVIEW_LIMIT, 0);
+    const tailLine = restCount > 0 ? `...and ${restCount} more` : '';
+
+    const promptLines = [
+      `Choose a model for ${provider.name} connection test.`,
+      'Enter model id (leave empty to use suggested):',
+      '',
+      ...previewLines,
+    ];
+    if (tailLine) {
+      promptLines.push(tailLine);
+    }
+
+    const input = window.prompt(promptLines.join('\n'), suggestedModel);
+    if (input === null) {
+      return null;
+    }
+
+    const trimmed = input.trim();
+    return trimmed || suggestedModel;
+  } catch {
+    const input = window.prompt(
+      `Enter model id for ${provider.name} connection test:`,
+      BAILIAN_DEFAULT_TEST_MODEL
+    );
+    if (input === null) {
+      return null;
+    }
+    const trimmed = input.trim();
+    return trimmed || BAILIAN_DEFAULT_TEST_MODEL;
+  }
+}
 
 export const providersConfig: CrudSettingsConfig<Provider> = {
   type: 'crud',
@@ -201,7 +249,16 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       disabled: (item: Provider) => !item.has_api_key,
       onClick: async (item: Provider) => {
         try {
-          const result = await testProviderStoredConnection(item.id, item.base_url);
+          let selectedModelId: string | undefined;
+          if (item.id === BAILIAN_PROVIDER_ID) {
+            const pickedModel = await pickBailianTestModel(item);
+            if (pickedModel === null) {
+              return;
+            }
+            selectedModelId = pickedModel;
+          }
+
+          const result = await testProviderStoredConnection(item.id, item.base_url, selectedModelId);
           if (result.success) {
             alert(i18n.t('settings:testConnection.success') + '\n' + result.message);
           } else {

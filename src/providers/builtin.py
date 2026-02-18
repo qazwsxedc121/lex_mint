@@ -528,6 +528,103 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         builtin_models=[],  # Models fetched dynamically
         supports_model_list=True,
     ),
+
+    "bailian": ProviderDefinition(
+        id="bailian",
+        name="Alibaba Cloud (Qwen)",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        sdk_class="bailian",
+        url_suffix="",
+        auto_append_path=False,
+        default_capabilities=ModelCapabilities(
+            context_length=131072,
+            vision=False,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        builtin_models=[
+            ModelDefinition(
+                id="qwen3-max",
+                name="Qwen3 Max",
+                capabilities=ModelCapabilities(
+                    context_length=262144,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen-max",
+                name="Qwen Max",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen3-coder-plus",
+                name="Qwen3 Coder Plus",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qvq-plus",
+                name="QVQ Plus",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    reasoning=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen-plus",
+                name="Qwen Plus",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen-turbo",
+                name="Qwen Turbo",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen-long",
+                name="Qwen Long",
+                capabilities=ModelCapabilities(
+                    context_length=10000000,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen3-vl-plus",
+                name="Qwen3 VL Plus",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    vision=True,
+                    function_calling=True,
+                )
+            ),
+            ModelDefinition(
+                id="qwen3-vl-flash",
+                name="Qwen3 VL Flash",
+                capabilities=ModelCapabilities(
+                    context_length=131072,
+                    vision=True,
+                    function_calling=True,
+                )
+            ),
+        ],
+        supports_model_list=True,
+    ),
 }
 
 

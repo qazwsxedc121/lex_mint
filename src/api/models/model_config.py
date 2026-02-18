@@ -135,14 +135,15 @@ class ProviderTestRequest(BaseModel):
     """测试提供商连接请求"""
     base_url: str = Field(..., description="API 基础 URL")
     api_key: str = Field(..., min_length=1, description="API 密钥")
-    model_id: str = Field(default="gpt-3.5-turbo", description="用于测试的模型ID")
+    model_id: Optional[str] = Field(default=None, description="用于测试的模型ID")
+    provider_id: Optional[str] = Field(default=None, description="提供商ID（用于选择正确适配器和默认模型）")
 
 
 class ProviderTestStoredRequest(BaseModel):
     """使用已存储的API Key测试提供商连接请求"""
     provider_id: str = Field(..., description="提供商ID")
     base_url: str = Field(..., description="API 基础 URL")
-    model_id: str = Field(default="gpt-3.5-turbo", description="用于测试的模型ID")
+    model_id: Optional[str] = Field(default=None, description="用于测试的模型ID")
 
 
 class ProviderTestResponse(BaseModel):

@@ -18,6 +18,10 @@ class BaseLLMAdapter(ABC):
     interface for creating LLM instances and processing responses.
     """
 
+    # Default model used for test_connection when no model_id is provided.
+    # Subclasses should override for non-OpenAI providers.
+    _DEFAULT_TEST_MODEL = "gpt-3.5-turbo"
+
     @abstractmethod
     def create_llm(
         self,
@@ -143,7 +147,7 @@ class BaseLLMAdapter(ABC):
         """
         try:
             llm = self.create_llm(
-                model=model_id or "gpt-3.5-turbo",
+                model=model_id or self._DEFAULT_TEST_MODEL,
                 base_url=base_url,
                 api_key=api_key,
                 temperature=0.0,

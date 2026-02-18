@@ -20,6 +20,8 @@ class DeepSeekAdapter(BaseLLMAdapter):
     Uses langchain-deepseek package for proper reasoning_content handling.
     """
 
+    _DEFAULT_TEST_MODEL = "deepseek-chat"
+
     def create_llm(
         self,
         model: str,

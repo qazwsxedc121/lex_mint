@@ -154,6 +154,25 @@ providers:
   auto_append_path: true
   supports_model_list: true
   sdk_class: openai
+- id: bailian
+  name: Alibaba Cloud (Qwen)
+  type: builtin
+  protocol: openai
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_keys: []
+  enabled: false
+  default_capabilities:
+    context_length: 131072
+    vision: false
+    function_calling: true
+    reasoning: true
+    streaming: true
+    file_upload: false
+    image_output: false
+  url_suffix: ''
+  auto_append_path: false
+  supports_model_list: true
+  sdk_class: bailian
 models:
 - id: deepseek-chat
   name: DeepSeek Chat
@@ -573,6 +592,148 @@ models:
   tags:
   - chat
   - function-calling
+- id: qwen3-max
+  name: Qwen3 Max
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 262144
+    vision: false
+    function_calling: true
+    reasoning: true
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
+- id: qwen-max
+  name: Qwen Max
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: false
+    function_calling: true
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - function-calling
+- id: qwen3-coder-plus
+  name: Qwen3 Coder Plus
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: false
+    function_calling: true
+    reasoning: true
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
+- id: qvq-plus
+  name: QVQ Plus
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: false
+    function_calling: true
+    reasoning: true
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - reasoning
+  - function-calling
+- id: qwen-plus
+  name: Qwen Plus
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: false
+    function_calling: true
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - function-calling
+- id: qwen-turbo
+  name: Qwen Turbo
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: false
+    function_calling: true
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - function-calling
+- id: qwen-long
+  name: Qwen Long
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 10000000
+    vision: false
+    function_calling: true
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - function-calling
+- id: qwen3-vl-plus
+  name: Qwen3 VL Plus
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: true
+    function_calling: true
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
+- id: qwen3-vl-flash
+  name: Qwen3 VL Flash
+  provider_id: bailian
+  enabled: false
+  capabilities:
+    context_length: 131072
+    vision: true
+    function_calling: true
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  tags:
+  - chat
+  - vision
+  - function-calling
 reasoning_supported_patterns:
 - deepseek-chat
 - glm-
+- qwen3-
+- qwq-

@@ -244,10 +244,15 @@ async def test_provider_connection(
     service: ModelConfigService = Depends(get_model_service)
 ):
     """测试提供商连接是否有效（使用提供的API Key）"""
+    provider = None
+    if test_request.provider_id:
+        provider = await service.get_provider(test_request.provider_id)
+
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
         api_key=test_request.api_key,
-        model_id=test_request.model_id
+        model_id=test_request.model_id,
+        provider=provider,
     )
     return ProviderTestResponse(success=success, message=message)
 
