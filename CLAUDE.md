@@ -152,6 +152,18 @@ LangGraph-based AI agent system with web interface using FastAPI backend and Rea
 - **Storage**: Markdown files with YAML frontmatter (text-based, sync-friendly)
 - **LLM**: DeepSeek chat model via LangChain
 
+## Process Management (CRITICAL)
+
+**NEVER start backend or frontend processes without checking first.**
+
+Before starting any dev server (uvicorn, vite, npm run dev, etc.):
+1. Read `.env` to get `API_PORT` and `FRONTEND_PORT`
+2. Check if ports are already occupied: `netstat -ano | grep <PORT>`
+3. **If port is occupied**: The service is already running. Both backend (uvicorn) and frontend (vite) have `--reload` / HMR enabled — code changes are picked up automatically. Do NOT start a new process.
+4. **If service needs restart**: Do NOT restart it yourself. Notify the user and let them handle it (e.g., re-run `start.bat`). Background processes started by Claude Code are invisible to the user and impossible for them to manage.
+
+**Why**: The user runs `start.bat` which manages both backend and frontend in one terminal window. Starting orphan processes from Claude Code creates invisible zombie processes the user cannot find or stop.
+
 ## Development Environment
 
 **Primary Platform**: Windows
