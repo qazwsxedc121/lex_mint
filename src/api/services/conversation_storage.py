@@ -49,6 +49,7 @@ class ConversationStorage:
         temporary: bool = False,
         group_assistants: Optional[List[str]] = None,
         group_mode: Optional[str] = None,
+        group_settings: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new conversation session.
 
@@ -135,6 +136,8 @@ class ConversationStorage:
 
             metadata["group_assistants"] = normalized_group_assistants
             metadata["group_mode"] = (group_mode or "round_robin").strip().lower()
+            if group_settings is not None:
+                metadata["group_settings"] = group_settings
 
         post.metadata = metadata
 
@@ -239,6 +242,8 @@ class ConversationStorage:
         if group_assistants:
             result["group_assistants"] = group_assistants
             result["group_mode"] = post.metadata.get("group_mode", "round_robin")
+            if "group_settings" in post.metadata:
+                result["group_settings"] = post.metadata.get("group_settings")
 
         return result
 
@@ -501,6 +506,8 @@ class ConversationStorage:
                 if group_assistants:
                     session_entry["group_assistants"] = group_assistants
                     session_entry["group_mode"] = post.metadata.get("group_mode", "round_robin")
+                    if "group_settings" in post.metadata:
+                        session_entry["group_settings"] = post.metadata.get("group_settings")
 
                 sessions.append(session_entry)
             except Exception as e:

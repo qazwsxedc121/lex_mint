@@ -16,6 +16,8 @@ from .file_reference_config_service import FileReferenceConfig
 from .group_orchestration import (
     CommitteeOrchestrator,
     CommitteePolicy,
+    GroupSettingsResolver,
+    ResolvedCommitteeSettings,
     CommitteeRuntimeState,
     CommitteeTurnExecutor,
 )
@@ -118,7 +120,6 @@ class AgentService:
         return CommitteeOrchestrator(
             llm_call=call_llm,
             assistant_params_from_config=self._assistant_params_from_config,
-            resolve_committee_round_policy=self._resolve_committee_round_policy,
             stream_group_assistant_turn=self._stream_group_assistant_turn,
             get_message_content_by_id=self._get_message_content_by_id,
             build_structured_turn_summary=self._build_structured_turn_summary,
@@ -1288,6 +1289,23 @@ class AgentService:
             participant_count=participant_count,
         )
 
+    def _resolve_group_settings(
+        self,
+        *,
+        group_mode: Optional[str],
+        group_assistants: List[str],
+        group_settings: Optional[Dict[str, Any]],
+        assistant_config_map: Dict[str, Any],
+    ):
+        """Resolve runtime group settings with backward-compatible defaults."""
+        return GroupSettingsResolver.resolve(
+            group_mode=group_mode,
+            group_assistants=group_assistants,
+            group_settings=group_settings,
+            assistant_config_map=assistant_config_map,
+            resolve_round_policy=self._resolve_committee_round_policy,
+        )
+
     @staticmethod
     def _build_group_instruction_prompt(
         instruction: Optional[str],
@@ -1458,6 +1476,7 @@ class AgentService:
         group_assistants: List[str],
         assistant_name_map: Dict[str, str],
         assistant_config_map: Dict[str, Any],
+        group_settings: Optional[Dict[str, Any]],
         reasoning_effort: Optional[str],
         context_type: str,
         project_id: Optional[str],
@@ -1469,11 +1488,22 @@ class AgentService:
         if trace_id is None and self._is_group_trace_enabled():
             trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
 
+        resolved_settings = self._resolve_group_settings(
+            group_mode="committee",
+            group_assistants=group_assistants,
+            group_settings=group_settings,
+            assistant_config_map=assistant_config_map,
+        )
+        committee_settings: Optional[ResolvedCommitteeSettings] = resolved_settings.committee
+        if committee_settings is None:
+            return
+
         orchestrator = self._create_committee_orchestrator()
         async for event in orchestrator.process(
             session_id=session_id,
             raw_user_message=raw_user_message,
             group_assistants=group_assistants,
+            committee_settings=committee_settings,
             assistant_name_map=assistant_name_map,
             assistant_config_map=assistant_config_map,
             reasoning_effort=reasoning_effort,
@@ -1491,6 +1521,7 @@ class AgentService:
         user_message: str,
         group_assistants: List[str],
         group_mode: str = "round_robin",
+        group_settings: Optional[Dict[str, Any]] = None,
         skip_user_append: bool = False,
         reasoning_effort: str = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
@@ -1609,6 +1640,7 @@ class AgentService:
                 group_assistants=group_assistants,
                 assistant_name_map=assistant_name_map,
                 assistant_config_map=assistant_config_map,
+                group_settings=group_settings,
                 reasoning_effort=reasoning_effort,
                 context_type=context_type,
                 project_id=project_id,

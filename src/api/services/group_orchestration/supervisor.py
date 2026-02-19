@@ -23,6 +23,11 @@ class CommitteeSupervisor:
         max_rounds: int,
         min_member_turns_before_finish: int = 2,
         min_total_rounds_before_finish: int = 0,
+        max_parallel_speakers: int = 3,
+        allow_parallel_speak: bool = True,
+        allow_finish: bool = True,
+        supervisor_system_prompt_template: Optional[str] = None,
+        summary_instruction_template: Optional[str] = None,
     ):
         self.supervisor_id = supervisor_id
         self.supervisor_name = supervisor_name
@@ -31,6 +36,21 @@ class CommitteeSupervisor:
         self.max_rounds = max_rounds
         self.min_member_turns_before_finish = max(1, int(min_member_turns_before_finish))
         self.min_total_rounds_before_finish = max(0, int(min_total_rounds_before_finish))
+        self.max_parallel_speakers = max(1, int(max_parallel_speakers))
+        self.allow_parallel_speak = bool(allow_parallel_speak)
+        self.allow_finish = bool(allow_finish)
+        self.supervisor_system_prompt_template = (
+            supervisor_system_prompt_template.strip()
+            if isinstance(supervisor_system_prompt_template, str)
+            and supervisor_system_prompt_template.strip()
+            else None
+        )
+        self.summary_instruction_template = (
+            summary_instruction_template.strip()
+            if isinstance(summary_instruction_template, str)
+            and summary_instruction_template.strip()
+            else None
+        )
 
     async def decide(
         self,
@@ -72,6 +92,16 @@ class CommitteeSupervisor:
             )
         turns_block = "\n".join(lines) if lines else "- No member turns recorded."
         draft_block = f"\nDraft summary from supervisor decision:\n{draft_summary}\n" if draft_summary else ""
+        if self.summary_instruction_template:
+            try:
+                return self.summary_instruction_template.format(
+                    reason=reason,
+                    user_message=state.user_message,
+                    draft_summary=(draft_summary or ""),
+                    turns_block=turns_block,
+                )
+            except Exception:
+                pass
         return (
             f"Committee orchestration is ending (reason: {reason}).\n"
             "Please provide a concise, user-facing final answer that synthesizes member viewpoints.\n"
@@ -82,6 +112,26 @@ class CommitteeSupervisor:
         )
 
     def _build_system_prompt(self) -> str:
+        if self.supervisor_system_prompt_template:
+            return self.supervisor_system_prompt_template
+
+        allowed_actions = ["speak"]
+        if self.allow_parallel_speak:
+            allowed_actions.append("parallel_speak")
+        if self.allow_finish:
+            allowed_actions.append("finish")
+        allowed_actions_text = " | ".join(f'"{action}"' for action in allowed_actions)
+        parallel_rule = (
+            f"- Keep parallel_speak target count small (2-{self.max_parallel_speakers}).\n"
+            if self.allow_parallel_speak
+            else "- parallel_speak is disabled for this session.\n"
+        )
+        finish_rule = (
+            "- finish is allowed only when completion gates are satisfied.\n"
+            if self.allow_finish
+            else "- finish is disabled for this session.\n"
+        )
+
         return (
             "You are the committee supervisor in a multi-assistant discussion.\n"
             "Decide one action for the next step and return JSON only.\n"
@@ -91,7 +141,7 @@ class CommitteeSupervisor:
             "3) finish -> end discussion and request final synthesis.\n\n"
             "JSON schema:\n"
             "{\n"
-            '  "action": "speak" | "parallel_speak" | "finish",\n'
+            f'  "action": {allowed_actions_text},\n'
             '  "assistant_id": "required when action=speak",\n'
             '  "assistant_ids": "required when action=parallel_speak",\n'
             '  "instruction": "optional instruction for the selected assistant",\n'
@@ -100,7 +150,8 @@ class CommitteeSupervisor:
             "}\n"
             "Rules:\n"
             "- Use only provided assistant_id values.\n"
-            "- Keep parallel_speak target count small (2-3).\n"
+            f"{parallel_rule}"
+            f"{finish_rule}"
             "- Prefer concise instruction text.\n"
             "- Return strict JSON with no markdown."
         )
@@ -239,25 +290,37 @@ class CommitteeSupervisor:
         pending_member_targets = self._pending_member_targets(state, valid_targets)
         required_targets = self._required_member_targets(valid_targets)
         depth_target = self._depth_required_target(state, required_targets)
+        if decision.action == "parallel_speak" and not self.allow_parallel_speak:
+            decision.action = "speak"
+            decision.reason = decision.reason or "parallel_speak_disabled"
+            if not decision.assistant_id and decision.assistant_ids:
+                decision.assistant_id = decision.assistant_ids[0]
+            decision.assistant_ids = None
+
         if decision.action == "finish":
+            if not self.allow_finish:
+                forced_target = pending_member_targets[0] if pending_member_targets else None
+                if not forced_target:
+                    forced_target = depth_target or self._fallback_speaker(state, valid_targets)
+                return self._build_forced_speak_decision(
+                    state=state,
+                    assistant_id=forced_target,
+                    reason="finish_disabled",
+                    depth_target=depth_target,
+                )
             if pending_member_targets:
                 forced_target = pending_member_targets[0]
-                forced_name = state.participants.get(forced_target, forced_target)
-                return CommitteeDecision(
-                    action="speak",
+                return self._build_forced_speak_decision(
+                    state=state,
                     assistant_id=forced_target,
-                    instruction=f"Please contribute your best analysis as {forced_name}.",
                     reason="coverage_required_before_finish",
                 )
             if depth_target:
-                forced_name = state.participants.get(depth_target, depth_target)
-                return CommitteeDecision(
-                    action="speak",
+                return self._build_forced_speak_decision(
+                    state=state,
                     assistant_id=depth_target,
-                    instruction=(
-                        f"As {forced_name}, build on prior points, add new evidence, and sharpen trade-offs."
-                    ),
                     reason="discussion_depth_required_before_finish",
+                    depth_target=depth_target,
                 )
             if not decision.reason:
                 decision.reason = "supervisor_finish"
@@ -291,7 +354,7 @@ class CommitteeSupervisor:
             ):
                 required_slots = 2
 
-            max_parallel_targets = 3
+            max_parallel_targets = self.max_parallel_speakers
             selected_targets = selected_targets[:max_parallel_targets]
             if len(selected_targets) < required_slots:
                 for assistant_id in self._required_member_targets(valid_targets):
@@ -344,6 +407,29 @@ class CommitteeSupervisor:
         if not decision.reason:
             decision.reason = "supervisor_selected_speaker"
         return decision
+
+    def _build_forced_speak_decision(
+        self,
+        *,
+        state: CommitteeRuntimeState,
+        assistant_id: str,
+        reason: str,
+        depth_target: Optional[str] = None,
+    ) -> CommitteeDecision:
+        """Build a deterministic speak fallback when finish/parallel is blocked."""
+        assistant_name = state.participants.get(assistant_id, assistant_id)
+        if depth_target and assistant_id == depth_target:
+            instruction = (
+                f"As {assistant_name}, build on prior points, add new evidence, and sharpen trade-offs."
+            )
+        else:
+            instruction = f"Please contribute your best analysis as {assistant_name}."
+        return CommitteeDecision(
+            action="speak",
+            assistant_id=assistant_id,
+            instruction=instruction,
+            reason=reason,
+        )
 
     def _fallback_speaker(self, state: CommitteeRuntimeState, valid_targets: List[str]) -> str:
         non_supervisor = [assistant_id for assistant_id in valid_targets if assistant_id != self.supervisor_id]

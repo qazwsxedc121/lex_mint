@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, UploadFile, File
 from fastapi.responses import Response
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 import logging
 import re
@@ -16,6 +16,7 @@ from ..services.conversation_storage import ConversationStorage, create_storage_
 from ..services.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
+from ..services.group_orchestration import GroupSettingsResolver
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class CreateSessionRequest(BaseModel):
     temporary: bool = False
     group_assistants: Optional[List[str]] = None  # Group chat: list of assistant IDs
     group_mode: Optional[str] = None  # Group chat mode: "round_robin" | "committee"
+    group_settings: Optional[Dict[str, Any]] = None  # Structured orchestration settings
 
 
 class UpdateModelRequest(BaseModel):
@@ -115,21 +117,29 @@ def _normalize_and_validate_group_mode(
     group_assistants: Optional[List[str]],
 ) -> Optional[str]:
     """Normalize and validate group mode for group chat sessions."""
-    if group_mode is None:
-        return "round_robin" if group_assistants else None
-
-    normalized_mode = group_mode.strip().lower()
-    allowed_modes = {"round_robin", "committee"}
-    if normalized_mode not in allowed_modes:
+    normalized_mode = GroupSettingsResolver.normalize_group_mode(
+        group_mode,
+        group_assistants=group_assistants,
+    )
+    if group_mode is not None and normalized_mode is None:
         raise HTTPException(
             status_code=400,
             detail="group_mode must be one of: round_robin, committee",
         )
-
-    if not group_assistants:
+    if group_mode is not None and not group_assistants:
         raise HTTPException(status_code=400, detail="group_mode requires group_assistants")
-
     return normalized_mode
+
+
+def _normalize_group_settings_payload(
+    group_settings: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Normalize group_settings payload into stable schema shape."""
+    if group_settings is None:
+        return None
+    if not isinstance(group_settings, dict):
+        raise HTTPException(status_code=400, detail="group_settings must be an object")
+    return GroupSettingsResolver.normalize_group_settings(group_settings)
 
 
 @router.post("", response_model=Dict[str, str])
@@ -165,6 +175,11 @@ async def create_session(
         request.group_mode if request else None,
         group_assistants,
     )
+    group_settings = _normalize_group_settings_payload(
+        request.group_settings if request else None
+    )
+    if group_settings is not None and not group_assistants:
+        raise HTTPException(status_code=400, detail="group_settings requires group_assistants")
     logger.info(
         f"Creating new session (assistant: {assistant_id or 'default'}, model: {model_id or 'default'}, "
         f"temporary: {temporary}, group: {len(group_assistants) if group_assistants else 0}, mode: {group_mode or 'n/a'})..."
@@ -179,6 +194,7 @@ async def create_session(
             temporary=temporary,
             group_assistants=group_assistants,
             group_mode=group_mode,
+            group_settings=group_settings,
         )
         logger.info(f"✅ 新会话已创建: {session_id}")
         return {"session_id": session_id}
@@ -473,6 +489,38 @@ class UpdateGroupAssistantsRequest(BaseModel):
     group_assistants: List[str]
 
 
+class UpdateGroupSettingsRequest(BaseModel):
+    """Update group chat structured settings."""
+
+    group_assistants: Optional[List[str]] = None
+    group_mode: Optional[str] = None
+    group_settings: Optional[Dict[str, Any]] = None
+
+
+async def _load_assistant_config_map(group_assistants: List[str]) -> Dict[str, Any]:
+    """Load assistant objects for current group participants."""
+    from ..services.assistant_config_service import AssistantConfigService
+
+    assistant_service = AssistantConfigService()
+    assistant_config_map: Dict[str, Any] = {}
+    for assistant_id in group_assistants:
+        assistant_obj = await assistant_service.get_assistant(assistant_id)
+        if assistant_obj:
+            assistant_config_map[assistant_id] = assistant_obj
+    return assistant_config_map
+
+
+def _deep_merge_dict(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively merge dictionaries; updates win over base values."""
+    merged = dict(base)
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 @router.put("/{session_id}/group-assistants", response_model=Dict[str, str])
 async def update_group_assistants(
     session_id: str,
@@ -512,6 +560,123 @@ async def update_group_assistants(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{session_id}/group-settings", response_model=Dict[str, Any])
+async def get_group_settings(
+    session_id: str,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
+):
+    """Read structured group settings with effective runtime values."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    try:
+        session = await storage.get_session(
+            session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    group_assistants = session.get("group_assistants") or []
+    if len(group_assistants) < 2:
+        raise HTTPException(status_code=400, detail="Session is not a group chat")
+
+    group_mode = _normalize_and_validate_group_mode(
+        session.get("group_mode"),
+        group_assistants,
+    ) or "round_robin"
+    raw_group_settings = GroupSettingsResolver.normalize_group_settings(
+        session.get("group_settings") if isinstance(session.get("group_settings"), dict) else None
+    )
+    assistant_config_map = await _load_assistant_config_map(group_assistants)
+    resolved = GroupSettingsResolver.resolve(
+        group_mode=group_mode,
+        group_assistants=group_assistants,
+        group_settings=raw_group_settings,
+        assistant_config_map=assistant_config_map,
+    )
+    return {
+        "group_mode": group_mode,
+        "group_assistants": group_assistants,
+        "group_settings": raw_group_settings,
+        "effective_settings": resolved.to_effective_dict(),
+    }
+
+
+@router.put("/{session_id}/group-settings", response_model=Dict[str, Any])
+async def update_group_settings(
+    session_id: str,
+    request: UpdateGroupSettingsRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
+):
+    """Update group_mode/group_assistants/group_settings for one session."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    try:
+        session = await storage.get_session(
+            session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    existing_group_assistants = session.get("group_assistants")
+    if request.group_assistants is not None:
+        next_group_assistants = await _normalize_and_validate_group_assistants(request.group_assistants)
+    else:
+        next_group_assistants = existing_group_assistants
+
+    if not next_group_assistants or len(next_group_assistants) < 2:
+        raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique assistants")
+
+    next_group_mode = _normalize_and_validate_group_mode(
+        request.group_mode if request.group_mode is not None else session.get("group_mode"),
+        next_group_assistants,
+    ) or "round_robin"
+
+    existing_group_settings = GroupSettingsResolver.normalize_group_settings(
+        session.get("group_settings") if isinstance(session.get("group_settings"), dict) else None
+    )
+    if request.group_settings is not None:
+        update_settings = _normalize_group_settings_payload(request.group_settings) or {"version": 1}
+        next_group_settings = _deep_merge_dict(existing_group_settings, update_settings)
+    else:
+        next_group_settings = existing_group_settings
+
+    assistant_config_map = await _load_assistant_config_map(next_group_assistants)
+    resolved = GroupSettingsResolver.resolve(
+        group_mode=next_group_mode,
+        group_assistants=next_group_assistants,
+        group_settings=next_group_settings,
+        assistant_config_map=assistant_config_map,
+    )
+
+    await storage.update_session_metadata(
+        session_id=session_id,
+        metadata_updates={
+            "group_assistants": next_group_assistants,
+            "group_mode": next_group_mode,
+            "group_settings": next_group_settings,
+        },
+        context_type=context_type,
+        project_id=project_id,
+    )
+    return {
+        "message": "Group settings updated",
+        "group_mode": next_group_mode,
+        "group_assistants": next_group_assistants,
+        "group_settings": next_group_settings,
+        "effective_settings": resolved.to_effective_dict(),
+    }
 
 
 @router.put("/{session_id}/title", response_model=Dict[str, str])

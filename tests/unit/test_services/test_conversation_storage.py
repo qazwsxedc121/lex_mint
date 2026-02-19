@@ -59,6 +59,30 @@ class TestConversationStorage:
                 assert session["model_id"] == "deepseek:deepseek-chat"
 
     @pytest.mark.asyncio
+    async def test_create_group_session_with_group_settings(self, temp_conversation_dir, mock_assistant_service):
+        """Group settings are persisted and returned with session payload."""
+        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+            storage = ConversationStorage(temp_conversation_dir)
+            session_id = await storage.create_session(
+                assistant_id="default",
+                group_assistants=["a1", "a2"],
+                group_mode="committee",
+                group_settings={
+                    "version": 1,
+                    "committee": {
+                        "supervisor_id": "a2",
+                        "policy": {"max_rounds": 8},
+                    },
+                },
+            )
+
+            session = await storage.get_session(session_id)
+            assert session["group_assistants"] == ["a1", "a2"]
+            assert session["group_mode"] == "committee"
+            assert session["group_settings"]["committee"]["supervisor_id"] == "a2"
+            assert session["group_settings"]["committee"]["policy"]["max_rounds"] == 8
+
+    @pytest.mark.asyncio
     async def test_append_message_user(self, temp_conversation_dir, mock_assistant_service):
         """Test appending user message."""
         with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
