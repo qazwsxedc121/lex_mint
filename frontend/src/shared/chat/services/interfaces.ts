@@ -59,6 +59,8 @@ export interface ChatAPI {
     onContextInfo?: (info: ContextInfo) => void,
     onThinkingDuration?: (durationMs: number) => void,
     fileReferences?: Array<{ path: string; project_id: string }>,
+    onToolCalls?: (calls: Array<{ name: string; args: Record<string, unknown> }>) => void,
+    onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
     onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
     onAssistantDone?: (assistantId: string) => void,
     onGroupEvent?: (event: {

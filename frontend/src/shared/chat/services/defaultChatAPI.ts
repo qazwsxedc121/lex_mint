@@ -34,6 +34,7 @@ export const defaultChatAPI: ChatAPI = {
     abortControllerRef?, reasoningEffort?, onUsage?, onSources?,
     attachments?, onUserMessageId?, onAssistantMessageId?,
     useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?,
+    onToolCalls?, onToolResults?,
     onAssistantStart?, onAssistantDone?, onGroupEvent?
   ) => {
     return api.sendMessageStream(
@@ -48,6 +49,8 @@ export const defaultChatAPI: ChatAPI = {
       onContextInfo,
       onThinkingDuration,
       fileReferences,
+      onToolCalls,
+      onToolResults,
       onAssistantStart,
       onAssistantDone,
       onGroupEvent

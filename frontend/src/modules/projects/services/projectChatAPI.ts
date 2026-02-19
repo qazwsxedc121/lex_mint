@@ -95,6 +95,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       onContextInfo?,
       onThinkingDuration?,
       fileReferences?,
+      onToolCalls?,
+      onToolResults?,
       onAssistantStart?,
       onAssistantDone?,
       onGroupEvent?
@@ -121,6 +123,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         onContextInfo,
         onThinkingDuration,
         fileReferences,
+        onToolCalls,
+        onToolResults,
         onAssistantStart,
         onAssistantDone,
         onGroupEvent
