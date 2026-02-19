@@ -672,10 +672,19 @@ export async function sendMessageStream(
     type: string;
     assistant_id?: string;
     assistant_turn_id?: string;
+    assistant_ids?: string[];
+    assistant_names?: string[];
     name?: string;
     icon?: string;
     chunk?: string;
     message_id?: string;
+    round?: number;
+    max_rounds?: number;
+    action?: string;
+    reason?: string;
+    supervisor_id?: string;
+    supervisor_name?: string;
+    rounds?: number;
     usage?: TokenUsage;
     cost?: CostInfo;
     sources?: SearchSource[];
@@ -858,6 +867,15 @@ export async function sendMessageStream(
             } else {
               onChunk(data.chunk);
             }
+            continue;
+          }
+
+          // Handle committee orchestration events
+          if (
+            onGroupEvent &&
+            (data.type === 'group_round_start' || data.type === 'group_action' || data.type === 'group_done')
+          ) {
+            onGroupEvent(data);
             continue;
           }
 

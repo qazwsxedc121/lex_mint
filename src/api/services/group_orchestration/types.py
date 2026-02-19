@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
 
-CommitteeAction = Literal["speak", "finish"]
+CommitteeAction = Literal["speak", "parallel_speak", "finish"]
 
 
 @dataclass(frozen=True)
@@ -47,5 +47,6 @@ class CommitteeDecision:
     action: CommitteeAction
     reason: str = ""
     assistant_id: Optional[str] = None
+    assistant_ids: Optional[List[str]] = None
     instruction: Optional[str] = None
     final_response: Optional[str] = None

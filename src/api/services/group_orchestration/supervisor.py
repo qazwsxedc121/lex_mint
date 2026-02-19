@@ -87,17 +87,20 @@ class CommitteeSupervisor:
             "Decide one action for the next step and return JSON only.\n"
             "Allowed actions:\n"
             "1) speak -> pick one assistant to speak next.\n"
-            "2) finish -> end discussion and request final synthesis.\n\n"
+            "2) parallel_speak -> pick multiple assistants to speak in parallel this round.\n"
+            "3) finish -> end discussion and request final synthesis.\n\n"
             "JSON schema:\n"
             "{\n"
-            '  "action": "speak" | "finish",\n'
+            '  "action": "speak" | "parallel_speak" | "finish",\n'
             '  "assistant_id": "required when action=speak",\n'
+            '  "assistant_ids": "required when action=parallel_speak",\n'
             '  "instruction": "optional instruction for the selected assistant",\n'
             '  "reason": "short rationale",\n'
             '  "final_response": "optional draft final response when action=finish"\n'
             "}\n"
             "Rules:\n"
             "- Use only provided assistant_id values.\n"
+            "- Keep parallel_speak target count small (2-3).\n"
             "- Prefer concise instruction text.\n"
             "- Return strict JSON with no markdown."
         )
@@ -164,6 +167,9 @@ class CommitteeSupervisor:
             "speak": "speak",
             "call_agent": "speak",
             "ask_member": "speak",
+            "parallel_speak": "parallel_speak",
+            "parallel": "parallel_speak",
+            "broadcast": "parallel_speak",
             "finish": "finish",
             "end": "finish",
             "done": "finish",
@@ -171,6 +177,15 @@ class CommitteeSupervisor:
         action = action_map.get(action_raw, "speak")
 
         assistant_id = payload.get("assistant_id") or payload.get("agent_id")
+        assistant_ids_raw = payload.get("assistant_ids") or payload.get("agent_ids") or payload.get("agents")
+        assistant_ids: List[str] = []
+        if isinstance(assistant_ids_raw, list):
+            for value in assistant_ids_raw:
+                text = str(value).strip()
+                if text:
+                    assistant_ids.append(text)
+        elif isinstance(assistant_ids_raw, str):
+            assistant_ids = [part.strip() for part in assistant_ids_raw.split(",") if part.strip()]
         instruction = payload.get("instruction")
         reason = payload.get("reason") or ""
         final_response = payload.get("final_response") or payload.get("summary")
@@ -178,6 +193,7 @@ class CommitteeSupervisor:
         return CommitteeDecision(
             action=action,  # type: ignore[arg-type]
             assistant_id=str(assistant_id).strip() if assistant_id else None,
+            assistant_ids=assistant_ids or None,
             instruction=str(instruction).strip() if instruction else None,
             reason=str(reason).strip(),
             final_response=str(final_response).strip() if final_response else None,
@@ -245,6 +261,68 @@ class CommitteeSupervisor:
                 )
             if not decision.reason:
                 decision.reason = "supervisor_finish"
+            return decision
+
+        if decision.action == "parallel_speak":
+            remaining_rounds = max(self.max_rounds - state.round_index, 0)
+            requested_targets = list(decision.assistant_ids or [])
+            if not requested_targets and decision.assistant_id:
+                requested_targets = [decision.assistant_id]
+
+            selected_targets: List[str] = []
+            for assistant_id in requested_targets:
+                if assistant_id not in valid_targets or assistant_id == self.supervisor_id:
+                    continue
+                if assistant_id in selected_targets:
+                    continue
+                selected_targets.append(assistant_id)
+
+            if pending_member_targets:
+                for assistant_id in pending_member_targets:
+                    if assistant_id not in selected_targets:
+                        selected_targets.append(assistant_id)
+
+            if depth_target and depth_target not in selected_targets:
+                selected_targets.append(depth_target)
+
+            required_slots = 1
+            if pending_member_targets and len(pending_member_targets) > 1 and remaining_rounds <= len(
+                pending_member_targets
+            ):
+                required_slots = 2
+
+            max_parallel_targets = 3
+            selected_targets = selected_targets[:max_parallel_targets]
+            if len(selected_targets) < required_slots:
+                for assistant_id in self._required_member_targets(valid_targets):
+                    if assistant_id not in selected_targets:
+                        selected_targets.append(assistant_id)
+                    if len(selected_targets) >= required_slots:
+                        break
+
+            if len(selected_targets) <= 1:
+                fallback_target = selected_targets[0] if selected_targets else None
+                if not fallback_target:
+                    fallback_target = pending_member_targets[0] if pending_member_targets else self._fallback_speaker(
+                        state, valid_targets
+                    )
+                decision.action = "speak"
+                decision.assistant_id = fallback_target
+                decision.assistant_ids = None
+                decision.reason = decision.reason or "parallel_fallback_speaker"
+                if not decision.instruction:
+                    target_name = state.participants.get(fallback_target, fallback_target)
+                    decision.instruction = f"Please contribute your best analysis as {target_name}."
+                return decision
+
+            decision.assistant_ids = selected_targets
+            decision.assistant_id = selected_targets[0]
+            if not decision.reason:
+                decision.reason = "supervisor_selected_parallel_speakers"
+            if not decision.instruction:
+                decision.instruction = (
+                    "Provide your perspective with concrete points, and avoid repeating other members verbatim."
+                )
             return decision
 
         # Normalize speak target

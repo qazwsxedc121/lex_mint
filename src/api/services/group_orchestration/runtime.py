@@ -18,8 +18,11 @@ class CommitteeRuntime:
         return state.round_index + 1
 
     def record_turn(self, state: CommitteeRuntimeState, turn: CommitteeTurnRecord) -> None:
-        """Persist one completed turn and advance round count."""
+        """Persist one completed assistant turn."""
         state.turns.append(turn)
         if turn.self_summary:
             state.member_notes[turn.assistant_id] = turn.self_summary
+
+    def advance_round(self, state: CommitteeRuntimeState) -> None:
+        """Advance committee round index after one orchestration cycle completes."""
         state.round_index += 1

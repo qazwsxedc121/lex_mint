@@ -80,6 +80,15 @@ async def test_committee_groupchat_speak_then_finish(monkeypatch):
 
     monkeypatch.setattr(service, "_stream_group_assistant_turn", fake_stream_group_assistant_turn)
     monkeypatch.setattr(service, "_get_message_content_by_id", fake_get_message_content_by_id)
+    monkeypatch.setattr(
+        service,
+        "_resolve_committee_round_policy",
+        lambda _raw_limit, participant_count: {
+            "max_rounds": 2,
+            "min_member_turns_before_finish": 1,
+            "min_total_rounds_before_finish": 1 if participant_count > 1 else 0,
+        },
+    )
 
     assistant_config_map = {
         "a1": _build_assistant("Supervisor", "deepseek:chat", max_rounds=3),
@@ -299,3 +308,98 @@ async def test_committee_groupchat_role_drift_retries_once(monkeypatch):
 
     assert events[-1]["type"] == "group_done"
     assert events[-1]["reason"] == "discussion_complete"
+
+
+@pytest.mark.asyncio
+async def test_committee_groupchat_parallel_speak_then_finish(monkeypatch):
+    service = AgentService.__new__(AgentService)
+
+    supervisor_outputs = iter(
+        [
+            (
+                '{"action":"parallel_speak","assistant_ids":["a2","a3"],'
+                '"instruction":"Contribute from your specialty and challenge assumptions.",'
+                '"reason":"accelerate_coverage"}'
+            ),
+            '{"action":"finish","reason":"discussion_complete"}',
+        ]
+    )
+
+    def fake_call_llm(_messages, **_kwargs):
+        return next(supervisor_outputs)
+
+    monkeypatch.setattr(agent_service_module, "call_llm", fake_call_llm)
+
+    turn_calls = []
+    call_index = {"value": 0}
+
+    async def fake_stream_group_assistant_turn(**kwargs):
+        turn_calls.append(kwargs)
+        call_index["value"] += 1
+        idx = call_index["value"]
+        assistant_id = kwargs["assistant_id"]
+        message_id = f"{assistant_id}-m-{idx}"
+        yield {"type": "assistant_start", "assistant_id": assistant_id, "assistant_turn_id": f"t-{idx}"}
+        yield {
+            "type": "assistant_message_id",
+            "assistant_id": assistant_id,
+            "assistant_turn_id": f"t-{idx}",
+            "message_id": message_id,
+        }
+        yield {"type": "assistant_done", "assistant_id": assistant_id, "assistant_turn_id": f"t-{idx}"}
+
+    async def fake_get_message_content_by_id(**kwargs):
+        return f"parallel content for {kwargs['message_id']}"
+
+    monkeypatch.setattr(service, "_stream_group_assistant_turn", fake_stream_group_assistant_turn)
+    monkeypatch.setattr(service, "_get_message_content_by_id", fake_get_message_content_by_id)
+    monkeypatch.setattr(
+        service,
+        "_resolve_committee_round_policy",
+        lambda _raw_limit, participant_count: {
+            "max_rounds": 2,
+            "min_member_turns_before_finish": 1,
+            "min_total_rounds_before_finish": 1 if participant_count > 1 else 0,
+        },
+    )
+
+    assistant_config_map = {
+        "a1": _build_assistant("Supervisor", "deepseek:chat", max_rounds=4),
+        "a2": _build_assistant("Architect", "deepseek:chat", max_rounds=4),
+        "a3": _build_assistant("Risk", "deepseek:chat", max_rounds=4),
+    }
+    assistant_name_map = {"a1": "Supervisor", "a2": "Architect", "a3": "Risk"}
+
+    events = await _collect_events(
+        service._process_committee_group_message_stream(
+            session_id="s5",
+            raw_user_message="Need plan and risks.",
+            group_assistants=["a1", "a2", "a3"],
+            assistant_name_map=assistant_name_map,
+            assistant_config_map=assistant_config_map,
+            reasoning_effort=None,
+            context_type="chat",
+            project_id=None,
+            search_context=None,
+            search_sources=[],
+        )
+    )
+
+    round_events = [e for e in events if e.get("type") == "group_round_start"]
+    assert [e["round"] for e in round_events] == [1, 2]
+
+    action_events = [e for e in events if e.get("type") == "group_action"]
+    assert action_events[0]["action"] == "parallel_speak"
+    assert set(action_events[0]["assistant_ids"]) == {"a2", "a3"}
+    assert action_events[1]["action"] == "finish"
+
+    assert len(turn_calls) == 3
+    assert {turn_calls[0]["assistant_id"], turn_calls[1]["assistant_id"]} == {"a2", "a3"}
+    assert turn_calls[2]["assistant_id"] == "a1"
+
+    assert events[-1] == {
+        "type": "group_done",
+        "mode": "committee",
+        "reason": "discussion_complete",
+        "rounds": 1,
+    }

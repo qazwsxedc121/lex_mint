@@ -3,7 +3,16 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo, GroupChatMode } from '../../../types/message';
+import type {
+  Message,
+  TokenUsage,
+  CostInfo,
+  UploadedFile,
+  ParamOverrides,
+  ContextInfo,
+  GroupChatMode,
+  GroupTimelineEvent,
+} from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 type SendMessageOptions = {
@@ -39,8 +48,54 @@ export function useChat(sessionId: string | null) {
   const [isTemporary, setIsTemporary] = useState(false);
   const [groupAssistants, setGroupAssistants] = useState<string[] | null>(null);
   const [groupMode, setGroupMode] = useState<GroupChatMode | null>(null);
+  const [groupTimeline, setGroupTimeline] = useState<GroupTimelineEvent[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
+
+  const appendGroupTimelineEvent = (event: {
+    type: string;
+    mode?: string;
+    round?: number;
+    max_rounds?: number;
+    action?: string;
+    reason?: string;
+    supervisor_id?: string;
+    supervisor_name?: string;
+    assistant_id?: string;
+    assistant_name?: string;
+    assistant_ids?: string[];
+    assistant_names?: string[];
+    instruction?: string;
+    rounds?: number;
+  }) => {
+    const eventType = event.type;
+    if (
+      eventType !== 'group_round_start' &&
+      eventType !== 'group_action' &&
+      eventType !== 'group_done'
+    ) {
+      return;
+    }
+    const timelineEvent: GroupTimelineEvent = {
+      event_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      created_at: nowTimestamp(),
+      type: eventType,
+      mode: event.mode,
+      round: event.round,
+      max_rounds: event.max_rounds,
+      action: event.action,
+      reason: event.reason,
+      supervisor_id: event.supervisor_id,
+      supervisor_name: event.supervisor_name,
+      assistant_id: event.assistant_id,
+      assistant_name: event.assistant_name,
+      assistant_ids: event.assistant_ids,
+      assistant_names: event.assistant_names,
+      instruction: event.instruction,
+      rounds: event.rounds,
+    };
+    setGroupTimeline(prev => [...prev.slice(-39), timelineEvent]);
+  };
 
   // Extract loadSession as a standalone function so it can be called after sending messages
   const loadSession = useCallback(async () => {
@@ -57,6 +112,7 @@ export function useChat(sessionId: string | null) {
       setIsTemporary(false);
       setGroupAssistants(null);
       setGroupMode(null);
+      setGroupTimeline([]);
       return;
     }
 
@@ -124,6 +180,7 @@ export function useChat(sessionId: string | null) {
         session.group_mode ||
         (session.group_assistants && session.group_assistants.length >= 2 ? 'round_robin' : null)
       );
+      setGroupTimeline([]);
 
       // Derive lastPromptTokens from last assistant message's usage
       const msgs = session.state.messages;
@@ -148,6 +205,7 @@ export function useChat(sessionId: string | null) {
       setIsTemporary(false);
       setGroupAssistants(null);
       setGroupMode(null);
+      setGroupTimeline([]);
     } finally {
       setLoading(false);
     }
@@ -225,6 +283,9 @@ export function useChat(sessionId: string | null) {
     setFollowupQuestions([]);
 
     const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
+    if (initialIsGroupChat) {
+      setGroupTimeline([]);
+    }
 
     // Optimistically add user message to UI (without message_id, wait for backend)
     const userMessage: Message = {
@@ -541,13 +602,41 @@ export function useChat(sessionId: string | null) {
             event.type === 'sources' ||
             event.type === 'thinking_duration'
           );
+          const isGroupOrchestrationEvent = (
+            event.type === 'group_round_start' ||
+            event.type === 'group_action' ||
+            event.type === 'group_done'
+          );
           const hasGroupIdentity =
             typeof event.assistant_turn_id === 'string' ||
             typeof event.assistant_id === 'string';
-          if (isGroupEventType && hasGroupIdentity) {
+          if ((isGroupEventType && hasGroupIdentity) || isGroupOrchestrationEvent) {
             activateRuntimeGroupChatMode();
           }
           if (!runtimeIsGroupChat) {
+            return;
+          }
+          if (isGroupOrchestrationEvent) {
+            appendGroupTimelineEvent({
+              type: event.type,
+              mode: typeof event.mode === 'string' ? event.mode : undefined,
+              round: typeof event.round === 'number' ? event.round : undefined,
+              max_rounds: typeof event.max_rounds === 'number' ? event.max_rounds : undefined,
+              action: typeof event.action === 'string' ? event.action : undefined,
+              reason: typeof event.reason === 'string' ? event.reason : undefined,
+              supervisor_id: typeof event.supervisor_id === 'string' ? event.supervisor_id : undefined,
+              supervisor_name: typeof event.supervisor_name === 'string' ? event.supervisor_name : undefined,
+              assistant_id: typeof event.assistant_id === 'string' ? event.assistant_id : undefined,
+              assistant_name: typeof event.assistant_name === 'string' ? event.assistant_name : undefined,
+              assistant_ids: Array.isArray(event.assistant_ids)
+                ? event.assistant_ids.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              assistant_names: Array.isArray(event.assistant_names)
+                ? event.assistant_names.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              instruction: typeof event.instruction === 'string' ? event.instruction : undefined,
+              rounds: typeof event.rounds === 'number' ? event.rounds : undefined,
+            });
             return;
           }
           switch (event.type) {
@@ -1072,6 +1161,9 @@ export function useChat(sessionId: string | null) {
     let streamedContent = '';
     let runtimeIsGroupChat = initialIsGroupChat;
     let activeAssistantTurnId: string | null = null;
+    if (initialIsGroupChat) {
+      setGroupTimeline([]);
+    }
 
     const activateRuntimeGroupChatMode = () => {
       if (runtimeIsGroupChat) {
@@ -1285,13 +1377,41 @@ export function useChat(sessionId: string | null) {
             event.type === 'sources' ||
             event.type === 'thinking_duration'
           );
+          const isGroupOrchestrationEvent = (
+            event.type === 'group_round_start' ||
+            event.type === 'group_action' ||
+            event.type === 'group_done'
+          );
           const hasGroupIdentity =
             typeof event.assistant_turn_id === 'string' ||
             typeof event.assistant_id === 'string';
-          if (isGroupEventType && hasGroupIdentity) {
+          if ((isGroupEventType && hasGroupIdentity) || isGroupOrchestrationEvent) {
             activateRuntimeGroupChatMode();
           }
           if (!runtimeIsGroupChat) {
+            return;
+          }
+          if (isGroupOrchestrationEvent) {
+            appendGroupTimelineEvent({
+              type: event.type,
+              mode: typeof event.mode === 'string' ? event.mode : undefined,
+              round: typeof event.round === 'number' ? event.round : undefined,
+              max_rounds: typeof event.max_rounds === 'number' ? event.max_rounds : undefined,
+              action: typeof event.action === 'string' ? event.action : undefined,
+              reason: typeof event.reason === 'string' ? event.reason : undefined,
+              supervisor_id: typeof event.supervisor_id === 'string' ? event.supervisor_id : undefined,
+              supervisor_name: typeof event.supervisor_name === 'string' ? event.supervisor_name : undefined,
+              assistant_id: typeof event.assistant_id === 'string' ? event.assistant_id : undefined,
+              assistant_name: typeof event.assistant_name === 'string' ? event.assistant_name : undefined,
+              assistant_ids: Array.isArray(event.assistant_ids)
+                ? event.assistant_ids.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              assistant_names: Array.isArray(event.assistant_names)
+                ? event.assistant_names.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              instruction: typeof event.instruction === 'string' ? event.instruction : undefined,
+              rounds: typeof event.rounds === 'number' ? event.rounds : undefined,
+            });
             return;
           }
           switch (event.type) {
@@ -1644,5 +1764,6 @@ export function useChat(sessionId: string | null) {
     updateParamOverrides,
     groupAssistants,
     groupMode,
+    groupTimeline,
   };
 }

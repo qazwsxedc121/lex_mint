@@ -14,7 +14,7 @@ import { useChat } from '../hooks/useChat';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
 import type { UploadedFile } from '../../../types/message';
-import type { Message } from '../../../types/message';
+import type { GroupTimelineEvent, Message } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import {
   ArrowPathRoundedSquareIcon,
@@ -77,8 +77,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupManagerError, setGroupManagerError] = useState<string | null>(null);
   const [isGroupOrderLocked, setIsGroupOrderLocked] = useState(false);
+  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
   const [draggingAssistantId, setDraggingAssistantId] = useState<string | null>(null);
   const [dragOverAssistantId, setDragOverAssistantId] = useState<string | null>(null);
+  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const defaultGroupOrderRef = useRef<string[] | null>(null);
   const defaultGroupOrderSessionRef = useRef<string | null>(null);
   const {
@@ -111,6 +113,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     generateFollowups,
     groupAssistants,
     groupMode,
+    groupTimeline,
     updateGroupAssistantOrder,
   } = useChat(currentSessionId);
 
@@ -276,6 +279,51 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const activeGroupAssistant = groupAssistantProgress.find((assistant) => assistant.status === 'thinking');
   const completedAssistantCount = groupAssistantProgress.filter((assistant) => assistant.status === 'done').length;
+  const formatGroupTimelineEvent = (event: GroupTimelineEvent): string => {
+    if (event.type === 'group_round_start') {
+      return t('groupChat.timelineRoundStart', {
+        round: event.round ?? '-',
+        total: event.max_rounds ?? '-',
+      });
+    }
+
+    if (event.type === 'group_done') {
+      return t('groupChat.timelineDone', {
+        rounds: event.rounds ?? event.round ?? 0,
+        reason: event.reason || '-',
+      });
+    }
+
+    const action = event.action || '';
+    if (action === 'speak') {
+      const name = event.assistant_name || event.assistant_id || t('groupChat.timelineUnknownAssistant');
+      const reasonSuffix = event.reason ? ` · ${event.reason}` : '';
+      return `${t('groupChat.timelineSpeak', { name })}${reasonSuffix}`;
+    }
+    if (action === 'parallel_speak') {
+      const names = event.assistant_names?.length
+        ? event.assistant_names.join(', ')
+        : event.assistant_ids?.join(', ') || t('groupChat.timelineUnknownAssistant');
+      const reasonSuffix = event.reason ? ` · ${event.reason}` : '';
+      return `${t('groupChat.timelineParallelSpeak', { names })}${reasonSuffix}`;
+    }
+    if (action === 'finish') {
+      const reasonSuffix = event.reason ? ` · ${event.reason}` : '';
+      return `${t('groupChat.timelineFinish')}${reasonSuffix}`;
+    }
+    if (action === 'role_retry') {
+      const name = event.assistant_name || event.assistant_id || t('groupChat.timelineUnknownAssistant');
+      const reasonSuffix = event.reason ? ` · ${event.reason}` : '';
+      return `${t('groupChat.timelineRoleRetry', { name })}${reasonSuffix}`;
+    }
+    if (action === 'parallel_error') {
+      const name = event.assistant_name || event.assistant_id || t('groupChat.timelineUnknownAssistant');
+      const reasonSuffix = event.reason ? ` · ${event.reason}` : '';
+      return `${t('groupChat.timelineParallelError', { name })}${reasonSuffix}`;
+    }
+    const reasonSuffix = event.reason ? ` · ${event.reason}` : '';
+    return `${t('groupChat.timelineActionFallback', { action: action || '-' })}${reasonSuffix}`;
+  };
   const defaultGroupOrder = defaultGroupOrderRef.current;
   const canResetDefaultOrder = !!(
     isRoundRobinGroupChat &&
@@ -450,6 +498,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     };
   }, [api, groupAssistants, isGroupChat, t]);
 
+  useEffect(() => {
+    setIsTimelineCollapsed(true);
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    if (isTimelineCollapsed) return;
+    if (!timelineScrollRef.current) return;
+    timelineScrollRef.current.scrollTop = timelineScrollRef.current.scrollHeight;
+  }, [groupTimeline, isTimelineCollapsed]);
+
   if (!currentSessionId) {
     return (
       <div data-name="chat-view-welcome" className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
@@ -598,6 +656,42 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
               </div>
             ))}
           </div>
+          {!isRoundRobinGroupChat && groupTimeline.length > 0 && (
+            <div data-name="group-chat-timeline" className="mt-1.5 rounded-md border border-sky-100 bg-white/70 px-2 py-1 dark:border-slate-700 dark:bg-slate-900/70">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                  {t('groupChat.timelineTitle')}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsTimelineCollapsed((prev) => !prev)}
+                  className="rounded border border-sky-200 bg-white/80 px-1.5 py-0.5 text-[10px] text-sky-700 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-sky-300 dark:hover:bg-slate-700"
+                >
+                  {isTimelineCollapsed ? t('groupChat.timelineExpand') : t('groupChat.timelineCollapse')}
+                </button>
+              </div>
+              {isTimelineCollapsed ? (
+                <div className="rounded border border-sky-100 bg-sky-50/70 px-2 py-1 text-[11px] text-sky-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200">
+                  {formatGroupTimelineEvent(groupTimeline[groupTimeline.length - 1])}
+                </div>
+              ) : (
+                <div ref={timelineScrollRef} className="max-h-36 space-y-1 overflow-y-auto pr-1">
+                  {groupTimeline.map((event) => (
+                    <div
+                      key={event.event_id}
+                      data-name="group-chat-timeline-item"
+                      className="flex items-start gap-1.5 text-[11px] text-gray-700 dark:text-gray-200"
+                    >
+                      <span className="mt-0.5 inline-flex min-w-[36px] justify-center rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                        {event.round ? `R${event.round}` : 'SYS'}
+                      </span>
+                      <span className="leading-snug">{formatGroupTimelineEvent(event)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {isGroupChat && showGroupManager && groupAssistants && (

@@ -93,6 +93,25 @@ export interface UploadedFile {
 
 export type GroupChatMode = 'round_robin' | 'committee';
 
+export interface GroupTimelineEvent {
+  event_id: string;
+  created_at: string;
+  type: 'group_round_start' | 'group_action' | 'group_done';
+  mode?: GroupChatMode | string;
+  round?: number;
+  max_rounds?: number;
+  action?: string;
+  reason?: string;
+  supervisor_id?: string;
+  supervisor_name?: string;
+  assistant_id?: string;
+  assistant_name?: string;
+  assistant_ids?: string[];
+  assistant_names?: string[];
+  instruction?: string;
+  rounds?: number;
+}
+
 export interface CompareModelResponse {
   model_id: string;
   model_name: string;

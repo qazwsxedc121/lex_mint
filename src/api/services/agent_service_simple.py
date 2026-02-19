@@ -1901,6 +1901,12 @@ class AgentService:
                 action_event["assistant_name"] = assistant_name_map.get(
                     decision.assistant_id, decision.assistant_id
                 )
+            if decision.assistant_ids:
+                action_event["assistant_ids"] = decision.assistant_ids
+                action_event["assistant_names"] = [
+                    assistant_name_map.get(assistant_id, assistant_id)
+                    for assistant_id in decision.assistant_ids
+                ]
             if decision.instruction:
                 action_event["instruction"] = decision.instruction
             yield action_event
@@ -1962,6 +1968,159 @@ class AgentService:
                     "rounds": state.round_index,
                 }
                 return
+
+            if decision.action == "parallel_speak":
+                parallel_targets = [
+                    assistant_id
+                    for assistant_id in (decision.assistant_ids or [])
+                    if assistant_id in assistant_config_map
+                ]
+                if len(parallel_targets) < 2:
+                    fallback_target = decision.assistant_id if decision.assistant_id in assistant_config_map else None
+                    if not fallback_target and parallel_targets:
+                        fallback_target = parallel_targets[0]
+                    if not fallback_target:
+                        yield {
+                            "type": "group_done",
+                            "mode": "committee",
+                            "reason": "invalid_parallel_targets",
+                            "rounds": state.round_index,
+                        }
+                        return
+                    parallel_targets = [fallback_target]
+
+                if len(parallel_targets) == 1:
+                    decision.action = "speak"
+                    decision.assistant_id = parallel_targets[0]
+                    decision.assistant_ids = None
+                else:
+                    event_queue: asyncio.Queue = asyncio.Queue()
+                    parallel_message_ids: Dict[str, Optional[str]] = {}
+                    parallel_errors: List[Dict[str, Any]] = []
+
+                    async def _run_parallel_target(target_id: str) -> None:
+                        target_obj = assistant_config_map[target_id]
+                        target_instruction = decision.instruction
+                        try:
+                            turn_packet = self._build_committee_turn_packet(
+                                state=state,
+                                target_assistant_id=target_id,
+                                assistant_name_map=assistant_name_map,
+                                instruction=target_instruction,
+                            )
+                            async for event in self._stream_group_assistant_turn(
+                                session_id=session_id,
+                                assistant_id=target_id,
+                                assistant_obj=target_obj,
+                                group_assistants=group_assistants,
+                                assistant_name_map=assistant_name_map,
+                                raw_user_message=raw_user_message,
+                                reasoning_effort=reasoning_effort,
+                                context_type=context_type,
+                                project_id=project_id,
+                                search_context=search_context,
+                                search_sources=search_sources,
+                                instruction=target_instruction,
+                                committee_turn_packet=turn_packet,
+                                trace_id=trace_id,
+                                trace_round=current_round,
+                                trace_mode="committee",
+                            ):
+                                if event.get("type") == "assistant_message_id":
+                                    parallel_message_ids[target_id] = event.get("message_id")
+                                await event_queue.put({"kind": "event", "event": event})
+                        except Exception as e:
+                            parallel_errors.append(
+                                {
+                                    "assistant_id": target_id,
+                                    "assistant_name": assistant_name_map.get(target_id, target_id),
+                                    "error": str(e),
+                                }
+                            )
+                            await event_queue.put(
+                                {
+                                    "kind": "error",
+                                    "assistant_id": target_id,
+                                    "assistant_name": assistant_name_map.get(target_id, target_id),
+                                    "error": str(e),
+                                }
+                            )
+                        finally:
+                            await event_queue.put({"kind": "done", "assistant_id": target_id})
+
+                    tasks = [
+                        asyncio.create_task(_run_parallel_target(target_id))
+                        for target_id in parallel_targets
+                    ]
+                    completed_targets = 0
+                    while completed_targets < len(tasks):
+                        item = await event_queue.get()
+                        kind = item.get("kind")
+                        if kind == "event":
+                            yield item["event"]
+                        elif kind == "error":
+                            yield {
+                                "type": "group_action",
+                                "mode": "committee",
+                                "round": current_round,
+                                "action": "parallel_error",
+                                "assistant_id": item.get("assistant_id"),
+                                "assistant_name": item.get("assistant_name"),
+                                "reason": item.get("error"),
+                                "supervisor_id": supervisor_id,
+                                "supervisor_name": supervisor_name,
+                            }
+                        elif kind == "done":
+                            completed_targets += 1
+
+                    await asyncio.gather(*tasks, return_exceptions=True)
+
+                    successful_targets = [
+                        target_id for target_id in parallel_targets if parallel_message_ids.get(target_id)
+                    ]
+                    if not successful_targets:
+                        yield {
+                            "type": "group_done",
+                            "mode": "committee",
+                            "reason": "parallel_speak_failed",
+                            "rounds": state.round_index,
+                        }
+                        return
+
+                    for target_id in successful_targets:
+                        target_message_id = parallel_message_ids.get(target_id)
+                        content = await self._get_message_content_by_id(
+                            session_id=session_id,
+                            message_id=target_message_id,
+                            context_type=context_type,
+                            project_id=project_id,
+                        )
+                        structured_turn = self._build_structured_turn_summary(content)
+                        runtime.record_turn(
+                            state,
+                            CommitteeTurnRecord(
+                                assistant_id=target_id,
+                                assistant_name=assistant_name_map.get(target_id, target_id),
+                                message_id=target_message_id,
+                                content_preview=(structured_turn.get("content_preview") or "")[:240],
+                                key_points=structured_turn.get("key_points", []),
+                                risks=structured_turn.get("risks", []),
+                                actions=structured_turn.get("actions", []),
+                                self_summary=structured_turn.get("self_summary", ""),
+                            ),
+                        )
+
+                    if parallel_errors and trace_id:
+                        self._log_group_trace(
+                            trace_id,
+                            "parallel_speak_errors",
+                            {
+                                "round": current_round,
+                                "errors": parallel_errors,
+                            },
+                        )
+                    runtime.advance_round(state)
+                    continue
 
             target_id = decision.assistant_id
             target_obj = assistant_config_map.get(target_id)
@@ -2071,6 +2230,7 @@ class AgentService:
                     self_summary=structured_turn.get("self_summary", ""),
                 ),
             )
+            runtime.advance_round(state)
 
         # Forced finish when max rounds reached.
         forced_reason = "max_rounds_reached"

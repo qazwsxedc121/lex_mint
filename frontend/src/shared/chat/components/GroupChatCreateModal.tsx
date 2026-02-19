@@ -45,6 +45,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [selectedAssistantIds, setSelectedAssistantIds] = useState<string[]>([]);
   const [groupMode, setGroupMode] = useState<GroupChatMode>('round_robin');
+  const [committeeSupervisorId, setCommitteeSupervisorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [toastError, setToastError] = useState<string | null>(null);
 
@@ -52,6 +53,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     if (!open) return;
     setSelectedAssistantIds([]);
     setGroupMode('round_robin');
+    setCommitteeSupervisorId(null);
     setToastError(null);
     api.listAssistants()
       .then(list => {
@@ -83,6 +85,17 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     });
   };
 
+  useEffect(() => {
+    if (groupMode !== 'committee') return;
+    if (selectedAssistantIds.length === 0) {
+      setCommitteeSupervisorId(null);
+      return;
+    }
+    if (!committeeSupervisorId || !selectedAssistantIds.includes(committeeSupervisorId)) {
+      setCommitteeSupervisorId(selectedAssistantIds[0]);
+    }
+  }, [groupMode, selectedAssistantIds, committeeSupervisorId]);
+
   const moveSelectedAssistant = (assistantId: string, direction: 'up' | 'down') => {
     setSelectedAssistantIds(prev => {
       const currentIndex = prev.indexOf(assistantId);
@@ -100,7 +113,17 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     if (selectedAssistantIds.length < 2) return;
     setLoading(true);
     try {
-      const sessionId = await api.createGroupSession(selectedAssistantIds, groupMode);
+      let orderedAssistantIds = [...selectedAssistantIds];
+      if (groupMode === 'committee') {
+        const supervisorId = committeeSupervisorId && selectedAssistantIds.includes(committeeSupervisorId)
+          ? committeeSupervisorId
+          : selectedAssistantIds[0];
+        orderedAssistantIds = [
+          supervisorId,
+          ...selectedAssistantIds.filter((assistantId) => assistantId !== supervisorId),
+        ];
+      }
+      const sessionId = await api.createGroupSession(orderedAssistantIds, groupMode);
       onCreated(sessionId);
       onClose();
     } catch (err: unknown) {
@@ -254,6 +277,49 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
                   );
                 })}
               </div>
+            </div>
+          )}
+          {groupMode === 'committee' && selectedAssistantIds.length > 0 && (
+            <div className="mt-4 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
+              <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                {t('groupChat.committeeRolesTitle')}
+              </p>
+              <div className="space-y-1.5">
+                {selectedAssistantIds.map((assistantId) => {
+                  const assistant = assistants.find(item => item.id === assistantId);
+                  const assistantName = assistant?.name || `AI-${assistantId.slice(0, 4)}`;
+                  const isSupervisor = committeeSupervisorId === assistantId;
+                  return (
+                    <label
+                      key={assistantId}
+                      className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900/40"
+                    >
+                      <div className="min-w-0">
+                        <span className="truncate text-gray-700 dark:text-gray-200">{assistantName}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                          isSupervisor
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                        }`}>
+                          {isSupervisor ? t('groupChat.roleSupervisor') : t('groupChat.roleParticipant')}
+                        </span>
+                        <input
+                          type="radio"
+                          name="committee-supervisor"
+                          checked={isSupervisor}
+                          onChange={() => setCommitteeSupervisorId(assistantId)}
+                          className="h-3.5 w-3.5"
+                        />
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                {t('groupChat.committeeRolesHint')}
+              </p>
             </div>
           )}
         </div>
