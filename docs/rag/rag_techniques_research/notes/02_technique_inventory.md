@@ -4,10 +4,15 @@ Legend:
 - Script = runnable `.py` exists in `all_rag_techniques_runnable_scripts`
 - Priority = initial transfer priority for `lex_mint_rag`
 
+## Progress snapshot (2026-02-19)
+
+- Query rewrite + retrieval query planner baseline is already integrated in mainline.
+- Current transfer priority should focus on context shaping, adaptive routing, and evaluation-driven quality gains.
+
 | Technique | Notebook | Script | Priority | Notes |
 |---|---|---|---|---|
 | Simple RAG | `simple_rag.ipynb` | Yes | Low | Baseline only |
-| Query Transformations | `query_transformations.ipynb` | Yes | High | Rewrite + step-back + decomposition |
+| Query Transformations | `query_transformations.ipynb` | Yes | Medium | Baseline already done; keep for advanced variants |
 | HyDE | `HyDe_Hypothetical_Document_Embedding.ipynb` | Yes | Medium | Query-time synthetic doc |
 | HyPE | `HyPE_Hypothetical_Prompt_Embeddings.ipynb` | Yes | Medium | Index-time synthetic prompts |
 | Semantic Chunking | `semantic_chunking.ipynb` | Yes | High | Better chunk boundaries |
@@ -46,4 +51,3 @@ Referenced in README but notebook file not found in clone:
 - `all_rag_techniques/multi_faceted_filtering.ipynb`
 - `all_rag_techniques/ensemble_retrieval.ipynb`
 - `all_rag_techniques/iterative_retrieval.ipynb`
-

@@ -210,22 +210,13 @@ OpenWebUI 的“检索上下文”不仅来自文件向量检索，还来自工�
 
 ---
 
-## 10. 对 lex_mint_rag 的落地启发（结合 LibreChat / LobeHub / OpenWebUI）
+## 10. 对 lex_mint_rag 的落地启发（按当前进展重排）
 
-面向“主动式 RAG”建议优先级：
+面向当前阶段（主动式主链路已具备），建议优先级如下：
 
-1. **先实现“检索查询词生成层”**（可开关、可模板化、失败回退 last user message），这是 OpenWebUI 主动性的第一触发点。对应参考：`learn_proj/open-webui/backend/open_webui/utils/middleware.py:1206`、`learn_proj/open-webui/backend/open_webui/routers/tasks.py:460`。
-2. **统一“source 结构 + 注入模板”协议**（`source/document/metadata/distances`），把文件检索、网页检索、工具检索统一进同一注入与引用链路。对应参考：`learn_proj/open-webui/backend/open_webui/retrieval/utils.py:1192`、`learn_proj/open-webui/backend/open_webui/utils/middleware.py:289`、`learn_proj/open-webui/backend/open_webui/utils/middleware.py:3340`。
-3. **支持模型级知识自动挂载**（model->knowledge 自动并入 files），减少用户每轮手动绑定知识源。对应参考：`learn_proj/open-webui/backend/open_webui/utils/middleware.py:1485`。
-4. **把 Hybrid 当作“可选能力层”而非必选**：默认向量检索可先跑通，后续再加 BM25 权重与 reranker。
-5. **借鉴 LibreChat 的工具式最小闭环 + LobeHub 的两阶段检索**：
-   - LibreChat：工具调用触发检索，工程上解耦强；
-   - LobeHub：search -> read 二阶段更利于控制 token；
-   - OpenWebUI：自动 query 生成 + 自动注入最“主动”。
-
-推荐组合（面向你们当前状态）：
-
-- **Phase A（快）**：先做 OpenWebUI 风格“自动 query 生成 + 自动注入”；
-- **Phase B（稳）**：补工具式两阶段（search/read）并做 citation 协议统一；
-- **Phase C（强）**：引入 Hybrid + rerank + 动态阈值策略。
+1. **先做质量门禁**：把 retrieval 查询生成与工具调用效果放进真实问题回归，阈值化并接入 CI。
+2. **统一 source 协议**：对齐 OpenWebUI 的 `source/document/metadata` 思路，把 KB/附件/网页/工具结果并轨到同一 citation 渲染链路。
+3. **增强策略调度**：在现有 planner 基础上做轻量 query intent routing，动态选择检索参数与策略。
+4. **优化工具行为**：针对证据型问题提高 `read_knowledge` 触发率，抑制重复 `search_knowledge`。
+5. **持续保留可回退路径**：主动检索失败时回退策略必须稳定，避免链路在真实请求中中断或半截输出。
 

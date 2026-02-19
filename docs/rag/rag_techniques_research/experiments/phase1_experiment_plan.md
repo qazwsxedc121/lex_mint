@@ -2,6 +2,13 @@
 
 Goal: run small, low-risk experiments that can be merged into our existing RAG stack with measurable retrieval gains.
 
+## Status update (2026-02-19)
+
+- Experiment A core goals are already achieved in production:
+  - query rewrite/transform layer
+  - retrieval query planner (multi-query + fallback)
+- Phase 1 focus should now move to B/C/D with measurable gains.
+
 ## Experiment A: Query Transformation Layer
 
 - Source: `query_transformations.py`
@@ -52,3 +59,8 @@ Goal: run small, low-risk experiments that can be merged into our existing RAG s
 - No major regression in latency or failure rate.
 - Feature is behind config toggles and can be disabled quickly.
 
+## Recommended immediate order (updated)
+
+1. Experiment B (Context Window Enrichment tuning)  
+2. Experiment C (Contextual Compression)  
+3. Experiment D (Adaptive Routing Lite)

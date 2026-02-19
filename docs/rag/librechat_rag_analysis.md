@@ -204,14 +204,14 @@ Runtime (Legacy non-Agents path):
 
 ---
 
-## 11. 对我们（lex_mint_rag）的直接启发
+## 11. 对我们（lex_mint_rag）的直接启发（按当前进展更新）
 
-如果目标是“类似 LibreChat 的主动式 RAG”，最关键不是把检索塞进主链路，而是：
+基于当前状态（query planner + structured source + search/read 工具已落地），这部分启发要从“补功能”转为“做治理”：
 
-1. 把检索能力做成工具（让模型决定是否调用），并给工具清晰可读的 `toolContext`。
-2. 将检索结果与引用渲染分层（artifact -> citation processor）。
-3. 先把权限和资源模型打稳（谁能搜哪些文档），再追求复杂检索策略。
-4. 需要时可保留“注入式兜底”链路（如低能力模型或不支持工具调用的 endpoint）。
+1. 工具式检索主链路继续保留，但重点优化工具策略（证据型请求优先 `read`、抑制重复 `search`）。
+2. 将检索结果与引用渲染进一步分层，做跨来源统一（KB/附件/网页同一 citation 协议）。
+3. 补齐权限和资源模型（assistant/kb/session 三层边界），避免“可见即可查”。
+4. 需要时保留注入式兜底链路（低能力模型或不支持 tool calling 的 endpoint）。
 
 ---
 
@@ -282,10 +282,10 @@ Runtime (Legacy non-Agents path):
 4. **`/embed-upload` 临时文件路径未按用户隔离**：使用 `uploads/<filename>`，并发同名文件时有冲突窗口。`learn_proj/rag_api/app/routes/document_routes.py:907`
 5. **`JWT_SECRET` 可选带来部署风险**：若误配为空，将退化为无鉴权模式。`learn_proj/rag_api/app/middleware.py:19`
 
-### 14.2 我们在 `lex_mint_rag` 的优先落地建议
+### 14.2 我们在 `lex_mint_rag` 的优先落地建议（已按当前状态重排）
 
-1. **先复刻 LibreChat 的“工具式主动 RAG”主链路**：让模型按需调用检索工具，而不是每轮强注入（你们当前正缺这一块）。
-2. **保留“注入式兜底”作为兼容路径**：用于低能力模型或不支持 tool calling 的 endpoint。
-3. **RAG API 侧先做强一致权限**：查询结果逐 chunk 校验 `user_id/project_id/context_id`，不要只看首条命中。
-4. **入库继续采用“文件级回滚”语义**：LibreChat/rag_api 的批处理 + 回滚机制可直接借鉴，稳定性价值很高。
-5. **高级检索放第二阶段**：当前可先 dense-only；后续再加 query rewrite、hybrid、rerank，避免一次性复杂化。
+1. **先做质量门禁**：固定 Recall@K / MRR / citation hit rate 阈值，并接入 CI 阻断回归。
+2. **做工具链路治理**：证据型问题提升 `read_knowledge` 触发率、限制相似 query 的重复 `search`。
+3. **做统一引用协议**：检索来源与工具来源统一到一套 source/citation 渲染规范。
+4. **做权限治理**：补 KB ACL 与跨会话边界，保持“谁可搜、搜到什么、如何引用”全链路一致。
+5. **保留可扩展架构思路**：sidecar 与应用内都可行，但当前优先级应放在稳定性与可评估性，而非架构重构。

@@ -1,5 +1,14 @@
 # Learning Roadmap for lex_mint_rag (Based on RAG_Techniques)
 
+## Progress snapshot (2026-02-19)
+
+- [x] Query-side rewrite + guard is already in production.
+- [x] Retrieval query planner (multi-query) is now integrated.
+- [x] Structured source-context injection is available behind config.
+- [x] Tool-based active RAG (`search_knowledge` / `read_knowledge`) is online.
+- [ ] Adaptive routing by query type is not implemented yet.
+- [ ] Baseline acceptance thresholds and CI gating are not finalized yet.
+
 ## Current baseline in our codebase
 
 From `src/api/services/rag_service.py` and `src/api/services/rag_config_service.py`, we already have:
@@ -66,9 +75,7 @@ So the biggest gains are likely from **new retrieval strategies**, not from basi
 
 ## Suggested execution order
 
-1. Query transformations  
-2. Context enrichment/compression  
-3. Adaptive retrieval routing  
-4. Self-correction (Self-RAG/CRAG-lite)  
-5. Graph/RAPTOR exploration (only after measurable gains in 1-4)
-
+1. Context enrichment/compression  
+2. Adaptive retrieval routing  
+3. Self-correction (Self-RAG/CRAG-lite)  
+4. Graph/RAPTOR exploration (only after measurable gains in 1-3)
