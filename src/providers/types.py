@@ -128,16 +128,6 @@ class ModelCapabilities(BaseModel):
         return ModelCapabilities(**base_dict)
 
 
-class ModelDefinition(BaseModel):
-    """Built-in model definition (minimal info for builtin providers)"""
-    id: str = Field(..., description="Model ID (e.g., deepseek-chat)")
-    name: str = Field(..., description="Display name")
-    capabilities: Optional[ModelCapabilities] = Field(
-        default=None,
-        description="Model-specific capabilities (overrides provider defaults)"
-    )
-
-
 class ProviderDefinition(BaseModel):
     """
     Built-in provider definition.
@@ -152,10 +142,6 @@ class ProviderDefinition(BaseModel):
     default_capabilities: ModelCapabilities = Field(
         default_factory=ModelCapabilities,
         description="Default capabilities for models under this provider"
-    )
-    builtin_models: List[ModelDefinition] = Field(
-        default_factory=list,
-        description="Pre-defined models for this provider"
     )
     url_suffix: str = Field(default="/v1", description="URL suffix for API calls")
     auto_append_path: bool = Field(default=True, description="Auto-append path to base URL")

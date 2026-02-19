@@ -49,7 +49,6 @@ class BuiltinProviderInfo(BaseModel):
     sdk_class: str
     supports_model_list: bool
     default_capabilities: ModelCapabilities
-    builtin_models: List[dict] = []
 
 
 class ModelInfo(BaseModel):
@@ -69,10 +68,6 @@ async def get_builtin_providers():
     """
     result = []
     for provider_id, definition in BUILTIN_PROVIDERS.items():
-        builtin_models = [
-            {"id": m.id, "name": m.name}
-            for m in definition.builtin_models
-        ]
         result.append(BuiltinProviderInfo(
             id=definition.id,
             name=definition.name,
@@ -81,7 +76,6 @@ async def get_builtin_providers():
             sdk_class=definition.sdk_class,
             supports_model_list=definition.supports_model_list,
             default_capabilities=definition.default_capabilities,
-            builtin_models=builtin_models,
         ))
     return result
 
@@ -101,11 +95,6 @@ async def get_builtin_provider_info(provider_id: str):
             detail=f"Builtin provider '{provider_id}' not found"
         )
 
-    builtin_models = [
-        {"id": m.id, "name": m.name}
-        for m in definition.builtin_models
-    ]
-
     return BuiltinProviderInfo(
         id=definition.id,
         name=definition.name,
@@ -114,7 +103,6 @@ async def get_builtin_provider_info(provider_id: str):
         sdk_class=definition.sdk_class,
         supports_model_list=definition.supports_model_list,
         default_capabilities=definition.default_capabilities,
-        builtin_models=builtin_models,
     )
 
 

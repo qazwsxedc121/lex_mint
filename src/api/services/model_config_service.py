@@ -39,6 +39,9 @@ class ModelConfigService:
     """模型配置管理服务"""
 
     _DEFAULT_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
+    _BOOTSTRAP_PROVIDER_ID = "deepseek"
+    _BOOTSTRAP_MODEL_ID = "deepseek-chat"
+    _BOOTSTRAP_MODEL_NAME = "DeepSeek Chat"
 
     def __init__(self, config_path: Path = None, keys_path: Path = None):
         """
@@ -101,30 +104,31 @@ class ModelConfigService:
                     enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
                 )
             )
-            for model_definition in definition.builtin_models:
-                is_default_deepseek = (
-                    definition.id == "deepseek"
-                    and model_definition.id in {"deepseek-chat", "deepseek-reasoner"}
-                )
-                models.append(
-                    self._model_from_definition(
-                        provider_id=definition.id,
-                        model_id=model_definition.id,
-                        model_name=model_definition.name,
-                        capabilities=model_definition.capabilities,
-                        enabled=is_default_deepseek,
-                    )
-                )
+
+        # Keep default config minimal; runtime model discovery should come from provider APIs.
+        models.append(self._build_bootstrap_model())
 
         return {
             "default": {
-                "provider": "deepseek",
-                "model": "deepseek-chat"
+                "provider": self._BOOTSTRAP_PROVIDER_ID,
+                "model": self._BOOTSTRAP_MODEL_ID,
             },
             "providers": providers,
             "models": models,
             "reasoning_supported_patterns": ["deepseek-chat", "glm-"],
         }
+
+    def _build_bootstrap_model(self) -> dict[str, Any]:
+        """Build a single default model so a fresh install is immediately usable."""
+        deepseek = get_builtin_provider(self._BOOTSTRAP_PROVIDER_ID)
+        capabilities = deepseek.default_capabilities if deepseek else None
+        return self._model_from_definition(
+            provider_id=self._BOOTSTRAP_PROVIDER_ID,
+            model_id=self._BOOTSTRAP_MODEL_ID,
+            model_name=self._BOOTSTRAP_MODEL_NAME,
+            capabilities=capabilities,
+            enabled=True,
+        )
 
     def _provider_from_definition(self, definition, enabled: bool) -> dict[str, Any]:
         return {
@@ -219,7 +223,7 @@ class ModelConfigService:
         """
         Ensure built-in providers/models always exist in local config.
 
-        Only adds missing entries; never overwrites existing user edits.
+        Adds missing entries and refreshes non-user-editable builtin flags.
         """
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
@@ -270,11 +274,12 @@ class ModelConfigService:
         default_provider = default_config.get("provider")
         default_model = default_config.get("model")
 
-        existing_provider_ids = {
-            p.get("id")
+        existing_providers = {
+            p.get("id"): p
             for p in providers
             if isinstance(p, dict) and p.get("id")
         }
+        existing_provider_ids = set(existing_providers.keys())
         existing_model_keys = {
             (m.get("provider_id"), m.get("id"))
             for m in models
@@ -291,26 +296,28 @@ class ModelConfigService:
                 )
                 existing_provider_ids.add(definition.id)
                 changed = True
+            else:
+                # Keep non-user-editable builtin capability flags in sync.
+                provider_entry = existing_providers.get(definition.id)
+                if (
+                    isinstance(provider_entry, dict)
+                    and provider_entry.get("type") == "builtin"
+                    and provider_entry.get("supports_model_list") != definition.supports_model_list
+                ):
+                    provider_entry["supports_model_list"] = definition.supports_model_list
+                    changed = True
 
-            for model_definition in definition.builtin_models:
-                key = (definition.id, model_definition.id)
-                if key in existing_model_keys:
-                    continue
-
-                is_default_model = (
-                    default_provider == definition.id and default_model == model_definition.id
-                )
-                models.append(
-                    self._model_from_definition(
-                        provider_id=definition.id,
-                        model_id=model_definition.id,
-                        model_name=model_definition.name,
-                        capabilities=model_definition.capabilities,
-                        enabled=is_default_model,
-                    )
-                )
-                existing_model_keys.add(key)
-                changed = True
+        default_key = (default_provider, default_model)
+        bootstrap_key = (self._BOOTSTRAP_PROVIDER_ID, self._BOOTSTRAP_MODEL_ID)
+        if default_key not in existing_model_keys:
+            if bootstrap_key not in existing_model_keys:
+                models.append(self._build_bootstrap_model())
+                existing_model_keys.add(bootstrap_key)
+            data["default"] = {
+                "provider": self._BOOTSTRAP_PROVIDER_ID,
+                "model": self._BOOTSTRAP_MODEL_ID,
+            }
+            changed = True
 
         reasoning_patterns = data.get("reasoning_supported_patterns")
         if not isinstance(reasoning_patterns, list):

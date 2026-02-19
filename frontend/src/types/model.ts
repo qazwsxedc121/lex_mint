@@ -87,7 +87,6 @@ export interface BuiltinProviderInfo {
   sdk_class: string;
   supports_model_list: boolean;
   default_capabilities: ModelCapabilities;
-  builtin_models: { id: string; name: string }[];
 }
 
 // Model info (from fetch models API)

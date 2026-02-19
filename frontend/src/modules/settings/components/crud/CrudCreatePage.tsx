@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
+import { PageHeader, LoadingSpinner, ErrorMessage } from '../common';
 import { CrudForm } from './CrudForm';
 import type { CrudSettingsConfig, CrudHook, ConfigContext } from '../../config/types';
 
@@ -44,7 +44,6 @@ export function CrudCreatePage<T = any>({
   const [formData, setFormData] = useState<any>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const pageMeta = config.createPage;
   const { t } = useTranslation('settings');
@@ -90,10 +89,7 @@ export function CrudCreatePage<T = any>({
     try {
       setIsSubmitting(true);
       await hook.createItem(formData);
-      setSuccessMessage(pageMeta?.successMessage || t('crud.createdSuccess', { item: config.itemName }));
-      setFormData(initialFormData);
-      setShowErrors(false);
-      setTimeout(() => setSuccessMessage(null), 3000);
+      navigate(backPath, { replace: true });
     } catch (err) {
       console.error('Submit error:', err);
     } finally {
@@ -133,13 +129,6 @@ export function CrudCreatePage<T = any>({
           </button>
         )}
       />
-
-      {successMessage && (
-        <SuccessMessage
-          message={successMessage}
-          onDismiss={() => setSuccessMessage(null)}
-        />
-      )}
 
       {config.customFormRenderer ? (
         config.customFormRenderer(formData, setFormData, context, false)

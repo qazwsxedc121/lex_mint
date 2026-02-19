@@ -2,6 +2,7 @@
 
 import pytest
 import yaml
+import shutil
 from pathlib import Path
 from unittest.mock import patch, Mock
 
@@ -29,6 +30,123 @@ class TestModelConfigService:
             assert "default" in data
             assert "providers" in data
             assert "models" in data
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_supports_model_list_flag(self):
+        """Builtin providers should refresh non-editable model-list support flags."""
+        test_dir = Path(".tmp") / "test_sync_builtin_supports_model_list_flag"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        stale_config = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": False,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(stale_config, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            provider = await service.get_provider("deepseek")
+
+            assert provider is not None
+            assert provider.supports_model_list is True
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_default_config_uses_single_bootstrap_model(self):
+        """Fresh config should avoid preloading large builtin model catalogs."""
+        test_dir = Path(".tmp") / "test_default_config_uses_single_bootstrap_model"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        try:
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert config.default.provider == "deepseek"
+            assert config.default.model == "deepseek-chat"
+            assert len(config.models) == 1
+            assert config.models[0].provider_id == "deepseek"
+            assert config.models[0].id == "deepseek-chat"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_does_not_auto_seed_builtin_model_catalog(self):
+        """Builtin sync should not append large curated model lists."""
+        test_dir = Path(".tmp") / "test_sync_builtin_does_not_auto_seed_builtin_model_catalog"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        config_data = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(config_data, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert len(config.models) == 1
+            assert config.models[0].id == "deepseek-chat"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
     async def test_load_config(self, temp_config_dir, sample_model_config):

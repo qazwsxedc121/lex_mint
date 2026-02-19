@@ -65,3 +65,25 @@ async def test_stored_connection_requires_key_when_provider_needs_it():
     assert response.success is False
     assert "No API key found" in response.message
     service.test_provider_connection.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_builtin_provider_catalog_uses_dynamic_model_discovery():
+    providers = await models_router.get_builtin_providers()
+
+    deepseek = next(p for p in providers if p.id == "deepseek")
+    anthropic = next(p for p in providers if p.id == "anthropic")
+    xai = next(p for p in providers if p.id == "xai")
+
+    assert deepseek.supports_model_list is True
+    assert anthropic.supports_model_list is True
+    assert xai.supports_model_list is True
+    assert "builtin_models" not in deepseek.model_dump()
+    assert "builtin_models" not in anthropic.model_dump()
+    assert "builtin_models" not in xai.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_builtin_provider_info_hides_static_model_list():
+    info = await models_router.get_builtin_provider_info("volcengine")
+    assert "builtin_models" not in info.model_dump()
