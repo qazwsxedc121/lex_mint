@@ -16,6 +16,7 @@ from .webpage_service import WebpageService
 from .memory_service import MemoryService
 from .file_reference_config_service import FileReferenceConfigService, FileReferenceConfig
 from .rag_config_service import RagConfigService
+from .rag_tool_service import RagToolService
 from .source_context_service import SourceContextService
 from ..config import settings
 
@@ -810,6 +811,7 @@ class AgentService:
 
         # Resolve tools if model supports function calling
         llm_tools = None
+        rag_tool_executor = None
         try:
             from .model_config_service import ModelConfigService
             model_service = ModelConfigService()
@@ -817,7 +819,22 @@ class AgentService:
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
             if merged_caps.function_calling:
                 from src.tools.registry import get_tool_registry
-                llm_tools = get_tool_registry().get_all_tools()
+                llm_tools = list(get_tool_registry().get_all_tools())
+                kb_ids_for_tools = list(getattr(assistant_obj, "knowledge_base_ids", None) or [])
+                if assistant_id and not is_legacy_assistant and kb_ids_for_tools:
+                    rag_tool_service = RagToolService(
+                        assistant_id=assistant_id,
+                        allowed_kb_ids=kb_ids_for_tools,
+                        runtime_model_id=model_id,
+                    )
+                    rag_tools = rag_tool_service.get_tools()
+                    if rag_tools:
+                        llm_tools.extend(rag_tools)
+                        rag_tool_executor = rag_tool_service.execute_tool
+                        print(
+                            f"[TOOLS] Added RAG tools for assistant {assistant_id}: "
+                            f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
+                        )
                 print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
@@ -838,6 +855,7 @@ class AgentService:
                 reasoning_effort=reasoning_effort,
                 file_service=self.file_service,  # Pass file_service for image attachment support
                 tools=llm_tools,
+                tool_executor=rag_tool_executor,
                 **assistant_params
             ):
                 # Check if this is a usage data dict
