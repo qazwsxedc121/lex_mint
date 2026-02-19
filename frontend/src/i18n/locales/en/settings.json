@@ -177,6 +177,9 @@
   "documents.reprocessAll": "Reprocess All",
   "documents.deleteAll": "Delete All",
   "documents.uploading": "Uploading...",
+  "documents.currentFileProgress": "Current file: {{name}} ({{percent}}%)",
+  "documents.batchProgress": "Batch progress: {{done}} / {{total}} succeeded ({{overall}}%)",
+  "documents.batchProgressWithFailed": "Batch progress: {{done}} / {{total}} succeeded ({{overall}}%), {{failed}} failed",
   "documents.dropOrClick": "Drop files here or click to upload",
   "documents.supportedTypes": "Supported: TXT, MD, PDF, DOCX, HTML",
   "documents.loadingDocs": "Loading documents...",
@@ -186,6 +189,7 @@
   "documents.size": "Size",
   "documents.chunks": "Chunks",
   "documents.reprocess": "Reprocess",
+  "documents.uploadFailedSome": "{{count}} files failed to upload: {{files}}",
 
   "configField.builtin": "Builtin",
   "configField.custom": "Custom",

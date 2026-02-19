@@ -55,6 +55,9 @@ class RetrievalConfig:
     bm25_weight: float = 1.0
     max_per_doc: int = 2
     reorder_strategy: str = "long_context"
+    context_neighbor_window: int = 0
+    context_neighbor_max_total: int = 0
+    context_neighbor_dedup_coverage: float = 0.9
     query_transform_enabled: bool = False
     query_transform_mode: str = "rewrite"
     query_transform_model_id: str = "auto"
@@ -140,6 +143,9 @@ class RagConfigService:
                     'bm25_weight': 1.0,
                     'max_per_doc': 2,
                     'reorder_strategy': 'long_context',
+                    'context_neighbor_window': 0,
+                    'context_neighbor_max_total': 0,
+                    'context_neighbor_dedup_coverage': 0.9,
                     'query_transform_enabled': False,
                     'query_transform_mode': 'rewrite',
                     'query_transform_model_id': 'auto',
@@ -228,6 +234,9 @@ class RagConfigService:
                     bm25_weight=retrieval_data.get('bm25_weight', 1.0),
                     max_per_doc=retrieval_data.get('max_per_doc', 2),
                     reorder_strategy=retrieval_data.get('reorder_strategy', 'long_context'),
+                    context_neighbor_window=retrieval_data.get('context_neighbor_window', 0),
+                    context_neighbor_max_total=retrieval_data.get('context_neighbor_max_total', 0),
+                    context_neighbor_dedup_coverage=retrieval_data.get('context_neighbor_dedup_coverage', 0.9),
                     query_transform_enabled=retrieval_data.get('query_transform_enabled', False),
                     query_transform_mode=retrieval_data.get('query_transform_mode', 'rewrite'),
                     query_transform_model_id=retrieval_data.get('query_transform_model_id', 'auto'),
@@ -334,6 +343,9 @@ class RagConfigService:
             'bm25_weight': self.config.retrieval.bm25_weight,
             'max_per_doc': self.config.retrieval.max_per_doc,
             'reorder_strategy': self.config.retrieval.reorder_strategy,
+            'context_neighbor_window': self.config.retrieval.context_neighbor_window,
+            'context_neighbor_max_total': self.config.retrieval.context_neighbor_max_total,
+            'context_neighbor_dedup_coverage': self.config.retrieval.context_neighbor_dedup_coverage,
             'query_transform_enabled': self.config.retrieval.query_transform_enabled,
             'query_transform_mode': self.config.retrieval.query_transform_mode,
             'query_transform_model_id': self.config.retrieval.query_transform_model_id,
@@ -389,6 +401,9 @@ class RagConfigService:
             'bm25_weight': ('retrieval', 'bm25_weight'),
             'max_per_doc': ('retrieval', 'max_per_doc'),
             'reorder_strategy': ('retrieval', 'reorder_strategy'),
+            'context_neighbor_window': ('retrieval', 'context_neighbor_window'),
+            'context_neighbor_max_total': ('retrieval', 'context_neighbor_max_total'),
+            'context_neighbor_dedup_coverage': ('retrieval', 'context_neighbor_dedup_coverage'),
             'query_transform_enabled': ('retrieval', 'query_transform_enabled'),
             'query_transform_mode': ('retrieval', 'query_transform_mode'),
             'query_transform_model_id': ('retrieval', 'query_transform_model_id'),

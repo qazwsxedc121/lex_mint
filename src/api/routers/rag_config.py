@@ -46,6 +46,9 @@ class RagConfigResponse(BaseModel):
     bm25_weight: float
     max_per_doc: int
     reorder_strategy: str
+    context_neighbor_window: int
+    context_neighbor_max_total: int
+    context_neighbor_dedup_coverage: float
     query_transform_enabled: bool
     query_transform_mode: str
     query_transform_model_id: str
@@ -99,6 +102,9 @@ class RagConfigUpdate(BaseModel):
     bm25_weight: Optional[float] = Field(None, ge=0.0, le=10.0)
     max_per_doc: Optional[int] = Field(None, ge=0, le=20)
     reorder_strategy: Optional[Literal["none", "long_context"]] = None
+    context_neighbor_window: Optional[int] = Field(None, ge=0, le=10)
+    context_neighbor_max_total: Optional[int] = Field(None, ge=0, le=200)
+    context_neighbor_dedup_coverage: Optional[float] = Field(None, ge=0.5, le=1.0)
     query_transform_enabled: Optional[bool] = None
     query_transform_mode: Optional[Literal["none", "rewrite"]] = None
     query_transform_model_id: Optional[str] = None

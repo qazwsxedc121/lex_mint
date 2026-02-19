@@ -1985,21 +1985,54 @@ export async function listKnowledgeBaseChunks(
 /**
  * Upload a document to a knowledge base.
  */
-export async function uploadDocument(kbId: string, file: File): Promise<KnowledgeBaseDocument> {
+export async function uploadDocument(
+  kbId: string,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<KnowledgeBaseDocument> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${API_BASE}/api/knowledge-bases/${kbId}/documents/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await axios.post<KnowledgeBaseDocument>(
+      `${API_BASE}/api/knowledge-bases/${kbId}/documents/upload`,
+      formData,
+      {
+        onUploadProgress: (event) => {
+          const total = event.total ?? file.size;
+          if (!total || total <= 0) {
+            return;
+          }
+          const percent = Math.min(100, Math.round((event.loaded / total) * 100));
+          onProgress?.(percent);
+        },
+      }
+    );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Upload failed');
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data;
+      if (data && typeof data === 'object' && 'detail' in data) {
+        const detailValue = (data as { detail?: unknown }).detail;
+        const detail = Array.isArray(detailValue)
+          ? detailValue
+              .map((item) => {
+                if (item && typeof item === 'object' && 'msg' in (item as Record<string, unknown>)) {
+                  return String((item as { msg?: unknown }).msg ?? '');
+                }
+                return String(item ?? '');
+              })
+              .filter(Boolean)
+              .join('; ')
+          : String(detailValue ?? '');
+        if (detail) {
+          throw new Error(detail);
+        }
+      }
+    }
+    throw error instanceof Error ? error : new Error('Upload failed');
   }
-
-  return response.json();
 }
 
 /**

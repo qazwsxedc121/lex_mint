@@ -150,13 +150,32 @@ class DocumentProcessingService:
             return f.read().decode('utf-8', errors='replace')
 
     def _extract_text_pdf(self, file_path: str) -> str:
-        """Extract text from PDF files"""
+        """Extract text from PDF files."""
+        # PyMuPDF handles many CJK PDFs better than pypdf when ToUnicode maps are missing.
+        try:
+            import fitz
+
+            doc = fitz.open(file_path)
+            text_parts = []
+            for page in doc:
+                page_text = page.get_text("text")
+                if page_text and page_text.strip():
+                    text_parts.append(page_text)
+            if text_parts:
+                return "\n\n".join(text_parts)
+            logger.warning("PyMuPDF extracted empty text from PDF: %s", file_path)
+        except ModuleNotFoundError:
+            logger.debug("PyMuPDF not installed, falling back to pypdf for: %s", file_path)
+        except Exception as e:
+            logger.warning("PyMuPDF extraction failed for %s: %s, falling back to pypdf", file_path, e)
+
         from pypdf import PdfReader
+
         reader = PdfReader(file_path)
         text_parts = []
         for page in reader.pages:
             page_text = page.extract_text()
-            if page_text:
+            if page_text and page_text.strip():
                 text_parts.append(page_text)
         return "\n\n".join(text_parts)
 

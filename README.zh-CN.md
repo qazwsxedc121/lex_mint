@@ -41,6 +41,14 @@
 ./venv/Scripts/uvicorn src.api.main:app --reload --port 8988
 ```
 
+可选：NVIDIA GPU 机器可将 `llama-cpp-python` 切到 CUDA 构建（按机器安装）：
+
+```powershell
+$env:CMAKE_ARGS='-DGGML_CUDA=on'
+$env:FORCE_CMAKE='1'
+./venv/Scripts/pip install --upgrade --force-reinstall -r requirements.gpu_nvidia.txt
+```
+
 前端：
 
 ```powershell
