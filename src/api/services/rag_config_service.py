@@ -58,6 +58,10 @@ class RetrievalConfig:
     context_neighbor_window: int = 0
     context_neighbor_max_total: int = 0
     context_neighbor_dedup_coverage: float = 0.9
+    retrieval_query_planner_enabled: bool = False
+    retrieval_query_planner_model_id: str = "auto"
+    retrieval_query_planner_max_queries: int = 3
+    retrieval_query_planner_timeout_seconds: int = 4
     query_transform_enabled: bool = False
     query_transform_mode: str = "rewrite"
     query_transform_model_id: str = "auto"
@@ -146,6 +150,10 @@ class RagConfigService:
                     'context_neighbor_window': 0,
                     'context_neighbor_max_total': 0,
                     'context_neighbor_dedup_coverage': 0.9,
+                    'retrieval_query_planner_enabled': False,
+                    'retrieval_query_planner_model_id': 'auto',
+                    'retrieval_query_planner_max_queries': 3,
+                    'retrieval_query_planner_timeout_seconds': 4,
                     'query_transform_enabled': False,
                     'query_transform_mode': 'rewrite',
                     'query_transform_model_id': 'auto',
@@ -237,6 +245,22 @@ class RagConfigService:
                     context_neighbor_window=retrieval_data.get('context_neighbor_window', 0),
                     context_neighbor_max_total=retrieval_data.get('context_neighbor_max_total', 0),
                     context_neighbor_dedup_coverage=retrieval_data.get('context_neighbor_dedup_coverage', 0.9),
+                    retrieval_query_planner_enabled=retrieval_data.get(
+                        'retrieval_query_planner_enabled',
+                        False,
+                    ),
+                    retrieval_query_planner_model_id=retrieval_data.get(
+                        'retrieval_query_planner_model_id',
+                        'auto',
+                    ),
+                    retrieval_query_planner_max_queries=retrieval_data.get(
+                        'retrieval_query_planner_max_queries',
+                        3,
+                    ),
+                    retrieval_query_planner_timeout_seconds=retrieval_data.get(
+                        'retrieval_query_planner_timeout_seconds',
+                        4,
+                    ),
                     query_transform_enabled=retrieval_data.get('query_transform_enabled', False),
                     query_transform_mode=retrieval_data.get('query_transform_mode', 'rewrite'),
                     query_transform_model_id=retrieval_data.get('query_transform_model_id', 'auto'),
@@ -346,6 +370,10 @@ class RagConfigService:
             'context_neighbor_window': self.config.retrieval.context_neighbor_window,
             'context_neighbor_max_total': self.config.retrieval.context_neighbor_max_total,
             'context_neighbor_dedup_coverage': self.config.retrieval.context_neighbor_dedup_coverage,
+            'retrieval_query_planner_enabled': self.config.retrieval.retrieval_query_planner_enabled,
+            'retrieval_query_planner_model_id': self.config.retrieval.retrieval_query_planner_model_id,
+            'retrieval_query_planner_max_queries': self.config.retrieval.retrieval_query_planner_max_queries,
+            'retrieval_query_planner_timeout_seconds': self.config.retrieval.retrieval_query_planner_timeout_seconds,
             'query_transform_enabled': self.config.retrieval.query_transform_enabled,
             'query_transform_mode': self.config.retrieval.query_transform_mode,
             'query_transform_model_id': self.config.retrieval.query_transform_model_id,
@@ -404,6 +432,10 @@ class RagConfigService:
             'context_neighbor_window': ('retrieval', 'context_neighbor_window'),
             'context_neighbor_max_total': ('retrieval', 'context_neighbor_max_total'),
             'context_neighbor_dedup_coverage': ('retrieval', 'context_neighbor_dedup_coverage'),
+            'retrieval_query_planner_enabled': ('retrieval', 'retrieval_query_planner_enabled'),
+            'retrieval_query_planner_model_id': ('retrieval', 'retrieval_query_planner_model_id'),
+            'retrieval_query_planner_max_queries': ('retrieval', 'retrieval_query_planner_max_queries'),
+            'retrieval_query_planner_timeout_seconds': ('retrieval', 'retrieval_query_planner_timeout_seconds'),
             'query_transform_enabled': ('retrieval', 'query_transform_enabled'),
             'query_transform_mode': ('retrieval', 'query_transform_mode'),
             'query_transform_model_id': ('retrieval', 'query_transform_model_id'),

@@ -519,6 +519,44 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     },
     {
       type: 'checkbox',
+      name: 'retrieval_query_planner_enabled',
+      label: 'Enable Retrieval Query Planner',
+      defaultValue: false,
+      helpText: 'Generate 1-3 retrieval queries before search. Falls back to original query on failure.'
+    },
+    {
+      type: 'text',
+      name: 'retrieval_query_planner_model_id',
+      label: 'Planner Model',
+      placeholder: 'auto or provider:model',
+      defaultValue: 'auto',
+      condition: (formData) => formData.retrieval_query_planner_enabled === true,
+      helpText: 'Use auto to follow current chat model, or set a dedicated planner model.'
+    },
+    {
+      type: 'number',
+      name: 'retrieval_query_planner_max_queries',
+      label: 'Planner Max Queries',
+      min: 1,
+      max: 8,
+      defaultValue: 3,
+      required: true,
+      condition: (formData) => formData.retrieval_query_planner_enabled === true,
+      helpText: 'Maximum number of planned retrieval queries (including the original query).'
+    },
+    {
+      type: 'number',
+      name: 'retrieval_query_planner_timeout_seconds',
+      label: 'Planner Timeout (s)',
+      min: 1,
+      max: 30,
+      defaultValue: 4,
+      required: true,
+      condition: (formData) => formData.retrieval_query_planner_enabled === true,
+      helpText: 'Planner timeout. On timeout or parse error, retrieval uses the original query.'
+    },
+    {
+      type: 'checkbox',
       name: 'rerank_enabled',
       get label() { return i18n.t('settings:rag.field.rerankEnabled'); },
       defaultValue: false,

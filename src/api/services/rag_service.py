@@ -52,11 +52,13 @@ class RagService:
         from .rerank_service import RerankService
         from .bm25_service import Bm25Service
         from .query_transform_service import QueryTransformService
+        from .retrieval_query_planner_service import RetrievalQueryPlannerService
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
         self.rerank_service = RerankService()
         self.bm25_service = Bm25Service()
         self.query_transform_service = QueryTransformService()
+        self.retrieval_query_planner_service = RetrievalQueryPlannerService()
 
     @staticmethod
     def _result_identity(result: RagResult) -> Tuple[str, str, int, str]:
@@ -405,6 +407,23 @@ class RagService:
             diagnostics.get("query_transform_crag_quality_label", "") or ""
         )
         query_transform_crag_decision = str(diagnostics.get("query_transform_crag_decision", "") or "")
+        retrieval_queries = diagnostics.get("retrieval_queries", []) or []
+        retrieval_query_count = int(diagnostics.get("retrieval_query_count", len(retrieval_queries)) or 0)
+        retrieval_query_planner_enabled = bool(
+            diagnostics.get("retrieval_query_planner_enabled", False)
+        )
+        retrieval_query_planner_applied = bool(
+            diagnostics.get("retrieval_query_planner_applied", False)
+        )
+        retrieval_query_planner_model_id = str(
+            diagnostics.get("retrieval_query_planner_model_id", "") or ""
+        )
+        retrieval_query_planner_fallback = bool(
+            diagnostics.get("retrieval_query_planner_fallback", False)
+        )
+        retrieval_query_planner_reason = str(
+            diagnostics.get("retrieval_query_planner_reason", "") or ""
+        )
 
         def _trim_query(text: str, max_len: int = 180) -> str:
             normalized = " ".join(text.split())
@@ -419,6 +438,7 @@ class RagService:
                 f"raw {raw_count} -> dedup {deduped_count} -> "
                 f"diversified {diversified_count} -> selected {selected_count} | "
                 f"neighbor +{neighbor_added_count} | "
+                f"planner {retrieval_query_count}q:{retrieval_query_planner_applied} | "
                 f"qt {query_transform_mode}:{query_transform_applied} "
                 f"{query_transform_crag_decision or 'direct'}"
             ),
@@ -461,6 +481,13 @@ class RagService:
             "query_transform_crag_quality_score": query_transform_crag_quality_score,
             "query_transform_crag_quality_label": query_transform_crag_quality_label,
             "query_transform_crag_decision": query_transform_crag_decision,
+            "retrieval_queries": retrieval_queries,
+            "retrieval_query_count": retrieval_query_count,
+            "retrieval_query_planner_enabled": retrieval_query_planner_enabled,
+            "retrieval_query_planner_applied": retrieval_query_planner_applied,
+            "retrieval_query_planner_model_id": retrieval_query_planner_model_id,
+            "retrieval_query_planner_fallback": retrieval_query_planner_fallback,
+            "retrieval_query_planner_reason": retrieval_query_planner_reason,
             "query_original": _trim_query(query_original),
             "query_effective": _trim_query(query_effective),
             "rerank_enabled": rerank_enabled,
@@ -605,6 +632,24 @@ class RagService:
             getattr(config.retrieval, "context_neighbor_dedup_coverage", 0.9) or 0.9
         )
         context_neighbor_dedup_coverage = max(0.5, min(1.0, context_neighbor_dedup_coverage))
+        retrieval_query_planner_enabled = bool(
+            getattr(config.retrieval, "retrieval_query_planner_enabled", False)
+        )
+        retrieval_query_planner_model_id = str(
+            getattr(config.retrieval, "retrieval_query_planner_model_id", "auto") or "auto"
+        )
+        retrieval_query_planner_max_queries = int(
+            getattr(config.retrieval, "retrieval_query_planner_max_queries", 3) or 3
+        )
+        retrieval_query_planner_max_queries = max(
+            1, min(8, retrieval_query_planner_max_queries)
+        )
+        retrieval_query_planner_timeout_seconds = int(
+            getattr(config.retrieval, "retrieval_query_planner_timeout_seconds", 4) or 4
+        )
+        retrieval_query_planner_timeout_seconds = max(
+            1, min(30, retrieval_query_planner_timeout_seconds)
+        )
         query_transform_enabled = bool(getattr(config.retrieval, "query_transform_enabled", False))
         query_transform_mode = str(getattr(config.retrieval, "query_transform_mode", "none") or "none").lower()
         if query_transform_mode not in {"none", "rewrite"}:
@@ -687,22 +732,91 @@ class RagService:
             except Exception as e:
                 logger.warning("Query transform failed in RagService; fallback to original query: %s", e)
 
+        retrieval_queries: List[str] = [effective_query] if effective_query else []
+        retrieval_query_planner_applied = False
+        retrieval_query_planner_fallback = False
+        retrieval_query_planner_reason = "disabled"
+        retrieval_query_planner_resolved_model = retrieval_query_planner_model_id
+        if retrieval_query_planner_enabled and effective_query:
+            retrieval_query_planner_reason = "ok"
+            planner_service = getattr(self, "retrieval_query_planner_service", None)
+            if planner_service is None:
+                from .retrieval_query_planner_service import RetrievalQueryPlannerService
+
+                planner_service = RetrievalQueryPlannerService()
+                self.retrieval_query_planner_service = planner_service
+            try:
+                query_plan = await planner_service.plan_queries(
+                    query=effective_query,
+                    runtime_model_id=runtime_model_id,
+                    enabled=True,
+                    max_queries=retrieval_query_planner_max_queries,
+                    timeout_seconds=retrieval_query_planner_timeout_seconds,
+                    model_id=retrieval_query_planner_model_id,
+                )
+                planned_queries = list(query_plan.planned_queries or [])
+                if planned_queries:
+                    retrieval_queries = planned_queries
+                retrieval_query_planner_applied = bool(query_plan.planner_applied)
+                retrieval_query_planner_fallback = bool(query_plan.fallback_used)
+                retrieval_query_planner_reason = str(query_plan.reason or "ok")
+                retrieval_query_planner_resolved_model = str(
+                    query_plan.planner_model_id or retrieval_query_planner_model_id
+                )
+            except Exception as e:
+                logger.warning(
+                    "Retrieval query planner failed in RagService; fallback to effective query: %s",
+                    e,
+                )
+                retrieval_queries = [effective_query]
+                retrieval_query_planner_applied = False
+                retrieval_query_planner_fallback = True
+                retrieval_query_planner_reason = "error"
+        elif retrieval_query_planner_enabled and not effective_query:
+            retrieval_query_planner_reason = "empty_query"
+
+        # Final sanitization to guarantee at least one retrieval query when possible.
+        dedup_queries: List[str] = []
+        seen_query_keys = set()
+        for candidate in retrieval_queries:
+            normalized = " ".join(str(candidate or "").split()).strip()
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen_query_keys:
+                continue
+            seen_query_keys.add(key)
+            dedup_queries.append(normalized)
+        retrieval_queries = dedup_queries or ([effective_query] if effective_query else [])
+
         short_query = effective_query.replace("\n", " ")
         if len(short_query) > 120:
             short_query = f"{short_query[:120]}..."
         short_original_query = original_query.replace("\n", " ")
         if len(short_original_query) > 120:
             short_original_query = f"{short_original_query[:120]}..."
+        planner_query_preview = " | ".join(
+            [
+                item if len(item) <= 80 else f"{item[:80]}..."
+                for item in retrieval_queries[:3]
+            ]
+        )
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', original_query='%s', query_transform=%s/%s applied=%s model=%s, kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, bm25_min_term_coverage=%.2f, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', original_query='%s', query_transform=%s/%s applied=%s model=%s, planner enabled=%s applied=%s fallback=%s reason=%s model=%s queries=%s, kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, bm25_min_term_coverage=%.2f, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
             short_query,
             short_original_query,
             query_transform_enabled,
             query_transform_mode,
             query_transform_applied,
             query_transform_resolved_model,
+            retrieval_query_planner_enabled,
+            retrieval_query_planner_applied,
+            retrieval_query_planner_fallback,
+            retrieval_query_planner_reason,
+            retrieval_query_planner_resolved_model,
+            planner_query_preview or "none",
             kb_ids,
             retrieval_mode,
             effective_top_k,
@@ -754,7 +868,7 @@ class RagService:
             searched_kb_count += 1
             enabled_kbs.append((kb_id, kb))
 
-        query_embedding_cache: Dict[str, Sequence[float]] = {}
+        query_embedding_cache: Dict[Tuple[str, str], Sequence[float]] = {}
         if enabled_kbs and retrieval_mode in {"vector", "hybrid"} and vector_backend == "sqlite_vec":
             model_cache_targets: Dict[str, Optional[str]] = {}
             for _, kb in enabled_kbs:
@@ -763,94 +877,131 @@ class RagService:
                 if cache_key not in model_cache_targets:
                     model_cache_targets[cache_key] = override_model
 
-            for cache_key, override_model in model_cache_targets.items():
-                try:
-                    embedding_fn = self.embedding_service.get_embedding_function(override_model)
-                    if not hasattr(embedding_fn, "embed_query"):
-                        logger.warning(
-                            "sqlite_vec cache skipped for model=%s: embed_query() unavailable",
-                            override_model or "default",
+            for retrieval_query in retrieval_queries:
+                for cache_key, override_model in model_cache_targets.items():
+                    try:
+                        embedding_fn = self.embedding_service.get_embedding_function(override_model)
+                        if not hasattr(embedding_fn, "embed_query"):
+                            logger.warning(
+                                "sqlite_vec cache skipped for model=%s: embed_query() unavailable",
+                                override_model or "default",
+                            )
+                            continue
+                        query_embedding_cache[(retrieval_query, cache_key)] = embedding_fn.embed_query(
+                            retrieval_query
                         )
-                        continue
-                    query_embedding_cache[cache_key] = embedding_fn.embed_query(effective_query)
-                except Exception as e:
-                    logger.warning(
-                        "sqlite_vec cache embed failed for model=%s: %s",
-                        override_model or "default",
-                        e,
-                    )
+                    except Exception as e:
+                        logger.warning(
+                            "sqlite_vec cache embed failed for model=%s query='%s': %s",
+                            override_model or "default",
+                            retrieval_query,
+                            e,
+                        )
 
         async def _retrieve_single_kb(kb_id: str, kb: Any) -> Tuple[List[RagResult], List[RagResult]]:
             local_vector_results: List[RagResult] = []
             local_bm25_results: List[RagResult] = []
-            channel_jobs: List[Tuple[str, Any]] = []
+            total_query_count = max(1, len(retrieval_queries))
+            for query_index, retrieval_query in enumerate(retrieval_queries, start=1):
+                channel_jobs: List[Tuple[str, Any]] = []
+                query_preview = retrieval_query.replace("\n", " ")
+                if len(query_preview) > 80:
+                    query_preview = f"{query_preview[:80]}..."
 
-            if retrieval_mode in {"vector", "hybrid"}:
-                vector_kwargs: Dict[str, Any] = {
-                    "kb_id": kb_id,
-                    "query": effective_query,
-                    "top_k": vector_recall_k,
-                    "score_threshold": effective_threshold,
-                    "override_model": kb.embedding_model,
-                }
-                if vector_backend == "sqlite_vec":
-                    cache_key = (str(kb.embedding_model).strip() if kb.embedding_model else "") or "__default__"
-                    cached_embedding = query_embedding_cache.get(cache_key)
-                    if cached_embedding is not None:
-                        vector_kwargs["query_embedding"] = cached_embedding
-                channel_jobs.append(("vector", asyncio.to_thread(self._search_collection, **vector_kwargs)))
+                if retrieval_mode in {"vector", "hybrid"}:
+                    vector_kwargs: Dict[str, Any] = {
+                        "kb_id": kb_id,
+                        "query": retrieval_query,
+                        "top_k": vector_recall_k,
+                        "score_threshold": effective_threshold,
+                        "override_model": kb.embedding_model,
+                    }
+                    if vector_backend == "sqlite_vec":
+                        cache_key = (str(kb.embedding_model).strip() if kb.embedding_model else "") or "__default__"
+                        cached_embedding = query_embedding_cache.get((retrieval_query, cache_key))
+                        if cached_embedding is not None:
+                            vector_kwargs["query_embedding"] = cached_embedding
+                    channel_jobs.append(("vector", asyncio.to_thread(self._search_collection, **vector_kwargs)))
 
-            if retrieval_mode in {"bm25", "hybrid"}:
-                channel_jobs.append(
-                    (
-                        "bm25",
-                        asyncio.to_thread(
-                            self._search_bm25_collection,
-                            kb_id=kb_id,
-                            query=effective_query,
-                            top_k=bm25_recall_k,
-                            min_term_coverage=bm25_min_term_coverage,
-                        ),
+                if retrieval_mode in {"bm25", "hybrid"}:
+                    channel_jobs.append(
+                        (
+                            "bm25",
+                            asyncio.to_thread(
+                                self._search_bm25_collection,
+                                kb_id=kb_id,
+                                query=retrieval_query,
+                                top_k=bm25_recall_k,
+                                min_term_coverage=bm25_min_term_coverage,
+                            ),
+                        )
                     )
-                )
 
-            if not channel_jobs:
-                return local_vector_results, local_bm25_results
-
-            channel_results = await asyncio.gather(
-                *(job for _, job in channel_jobs),
-                return_exceptions=True,
-            )
-            for (channel, _), payload in zip(channel_jobs, channel_results):
-                if isinstance(payload, Exception):
-                    logger.warning(f"RAG {channel} search failed for KB {kb_id}: {payload}")
+                if not channel_jobs:
                     continue
 
-                if channel == "vector":
-                    local_vector_results = list(payload or [])
-                    if local_vector_results:
-                        best_score = max(r.score for r in local_vector_results)
-                        logger.info(
-                            "[RAG] kb=%s vector_results=%d best_score=%.4f",
+                channel_results = await asyncio.gather(
+                    *(job for _, job in channel_jobs),
+                    return_exceptions=True,
+                )
+                for (channel, _), payload in zip(channel_jobs, channel_results):
+                    if isinstance(payload, Exception):
+                        logger.warning(
+                            "RAG %s search failed for KB %s query[%d/%d]='%s': %s",
+                            channel,
                             kb_id,
-                            len(local_vector_results),
+                            query_index,
+                            total_query_count,
+                            query_preview,
+                            payload,
+                        )
+                        continue
+
+                    if channel == "vector":
+                        query_vector_results = list(payload or [])
+                        local_vector_results.extend(query_vector_results)
+                        if query_vector_results:
+                            best_score = max(r.score for r in query_vector_results)
+                            logger.info(
+                                "[RAG] kb=%s query[%d/%d]='%s' vector_results=%d best_score=%.4f",
+                                kb_id,
+                                query_index,
+                                total_query_count,
+                                query_preview,
+                                len(query_vector_results),
+                                best_score,
+                            )
+                        else:
+                            logger.info(
+                                "[RAG] kb=%s query[%d/%d]='%s' vector_results=0",
+                                kb_id,
+                                query_index,
+                                total_query_count,
+                                query_preview,
+                            )
+                        continue
+
+                    query_bm25_results = list(payload or [])
+                    local_bm25_results.extend(query_bm25_results)
+                    if query_bm25_results:
+                        best_score = max(r.score for r in query_bm25_results)
+                        logger.info(
+                            "[RAG] kb=%s query[%d/%d]='%s' bm25_results=%d best_score=%.4f",
+                            kb_id,
+                            query_index,
+                            total_query_count,
+                            query_preview,
+                            len(query_bm25_results),
                             best_score,
                         )
                     else:
-                        logger.info("[RAG] kb=%s vector_results=0", kb_id)
-                    continue
-
-                local_bm25_results = list(payload or [])
-                if local_bm25_results:
-                    best_score = max(r.score for r in local_bm25_results)
-                    logger.info(
-                        "[RAG] kb=%s bm25_results=%d best_score=%.4f",
-                        kb_id,
-                        len(local_bm25_results),
-                        best_score,
-                    )
-                else:
-                    logger.info("[RAG] kb=%s bm25_results=0", kb_id)
+                        logger.info(
+                            "[RAG] kb=%s query[%d/%d]='%s' bm25_results=0",
+                            kb_id,
+                            query_index,
+                            total_query_count,
+                            query_preview,
+                        )
 
             return local_vector_results, local_bm25_results
 
@@ -964,6 +1115,13 @@ class RagService:
             "query_transform_crag_decision": "direct",
             "query_transform_crag_lower_threshold": query_transform_crag_lower_threshold,
             "query_transform_crag_upper_threshold": query_transform_crag_upper_threshold,
+            "retrieval_queries": retrieval_queries,
+            "retrieval_query_count": len(retrieval_queries),
+            "retrieval_query_planner_enabled": retrieval_query_planner_enabled,
+            "retrieval_query_planner_applied": retrieval_query_planner_applied,
+            "retrieval_query_planner_model_id": retrieval_query_planner_resolved_model,
+            "retrieval_query_planner_fallback": retrieval_query_planner_fallback,
+            "retrieval_query_planner_reason": retrieval_query_planner_reason,
             "searched_kb_count": searched_kb_count,
             "requested_kb_count": len(kb_ids),
             "best_score": best_score,
@@ -1069,7 +1227,7 @@ class RagService:
         else:
             logger.info("[RAG] retrieve done: total=0")
         logger.info(
-            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s neighbor=+%d dup=%d overlap=%d query_transform=%s/%s applied=%s model=%s guard_blocked=%s crag=%s/%s/%s rerank=%s/%s(%.2f) kb=%d/%d",
+            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s neighbor=+%d dup=%d overlap=%d planner=%s/%s/%s(%s) query_transform=%s/%s applied=%s model=%s guard_blocked=%s crag=%s/%s/%s rerank=%s/%s(%.2f) kb=%d/%d",
             final_diagnostics["retrieval_mode"],
             final_diagnostics["raw_count"],
             final_diagnostics["vector_raw_count"],
@@ -1088,6 +1246,10 @@ class RagService:
             final_diagnostics.get("neighbor_added_count", 0),
             final_diagnostics.get("neighbor_duplicate_filtered", 0),
             final_diagnostics.get("neighbor_redundant_filtered", 0),
+            final_diagnostics.get("retrieval_query_planner_enabled", False),
+            final_diagnostics.get("retrieval_query_planner_applied", False),
+            final_diagnostics.get("retrieval_query_planner_fallback", False),
+            final_diagnostics.get("retrieval_query_planner_reason", "disabled"),
             final_diagnostics["query_transform_enabled"],
             final_diagnostics["query_transform_mode"],
             final_diagnostics["query_transform_applied"],
