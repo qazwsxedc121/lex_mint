@@ -13,6 +13,7 @@ import uuid
 import re
 
 from src.providers.types import TokenUsage, CostInfo
+from .group_participants import parse_group_participant
 
 
 class ConversationStorage:
@@ -44,6 +45,7 @@ class ConversationStorage:
         self,
         model_id: Optional[str] = None,
         assistant_id: Optional[str] = None,
+        target_type: Optional[str] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None,
         temporary: bool = False,
@@ -57,6 +59,7 @@ class ConversationStorage:
             model_id: 可选的模型 ID，支持简单ID或复合ID (provider_id:model_id)
                      如果未指定则使用默认模型（向后兼容）
             assistant_id: 可选的助手 ID，优先使用（新方式）
+            target_type: 对话目标类型 ("assistant" or "model")
             context_type: Context type ("chat" or "project")
             project_id: Project ID (required when context_type="project")
 
@@ -66,28 +69,50 @@ class ConversationStorage:
         Raises:
             ValueError: If context parameters are invalid
         """
-        # 优先使用 assistant_id（新方式）
-        if assistant_id:
-            # 验证助手存在
+        normalized_target_type = (target_type or "").strip().lower() if target_type else None
+        if normalized_target_type not in {None, "assistant", "model"}:
+            raise ValueError("target_type must be one of: assistant, model")
+
+        # Legacy marker is not a real assistant target.
+        if assistant_id and str(assistant_id).startswith("__legacy_model_"):
+            assistant_id = None
+
+        # Backward-compatible target type inference.
+        if normalized_target_type is None:
+            if assistant_id:
+                normalized_target_type = "assistant"
+            elif model_id:
+                normalized_target_type = "model"
+
+        if normalized_target_type == "assistant":
             from .assistant_config_service import AssistantConfigService
+
             assistant_service = AssistantConfigService()
-            assistant = await assistant_service.get_assistant(assistant_id)
-            if not assistant:
-                raise ValueError(f"Assistant '{assistant_id}' not found")
-            # 新会话：使用助手 + 存储关联的模型ID（用于显示）
+            if assistant_id:
+                assistant = await assistant_service.get_assistant(assistant_id)
+                if not assistant:
+                    raise ValueError(f"Assistant '{assistant_id}' not found")
+            else:
+                assistant = await assistant_service.get_default_assistant()
+                assistant_id = assistant.id
             model_id = assistant.model_id
-        elif model_id:
-            # 提供了 model_id 但没有 assistant_id（向后兼容）
-            if ':' not in model_id:
-                # 简单ID转换为复合ID
-                from .model_config_service import ModelConfigService
-                model_service = ModelConfigService()
+        elif normalized_target_type == "model":
+            from .model_config_service import ModelConfigService
+
+            model_service = ModelConfigService()
+            if model_id:
                 model_obj = await model_service.get_model(model_id)
-                if model_obj:
-                    model_id = f"{model_obj.provider_id}:{model_obj.id}"
+                if not model_obj:
+                    raise ValueError(f"Model '{model_id}' not found")
+                model_id = f"{model_obj.provider_id}:{model_obj.id}"
+            else:
+                default_model = await model_service.get_default_config()
+                model_id = f"{default_model.provider}:{default_model.model}"
+            assistant_id = None
         else:
-            # 都没有提供：使用默认助手
+            # Legacy default path: no explicit target => default assistant.
             from .assistant_config_service import AssistantConfigService
+
             assistant_service = AssistantConfigService()
             default_assistant = await assistant_service.get_default_assistant()
             assistant_id = default_assistant.id
@@ -109,7 +134,8 @@ class ConversationStorage:
             "created_at": datetime.now().isoformat(),
             "title": "新对话",
             "current_step": 0,
-            "model_id": model_id  # 存储复合ID格式（向后兼容）
+            "model_id": model_id,  # 存储复合ID格式（向后兼容）
+            "target_type": "assistant" if assistant_id else "model",
         }
 
         # 新会话：存储 assistant_id
@@ -184,49 +210,53 @@ class ConversationStorage:
         # Parse messages from markdown content
         messages = self._parse_messages(post.content, session_id)
 
-        # 向后兼容逻辑：确定使用的助手和模型
+        # Determine assistant/model target with backward compatibility.
         assistant_id = post.metadata.get("assistant_id")
         model_id = post.metadata.get("model_id")
+        explicit_target_type = post.metadata.get("target_type")
+        target_type: str
 
         if assistant_id:
-            # 新会话：已有 assistant_id
-            # 验证助手存在，获取最新配置
             from .assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             assistant = await assistant_service.get_assistant(assistant_id)
             if assistant:
-                model_id = assistant.model_id  # 同步最新的模型ID
+                model_id = assistant.model_id
             else:
-                # 助手已被删除，回退到默认助手
                 default_assistant = await assistant_service.get_default_assistant()
                 assistant_id = default_assistant.id
                 model_id = default_assistant.model_id
+            target_type = "assistant"
         elif model_id:
-            # 旧会话：只有 model_id，创建临时助手标识
-            # 不实际创建 Assistant 对象，只返回特殊标识
-            assistant_id = f"__legacy_model_{model_id.replace(':', '_')}"
-
-            # 确保 model_id 是复合格式（向后兼容简单ID）
+            target_type = "model"
             if ':' not in model_id:
                 from .model_config_service import ModelConfigService
                 model_service = ModelConfigService()
                 model_obj = await model_service.get_model(model_id)
                 if model_obj:
                     model_id = f"{model_obj.provider_id}:{model_obj.id}"
+            if explicit_target_type != "model":
+                # Backward compatibility for legacy model-only sessions.
+                assistant_id = f"__legacy_model_{model_id.replace(':', '_')}"
         else:
-            # 既没有 assistant_id 也没有 model_id：使用默认助手
             from .assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             default_assistant = await assistant_service.get_default_assistant()
             assistant_id = default_assistant.id
             model_id = default_assistant.model_id
+            target_type = "assistant"
+
+        if explicit_target_type in {"assistant", "model"}:
+            target_type = explicit_target_type
 
         result = {
             "session_id": post.metadata["session_id"],
             "title": post.metadata.get("title", "未命名对话"),
             "created_at": post.metadata["created_at"],
-            "assistant_id": assistant_id,  # 返回助手ID
-            "model_id": model_id,           # 返回复合ID格式（向后兼容）
+            "assistant_id": assistant_id,
+            "model_id": model_id,
+            "target_type": target_type,
+            "target_id": assistant_id if target_type == "assistant" else model_id,
             "param_overrides": post.metadata.get("param_overrides", {}),
             "total_usage": post.metadata.get("total_usage"),
             "total_cost": post.metadata.get("total_cost"),
@@ -1257,70 +1287,122 @@ class ConversationStorage:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
+    @staticmethod
+    def _extract_model_chat_template_overrides(model_obj: Any) -> Dict[str, Any]:
+        """Build session param overrides from model chat_template."""
+        template = getattr(model_obj, "chat_template", None)
+        if not template:
+            return {}
+        if hasattr(template, "model_dump"):
+            raw_template = template.model_dump(exclude_none=True)
+        elif isinstance(template, dict):
+            raw_template = {k: v for k, v in template.items() if v is not None}
+        else:
+            return {}
+
+        allowed_keys = {
+            "temperature",
+            "max_tokens",
+            "top_p",
+            "top_k",
+            "frequency_penalty",
+            "presence_penalty",
+        }
+        return {k: raw_template[k] for k in allowed_keys if k in raw_template}
+
+    async def update_session_target(
+        self,
+        session_id: str,
+        *,
+        target_type: str,
+        assistant_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ):
+        """Update session target to assistant or model."""
+        filepath = await self._find_session_file(session_id, context_type, project_id)
+        if not filepath:
+            raise FileNotFoundError(f"Session {session_id} not found")
+
+        normalized_target_type = (target_type or "").strip().lower()
+        if normalized_target_type not in {"assistant", "model"}:
+            raise ValueError("target_type must be one of: assistant, model")
+
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            file_content = await f.read()
+        post = frontmatter.loads(file_content)
+
+        if normalized_target_type == "assistant":
+            from .assistant_config_service import AssistantConfigService
+
+            assistant_service = AssistantConfigService()
+            if assistant_id:
+                assistant = await assistant_service.get_assistant(assistant_id)
+                if not assistant:
+                    raise ValueError(f"Assistant '{assistant_id}' not found")
+            else:
+                assistant = await assistant_service.get_default_assistant()
+                assistant_id = assistant.id
+
+            post.metadata["assistant_id"] = assistant_id
+            post.metadata["model_id"] = assistant.model_id
+            post.metadata["target_type"] = "assistant"
+            post.metadata["param_overrides"] = {}
+        else:
+            from .model_config_service import ModelConfigService
+
+            model_service = ModelConfigService()
+            if model_id:
+                model_obj = await model_service.get_model(model_id)
+                if not model_obj:
+                    raise ValueError(f"Model '{model_id}' not found")
+            else:
+                default_model = await model_service.get_default_config()
+                composite_id = f"{default_model.provider}:{default_model.model}"
+                model_obj = await model_service.get_model(composite_id)
+                if not model_obj:
+                    raise ValueError(f"Default model '{composite_id}' not found")
+
+            if not model_obj.enabled:
+                raise ValueError(f"Model '{model_obj.provider_id}:{model_obj.id}' is not enabled")
+
+            post.metadata.pop("assistant_id", None)
+            post.metadata["model_id"] = f"{model_obj.provider_id}:{model_obj.id}"
+            post.metadata["target_type"] = "model"
+            post.metadata["param_overrides"] = self._extract_model_chat_template_overrides(model_obj)
+
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(frontmatter.dumps(post))
+
     async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
-        """更新会话使用的模型.
+        """Legacy model setter that only updates the stored model_id.
 
-        Args:
-            session_id: 会话 UUID
-            model_id: 新的模型 ID
-            context_type: Context type ("chat" or "project")
-            project_id: Project ID (required when context_type="project")
-
-        Raises:
-            FileNotFoundError: If session doesn't exist
-            ValueError: If context parameters are invalid
+        Keep this behavior for backward compatibility with older call paths
+        that expect model updates without target/model validation.
         """
         filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        # 读取现有内容
         async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
             file_content = await f.read()
-
         post = frontmatter.loads(file_content)
+
         post.metadata["model_id"] = model_id
 
-        # 写回文件
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
 
     async def update_session_assistant(self, session_id: str, assistant_id: str, context_type: str = "chat", project_id: Optional[str] = None):
-        """更新会话使用的助手.
-
-        Args:
-            session_id: 会话 UUID
-            assistant_id: 新的助手 ID
-            context_type: Context type ("chat" or "project")
-            project_id: Project ID (required when context_type="project")
-
-        Raises:
-            FileNotFoundError: If session doesn't exist
-            ValueError: If assistant doesn't exist or context parameters are invalid
-        """
-        filepath = await self._find_session_file(session_id, context_type, project_id)
-        if not filepath:
-            raise FileNotFoundError(f"Session {session_id} not found")
-
-        # 验证助手存在并获取关联的模型
-        from .assistant_config_service import AssistantConfigService
-        assistant_service = AssistantConfigService()
-        assistant = await assistant_service.get_assistant(assistant_id)
-        if not assistant:
-            raise ValueError(f"Assistant '{assistant_id}' not found")
-
-        # 读取现有内容
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
-            file_content = await f.read()
-
-        post = frontmatter.loads(file_content)
-        post.metadata["assistant_id"] = assistant_id
-        post.metadata["model_id"] = assistant.model_id  # 同步更新模型ID
-        post.metadata["param_overrides"] = {}  # Clear overrides on assistant switch
-
-        # 写回文件
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(frontmatter.dumps(post))
+        """Backward-compatible wrapper for setting assistant target."""
+        await self.update_session_target(
+            session_id,
+            target_type="assistant",
+            assistant_id=assistant_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
 
     async def update_group_assistants(self, session_id: str, group_assistants: List[str], context_type: str = "chat", project_id: Optional[str] = None):
         """Update the group_assistants list for a session.
@@ -1337,17 +1419,21 @@ class ConversationStorage:
         """
         normalized_group_assistants: List[str] = []
         seen_group_assistants = set()
-        for assistant_id in group_assistants:
-            if not isinstance(assistant_id, str):
+        for participant_token in group_assistants:
+            if not isinstance(participant_token, str):
                 continue
-            cleaned = assistant_id.strip()
-            if not cleaned or cleaned in seen_group_assistants:
+            try:
+                participant = parse_group_participant(participant_token)
+            except ValueError:
                 continue
-            seen_group_assistants.add(cleaned)
-            normalized_group_assistants.append(cleaned)
+            stable_token = participant.token
+            if stable_token in seen_group_assistants:
+                continue
+            seen_group_assistants.add(stable_token)
+            normalized_group_assistants.append(stable_token)
 
         if len(normalized_group_assistants) < 2:
-            raise ValueError("Group chat requires at least 2 unique assistants")
+            raise ValueError("Group chat requires at least 2 unique participants")
 
         await self.update_session_metadata(
             session_id=session_id,

@@ -38,6 +38,21 @@ export const ChatServiceProvider: React.FC<ChatServiceProviderProps> = ({
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
+  const shouldFallbackToModel = useCallback((err: unknown): boolean => {
+    if (!err || typeof err !== 'object') {
+      return false;
+    }
+
+    const payload = err as {
+      response?: { data?: { detail?: unknown } };
+      message?: string;
+    };
+    const detail = payload.response?.data?.detail;
+    const detailText = typeof detail === 'string' ? detail : '';
+    const message = (detailText || payload.message || '').toLowerCase();
+    return message.includes('assistant') && message.includes('not found');
+  }, []);
+
   // Track current session ID from navigation
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(
     navigation?.getCurrentSessionId() || null
@@ -68,25 +83,56 @@ export const ChatServiceProvider: React.FC<ChatServiceProviderProps> = ({
   }, [navigation]);
 
   // Create session operation
-  const createSession = useCallback(async (modelId?: string, assistantId?: string): Promise<string> => {
+  const createSession = useCallback(async (
+    modelId?: string,
+    assistantId?: string,
+    temporary: boolean = false,
+    targetType?: 'assistant' | 'model'
+  ): Promise<string> => {
     try {
       setSessionsError(null);
-      const sessionId = await api.createSession(modelId, assistantId);
-      // Reload sessions to include the new one
-      await loadSessions();
+      const effectiveTargetType = targetType || (assistantId ? 'assistant' : modelId ? 'model' : 'assistant');
+      let sessionId: string;
+      try {
+        sessionId = await api.createSession(modelId, assistantId, temporary, effectiveTargetType);
+      } catch (err) {
+        if (
+          effectiveTargetType === 'assistant' &&
+          !assistantId &&
+          !targetType &&
+          shouldFallbackToModel(err)
+        ) {
+          sessionId = await api.createSession(modelId, assistantId, temporary, 'model');
+        } else {
+          throw err;
+        }
+      }
+      if (!temporary) {
+        // Reload sessions to include the new one
+        await loadSessions();
+      }
       return sessionId;
     } catch (err) {
       const error = err instanceof Error ? err.message : 'Failed to create session';
       setSessionsError(error);
       throw err;
     }
-  }, [api, loadSessions]);
+  }, [api, loadSessions, shouldFallbackToModel]);
 
   // Create temporary session operation (does not reload session list)
   const createTemporarySession = useCallback(async (): Promise<string> => {
     try {
       setSessionsError(null);
-      const sessionId = await api.createSession(undefined, undefined, true);
+      let sessionId: string;
+      try {
+        sessionId = await api.createSession(undefined, undefined, true, 'assistant');
+      } catch (err) {
+        if (shouldFallbackToModel(err)) {
+          sessionId = await api.createSession(undefined, undefined, true, 'model');
+        } else {
+          throw err;
+        }
+      }
       // Do NOT reload sessions - temp sessions are hidden from the list
       return sessionId;
     } catch (err) {
@@ -94,7 +140,7 @@ export const ChatServiceProvider: React.FC<ChatServiceProviderProps> = ({
       setSessionsError(error);
       throw err;
     }
-  }, [api]);
+  }, [api, shouldFallbackToModel]);
 
   // Save temporary session (convert to permanent)
   const saveTemporarySession = useCallback(async (sessionId: string): Promise<void> => {

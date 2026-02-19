@@ -7,12 +7,14 @@ import uuid
 import re
 import os
 import json
+from types import SimpleNamespace
 
 from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
 from src.providers.types import TokenUsage, CostInfo
 from .agent_service_bootstrap import bootstrap_agent_service
 from .conversation_storage import ConversationStorage
 from .file_reference_config_service import FileReferenceConfig
+from .group_participants import parse_group_participant
 from .group_orchestration import (
     CommitteeOrchestrator,
     CommitteePolicy,
@@ -1269,6 +1271,75 @@ class AgentService:
         }
 
     @staticmethod
+    def _extract_model_template_params(model_obj: Any) -> Dict[str, Any]:
+        """Extract per-model chat template params for runtime participant creation."""
+        template = getattr(model_obj, "chat_template", None)
+        if not template:
+            return {}
+        if hasattr(template, "model_dump"):
+            raw_template = template.model_dump(exclude_none=True)
+        elif isinstance(template, dict):
+            raw_template = {k: v for k, v in template.items() if v is not None}
+        else:
+            return {}
+        return {
+            "temperature": raw_template.get("temperature"),
+            "max_tokens": raw_template.get("max_tokens"),
+            "top_p": raw_template.get("top_p"),
+            "top_k": raw_template.get("top_k"),
+            "frequency_penalty": raw_template.get("frequency_penalty"),
+            "presence_penalty": raw_template.get("presence_penalty"),
+        }
+
+    async def _build_group_runtime_assistant(
+        self,
+        participant_token: str,
+    ) -> Optional[Tuple[str, Any, str]]:
+        """Resolve assistant/model participant token to runtime assistant object."""
+        try:
+            participant = parse_group_participant(participant_token)
+        except ValueError:
+            return None
+
+        if participant.kind == "assistant":
+            from .assistant_config_service import AssistantConfigService
+
+            assistant_service = AssistantConfigService()
+            assistant_obj = await assistant_service.get_assistant(participant.value)
+            if not assistant_obj or not assistant_obj.enabled:
+                return None
+            return participant.token, assistant_obj, assistant_obj.name
+
+        from .model_config_service import ModelConfigService
+
+        model_service = ModelConfigService()
+        model_obj = await model_service.get_model(participant.value)
+        if not model_obj or not model_obj.enabled:
+            return None
+
+        composite_model_id = f"{model_obj.provider_id}:{model_obj.id}"
+        template_params = self._extract_model_template_params(model_obj)
+        runtime_assistant = SimpleNamespace(
+            id=participant.token,
+            name=model_obj.name or model_obj.id,
+            icon="CpuChip",
+            description=f"Direct model participant: {composite_model_id}",
+            model_id=composite_model_id,
+            system_prompt=None,
+            temperature=template_params.get("temperature", 0.7),
+            max_tokens=template_params.get("max_tokens"),
+            top_p=template_params.get("top_p"),
+            top_k=template_params.get("top_k"),
+            frequency_penalty=template_params.get("frequency_penalty"),
+            presence_penalty=template_params.get("presence_penalty"),
+            max_rounds=None,
+            memory_enabled=False,
+            knowledge_base_ids=[],
+            enabled=True,
+        )
+        return participant.token, runtime_assistant, runtime_assistant.name
+
+    @staticmethod
     def _resolve_group_round_limit(raw_limit: Optional[int], *, fallback: int = 3, hard_cap: int = 6) -> int:
         """Normalize assistant max_rounds for committee orchestration loops."""
         return CommitteePolicy.resolve_group_round_limit(
@@ -1593,16 +1664,32 @@ class AgentService:
             )
             yield {"type": "user_message_id", "message_id": user_message_id}
 
-        # Load assistant configs
-        from .assistant_config_service import AssistantConfigService
-        assistant_service = AssistantConfigService()
         assistant_name_map: Dict[str, str] = {}
         assistant_config_map: Dict[str, Any] = {}
-        for group_assistant_id in group_assistants:
-            assistant_obj = await assistant_service.get_assistant(group_assistant_id)
-            if assistant_obj:
-                assistant_config_map[group_assistant_id] = assistant_obj
-                assistant_name_map[group_assistant_id] = assistant_obj.name
+        resolved_group_assistants: List[str] = []
+        seen_participants = set()
+        for participant_token in group_assistants:
+            resolved = await self._build_group_runtime_assistant(participant_token)
+            if not resolved:
+                logger.warning("[GroupChat] Participant '%s' not found or disabled, skipping", participant_token)
+                continue
+            participant_id, participant_obj, participant_name = resolved
+            if participant_id in seen_participants:
+                continue
+            seen_participants.add(participant_id)
+            resolved_group_assistants.append(participant_id)
+            assistant_config_map[participant_id] = participant_obj
+            assistant_name_map[participant_id] = participant_name
+
+        group_assistants = resolved_group_assistants
+        if not group_assistants:
+            yield {
+                "type": "group_done",
+                "mode": (group_mode or "round_robin").strip().lower(),
+                "reason": "no_valid_participants",
+                "rounds": 0,
+            }
+            return
 
         search_sources: List[Dict[str, Any]] = []
         search_context = None

@@ -8,6 +8,53 @@ import { useState, useCallback, useEffect } from 'react';
 import type { Provider, Model, DefaultConfig } from '../../../types/model';
 import * as api from '../../../services/api';
 
+const CHAT_TEMPLATE_FIELDS = [
+  'temperature',
+  'max_tokens',
+  'top_p',
+  'top_k',
+  'frequency_penalty',
+  'presence_penalty',
+] as const;
+
+const expandModelForForm = (model: Model): Model => {
+  const expanded: Record<string, unknown> = { ...model };
+  CHAT_TEMPLATE_FIELDS.forEach((fieldName) => {
+    expanded[`chat_template_${fieldName}`] = model.chat_template?.[fieldName];
+  });
+  return expanded as unknown as Model;
+};
+
+const normalizeModelPayload = (model: Model): Model => {
+  const payload: Record<string, unknown> = { ...(model as unknown as Record<string, unknown>) };
+  const chatTemplate: Record<string, number> = {};
+
+  CHAT_TEMPLATE_FIELDS.forEach((fieldName) => {
+    const rawKey = `chat_template_${fieldName}`;
+    const rawValue = payload[rawKey];
+    delete payload[rawKey];
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      return;
+    }
+    if (typeof rawValue === 'number') {
+      chatTemplate[fieldName] = rawValue;
+      return;
+    }
+    const num = Number(rawValue);
+    if (!Number.isNaN(num)) {
+      chatTemplate[fieldName] = num;
+    }
+  });
+
+  if (Object.keys(chatTemplate).length > 0) {
+    payload.chat_template = chatTemplate;
+  } else {
+    delete payload.chat_template;
+  }
+
+  return payload as unknown as Model;
+};
+
 export function useModels() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Model[]>([]);
@@ -26,7 +73,7 @@ export function useModels() {
         api.getDefaultConfig(),
       ]);
       setProviders(providersData);
-      setModels(modelsData);
+      setModels(modelsData.map(expandModelForForm));
       setDefaultConfig(defaultData);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load model configuration';
@@ -81,7 +128,7 @@ export function useModels() {
 
   const createModel = useCallback(async (model: Model) => {
     try {
-      await api.createModel(model);
+      await api.createModel(normalizeModelPayload(model));
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create model';
@@ -92,7 +139,7 @@ export function useModels() {
 
   const updateModel = useCallback(async (modelId: string, model: Model) => {
     try {
-      await api.updateModel(modelId, model);
+      await api.updateModel(modelId, normalizeModelPayload(model));
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update model';

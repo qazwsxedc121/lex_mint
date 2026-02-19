@@ -1,13 +1,15 @@
 /**
- * GroupChatCreateModal - Modal for creating a group chat session.
- * Lists enabled assistants with checkboxes; requires min 2 to create.
+ * GroupChatCreateModal - Modal for creating group chat sessions.
+ * Supports assistant and direct-model participants.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Assistant } from '../../../types/assistant';
+import type { Model } from '../../../types/model';
 import type { GroupChatMode } from '../../../types/message';
+import { listModels } from '../../../services/api';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 interface GroupChatCreateModalProps {
@@ -15,6 +17,8 @@ interface GroupChatCreateModalProps {
   onClose: () => void;
   onCreated: (sessionId: string) => void;
 }
+
+const MODEL_PARTICIPANT_PREFIX = 'model::';
 
 function extractErrorDetail(error: unknown): string | null {
   if (!error || typeof error !== 'object') {
@@ -43,25 +47,26 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   const { t } = useTranslation('chat');
   const { api } = useChatServices();
   const [assistants, setAssistants] = useState<Assistant[]>([]);
-  const [selectedAssistantIds, setSelectedAssistantIds] = useState<string[]>([]);
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [groupMode, setGroupMode] = useState<GroupChatMode>('round_robin');
-  const [committeeSupervisorId, setCommitteeSupervisorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [toastError, setToastError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setSelectedAssistantIds([]);
+    setSelectedParticipantIds([]);
     setGroupMode('round_robin');
-    setCommitteeSupervisorId(null);
     setToastError(null);
-    api.listAssistants()
-      .then(list => {
-        setAssistants(list.filter(a => a.enabled));
+    Promise.all([api.listAssistants(), listModels()])
+      .then(([assistantList, modelList]) => {
+        setAssistants(assistantList.filter((item) => item.enabled));
+        setModels(modelList.filter((item) => item.enabled));
       })
       .catch((err: unknown) => {
         const detail = extractErrorDetail(err);
         setAssistants([]);
+        setModels([]);
         setToastError(
           detail
             ? t('groupChat.loadAssistantsFailedWithDetail', { error: detail })
@@ -76,54 +81,40 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     return () => window.clearTimeout(timer);
   }, [toastError]);
 
-  const toggle = (id: string) => {
-    setSelectedAssistantIds(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(assistantId => assistantId !== id);
+  const participantNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    assistants.forEach((assistant) => map.set(assistant.id, assistant.name));
+    models.forEach((model) => map.set(`${MODEL_PARTICIPANT_PREFIX}${model.provider_id}:${model.id}`, model.name || `${model.provider_id}:${model.id}`));
+    return map;
+  }, [assistants, models]);
+
+  const toggle = (participantId: string) => {
+    setSelectedParticipantIds((prev) => {
+      if (prev.includes(participantId)) {
+        return prev.filter((id) => id !== participantId);
       }
-      return [...prev, id];
+      return [...prev, participantId];
     });
   };
 
-  useEffect(() => {
-    if (groupMode !== 'committee') return;
-    if (selectedAssistantIds.length === 0) {
-      setCommitteeSupervisorId(null);
-      return;
-    }
-    if (!committeeSupervisorId || !selectedAssistantIds.includes(committeeSupervisorId)) {
-      setCommitteeSupervisorId(selectedAssistantIds[0]);
-    }
-  }, [groupMode, selectedAssistantIds, committeeSupervisorId]);
-
-  const moveSelectedAssistant = (assistantId: string, direction: 'up' | 'down') => {
-    setSelectedAssistantIds(prev => {
-      const currentIndex = prev.indexOf(assistantId);
+  const moveSelectedParticipant = (participantId: string, direction: 'up' | 'down') => {
+    setSelectedParticipantIds((prev) => {
+      const currentIndex = prev.indexOf(participantId);
       if (currentIndex < 0) return prev;
       const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
       if (nextIndex < 0 || nextIndex >= prev.length) return prev;
       const next = [...prev];
-      const [movedAssistantId] = next.splice(currentIndex, 1);
-      next.splice(nextIndex, 0, movedAssistantId);
+      const [movedParticipantId] = next.splice(currentIndex, 1);
+      next.splice(nextIndex, 0, movedParticipantId);
       return next;
     });
   };
 
   const handleCreate = async () => {
-    if (selectedAssistantIds.length < 2) return;
+    if (selectedParticipantIds.length < 2) return;
     setLoading(true);
     try {
-      let orderedAssistantIds = [...selectedAssistantIds];
-      if (groupMode === 'committee') {
-        const supervisorId = committeeSupervisorId && selectedAssistantIds.includes(committeeSupervisorId)
-          ? committeeSupervisorId
-          : selectedAssistantIds[0];
-        orderedAssistantIds = [
-          supervisorId,
-          ...selectedAssistantIds.filter((assistantId) => assistantId !== supervisorId),
-        ];
-      }
-      const sessionId = await api.createGroupSession(orderedAssistantIds, groupMode);
+      const sessionId = await api.createGroupSession(selectedParticipantIds, groupMode);
       onCreated(sessionId);
       onClose();
     } catch (err: unknown) {
@@ -157,7 +148,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
       <div
         data-name="group-chat-modal"
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -207,56 +198,87 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
             {t('groupChat.selectHint')}
           </p>
-          {assistants.map(a => (
-            <label
-              key={a.id}
-              className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Assistants</p>
+            {assistants.map((assistant) => (
+              <label
+                key={assistant.id}
+                className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
                 <input
                   type="checkbox"
-                  checked={selectedAssistantIds.includes(a.id)}
-                  onChange={() => toggle(a.id)}
+                  checked={selectedParticipantIds.includes(assistant.id)}
+                  onChange={() => toggle(assistant.id)}
                   className="rounded border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
                 />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {a.name}
-                </div>
-                {a.description && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {a.description}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                    {assistant.name}
                   </div>
-                )}
-              </div>
-            </label>
-          ))}
-          {assistants.length === 0 && (
+                  {assistant.description && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {assistant.description}
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))}
+
+            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Models</p>
+            {models.map((model) => {
+              const participantId = `${MODEL_PARTICIPANT_PREFIX}${model.provider_id}:${model.id}`;
+              return (
+                <label
+                  key={participantId}
+                  className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedParticipantIds.includes(participantId)}
+                    onChange={() => toggle(participantId)}
+                    className="rounded border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {model.name}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {model.provider_id}:{model.id}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {assistants.length === 0 && models.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-4">
               {t('groupChat.noAssistants')}
             </p>
           )}
-          {groupMode === 'round_robin' && selectedAssistantIds.length > 0 && (
+
+          {groupMode === 'round_robin' && selectedParticipantIds.length > 0 && (
             <div className="mt-4 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
               <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">
                 {t('groupChat.createOrderTitle')}
               </p>
               <div className="space-y-1.5">
-                {selectedAssistantIds.map((assistantId, index) => {
-                  const assistant = assistants.find(item => item.id === assistantId);
-                  const assistantName = assistant?.name || `AI-${assistantId.slice(0, 4)}`;
+                {selectedParticipantIds.map((participantId, index) => {
+                  const participantName = participantNameMap.get(participantId) || `AI-${participantId.slice(0, 4)}`;
                   return (
                     <div
-                      key={assistantId}
+                      key={participantId}
                       className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900/40"
                     >
                       <div className="min-w-0">
                         <span className="mr-1 text-gray-400 dark:text-gray-500">#{index + 1}</span>
-                        <span className="truncate text-gray-700 dark:text-gray-200">{assistantName}</span>
+                        <span className="truncate text-gray-700 dark:text-gray-200">{participantName}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => moveSelectedAssistant(assistantId, 'up')}
+                          onClick={() => moveSelectedParticipant(participantId, 'up')}
                           disabled={index === 0}
                           className="rounded border border-gray-300 p-0.5 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
                           title={t('groupChat.moveUp')}
@@ -265,8 +287,8 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => moveSelectedAssistant(assistantId, 'down')}
-                          disabled={index === selectedAssistantIds.length - 1}
+                          onClick={() => moveSelectedParticipant(participantId, 'down')}
+                          disabled={index === selectedParticipantIds.length - 1}
                           className="rounded border border-gray-300 p-0.5 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
                           title={t('groupChat.moveDown')}
                         >
@@ -277,49 +299,6 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
                   );
                 })}
               </div>
-            </div>
-          )}
-          {groupMode === 'committee' && selectedAssistantIds.length > 0 && (
-            <div className="mt-4 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
-              <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">
-                {t('groupChat.committeeRolesTitle')}
-              </p>
-              <div className="space-y-1.5">
-                {selectedAssistantIds.map((assistantId) => {
-                  const assistant = assistants.find(item => item.id === assistantId);
-                  const assistantName = assistant?.name || `AI-${assistantId.slice(0, 4)}`;
-                  const isSupervisor = committeeSupervisorId === assistantId;
-                  return (
-                    <label
-                      key={assistantId}
-                      className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-900/40"
-                    >
-                      <div className="min-w-0">
-                        <span className="truncate text-gray-700 dark:text-gray-200">{assistantName}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                          isSupervisor
-                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
-                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                        }`}>
-                          {isSupervisor ? t('groupChat.roleSupervisor') : t('groupChat.roleParticipant')}
-                        </span>
-                        <input
-                          type="radio"
-                          name="committee-supervisor"
-                          checked={isSupervisor}
-                          onChange={() => setCommitteeSupervisorId(assistantId)}
-                          className="h-3.5 w-3.5"
-                        />
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                {t('groupChat.committeeRolesHint')}
-              </p>
             </div>
           )}
         </div>
@@ -333,7 +312,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
           </button>
           <button
             onClick={handleCreate}
-            disabled={selectedAssistantIds.length < 2 || loading}
+            disabled={selectedParticipantIds.length < 2 || loading}
             className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? '...' : t('groupChat.create')}

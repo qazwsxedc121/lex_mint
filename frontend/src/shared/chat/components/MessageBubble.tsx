@@ -8,7 +8,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon, LanguageIcon, SpeakerWaveIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import type { Message } from '../../../types/message';
+import type { ChatTargetType, Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { ThinkingBlock } from './ThinkingBlock';
@@ -20,6 +20,7 @@ import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
 import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
 import { getAssistantIcon } from '../../constants/assistantIcons';
+import { useTranslation } from 'react-i18next';
 import {
   buildFileReferencePreview,
   ensureFileReferencePreviewConfigLoaded,
@@ -33,6 +34,12 @@ interface MessageBubbleProps {
   messageIndex: number;  // Still needed for file attachment URLs (backward compatibility)
   isStreaming: boolean;
   sessionId?: string;
+  currentTargetType?: ChatTargetType;
+  currentAssistantId?: string | null;
+  currentModelId?: string | null;
+  assistantNameById?: Record<string, string>;
+  assistantModelIdById?: Record<string, string>;
+  modelNameById?: Record<string, string>;
   onEdit?: (messageId: string, content: string) => void;
   onSaveOnly?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
@@ -63,6 +70,8 @@ const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'German', label: 'German' },
   { value: 'Spanish', label: 'Spanish' },
 ];
+
+const MODEL_PARTICIPANT_PREFIX = 'model::';
 
 const normalizeNewlines = (text: string) => text.replace(/\r\n/g, '\n');
 
@@ -313,6 +322,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   messageIndex,
   isStreaming,
   sessionId,
+  currentTargetType = 'model',
+  currentAssistantId,
+  currentModelId,
+  assistantNameById = {},
+  assistantModelIdById = {},
+  modelNameById = {},
   onEdit,
   onSaveOnly,
   onRegenerate,
@@ -322,6 +337,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   hasSubsequentMessages,
 }) => {
   const { api } = useChatServices();
+  const { t } = useTranslation('chat');
   const isUser = message.role === 'user';
   const isSeparator = message.role === 'separator';
   const isSummary = message.role === 'summary';
@@ -370,6 +386,67 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const ragSources = sources.filter((source) => source.type === 'rag');
   const otherSources = sources.filter((source) => source.type !== 'rag' && source.type !== 'rag_diagnostics');
   const latestRagDiagnostics = ragDiagnostics.length > 0 ? ragDiagnostics[ragDiagnostics.length - 1] : null;
+  const responderInfoText = useMemo(() => {
+    if (message.role !== 'assistant') {
+      return null;
+    }
+
+    let resolvedAssistantName = (message.assistant_name || '').trim();
+    let resolvedModelId: string | undefined;
+
+    const assistantId = message.assistant_id;
+    if (assistantId) {
+      if (assistantId.startsWith(MODEL_PARTICIPANT_PREFIX)) {
+        resolvedModelId = assistantId.slice(MODEL_PARTICIPANT_PREFIX.length);
+        if (!resolvedAssistantName) {
+          resolvedAssistantName = modelNameById[resolvedModelId] || resolvedModelId;
+        }
+      } else {
+        if (!resolvedAssistantName) {
+          resolvedAssistantName = assistantNameById[assistantId] || assistantId;
+        }
+        resolvedModelId = assistantModelIdById[assistantId];
+      }
+    }
+
+    if (!resolvedAssistantName) {
+      if (currentTargetType === 'assistant' && currentAssistantId) {
+        resolvedAssistantName = assistantNameById[currentAssistantId] || currentAssistantId;
+      } else if (currentTargetType === 'model') {
+        resolvedAssistantName = t('bubble.modelTargetLabel');
+      }
+    }
+
+    if (!resolvedModelId) {
+      if (currentTargetType === 'assistant' && currentAssistantId) {
+        resolvedModelId = assistantModelIdById[currentAssistantId] || currentModelId || undefined;
+      } else {
+        resolvedModelId = currentModelId || undefined;
+      }
+    }
+
+    const resolvedModelName = resolvedModelId ? (modelNameById[resolvedModelId] || resolvedModelId) : '';
+    if (!resolvedAssistantName && !resolvedModelName) {
+      return null;
+    }
+
+    return t('bubble.responderInfo', {
+      assistant: resolvedAssistantName || '-',
+      model: resolvedModelName || '-',
+    });
+  }, [
+    assistantModelIdById,
+    assistantNameById,
+    currentAssistantId,
+    currentModelId,
+    currentTargetType,
+    message.assistant_id,
+    message.assistant_name,
+    message.role,
+    modelNameById,
+    t,
+  ]);
+
   const formatRagSnippet = (content?: string) => {
     if (!content) return '';
     const normalized = content.replace(/\s+/g, ' ').trim();
@@ -1099,9 +1176,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {message.created_at && (
               <span>{formatMessageTime(message.created_at)}</span>
             )}
-            {!isUser && message.usage && !isStreaming && (
+            {!isUser && responderInfoText && (
               <>
                 {message.created_at && <span className="text-gray-300 dark:text-gray-600">|</span>}
+                <span>{responderInfoText}</span>
+              </>
+            )}
+            {!isUser && message.usage && !isStreaming && (
+              <>
+                {(message.created_at || responderInfoText) && <span className="text-gray-300 dark:text-gray-600">|</span>}
                 <span>{message.usage.prompt_tokens} in</span>
                 <span className="text-gray-300 dark:text-gray-600">|</span>
                 <span>{message.usage.completion_tokens} out</span>

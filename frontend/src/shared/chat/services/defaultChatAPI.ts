@@ -9,8 +9,8 @@ import type { ChatAPI } from './interfaces';
 export const defaultChatAPI: ChatAPI = {
   // Session operations
   getSession: api.getSession,
-  createSession: (modelId?: string, assistantId?: string, temporary?: boolean) =>
-    api.createSession(modelId, assistantId, 'chat', undefined, temporary || false),
+  createSession: (modelId?: string, assistantId?: string, temporary?: boolean, targetType?: 'assistant' | 'model') =>
+    api.createSession(modelId, assistantId, 'chat', undefined, temporary || false, undefined, undefined, targetType),
   createGroupSession: (groupAssistants: string[], mode) =>
     api.createSession(undefined, undefined, 'chat', undefined, false, groupAssistants, mode),
   listSessions: api.listSessions,
@@ -24,6 +24,8 @@ export const defaultChatAPI: ChatAPI = {
     api.copySession(sessionId, 'chat', undefined, targetContextType, targetProjectId),
   branchSession: api.branchSession,
   updateSessionAssistant: api.updateSessionAssistant,
+  updateSessionTarget: (sessionId: string, targetType: 'assistant' | 'model', options?: { assistantId?: string; modelId?: string }) =>
+    api.updateSessionTarget(sessionId, targetType, 'chat', undefined, options),
   updateGroupAssistants: api.updateGroupAssistants,
   updateSessionParamOverrides: api.updateSessionParamOverrides,
 

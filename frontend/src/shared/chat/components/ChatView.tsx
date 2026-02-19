@@ -13,9 +13,11 @@ import { ContextUsageBar } from './ContextUsageBar';
 import { useChat } from '../hooks/useChat';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
+import { listModels } from '../../../services/api';
 import type { UploadedFile } from '../../../types/message';
 import type { GroupTimelineEvent, Message } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
+import type { Model } from '../../../types/model';
 import {
   ArrowPathRoundedSquareIcon,
   Bars3Icon,
@@ -29,6 +31,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 type GroupAssistantStatus = 'waiting' | 'thinking' | 'done';
+const MODEL_PARTICIPANT_PREFIX = 'model::';
 
 function extractErrorDetail(error: unknown): string | null {
   if (!error || typeof error !== 'object') {
@@ -73,6 +76,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
   const [groupAssistantNameMap, setGroupAssistantNameMap] = useState<Record<string, string>>({});
   const [enabledAssistants, setEnabledAssistants] = useState<Assistant[]>([]);
+  const [enabledModels, setEnabledModels] = useState<Model[]>([]);
   const [isSavingGroupOrder, setIsSavingGroupOrder] = useState(false);
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupManagerError, setGroupManagerError] = useState<string | null>(null);
@@ -90,7 +94,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     isStreaming,
     isCompressing,
     isComparing,
+    currentModelId,
     currentAssistantId,
+    currentTargetType,
     followupQuestions,
     contextInfo,
     lastPromptTokens,
@@ -106,7 +112,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     clearAllMessages,
     compressContext,
     stopGeneration,
-    updateAssistantId,
+    updateTarget,
     paramOverrides,
     hasActiveOverrides,
     updateParamOverrides,
@@ -118,7 +124,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
-  const { supportsVision, supportsReasoning } = useModelCapabilities(currentAssistantId);
+  const { supportsVision, supportsReasoning } = useModelCapabilities(
+    currentTargetType,
+    currentAssistantId,
+    currentModelId,
+  );
   const isGenerating = isStreaming || isComparing;
 
   // Auto-refresh title after streaming completes
@@ -169,8 +179,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     }
   };
 
-  const handleAssistantChange = async (assistantId: string) => {
-    updateAssistantId(assistantId);
+  const handleTargetChange = async (target: { targetType: 'assistant' | 'model'; targetId: string; modelId?: string }) => {
+    updateTarget(target.targetType, target.targetId, target.modelId);
     if (onAssistantRefresh) {
       onAssistantRefresh();
     } else {
@@ -225,6 +235,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const isRoundRobinGroupChat = resolvedGroupMode === 'round_robin';
   const canReorderGroupAssistants = !!isRoundRobinGroupChat && !isGenerating && !isSavingGroupOrder && !isGroupOrderLocked;
   const canManageGroupAssistants = !!isGroupChat && !isGenerating && !isSavingGroupOrder && !isGroupOrderLocked;
+  const modelParticipantNameMap = useMemo(() => {
+    const next = new Map<string, string>();
+    enabledModels.forEach((model) => {
+      next.set(`${MODEL_PARTICIPANT_PREFIX}${model.provider_id}:${model.id}`, model.name || `${model.provider_id}:${model.id}`);
+    });
+    return next;
+  }, [enabledModels]);
   const groupAssistantProgress = useMemo(() => {
     if (!isGroupChat || !groupAssistants) return [];
 
@@ -272,10 +289,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         name:
           groupAssistantNameMap[assistantId] ||
           assistantNameFallbackMap.get(assistantId) ||
+          modelParticipantNameMap.get(assistantId) ||
           `AI-${assistantId.slice(0, 4)}`,
       };
     });
-  }, [groupAssistants, groupAssistantNameMap, isGenerating, isGroupChat, messages]);
+  }, [groupAssistants, groupAssistantNameMap, isGenerating, isGroupChat, messages, modelParticipantNameMap]);
 
   const activeGroupAssistant = groupAssistantProgress.find((assistant) => assistant.status === 'thinking');
   const completedAssistantCount = groupAssistantProgress.filter((assistant) => assistant.status === 'done').length;
@@ -325,6 +343,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     return `${t('groupChat.timelineActionFallback', { action: action || '-' })}${reasonSuffix}`;
   };
   const defaultGroupOrder = defaultGroupOrderRef.current;
+  const availableGroupParticipants = useMemo(() => {
+    if (!groupAssistants) return [];
+    const assistantItems = enabledAssistants
+      .filter((assistant) => !groupAssistants.includes(assistant.id))
+      .map((assistant) => ({
+        id: assistant.id,
+        name: assistant.name,
+        type: 'assistant' as const,
+      }));
+    const modelItems = enabledModels
+      .map((model) => ({
+        id: `${MODEL_PARTICIPANT_PREFIX}${model.provider_id}:${model.id}`,
+        name: model.name || `${model.provider_id}:${model.id}`,
+        type: 'model' as const,
+      }))
+      .filter((item) => !groupAssistants.includes(item.id));
+    return [...assistantItems, ...modelItems];
+  }, [enabledAssistants, enabledModels, groupAssistants]);
   const canResetDefaultOrder = !!(
     isRoundRobinGroupChat &&
     groupAssistants &&
@@ -464,32 +500,43 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   useEffect(() => {
     let cancelled = false;
 
-    if (!isGroupChat || !groupAssistants) {
-      setGroupAssistantNameMap({});
-      setEnabledAssistants([]);
-      return;
-    }
-
-    api.listAssistants()
-      .then((assistants) => {
+    Promise.all([api.listAssistants(), listModels()])
+      .then(([assistants, models]) => {
         if (cancelled) return;
-        const nameMap: Record<string, string> = {};
-        assistants.forEach((assistant) => {
-          nameMap[assistant.id] = assistant.name;
-        });
-        setGroupAssistantNameMap(nameMap);
-        setEnabledAssistants(assistants.filter((assistant) => assistant.enabled));
+
+        const enabledAssistantList = assistants.filter((assistant) => assistant.enabled);
+        const enabledModelList = models.filter((model) => model.enabled);
+
+        setEnabledAssistants(enabledAssistantList);
+        setEnabledModels(enabledModelList);
+
+        if (isGroupChat && groupAssistants) {
+          const nameMap: Record<string, string> = {};
+          assistants.forEach((assistant) => {
+            nameMap[assistant.id] = assistant.name;
+          });
+          enabledModelList.forEach((model) => {
+            nameMap[`${MODEL_PARTICIPANT_PREFIX}${model.provider_id}:${model.id}`] =
+              model.name || `${model.provider_id}:${model.id}`;
+          });
+          setGroupAssistantNameMap(nameMap);
+        } else {
+          setGroupAssistantNameMap({});
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           setGroupAssistantNameMap({});
           setEnabledAssistants([]);
-          const detail = extractErrorDetail(err);
-          setGroupManagerError(
-            detail
-              ? t('groupChat.loadAssistantsFailedWithDetail', { error: detail })
-              : t('groupChat.loadAssistantsFailed')
-          );
+          setEnabledModels([]);
+          if (isGroupChat) {
+            const detail = extractErrorDetail(err);
+            setGroupManagerError(
+              detail
+                ? t('groupChat.loadAssistantsFailedWithDetail', { error: detail })
+                : t('groupChat.loadAssistantsFailed')
+            );
+          }
         }
       });
 
@@ -497,6 +544,30 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       cancelled = true;
     };
   }, [api, groupAssistants, isGroupChat, t]);
+
+  const assistantNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    enabledAssistants.forEach((assistant) => {
+      map[assistant.id] = assistant.name;
+    });
+    return map;
+  }, [enabledAssistants]);
+
+  const assistantModelIdById = useMemo(() => {
+    const map: Record<string, string> = {};
+    enabledAssistants.forEach((assistant) => {
+      map[assistant.id] = assistant.model_id;
+    });
+    return map;
+  }, [enabledAssistants]);
+
+  const modelNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    enabledModels.forEach((model) => {
+      map[`${model.provider_id}:${model.id}`] = model.name || `${model.provider_id}:${model.id}`;
+    });
+    return map;
+  }, [enabledModels]);
 
   useEffect(() => {
     setIsTimelineCollapsed(true);
@@ -749,17 +820,21 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                   {t('groupChat.availableAssistants')}
                 </p>
                 <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                  {enabledAssistants
-                    .filter((assistant) => !groupAssistants.includes(assistant.id))
-                    .map((assistant) => (
+                  {availableGroupParticipants
+                    .map((participant) => (
                       <div
-                        key={assistant.id}
+                        key={participant.id}
                         className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900/40"
                       >
-                        <span className="truncate text-gray-800 dark:text-gray-200">{assistant.name}</span>
+                        <span className="truncate text-gray-800 dark:text-gray-200">
+                          {participant.name}
+                          <span className="ml-1 text-[10px] uppercase text-gray-400 dark:text-gray-500">
+                            {participant.type}
+                          </span>
+                        </span>
                         <button
                           type="button"
-                          onClick={() => void handleAddAssistant(assistant.id)}
+                          onClick={() => void handleAddAssistant(participant.id)}
                           disabled={!canManageGroupAssistants}
                           className="rounded-full border border-blue-200 px-2 py-0.5 text-[11px] text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900/30 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -767,7 +842,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
                         </button>
                       </div>
                     ))}
-                  {enabledAssistants.filter((assistant) => !groupAssistants.includes(assistant.id)).length === 0 && (
+                  {availableGroupParticipants.length === 0 && (
                     <div className="rounded-md border border-dashed border-gray-300 px-2.5 py-3 text-xs text-gray-500 dark:border-gray-600 dark:text-gray-400">
                       {t('groupChat.noAssistantsToAdd')}
                     </div>
@@ -797,6 +872,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         loading={loading}
         isStreaming={isGenerating}
         sessionId={currentSessionId}
+        currentTargetType={currentTargetType}
+        currentAssistantId={currentAssistantId}
+        currentModelId={currentModelId}
+        assistantNameById={assistantNameById}
+        assistantModelIdById={assistantModelIdById}
+        modelNameById={modelNameById}
         onEditMessage={editMessage}
         onSaveMessageOnly={saveMessageOnly}
         onRegenerateMessage={regenerateMessage}
@@ -854,7 +935,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         supportsReasoning={supportsReasoning}
         supportsVision={supportsVision}
         sessionId={currentSessionId}
-        currentAssistantId={currentAssistantId || undefined}
+        currentAssistantId={currentTargetType === 'assistant' ? currentAssistantId || undefined : undefined}
         paramOverrides={paramOverrides}
         hasActiveOverrides={hasActiveOverrides}
         onParamOverridesChange={updateParamOverrides}
@@ -872,7 +953,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
             <AssistantSelector
               sessionId={currentSessionId}
               currentAssistantId={currentAssistantId || undefined}
-              onAssistantChange={handleAssistantChange}
+              currentModelId={currentModelId || undefined}
+              currentTargetType={currentTargetType}
+              onTargetChange={handleTargetChange}
             />
           )
         }

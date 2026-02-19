@@ -99,6 +99,7 @@ export interface UploadedFile {
 }
 
 export type GroupChatMode = 'round_robin' | 'committee';
+export type ChatTargetType = 'assistant' | 'model';
 
 export interface GroupTimelineEvent {
   event_id: string;
@@ -162,8 +163,10 @@ export interface Session {
   message_count?: number;
   temporary?: boolean;
   folder_id?: string;  // Chat folder ID (optional)
-  group_assistants?: string[];  // Group chat: list of assistant IDs
+  group_assistants?: string[];  // Group chat: assistant IDs and/or model::<provider:model> tokens
   group_mode?: GroupChatMode;  // Group chat mode
+  target_type?: ChatTargetType;
+  target_id?: string;
 }
 
 export interface ParamOverrides {
@@ -183,12 +186,14 @@ export interface SessionDetail {
   created_at: string;
   model_id: string;  // Composite model ID
   assistant_id?: string;
+  target_type?: ChatTargetType;
+  target_id?: string;
   param_overrides?: ParamOverrides;
   total_usage?: TokenUsage;
   total_cost?: CostInfo;
   temporary?: boolean;
   compare_data?: Record<string, { responses: CompareModelResponse[] }>;
-  group_assistants?: string[];  // Group chat: list of assistant IDs
+  group_assistants?: string[];  // Group chat: assistant IDs and/or model::<provider:model> tokens
   group_mode?: GroupChatMode;  // Group chat mode
   state: {
     messages: Message[];

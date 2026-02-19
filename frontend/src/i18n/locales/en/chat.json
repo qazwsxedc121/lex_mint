@@ -202,6 +202,22 @@
   "groupChat.timelineExpand": "Expand",
   "groupChat.timelineCollapse": "Collapse",
 
+  "selector.loading": "Loading...",
+  "selector.modelsTab": "Models",
+  "selector.assistantsTab": "Assistants",
+  "selector.searchAssistants": "Search assistants...",
+  "selector.searchModels": "Search models...",
+  "selector.noMatchingAssistants": "No matching assistants",
+  "selector.noAssistantsAvailable": "No assistants available",
+  "selector.noMatchingModels": "No matching models",
+  "selector.noModelsAvailable": "No models available",
+  "selector.switchFailed": "Failed to switch target",
+  "selector.assistantDefaultLabel": "Assistant",
+  "selector.modelDefaultLabel": "Model",
+
+  "bubble.modelTargetLabel": "Model",
+  "bubble.responderInfo": "Assistant: {{assistant}} | Model: {{model}}",
+
   "toolCall.calling": "Calling {{name}}...",
   "toolCall.arguments": "Arguments",
   "toolCall.result": "Result"

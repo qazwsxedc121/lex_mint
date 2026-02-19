@@ -24,7 +24,12 @@ import type { MutableRefObject } from 'react';
 export interface ChatAPI {
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
-  createSession(modelId?: string, assistantId?: string, temporary?: boolean): Promise<string>;
+  createSession(
+    modelId?: string,
+    assistantId?: string,
+    temporary?: boolean,
+    targetType?: 'assistant' | 'model'
+  ): Promise<string>;
   createGroupSession(groupAssistants: string[], mode?: GroupChatMode): Promise<string>;
   listSessions(): Promise<Session[]>;
   deleteSession(sessionId: string): Promise<void>;
@@ -35,6 +40,11 @@ export interface ChatAPI {
   copySession(sessionId: string, targetContextType: string, targetProjectId?: string): Promise<string>;
   branchSession(sessionId: string, messageId: string): Promise<string>;
   updateSessionAssistant(sessionId: string, assistantId: string): Promise<void>;
+  updateSessionTarget(
+    sessionId: string,
+    targetType: 'assistant' | 'model',
+    options?: { assistantId?: string; modelId?: string }
+  ): Promise<void>;
   updateGroupAssistants(sessionId: string, groupAssistants: string[]): Promise<void>;
   updateSessionParamOverrides(sessionId: string, paramOverrides: ParamOverrides): Promise<void>;
 
@@ -185,7 +195,12 @@ export interface ChatServiceContextValue {
   sessionsError: string | null;
 
   // Built-in Sessions operations
-  createSession: (modelId?: string, assistantId?: string) => Promise<string>;
+  createSession: (
+    modelId?: string,
+    assistantId?: string,
+    temporary?: boolean,
+    targetType?: 'assistant' | 'model'
+  ) => Promise<string>;
   createTemporarySession: () => Promise<string>;
   saveTemporarySession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
