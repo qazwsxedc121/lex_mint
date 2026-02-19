@@ -111,3 +111,19 @@ class SearchSource(BaseModel):
     rerank_applied: Optional[bool] = Field(None, description="Whether rerank was successfully applied")
     rerank_weight: Optional[float] = Field(None, description="Blend weight for rerank score")
     rerank_model: Optional[str] = Field(None, description="Configured rerank model")
+    tool_search_count: Optional[int] = Field(None, description="Number of search_knowledge calls")
+    tool_search_unique_count: Optional[int] = Field(
+        None,
+        description="Unique normalized search_knowledge query count",
+    )
+    tool_search_duplicate_count: Optional[int] = Field(
+        None,
+        description="Duplicate search_knowledge query count",
+    )
+    tool_read_count: Optional[int] = Field(None, description="Number of read_knowledge calls")
+    tool_finalize_reason: Optional[
+        Literal["normal_no_tools", "max_round_force_finalize", "fallback_empty_answer"]
+    ] = Field(
+        None,
+        description="Finalization reason of the tool loop",
+    )

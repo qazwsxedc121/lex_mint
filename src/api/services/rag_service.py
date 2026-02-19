@@ -494,6 +494,13 @@ class RagService:
             "rerank_applied": rerank_applied,
             "rerank_weight": rerank_weight,
             "rerank_model": rerank_model,
+            "tool_search_count": int(diagnostics.get("tool_search_count", 0) or 0),
+            "tool_search_unique_count": int(diagnostics.get("tool_search_unique_count", 0) or 0),
+            "tool_search_duplicate_count": int(diagnostics.get("tool_search_duplicate_count", 0) or 0),
+            "tool_read_count": int(diagnostics.get("tool_read_count", 0) or 0),
+            "tool_finalize_reason": str(
+                diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
+            ),
         }
 
     async def _rank_candidates(

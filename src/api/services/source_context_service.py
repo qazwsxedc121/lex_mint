@@ -39,6 +39,10 @@ class SourceContextService:
             "query_transform_mode",
             "query_transform_crag_decision",
             "query_effective",
+            "tool_search_count",
+            "tool_search_duplicate_count",
+            "tool_read_count",
+            "tool_finalize_reason",
         ]
         metrics: List[str] = []
         for key in fields:
