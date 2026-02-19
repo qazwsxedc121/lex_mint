@@ -3,7 +3,8 @@
 import time
 import json
 import logging
-from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple
+import inspect
+from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple, Callable, Awaitable
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage, trim_messages
 
@@ -378,7 +379,8 @@ async def call_llm_stream(
     presence_penalty: Optional[float] = None,
     reasoning_effort: Optional[str] = None,
     file_service: Optional[FileService] = None,
-    tools: Optional[List] = None
+    tools: Optional[List] = None,
+    tool_executor: Optional[Callable[[str, Dict[str, Any]], Union[Optional[str], Awaitable[Optional[str]]]]] = None,
 ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
     """
     Streaming LLM call, yields tokens one by one.
@@ -397,6 +399,9 @@ async def call_llm_stream(
             - "none": force-disable reasoning output
             - "default"/None: do not pass reasoning params
         file_service: File service for reading image attachments (optional)
+        tool_executor: Request-scoped tool executor. If provided, called as
+            `tool_executor(name, args)` before registry execution. Returning
+            None falls back to registry tools.
 
     Yields:
         String tokens during streaming, or dict with usage info at the end:
@@ -572,6 +577,7 @@ async def call_llm_stream(
         MAX_TOOL_ROUNDS = 3
         tool_round = 0
         current_messages = list(langchain_messages)
+        force_finalize_without_tools = False
 
         while True:
             in_thinking_phase = False
@@ -583,7 +589,7 @@ async def call_llm_stream(
             merged_chunk = None
 
             # Stream via adapter (unified interface)
-            active_llm = llm_for_call if tools else llm
+            active_llm = llm_for_call if (tools and not force_finalize_without_tools) else llm
             async for chunk in adapter.stream(active_llm, current_messages):
                 # Handle thinking/reasoning content
                 if chunk.thinking and not explicit_disable_reasoning:
@@ -618,7 +624,7 @@ async def call_llm_stream(
                     final_usage = extracted_usage
 
             # After stream ends: extract complete tool_calls from merged chunk
-            if tools and merged_chunk is not None:
+            if tools and (not force_finalize_without_tools) and merged_chunk is not None:
                 raw_tool_calls = getattr(merged_chunk, "tool_calls", None) or []
                 for tc in raw_tool_calls:
                     if isinstance(tc, dict):
@@ -644,6 +650,10 @@ async def call_llm_stream(
 
             full_response += round_content
 
+            # Finalization pass intentionally disables tools; finish after this round.
+            if force_finalize_without_tools:
+                break
+
             # If no tool calls or tools not enabled, we're done
             if not round_tool_calls or not tools:
                 break
@@ -653,7 +663,20 @@ async def call_llm_stream(
             if tool_round > MAX_TOOL_ROUNDS:
                 print(f"[TOOLS] Max tool rounds ({MAX_TOOL_ROUNDS}) reached, stopping")
                 logger.warning(f"Max tool call rounds reached")
-                break
+                current_messages.append(AIMessage(content=round_content))
+                current_messages.append(
+                    HumanMessage(
+                        content=(
+                            "Tool-call limit reached. Provide the best possible final answer now "
+                            "using only the existing tool results and conversation context. "
+                            "Do not call any tools."
+                        )
+                    )
+                )
+                force_finalize_without_tools = True
+                round_content = ""
+                round_tool_calls = []
+                continue
 
             print(f"[TOOLS] Round {tool_round}: executing {len(round_tool_calls)} tool(s)")
             logger.info(f"Tool call round {tool_round}: {[tc['name'] for tc in round_tool_calls]}")
@@ -669,7 +692,20 @@ async def call_llm_stream(
             registry = get_tool_registry()
             tool_results = []
             for tc in round_tool_calls:
-                result = registry.execute_tool(tc["name"], tc["args"])
+                result: Optional[str] = None
+                if tool_executor is not None:
+                    try:
+                        maybe_result = tool_executor(tc["name"], tc["args"])
+                        if inspect.isawaitable(maybe_result):
+                            maybe_result = await maybe_result
+                        if maybe_result is not None:
+                            result = str(maybe_result)
+                    except Exception as e:
+                        logger.warning(f"Request-level tool executor failed ({tc['name']}): {e}")
+
+                if result is None:
+                    result = registry.execute_tool(tc["name"], tc["args"])
+
                 tool_results.append({
                     "name": tc["name"],
                     "result": result,

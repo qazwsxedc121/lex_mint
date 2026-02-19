@@ -24,6 +24,9 @@ from .group_orchestration import (
     CommitteeRuntimeState,
     CommitteeTurnExecutor,
 )
+from .rag_config_service import RagConfigService
+from .rag_tool_service import RagToolService
+from .source_context_service import SourceContextService
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -53,6 +56,8 @@ class AgentService:
         self.webpage_service = WebpageService()
         self.memory_service = MemoryService()
         self.file_reference_config_service = FileReferenceConfigService()
+        self.rag_config_service = RagConfigService()
+        self.source_context_service = SourceContextService()
         self.comparison_storage = ComparisonStorage(self.storage)
         self._committee_policy = CommitteePolicy()
         self._committee_turn_executor = self._create_committee_turn_executor()
@@ -352,6 +357,59 @@ class AgentService:
             logger.warning(f"RAG retrieval failed: {e}")
             return None, rag_sources
 
+    @staticmethod
+    def _merge_all_sources(*source_groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        for group in source_groups:
+            if group:
+                merged.extend(group)
+        return merged
+
+    def _is_structured_source_context_enabled(self) -> bool:
+        try:
+            self.rag_config_service.reload_config()
+            return bool(
+                getattr(
+                    self.rag_config_service.config.retrieval,
+                    "structured_source_context_enabled",
+                    False,
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to read structured source context setting: %s", e)
+            return False
+
+    def _append_structured_source_context(
+        self,
+        *,
+        raw_user_message: str,
+        system_prompt: Optional[str],
+        all_sources: List[Dict[str, Any]],
+    ) -> Optional[str]:
+        if not all_sources or not self._is_structured_source_context_enabled():
+            return system_prompt
+        try:
+            source_tags = self.source_context_service.build_source_tags(
+                query=raw_user_message,
+                sources=all_sources,
+            )
+            if not source_tags:
+                return system_prompt
+            structured_context = self.source_context_service.apply_template(
+                query=raw_user_message,
+                source_context=source_tags,
+            )
+            if not structured_context:
+                return system_prompt
+            logger.info(
+                "[SOURCE_CONTEXT] structured source context injected: source_count=%d",
+                len(all_sources),
+            )
+            return f"{system_prompt}\n\n{structured_context}" if system_prompt else structured_context
+        except Exception as e:
+            logger.warning("Structured source context injection failed: %s", e)
+            return system_prompt
+
     async def process_message(
         self,
         session_id: str,
@@ -496,6 +554,18 @@ class AgentService:
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
+        all_sources = self._merge_all_sources(
+            memory_sources,
+            webpage_sources,
+            search_sources,
+            rag_sources,
+        )
+        system_prompt = self._append_structured_source_context(
+            raw_user_message=raw_user_message,
+            system_prompt=system_prompt,
+            all_sources=all_sources,
+        )
+
         print(f"[OK] Session loaded, {len(messages)} messages, model: {model_id}")
 
         print(f"🧠 [步骤 3] 调用 LLM...")
@@ -516,15 +586,6 @@ class AgentService:
 
         print(f"📝 [步骤 4] 保存 AI 回复到文件...")
         logger.info(f"📝 [步骤 4] 保存 AI 回复")
-        all_sources: List[Dict[str, Any]] = []
-        if memory_sources:
-            all_sources.extend(memory_sources)
-        if webpage_sources:
-            all_sources.extend(webpage_sources)
-        if search_sources:
-            all_sources.extend(search_sources)
-        if rag_sources:
-            all_sources.extend(rag_sources)
 
         await self.storage.append_message(
             session_id,
@@ -778,15 +839,17 @@ class AgentService:
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
-        all_sources: List[Dict[str, Any]] = []
-        if memory_sources:
-            all_sources.extend(memory_sources)
-        if webpage_sources:
-            all_sources.extend(webpage_sources)
-        if search_sources:
-            all_sources.extend(search_sources)
-        if rag_sources:
-            all_sources.extend(rag_sources)
+        all_sources = self._merge_all_sources(
+            memory_sources,
+            webpage_sources,
+            search_sources,
+            rag_sources,
+        )
+        system_prompt = self._append_structured_source_context(
+            raw_user_message=raw_user_message,
+            system_prompt=system_prompt,
+            all_sources=all_sources,
+        )
         if all_sources:
             yield {
                 "type": "sources",
@@ -849,6 +912,7 @@ class AgentService:
 
         # Resolve tools if model supports function calling
         llm_tools = None
+        rag_tool_executor = None
         try:
             from .model_config_service import ModelConfigService
             model_service = ModelConfigService()
@@ -856,7 +920,22 @@ class AgentService:
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
             if merged_caps.function_calling:
                 from src.tools.registry import get_tool_registry
-                llm_tools = get_tool_registry().get_all_tools()
+                llm_tools = list(get_tool_registry().get_all_tools())
+                kb_ids_for_tools = list(getattr(assistant_obj, "knowledge_base_ids", None) or [])
+                if assistant_id and not is_legacy_assistant and kb_ids_for_tools:
+                    rag_tool_service = RagToolService(
+                        assistant_id=assistant_id,
+                        allowed_kb_ids=kb_ids_for_tools,
+                        runtime_model_id=model_id,
+                    )
+                    rag_tools = rag_tool_service.get_tools()
+                    if rag_tools:
+                        llm_tools.extend(rag_tools)
+                        rag_tool_executor = rag_tool_service.execute_tool
+                        print(
+                            f"[TOOLS] Added RAG tools for assistant {assistant_id}: "
+                            f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
+                        )
                 print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
@@ -877,6 +956,7 @@ class AgentService:
                 reasoning_effort=reasoning_effort,
                 file_service=self.file_service,  # Pass file_service for image attachment support
                 tools=llm_tools,
+                tool_executor=rag_tool_executor,
                 **assistant_params
             ):
                 # Check if this is a usage data dict
@@ -1119,15 +1199,17 @@ class AgentService:
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
-        all_sources: List[Dict[str, Any]] = []
-        if memory_sources:
-            all_sources.extend(memory_sources)
-        if webpage_sources:
-            all_sources.extend(webpage_sources)
-        if search_sources:
-            all_sources.extend(search_sources)
-        if rag_sources:
-            all_sources.extend(rag_sources)
+        all_sources = self._merge_all_sources(
+            memory_sources,
+            webpage_sources,
+            search_sources,
+            rag_sources,
+        )
+        system_prompt = self._append_structured_source_context(
+            raw_user_message=raw_user_message,
+            system_prompt=system_prompt,
+            all_sources=all_sources,
+        )
 
         return {
             "messages": messages,

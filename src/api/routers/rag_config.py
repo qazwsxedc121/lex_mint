@@ -49,6 +49,11 @@ class RagConfigResponse(BaseModel):
     context_neighbor_window: int
     context_neighbor_max_total: int
     context_neighbor_dedup_coverage: float
+    retrieval_query_planner_enabled: bool
+    retrieval_query_planner_model_id: str
+    retrieval_query_planner_max_queries: int
+    retrieval_query_planner_timeout_seconds: int
+    structured_source_context_enabled: bool
     query_transform_enabled: bool
     query_transform_mode: str
     query_transform_model_id: str
@@ -105,6 +110,11 @@ class RagConfigUpdate(BaseModel):
     context_neighbor_window: Optional[int] = Field(None, ge=0, le=10)
     context_neighbor_max_total: Optional[int] = Field(None, ge=0, le=200)
     context_neighbor_dedup_coverage: Optional[float] = Field(None, ge=0.5, le=1.0)
+    retrieval_query_planner_enabled: Optional[bool] = None
+    retrieval_query_planner_model_id: Optional[str] = None
+    retrieval_query_planner_max_queries: Optional[int] = Field(None, ge=1, le=8)
+    retrieval_query_planner_timeout_seconds: Optional[int] = Field(None, ge=1, le=30)
+    structured_source_context_enabled: Optional[bool] = None
     query_transform_enabled: Optional[bool] = None
     query_transform_mode: Optional[Literal["none", "rewrite"]] = None
     query_transform_model_id: Optional[str] = None

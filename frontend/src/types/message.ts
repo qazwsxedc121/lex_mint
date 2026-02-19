@@ -76,6 +76,13 @@ export interface SearchSource {
   query_transform_crag_quality_score?: number;
   query_transform_crag_quality_label?: 'correct' | 'ambiguous' | 'incorrect' | 'skipped';
   query_transform_crag_decision?: string;
+  retrieval_queries?: string[];
+  retrieval_query_count?: number;
+  retrieval_query_planner_enabled?: boolean;
+  retrieval_query_planner_applied?: boolean;
+  retrieval_query_planner_model_id?: string;
+  retrieval_query_planner_fallback?: boolean;
+  retrieval_query_planner_reason?: string;
   query_original?: string;
   query_effective?: string;
   rerank_enabled?: boolean;

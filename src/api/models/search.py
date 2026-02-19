@@ -77,6 +77,34 @@ class SearchSource(BaseModel):
         None,
         description="CRAG-style final decision for rewritten query",
     )
+    retrieval_queries: Optional[list[str]] = Field(
+        None,
+        description="Planned retrieval queries list (includes effective query)",
+    )
+    retrieval_query_count: Optional[int] = Field(
+        None,
+        description="Total planned retrieval query count",
+    )
+    retrieval_query_planner_enabled: Optional[bool] = Field(
+        None,
+        description="Whether retrieval query planner is enabled",
+    )
+    retrieval_query_planner_applied: Optional[bool] = Field(
+        None,
+        description="Whether planner produced multi-query retrieval",
+    )
+    retrieval_query_planner_model_id: Optional[str] = Field(
+        None,
+        description="Model ID used by retrieval query planner",
+    )
+    retrieval_query_planner_fallback: Optional[bool] = Field(
+        None,
+        description="Whether retrieval query planner fell back to original/effective query",
+    )
+    retrieval_query_planner_reason: Optional[str] = Field(
+        None,
+        description="Planner result reason: ok/disabled/empty_query/model_unavailable/error",
+    )
     query_original: Optional[str] = Field(None, description="Original user query (trimmed)")
     query_effective: Optional[str] = Field(None, description="Effective retrieval query (trimmed)")
     rerank_enabled: Optional[bool] = Field(None, description="Whether rerank is enabled in retrieval config")

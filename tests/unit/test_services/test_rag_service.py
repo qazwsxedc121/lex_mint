@@ -482,6 +482,108 @@ def test_retrieve_query_transform_failure_falls_back_to_original(monkeypatch):
     assert diagnostics["query_effective"] == "original question"
 
 
+def test_retrieve_with_query_planner_runs_multi_query_retrieval(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.retrieval_query_planner_enabled = True
+    service.rag_config_service.config.retrieval.retrieval_query_planner_model_id = "auto"
+    service.rag_config_service.config.retrieval.retrieval_query_planner_max_queries = 3
+    service.rag_config_service.config.retrieval.retrieval_query_planner_timeout_seconds = 4
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def fake_plan_queries(**kwargs):
+        assert kwargs["query"] == "original question"
+        return SimpleNamespace(
+            planned_queries=["original question", "expanded variant"],
+            planner_applied=True,
+            fallback_used=False,
+            planner_model_id="openrouter:openai/gpt-4o-mini",
+            reason="ok",
+        )
+
+    service.retrieval_query_planner_service = SimpleNamespace(plan_queries=fake_plan_queries)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        if query == "expanded variant":
+            return [RagResult("chunk-b", 0.92, "kb_a", "doc_b", "b.md", 0)]
+        return [RagResult("chunk-a", 0.95, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="openrouter:openai/gpt-4o-mini",
+        )
+    )
+
+    assert [item.doc_id for item in results] == ["doc_a", "doc_b"]
+    assert seen_queries == ["original question", "expanded variant"]
+    assert diagnostics["retrieval_query_count"] == 2
+    assert diagnostics["retrieval_queries"] == ["original question", "expanded variant"]
+    assert diagnostics["retrieval_query_planner_enabled"] is True
+    assert diagnostics["retrieval_query_planner_applied"] is True
+    assert diagnostics["retrieval_query_planner_fallback"] is False
+    assert diagnostics["retrieval_query_planner_model_id"] == "openrouter:openai/gpt-4o-mini"
+    assert diagnostics["retrieval_query_planner_reason"] == "ok"
+
+
+def test_retrieve_query_planner_failure_falls_back_to_effective_query(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.retrieval_query_planner_enabled = True
+    service.rag_config_service.config.retrieval.retrieval_query_planner_model_id = "auto"
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def failing_plan_queries(**kwargs):
+        _ = kwargs
+        raise RuntimeError("planner boom")
+
+    service.retrieval_query_planner_service = SimpleNamespace(plan_queries=failing_plan_queries)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        return [RagResult("chunk-a", 0.95, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("original question", ["kb_a"]))
+
+    assert len(results) == 1
+    assert seen_queries == ["original question"]
+    assert diagnostics["retrieval_query_count"] == 1
+    assert diagnostics["retrieval_queries"] == ["original question"]
+    assert diagnostics["retrieval_query_planner_applied"] is False
+    assert diagnostics["retrieval_query_planner_fallback"] is True
+    assert diagnostics["retrieval_query_planner_reason"] == "error"
+
+
 def test_retrieve_crag_gate_falls_back_to_original_when_rewrite_low_quality(monkeypatch):
     service = _build_service(
         top_k=3,
