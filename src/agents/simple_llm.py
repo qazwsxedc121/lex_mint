@@ -3,14 +3,19 @@
 import time
 import json
 import logging
-import inspect
 from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple, Callable, Awaitable
 from pathlib import Path
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage, trim_messages
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.file_service import FileService
+from src.agents.stream_call_policy import (
+    build_stream_kwargs,
+    select_stream_llm,
+    should_allow_responses_fallback,
+)
+from src.agents.tool_loop_runner import ToolLoopRunner, ToolLoopState
 from src.providers.types import CallMode, TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -424,7 +429,7 @@ async def call_llm_stream(
         if isinstance(resolved_call_mode, CallMode)
         else CallMode.AUTO
     )
-    allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
+    allow_responses_fallback = should_allow_responses_fallback(effective_call_mode)
 
     # Determine reasoning behavior from explicit mode selection
     reasoning_mode = (reasoning_effort or "").strip().lower()
@@ -583,10 +588,8 @@ async def call_llm_stream(
         full_reasoning = ""
         final_usage: Optional[TokenUsage] = None
 
-        MAX_TOOL_ROUNDS = 3
-        tool_round = 0
-        current_messages = list(langchain_messages)
-        force_finalize_without_tools = False
+        tool_loop_runner = ToolLoopRunner(max_tool_rounds=3)
+        tool_loop_state = ToolLoopState(current_messages=list(langchain_messages))
 
         while True:
             in_thinking_phase = False
@@ -598,9 +601,16 @@ async def call_llm_stream(
             merged_chunk = None
 
             # Stream via adapter (unified interface)
-            active_llm = llm_for_call if (tools and not force_finalize_without_tools) else llm
-            stream_kwargs = {"allow_responses_fallback": True} if allow_responses_fallback else {}
-            async for chunk in adapter.stream(active_llm, current_messages, **stream_kwargs):
+            active_llm = select_stream_llm(
+                llm=llm,
+                llm_for_tools=llm_for_call,
+                tools_enabled=bool(tools),
+                force_finalize_without_tools=tool_loop_state.force_finalize_without_tools,
+            )
+            stream_kwargs = build_stream_kwargs(
+                allow_responses_fallback=allow_responses_fallback,
+            )
+            async for chunk in adapter.stream(active_llm, tool_loop_state.current_messages, **stream_kwargs):
                 # Handle thinking/reasoning content
                 if chunk.thinking and not explicit_disable_reasoning:
                     full_reasoning += chunk.thinking
@@ -634,23 +644,11 @@ async def call_llm_stream(
                     final_usage = extracted_usage
 
             # After stream ends: extract complete tool_calls from merged chunk
-            if tools and (not force_finalize_without_tools) and merged_chunk is not None:
-                raw_tool_calls = getattr(merged_chunk, "tool_calls", None) or []
-                for tc in raw_tool_calls:
-                    if isinstance(tc, dict):
-                        tc_name = tc.get("name", "")
-                        tc_args = tc.get("args", {})
-                        tc_id = tc.get("id", "")
-                    else:
-                        tc_name = getattr(tc, "name", "") or ""
-                        tc_args = getattr(tc, "args", {}) or {}
-                        tc_id = getattr(tc, "id", "") or ""
-                    if tc_name:
-                        round_tool_calls.append({
-                            "name": tc_name,
-                            "args": tc_args if isinstance(tc_args, dict) else {},
-                            "id": tc_id or "",
-                        })
+            round_tool_calls = tool_loop_runner.extract_tool_calls(
+                merged_chunk,
+                tools_enabled=bool(tools),
+                force_finalize_without_tools=tool_loop_state.force_finalize_without_tools,
+            )
 
             # Close thinking tag if opened but no content followed
             if in_thinking_phase and not thinking_ended:
@@ -661,86 +659,52 @@ async def call_llm_stream(
             full_response += round_content
 
             # Finalization pass intentionally disables tools; finish after this round.
-            if force_finalize_without_tools:
-                break
-
-            # If no tool calls or tools not enabled, we're done
-            if not round_tool_calls or not tools:
+            if tool_loop_runner.should_finish_round(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+                tools_enabled=bool(tools),
+            ):
                 break
 
             # Tool call loop: execute tools and re-call LLM
-            tool_round += 1
-            if tool_round > MAX_TOOL_ROUNDS:
-                print(f"[TOOLS] Max tool rounds ({MAX_TOOL_ROUNDS}) reached, stopping")
-                logger.warning(f"Max tool call rounds reached")
-                current_messages.append(AIMessage(content=round_content))
-                current_messages.append(
-                    HumanMessage(
-                        content=(
-                            "Tool-call limit reached. Provide the best possible final answer now "
-                            "using only the existing tool results and conversation context. "
-                            "Do not call any tools."
-                        )
-                    )
-                )
-                force_finalize_without_tools = True
+            if tool_loop_runner.advance_round_or_force_finalize(
+                tool_loop_state,
+                round_content=round_content,
+            ):
+                print(f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping")
+                logger.warning("Max tool call rounds reached")
                 round_content = ""
                 round_tool_calls = []
                 continue
 
-            print(f"[TOOLS] Round {tool_round}: executing {len(round_tool_calls)} tool(s)")
-            logger.info(f"Tool call round {tool_round}: {[tc['name'] for tc in round_tool_calls]}")
+            print(f"[TOOLS] Round {tool_loop_state.tool_round}: executing {len(round_tool_calls)} tool(s)")
+            logger.info(
+                "Tool call round %s: %s",
+                tool_loop_state.tool_round,
+                [tc["name"] for tc in round_tool_calls],
+            )
 
             # Yield tool_calls event to frontend
-            yield {
-                "type": "tool_calls",
-                "calls": [{"name": tc["name"], "args": tc["args"]} for tc in round_tool_calls],
-            }
+            yield tool_loop_runner.build_tool_calls_event(round_tool_calls)
 
             # Execute tools
-            from src.tools.registry import get_tool_registry
-            registry = get_tool_registry()
-            tool_results = []
-            for tc in round_tool_calls:
-                result: Optional[str] = None
-                if tool_executor is not None:
-                    try:
-                        maybe_result = tool_executor(tc["name"], tc["args"])
-                        if inspect.isawaitable(maybe_result):
-                            maybe_result = await maybe_result
-                        if maybe_result is not None:
-                            result = str(maybe_result)
-                    except Exception as e:
-                        logger.warning(f"Request-level tool executor failed ({tc['name']}): {e}")
-
-                if result is None:
-                    result = registry.execute_tool(tc["name"], tc["args"])
-
-                tool_results.append({
-                    "name": tc["name"],
-                    "result": result,
-                    "tool_call_id": tc["id"],
-                })
-                print(f"[TOOLS]   {tc['name']}({tc['args']}) -> {result[:100]}")
+            tool_results = await tool_loop_runner.execute_tool_calls(
+                round_tool_calls,
+                tool_executor=tool_executor,
+            )
+            for tr in tool_results:
+                print(f"[TOOLS]   {tr['name']} -> {tr['result'][:100]}")
 
             # Yield tool_results event to frontend
-            yield {
-                "type": "tool_results",
-                "results": tool_results,
-            }
+            yield tool_loop_runner.build_tool_results_event(tool_results)
 
             # Append AI message with tool_calls and tool result messages
-            ai_tool_calls = [
-                {"name": tc["name"], "args": tc["args"], "id": tc["id"]}
-                for tc in round_tool_calls
-            ]
-            ai_msg = AIMessage(content=round_content, tool_calls=ai_tool_calls)
-            current_messages.append(ai_msg)
-
-            for tr in tool_results:
-                current_messages.append(
-                    ToolMessage(content=tr["result"], tool_call_id=tr["tool_call_id"])
-                )
+            tool_loop_runner.append_round_with_tool_results(
+                tool_loop_state,
+                round_content=round_content,
+                round_tool_calls=round_tool_calls,
+                tool_results=tool_results,
+            )
 
             # Reset for next round
             round_content = ""

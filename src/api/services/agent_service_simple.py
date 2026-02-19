@@ -10,24 +10,17 @@ import json
 
 from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
 from src.providers.types import TokenUsage, CostInfo
+from .agent_service_bootstrap import bootstrap_agent_service
 from .conversation_storage import ConversationStorage
-from .pricing_service import PricingService
-from .comparison_storage import ComparisonStorage
-from .file_service import FileService
-from .search_service import SearchService
-from .webpage_service import WebpageService
-from .memory_service import MemoryService
-from .file_reference_config_service import FileReferenceConfigService, FileReferenceConfig
+from .file_reference_config_service import FileReferenceConfig
 from .group_orchestration import (
     CommitteeOrchestrator,
     CommitteePolicy,
     CommitteeRuntimeState,
     CommitteeTurnExecutor,
 )
-from .rag_config_service import RagConfigService
 from .rag_tool_service import RagToolService
-from .source_context_service import SourceContextService
-from ..config import settings
+from .group_orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +42,7 @@ class AgentService:
         Args:
             storage: ConversationStorage instance for persistence
         """
-        self.storage = storage
-        self.pricing_service = PricingService()
-        self.file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
-        self.search_service = SearchService()
-        self.webpage_service = WebpageService()
-        self.memory_service = MemoryService()
-        self.file_reference_config_service = FileReferenceConfigService()
-        self.rag_config_service = RagConfigService()
-        self.source_context_service = SourceContextService()
-        self.comparison_storage = ComparisonStorage(self.storage)
-        self._committee_policy = CommitteePolicy()
-        self._committee_turn_executor = self._create_committee_turn_executor()
+        bootstrap_agent_service(self, storage)
         logger.info("AgentService initialized (simplified version)")
 
     _FILE_CONTEXT_CHUNK_SIZE = 2500
@@ -73,12 +55,7 @@ class AgentService:
     @staticmethod
     def _truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
         """Trim text for debug logs while preserving head and tail context."""
-        content = (text or "").replace("\r", "")
-        if len(content) <= max_chars:
-            return content
-        head = int(max_chars * 0.7)
-        tail = max_chars - head
-        return f"{content[:head]}\n...[truncated]...\n{content[-tail:]}"
+        return truncate_log_text(text, max_chars)
 
     @staticmethod
     def _build_messages_preview_for_log(
@@ -88,17 +65,11 @@ class AgentService:
         max_chars: int = 220,
     ) -> List[Dict[str, Any]]:
         """Build a compact recent message view for group context debugging."""
-        preview: List[Dict[str, Any]] = []
-        for msg in messages[-max_messages:]:
-            preview.append(
-                {
-                    "role": msg.get("role"),
-                    "assistant_id": msg.get("assistant_id"),
-                    "message_id": msg.get("message_id"),
-                    "content": AgentService._truncate_log_text(msg.get("content") or "", max_chars),
-                }
-            )
-        return preview
+        return build_messages_preview_for_log(
+            messages,
+            max_messages=max_messages,
+            max_chars=max_chars,
+        )
 
     @staticmethod
     def _is_group_trace_enabled() -> bool:
