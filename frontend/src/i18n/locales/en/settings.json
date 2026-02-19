@@ -270,6 +270,7 @@
   "models.field.tags.placeholder": "e.g., chat, reasoning, vision",
   "models.field.tags.help": "Comma-separated tags (e.g., reasoning,function-calling)",
   "models.field.enabled": "Enable this model",
+  "models.action.testConnection": "Test connection",
 
   "providers.title": "Provider List",
   "providers.description": "Built-in providers are preloaded; use Add only for custom providers.",
@@ -295,6 +296,10 @@
   "providers.field.apiKey.help": "API key for authentication (stored in ~/.lex_mint/keys_config.yaml)",
   "providers.field.apiKey.editHelp": "API key for authentication (leave unchanged if masked)",
   "providers.field.enabled": "Enable this provider",
+  "providers.action.testConnection": "Test connection",
+
+  "testConnection.success": "Connection successful!",
+  "testConnection.failed": "Connection failed:",
 
   "knowledgeBases.title": "Knowledge Bases",
   "knowledgeBases.description": "Manage knowledge bases for RAG (Retrieval-Augmented Generation)",

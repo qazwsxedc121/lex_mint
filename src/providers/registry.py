@@ -18,6 +18,7 @@ from .adapters import (
     ZhipuAdapter,
     VolcEngineAdapter,
     GeminiAdapter,
+    BailianAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class AdapterRegistry:
         "zhipu": ZhipuAdapter,
         "volcengine": VolcEngineAdapter,
         "gemini": GeminiAdapter,
+        "bailian": BailianAdapter,
     }
 
     # Mapping of API protocols to default adapter classes

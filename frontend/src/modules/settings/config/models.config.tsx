@@ -4,8 +4,10 @@
  * Defines the structure and behavior of the Models settings page.
  */
 
+import { SignalIcon } from '@heroicons/react/24/outline';
 import type { CrudSettingsConfig } from './types';
 import type { Model } from '../../../types/model';
+import { testModelConnection } from '../../../services/api';
 import i18n from '../../../i18n';
 
 const normalizeTags = (rawValue: unknown): string[] => {
@@ -186,6 +188,28 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       name: 'enabled',
       get label() { return i18n.t('settings:models.field.enabled'); },
       defaultValue: true
+    }
+  ],
+
+  // Row actions
+  rowActions: [
+    {
+      id: 'test-connection',
+      label: '',
+      icon: SignalIcon,
+      get tooltip() { return i18n.t('settings:models.action.testConnection'); },
+      onClick: async (item: Model) => {
+        try {
+          const result = await testModelConnection(`${item.provider_id}:${item.id}`);
+          if (result.success) {
+            alert(i18n.t('settings:testConnection.success') + '\n' + result.message);
+          } else {
+            alert(i18n.t('settings:testConnection.failed') + '\n' + result.message);
+          }
+        } catch (err: any) {
+          alert(i18n.t('settings:testConnection.failed') + '\n' + (err.message || String(err)));
+        }
+      }
     }
   ],
 

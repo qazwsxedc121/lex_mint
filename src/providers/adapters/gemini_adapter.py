@@ -56,6 +56,8 @@ class GeminiAdapter(BaseLLMAdapter):
     Supports thinking mode for Gemini 2.5 models via thinking_budget.
     """
 
+    _DEFAULT_TEST_MODEL = "gemini-2.0-flash"
+
     _THINKING_BUDGETS = {
         "low": 2048,
         "medium": 8192,

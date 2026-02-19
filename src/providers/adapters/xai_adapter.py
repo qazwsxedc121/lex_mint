@@ -21,6 +21,8 @@ class XAIAdapter(BaseLLMAdapter):
     Uses langchain-xai package for proper reasoning_content and Live Search support.
     """
 
+    _DEFAULT_TEST_MODEL = "grok-3-mini"
+
     def create_llm(
         self,
         model: str,

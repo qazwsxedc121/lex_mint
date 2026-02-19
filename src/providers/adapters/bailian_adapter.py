@@ -1,66 +1,53 @@
 """
-Zhipu (GLM) OpenAI-Compatible Adapter.
+Alibaba Cloud Bailian (DashScope) OpenAI-Compatible Adapter.
 
-Adapter for Zhipu GLM models via OpenAI-compatible API.
-Supports thinking mode, tool calls, tool stream, structured output,
-and image understanding through pass-through request parameters.
+Adapter for Qwen models via DashScope's OpenAI-compatible API.
+Supports thinking mode, web search, tool calls, and streaming
+through pass-through request parameters.
 """
 import logging
-from typing import AsyncIterator, List, Dict, Any
+from typing import AsyncIterator, List, Dict, Any, Optional
 
 from langchain_core.messages import BaseMessage
 
 from .reasoning_openai import ChatReasoningOpenAI
+from .utils import extract_tool_calls
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
 
 
-def _extract_tool_calls(payload: Any) -> List[Any]:
-    """Extract tool call payload from LangChain chunks/responses."""
-    tool_calls: List[Any] = []
-
-    if hasattr(payload, "tool_calls") and payload.tool_calls:
-        tool_calls.extend(payload.tool_calls)
-
-    if hasattr(payload, "tool_call_chunks") and payload.tool_call_chunks:
-        tool_calls.extend(payload.tool_call_chunks)
-
-    if hasattr(payload, "additional_kwargs") and payload.additional_kwargs:
-        ak = payload.additional_kwargs
-        if isinstance(ak, dict):
-            ak_tool_calls = ak.get("tool_calls")
-            if ak_tool_calls:
-                tool_calls.extend(ak_tool_calls)
-
-    return tool_calls
-
-
-class ZhipuAdapter(BaseLLMAdapter):
+class BailianAdapter(BaseLLMAdapter):
     """
-    Adapter for Zhipu GLM OpenAI-compatible API.
+    Adapter for Alibaba Cloud Bailian (DashScope) OpenAI-compatible API.
 
     Uses ChatReasoningOpenAI (a ChatOpenAI subclass that parses
-    reasoning_content) with base_url + api_key, and passes GLM-specific
-    capabilities (thinking, tool_stream, response_format, web_search, etc.)
+    reasoning_content) with the DashScope OpenAI-compatible endpoint,
+    and passes Qwen-specific capabilities (thinking, web search, etc.)
     via extra_body / model_kwargs.
     """
 
-    _DEFAULT_TEST_MODEL = "glm-4.5-flash"
+    _DEFAULT_TEST_MODEL = "qwen-plus"
 
     _CURATED_MODELS: List[Dict[str, str]] = [
-        {"id": "glm-5", "name": "GLM-5"},
-        {"id": "glm-4.7", "name": "GLM-4.7"},
-        {"id": "glm-4.6", "name": "GLM-4.6"},
-        {"id": "glm-4.6-flash", "name": "GLM-4.6 Flash"},
-        {"id": "glm-4.6v", "name": "GLM-4.6V"},
-        {"id": "glm-4.5", "name": "GLM-4.5"},
-        {"id": "glm-4.5-air", "name": "GLM-4.5 Air"},
-        {"id": "glm-4.5-flash", "name": "GLM-4.5 Flash"},
-        {"id": "glm-z1-air", "name": "GLM-Z1 Air"},
-        {"id": "glm-z1-airx", "name": "GLM-Z1 AirX"},
+        {"id": "qwen3-max", "name": "Qwen3 Max"},
+        {"id": "qwen-max", "name": "Qwen Max"},
+        {"id": "qwen3-coder-plus", "name": "Qwen3 Coder Plus"},
+        {"id": "qwen-plus", "name": "Qwen Plus"},
+        {"id": "qwen-turbo", "name": "Qwen Turbo"},
+        {"id": "qwen-long", "name": "Qwen Long"},
+        {"id": "qvq-plus", "name": "QVQ Plus"},
+        {"id": "qwen3-vl-plus", "name": "Qwen3 VL Plus"},
+        {"id": "qwen3-vl-flash", "name": "Qwen3 VL Flash"},
     ]
+
+    # Models with always-on thinking (no enable_thinking toggle).
+    # These only accept thinking_budget, not enable_thinking.
+    _ALWAYS_THINKING_MODELS = {"qwq-plus", "qwq-max"}
+
+    # DashScope thinking budget range
+    _DEFAULT_THINKING_BUDGET = 4096
 
     def create_llm(
         self,
@@ -70,9 +57,10 @@ class ZhipuAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
+        thinking_budget: Optional[int] = None,
         **kwargs
     ) -> ChatReasoningOpenAI:
-        """Create ChatReasoningOpenAI client for Zhipu OpenAI-compatible endpoint."""
+        """Create ChatReasoningOpenAI client for DashScope OpenAI-compatible endpoint."""
         llm_kwargs: Dict[str, Any] = {
             "model": model,
             "temperature": temperature,
@@ -91,14 +79,35 @@ class ZhipuAdapter(BaseLLMAdapter):
         extra_body: Dict[str, Any] = {}
         disable_thinking = bool(kwargs.get("disable_thinking", False))
 
-        # GLM thinking mode uses `thinking.type`.
-        # Must go through extra_body since OpenAI SDK rejects unknown params.
-        if disable_thinking:
-            extra_body["thinking"] = {"type": "disabled"}
-            logger.info(f"Zhipu thinking mode disabled for {model}")
+        # DashScope thinking mode.
+        # QwQ models have always-on thinking: only thinking_budget applies.
+        # Qwen3 hybrid models use enable_thinking + thinking_budget.
+        is_always_thinking = any(p in model.lower() for p in self._ALWAYS_THINKING_MODELS)
+
+        if is_always_thinking:
+            # QwQ: thinking is always on, only set budget
+            budget = thinking_budget or self._DEFAULT_THINKING_BUDGET
+            if not disable_thinking:
+                extra_body["thinking_budget"] = budget
+                logger.info(f"Bailian always-thinking model {model}, budget={budget}")
+            else:
+                logger.info(f"Bailian disable_thinking requested for always-thinking model {model}, ignoring")
+        elif disable_thinking:
+            extra_body["enable_thinking"] = False
+            logger.info(f"Bailian thinking mode disabled for {model}")
         elif thinking_enabled:
-            extra_body["thinking"] = {"type": "enabled"}
-            logger.info(f"Zhipu thinking mode enabled for {model}")
+            extra_body["enable_thinking"] = True
+            budget = thinking_budget or self._DEFAULT_THINKING_BUDGET
+            extra_body["thinking_budget"] = budget
+            logger.info(f"Bailian thinking mode enabled for {model}, budget={budget}")
+
+        # DashScope web search feature.
+        enable_search = kwargs.get("enable_search")
+        if enable_search is not None:
+            extra_body["enable_search"] = bool(enable_search)
+            search_options = kwargs.get("search_options")
+            if search_options:
+                extra_body["search_options"] = search_options
 
         # Sampling and OpenAI-compatible extras.
         passthrough_keys = [
@@ -106,21 +115,18 @@ class ZhipuAdapter(BaseLLMAdapter):
             "top_k",
             "frequency_penalty",
             "presence_penalty",
+            "repetition_penalty",
             "stop",
             "seed",
-            "user",
-            "user_id",
         ]
         for key in passthrough_keys:
             if key in kwargs and kwargs[key] is not None:
                 model_kwargs[key] = kwargs[key]
 
-        # GLM capability passthrough (tools, web_search, structured output, etc.).
+        # Feature passthrough (tools, structured output, etc.).
         feature_keys = [
             "tools",
             "tool_choice",
-            "parallel_tool_calls",
-            "tool_stream",
             "response_format",
         ]
         for key in feature_keys:
@@ -141,13 +147,13 @@ class ZhipuAdapter(BaseLLMAdapter):
         messages: List[BaseMessage],
         **kwargs
     ) -> AsyncIterator[StreamChunk]:
-        """Stream Zhipu responses, including reasoning and tool-call chunks."""
+        """Stream DashScope responses, including reasoning and tool-call chunks."""
         usage_data = None
 
         async for chunk in llm.astream(messages):
             content = chunk.content if hasattr(chunk, "content") else ""
             thinking = ""
-            tool_calls = _extract_tool_calls(chunk)
+            tool_calls = extract_tool_calls(chunk)
 
             if hasattr(chunk, "additional_kwargs") and chunk.additional_kwargs:
                 thinking = chunk.additional_kwargs.get("reasoning_content", "")
@@ -170,7 +176,7 @@ class ZhipuAdapter(BaseLLMAdapter):
         messages: List[BaseMessage],
         **kwargs
     ) -> LLMResponse:
-        """Invoke Zhipu and return normalized full response."""
+        """Invoke DashScope and return normalized full response."""
         response = await llm.ainvoke(messages)
 
         thinking = ""
@@ -184,18 +190,40 @@ class ZhipuAdapter(BaseLLMAdapter):
         return LLMResponse(
             content=response.content,
             thinking=thinking,
-            tool_calls=_extract_tool_calls(response),
+            tool_calls=extract_tool_calls(response),
             usage=usage,
             raw=response,
         )
 
     def supports_thinking(self) -> bool:
-        """GLM supports thinking mode via `thinking.type=enabled`."""
+        """Qwen3 hybrid thinking models support enable_thinking."""
         return True
 
     def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
-        """GLM thinking mode is toggle-based, not effort-based."""
-        return {"thinking": {"type": "enabled"}}
+        """
+        DashScope thinking mode uses enable_thinking + thinking_budget.
+
+        For Qwen3 hybrid models, both enable_thinking and thinking_budget are set.
+        For QwQ models (always-on thinking), callers should only pass
+        thinking_budget via create_llm; enable_thinking is handled automatically.
+
+        Args:
+            effort: Reasoning effort level mapped to thinking_budget.
+
+        Returns:
+            Dict with enable_thinking and thinking_budget parameters.
+        """
+        budget_map = {
+            "minimal": 1024,
+            "low": 2048,
+            "medium": self._DEFAULT_THINKING_BUDGET,
+            "high": 8192,
+        }
+        budget = budget_map.get(effort, self._DEFAULT_THINKING_BUDGET)
+        return {
+            "enable_thinking": True,
+            "thinking_budget": budget,
+        }
 
     async def fetch_models(
         self,
@@ -203,7 +231,7 @@ class ZhipuAdapter(BaseLLMAdapter):
         api_key: str
     ) -> List[Dict[str, str]]:
         """
-        Fetch available models from Zhipu /models endpoint.
+        Fetch available models from DashScope /models endpoint.
 
         Falls back to curated list on any error.
         """
@@ -234,6 +262,6 @@ class ZhipuAdapter(BaseLLMAdapter):
                     return sorted(models, key=lambda x: x["id"])
 
         except Exception as e:
-            logger.warning(f"Failed to fetch Zhipu models, using curated list: {e}")
+            logger.warning(f"Failed to fetch DashScope models, using curated list: {e}")
 
         return sorted(self._CURATED_MODELS, key=lambda x: x["id"])

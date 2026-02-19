@@ -18,6 +18,10 @@ class BaseLLMAdapter(ABC):
     interface for creating LLM instances and processing responses.
     """
 
+    # Default model used for test_connection when no model_id is provided.
+    # Subclasses should override for non-OpenAI providers.
+    _DEFAULT_TEST_MODEL = "gpt-3.5-turbo"
+
     @abstractmethod
     def create_llm(
         self,
@@ -143,15 +147,19 @@ class BaseLLMAdapter(ABC):
         """
         try:
             llm = self.create_llm(
-                model=model_id or "gpt-3.5-turbo",
+                model=model_id or self._DEFAULT_TEST_MODEL,
                 base_url=base_url,
                 api_key=api_key,
                 temperature=0.0,
                 streaming=False,
+                timeout=15.0,
+                max_retries=0,
+                max_tokens=10,
+                disable_thinking=True,
             )
             from langchain_core.messages import HumanMessage
-            response = await self.invoke(llm, [HumanMessage(content="test")])
-            if response and response.content:
+            response = await self.invoke(llm, [HumanMessage(content="hi")])
+            if response and (response.content or response.thinking):
                 return True, "Connection successful"
             return False, "No response from API"
         except Exception as e:

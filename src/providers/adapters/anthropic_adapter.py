@@ -23,6 +23,8 @@ class AnthropicAdapter(BaseLLMAdapter):
     Supports extended thinking for Claude models.
     """
 
+    _DEFAULT_TEST_MODEL = "claude-haiku-4-5-20250630"
+
     def create_llm(
         self,
         model: str,

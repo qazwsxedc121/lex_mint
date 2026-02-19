@@ -244,10 +244,15 @@ async def test_provider_connection(
     service: ModelConfigService = Depends(get_model_service)
 ):
     """测试提供商连接是否有效（使用提供的API Key）"""
+    provider = None
+    if test_request.provider_id:
+        provider = await service.get_provider(test_request.provider_id)
+
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
         api_key=test_request.api_key,
-        model_id=test_request.model_id
+        model_id=test_request.model_id,
+        provider=provider,
     )
     return ProviderTestResponse(success=success, message=message)
 
@@ -258,6 +263,14 @@ async def test_provider_stored_connection(
     service: ModelConfigService = Depends(get_model_service)
 ):
     """测试提供商连接是否有效（使用已存储的API Key）"""
+    # 获取提供商配置
+    provider = await service.get_provider(test_request.provider_id)
+    if not provider:
+        return ProviderTestResponse(
+            success=False,
+            message=f"Provider '{test_request.provider_id}' not found"
+        )
+
     # 获取已存储的API Key
     api_key = await service.get_api_key(test_request.provider_id)
     if not api_key:
@@ -269,7 +282,8 @@ async def test_provider_stored_connection(
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
         api_key=api_key,
-        model_id=test_request.model_id
+        model_id=test_request.model_id,
+        provider=provider
     )
     return ProviderTestResponse(success=success, message=message)
 
@@ -392,7 +406,8 @@ async def test_model_connection(
     success, message = await service.test_provider_connection(
         base_url=provider.base_url,
         api_key=api_key,
-        model_id=simple_model_id
+        model_id=simple_model_id,
+        provider=provider
     )
 
     return ProviderTestResponse(success=success, message=message)

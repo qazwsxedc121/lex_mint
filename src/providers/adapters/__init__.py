@@ -11,6 +11,7 @@ from .xai_adapter import XAIAdapter
 from .zhipu_adapter import ZhipuAdapter
 from .volcengine_adapter import VolcEngineAdapter
 from .gemini_adapter import GeminiAdapter
+from .bailian_adapter import BailianAdapter
 
 __all__ = [
     "OpenAIAdapter",
@@ -21,4 +22,5 @@ __all__ = [
     "ZhipuAdapter",
     "VolcEngineAdapter",
     "GeminiAdapter",
+    "BailianAdapter",
 ]
