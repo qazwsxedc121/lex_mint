@@ -73,13 +73,16 @@ async def test_builtin_provider_catalog_uses_dynamic_model_discovery():
 
     deepseek = next(p for p in providers if p.id == "deepseek")
     anthropic = next(p for p in providers if p.id == "anthropic")
+    siliconflow = next(p for p in providers if p.id == "siliconflow")
     xai = next(p for p in providers if p.id == "xai")
 
     assert deepseek.supports_model_list is True
     assert anthropic.supports_model_list is True
+    assert siliconflow.supports_model_list is True
     assert xai.supports_model_list is True
     assert "builtin_models" not in deepseek.model_dump()
     assert "builtin_models" not in anthropic.model_dump()
+    assert "builtin_models" not in siliconflow.model_dump()
     assert "builtin_models" not in xai.model_dump()
 
 

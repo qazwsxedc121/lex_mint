@@ -168,6 +168,20 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         supports_model_list=True,
     ),
 
+    "siliconflow": ProviderDefinition(
+        id="siliconflow",
+        name="SiliconFlow",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.siliconflow.cn/v1",
+        sdk_class="siliconflow",
+        default_capabilities=ModelCapabilities(
+            context_length=128000,
+            function_calling=True,
+            streaming=True,
+        ),
+        supports_model_list=True,
+    ),
+
     "bailian": ProviderDefinition(
         id="bailian",
         name="Alibaba Cloud (Qwen)",

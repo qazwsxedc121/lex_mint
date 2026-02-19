@@ -80,6 +80,54 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
+    async def test_sync_builtin_migrates_siliconflow_legacy_base_url(self):
+        """Builtin sync should migrate legacy SiliconFlow .com base URL to .cn."""
+        test_dir = Path(".tmp") / "test_sync_builtin_migrates_siliconflow_legacy_base_url"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        stale_config = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "siliconflow",
+                    "name": "SiliconFlow",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.siliconflow.com/v1",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "siliconflow",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(stale_config, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            provider = await service.get_provider("siliconflow")
+
+            assert provider is not None
+            assert provider.base_url == "https://api.siliconflow.cn/v1"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
     async def test_default_config_uses_single_bootstrap_model(self):
         """Fresh config should avoid preloading large builtin model catalogs."""
         test_dir = Path(".tmp") / "test_default_config_uses_single_bootstrap_model"

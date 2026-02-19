@@ -42,6 +42,11 @@ class ModelConfigService:
     _BOOTSTRAP_PROVIDER_ID = "deepseek"
     _BOOTSTRAP_MODEL_ID = "deepseek-chat"
     _BOOTSTRAP_MODEL_NAME = "DeepSeek Chat"
+    _BUILTIN_BASE_URL_MIGRATIONS = {
+        "siliconflow": {
+            "https://api.siliconflow.com/v1": "https://api.siliconflow.cn/v1",
+        },
+    }
 
     def __init__(self, config_path: Path = None, keys_path: Path = None):
         """
@@ -247,6 +252,9 @@ class ModelConfigService:
 
         changed = False
 
+        def _normalize_url(value: Any) -> str:
+            return str(value or "").strip().rstrip("/")
+
         for model in models:
             if not isinstance(model, dict):
                 continue
@@ -297,15 +305,28 @@ class ModelConfigService:
                 existing_provider_ids.add(definition.id)
                 changed = True
             else:
-                # Keep non-user-editable builtin capability flags in sync.
+                # Keep non-user-editable builtin metadata flags in sync.
                 provider_entry = existing_providers.get(definition.id)
                 if (
                     isinstance(provider_entry, dict)
                     and provider_entry.get("type") == "builtin"
-                    and provider_entry.get("supports_model_list") != definition.supports_model_list
                 ):
-                    provider_entry["supports_model_list"] = definition.supports_model_list
-                    changed = True
+                    current_base_url = _normalize_url(provider_entry.get("base_url"))
+                    for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
+                        if (
+                            current_base_url == _normalize_url(legacy_url)
+                            and _normalize_url(definition.base_url) == _normalize_url(target_url)
+                        ):
+                            provider_entry["base_url"] = target_url
+                            current_base_url = _normalize_url(target_url)
+                            changed = True
+
+                    if provider_entry.get("supports_model_list") != definition.supports_model_list:
+                        provider_entry["supports_model_list"] = definition.supports_model_list
+                        changed = True
+                    if provider_entry.get("sdk_class") != definition.sdk_class:
+                        provider_entry["sdk_class"] = definition.sdk_class
+                        changed = True
 
         default_key = (default_provider, default_model)
         bootstrap_key = (self._BOOTSTRAP_PROVIDER_ID, self._BOOTSTRAP_MODEL_ID)

@@ -19,6 +19,7 @@ from .adapters import (
     VolcEngineAdapter,
     GeminiAdapter,
     BailianAdapter,
+    SiliconFlowAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class AdapterRegistry:
         "volcengine": VolcEngineAdapter,
         "gemini": GeminiAdapter,
         "bailian": BailianAdapter,
+        "siliconflow": SiliconFlowAdapter,
     }
 
     # Mapping of API protocols to default adapter classes
