@@ -12,6 +12,7 @@ from src.api.services.local_llama_cpp_service import LocalLlamaCppService
 from src.api.services.language_detection_service import LanguageDetectionService
 from src.api.services.think_tag_filter import strip_think_blocks
 from src.agents.simple_llm import _filter_messages_by_context_boundary
+from src.providers.types import CallMode
 
 logger = logging.getLogger(__name__)
 
@@ -742,6 +743,7 @@ class CompressionService:
         config: Any,
         messages: Sequence[Dict[str, Any]],
         output_language_code: Optional[str],
+        allow_responses_fallback: bool = False,
     ) -> str:
         from langchain_core.messages import HumanMessage as HMsg
 
@@ -751,7 +753,8 @@ class CompressionService:
             formatted,
             output_language_code=output_language_code,
         )
-        response = await adapter.invoke(llm, [HMsg(content=prompt)])
+        invoke_kwargs = {"allow_responses_fallback": True} if allow_responses_fallback else {}
+        response = await adapter.invoke(llm, [HMsg(content=prompt)], **invoke_kwargs)
         return strip_think_blocks(getattr(response, "content", "") or "").strip()
 
     async def _summarize_text_group_with_adapter(
@@ -762,6 +765,7 @@ class CompressionService:
         config: Any,
         summaries: Sequence[str],
         output_language_code: Optional[str],
+        allow_responses_fallback: bool = False,
     ) -> str:
         from langchain_core.messages import HumanMessage as HMsg
 
@@ -770,7 +774,8 @@ class CompressionService:
             summaries,
             output_language_code=output_language_code,
         )
-        response = await adapter.invoke(llm, [HMsg(content=prompt)])
+        invoke_kwargs = {"allow_responses_fallback": True} if allow_responses_fallback else {}
+        response = await adapter.invoke(llm, [HMsg(content=prompt)], **invoke_kwargs)
         return strip_think_blocks(getattr(response, "content", "") or "").strip()
 
     async def _compress_with_model_config(
@@ -783,6 +788,7 @@ class CompressionService:
         context_length_tokens: int,
         output_language_code: Optional[str],
         output_language_meta: Dict[str, Any],
+        allow_responses_fallback: bool = False,
     ) -> Tuple[str, Dict[str, Any]]:
         started_at = time.perf_counter()
         chat_messages = self._only_chat_messages(compressible)
@@ -806,6 +812,7 @@ class CompressionService:
                 config=config,
                 messages=chat_messages,
                 output_language_code=output_language_code,
+                allow_responses_fallback=allow_responses_fallback,
             )
         else:
             mode = "hierarchical"
@@ -824,6 +831,7 @@ class CompressionService:
                     config=config,
                     messages=chunk,
                     output_language_code=output_language_code,
+                    allow_responses_fallback=allow_responses_fallback,
                 )
                 if chunk_summary:
                     level_summaries.append(chunk_summary)
@@ -851,6 +859,7 @@ class CompressionService:
                         config=config,
                         summaries=group,
                         output_language_code=output_language_code,
+                        allow_responses_fallback=allow_responses_fallback,
                     )
                     if merged:
                         reduced_summaries.append(merged)
@@ -867,6 +876,7 @@ class CompressionService:
                         config=config,
                         summaries=level_summaries,
                         output_language_code=output_language_code,
+                        allow_responses_fallback=allow_responses_fallback,
                     )
                     level_summaries = [forced] if forced else level_summaries[:1]
                     break
@@ -1015,6 +1025,13 @@ class CompressionService:
         model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
 
         adapter = model_service.get_adapter_for_provider(provider_config)
+        resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
+        effective_call_mode = (
+            resolved_call_mode
+            if isinstance(resolved_call_mode, CallMode)
+            else CallMode.AUTO
+        )
+        allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
         try:
             api_key = model_service.resolve_provider_api_key_sync(provider_config)
@@ -1029,9 +1046,18 @@ class CompressionService:
         )
 
         actual_model_id = f"{provider_config.id}:{model_config.id}"
-        print(f"[COMPRESS] Starting context compression (model: {actual_model_id})")
+        print(
+            f"[COMPRESS] Starting context compression "
+            f"(model: {actual_model_id}, call_mode: {effective_call_mode.value})"
+        )
         print(f"[COMPRESS] Compressing {compressed_count} messages")
-        logger.info(f"Context compression started: {compressed_count} messages, model: {actual_model_id}")
+        logger.info(
+            "Context compression started: %s messages, model: %s, call_mode=%s, responses_fallback=%s",
+            compressed_count,
+            actual_model_id,
+            effective_call_mode.value,
+            allow_responses_fallback,
+        )
 
         try:
             def llm_factory(*, max_tokens: int):
@@ -1042,6 +1068,7 @@ class CompressionService:
                     temperature=config.temperature,
                     streaming=False,
                     max_tokens=max_tokens,
+                    call_mode=effective_call_mode.value,
                 )
 
             full_response, stream_meta = await self._compress_with_model_config(
@@ -1052,6 +1079,7 @@ class CompressionService:
                 context_length_tokens=context_length_tokens,
                 output_language_code=output_language_code,
                 output_language_meta=output_language_meta,
+                allow_responses_fallback=allow_responses_fallback,
             )
             if not full_response:
                 raise RuntimeError("Compression produced empty summary.")
@@ -1195,6 +1223,13 @@ class CompressionService:
         model_service = ModelConfigService()
         model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
         adapter = model_service.get_adapter_for_provider(provider_config)
+        resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
+        effective_call_mode = (
+            resolved_call_mode
+            if isinstance(resolved_call_mode, CallMode)
+            else CallMode.AUTO
+        )
+        allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
         try:
             api_key = model_service.resolve_provider_api_key_sync(provider_config)
@@ -1209,8 +1244,17 @@ class CompressionService:
         )
 
         actual_model_id = f"{provider_config.id}:{model_config.id}"
-        print(f"[AUTO-COMPRESS] Starting auto-compression (model: {actual_model_id}, {compressed_count} messages)")
-        logger.info(f"Auto-compression started: {compressed_count} messages, model: {actual_model_id}")
+        print(
+            f"[AUTO-COMPRESS] Starting auto-compression "
+            f"(model: {actual_model_id}, call_mode: {effective_call_mode.value}, {compressed_count} messages)"
+        )
+        logger.info(
+            "Auto-compression started: %s messages, model: %s, call_mode=%s, responses_fallback=%s",
+            compressed_count,
+            actual_model_id,
+            effective_call_mode.value,
+            allow_responses_fallback,
+        )
 
         try:
             def llm_factory(*, max_tokens: int):
@@ -1221,6 +1265,7 @@ class CompressionService:
                     temperature=config.temperature,
                     streaming=False,
                     max_tokens=max_tokens,
+                    call_mode=effective_call_mode.value,
                 )
 
             full_response, auto_meta = await self._compress_with_model_config(
@@ -1231,6 +1276,7 @@ class CompressionService:
                 context_length_tokens=context_length_tokens,
                 output_language_code=output_language_code,
                 output_language_meta=output_language_meta,
+                allow_responses_fallback=allow_responses_fallback,
             )
             if not full_response:
                 raise RuntimeError("Compression produced empty summary.")

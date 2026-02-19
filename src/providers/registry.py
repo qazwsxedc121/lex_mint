@@ -54,6 +54,26 @@ class AdapterRegistry:
     }
 
     @classmethod
+    def resolve_sdk_type_for_provider(cls, provider: ProviderConfig) -> str:
+        """
+        Resolve the adapter key for a provider without instantiating the adapter.
+
+        Priority:
+        1) explicit provider.sdk_class
+        2) builtin provider definition sdk_class
+        3) protocol-based fallback
+        """
+        if provider.sdk_class:
+            return provider.sdk_class
+
+        if provider.type == ProviderType.BUILTIN:
+            builtin = get_builtin_provider(provider.id)
+            if builtin:
+                return builtin.sdk_class
+
+        return cls._protocol_adapters.get(provider.protocol, "openai")
+
+    @classmethod
     def get(cls, sdk_type: str) -> BaseLLMAdapter:
         """
         Get an adapter instance by SDK type.
@@ -81,21 +101,8 @@ class AdapterRegistry:
         Returns:
             Appropriate adapter instance for the provider
         """
-        # 1. Check if provider has explicit sdk_class override
-        if provider.sdk_class:
-            logger.debug(f"Using explicit sdk_class: {provider.sdk_class}")
-            return cls.get(provider.sdk_class)
-
-        # 2. For builtin providers, use the predefined sdk_class
-        if provider.type == ProviderType.BUILTIN:
-            builtin = get_builtin_provider(provider.id)
-            if builtin:
-                logger.debug(f"Using builtin sdk_class for {provider.id}: {builtin.sdk_class}")
-                return cls.get(builtin.sdk_class)
-
-        # 3. For custom providers, determine adapter from protocol
-        sdk_type = cls._protocol_adapters.get(provider.protocol, "openai")
-        logger.debug(f"Using protocol-based sdk for {provider.id}: {sdk_type}")
+        sdk_type = cls.resolve_sdk_type_for_provider(provider)
+        logger.debug(f"Resolved sdk for {provider.id}: {sdk_type}")
         return cls.get(sdk_type)
 
     @classmethod

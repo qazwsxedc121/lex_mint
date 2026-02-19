@@ -1,6 +1,6 @@
 import { Page, Locator, expect, APIRequestContext, request as pwRequest } from '@playwright/test';
 
-const API_BASE = 'http://localhost:8988';
+const API_BASE = `http://localhost:${process.env.API_PORT || '8901'}`;
 
 /**
  * Page Object for Group Chat interactions.

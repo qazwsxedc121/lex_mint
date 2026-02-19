@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic import model_validator
 from typing import List, Optional
 
-from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
+from src.providers.types import ApiProtocol, CallMode, ProviderType, ModelCapabilities
 
 
 class Provider(BaseModel):
@@ -16,6 +16,7 @@ class Provider(BaseModel):
     name: str = Field(..., description="提供商显示名称")
     type: ProviderType = Field(default=ProviderType.BUILTIN, description="提供商来源类型")
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
+    call_mode: CallMode = Field(default=CallMode.AUTO, description="调用模式")
     base_url: str = Field(..., description="API 基础 URL")
     api_keys: List[str] = Field(default_factory=list, description="多 Key 轮询列表")
     enabled: bool = Field(default=True, description="是否启用")
@@ -34,6 +35,7 @@ class Provider(BaseModel):
 
     # Runtime fields (not persisted)
     has_api_key: Optional[bool] = Field(default=None, description="是否已配置 API 密钥")
+    requires_api_key: Optional[bool] = Field(default=None, description="是否需要 API 密钥")
     api_key: Optional[str] = Field(default=None, description="API 密钥（仅用于传输，不持久化到配置文件）")
 
 
@@ -108,6 +110,7 @@ class ProviderCreate(BaseModel):
     name: str = Field(..., description="提供商显示名称")
     type: ProviderType = Field(default=ProviderType.CUSTOM, description="提供商类型")
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
+    call_mode: CallMode = Field(default=CallMode.AUTO, description="调用模式")
     base_url: str = Field(..., description="API 基础 URL")
     api_key: str = Field(default="", description="API 密钥")
     enabled: bool = Field(default=True, description="是否启用")
@@ -119,6 +122,7 @@ class ProviderUpdate(BaseModel):
     """更新提供商请求"""
     name: Optional[str] = Field(None, description="提供商显示名称")
     protocol: Optional[ApiProtocol] = Field(None, description="API 协议类型")
+    call_mode: Optional[CallMode] = Field(None, description="调用模式")
     base_url: Optional[str] = Field(None, description="API 基础 URL")
     enabled: Optional[bool] = Field(None, description="是否启用")
     api_key: Optional[str] = Field(None, min_length=1, description="API 密钥（可选，不提供则保持不变）")

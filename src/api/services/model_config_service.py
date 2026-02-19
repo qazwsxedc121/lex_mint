@@ -8,12 +8,14 @@ import aiofiles
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple, Any
+from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 
 from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
 from src.providers import (
     AdapterRegistry,
     ModelCapabilities,
+    CallMode,
     ProviderType,
     ApiProtocol,
     get_builtin_provider,
@@ -130,6 +132,7 @@ class ModelConfigService:
             "name": definition.name,
             "type": "builtin",
             "protocol": definition.protocol.value,
+            "call_mode": "auto",
             "base_url": definition.base_url,
             "api_keys": [],
             "enabled": enabled,
@@ -488,9 +491,11 @@ class ModelConfigService:
         for provider in config.providers:
             # 检查是否有 API 密钥
             has_key = await self.has_api_key(provider.id)
+            requires_key = self.provider_requires_api_key(provider)
             # 创建新的 Provider 对象，添加 has_api_key 字段
             provider_dict = provider.model_dump()
             provider_dict['has_api_key'] = has_key
+            provider_dict['requires_api_key'] = requires_key
             providers_with_keys.append(Provider(**provider_dict))
         return providers_with_keys
 
@@ -509,7 +514,9 @@ class ModelConfigService:
 
                 # 添加 has_api_key 标记
                 has_key = await self.has_api_key(provider_id)
+                requires_key = self.provider_requires_api_key(provider)
                 provider_dict['has_api_key'] = has_key
+                provider_dict['requires_api_key'] = requires_key
 
                 # 如果需要，添加遮罩后的API密钥
                 if include_masked_key and has_key:
@@ -544,7 +551,7 @@ class ModelConfigService:
             raise ValueError(f"Provider with id '{provider.id}' already exists")
 
         # 移除临时字段，避免保存到配置文件
-        provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key'})
+        provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
         config.providers.append(Provider(**provider_dict))
         await self.save_config(config)
 
@@ -560,7 +567,7 @@ class ModelConfigService:
         for i, provider in enumerate(config.providers):
             if provider.id == provider_id:
                 # 移除临时字段，避免保存到配置文件
-                updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key'})
+                updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
                 config.providers[i] = Provider(**updated_dict)
                 await self.save_config(config)
                 return
@@ -823,6 +830,7 @@ class ModelConfigService:
                 name=provider.name,
                 type=provider.type,
                 protocol=provider.protocol,
+                call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
                 base_url=base_url,
                 sdk_class=provider.sdk_class,
             )
@@ -942,9 +950,83 @@ class ModelConfigService:
             pass
         return None
 
-    def provider_requires_api_key(self, provider: Provider) -> bool:
-        """Return whether this provider requires a non-empty API key."""
-        return provider.protocol != ApiProtocol.OLLAMA
+    def provider_requires_api_key(self, provider: Provider | ProviderConfig) -> bool:
+        """
+        Return whether this provider requires a non-empty API key.
+
+        Uses resolved adapter family instead of protocol-only checks so custom
+        sdk overrides (for example sdk_class=ollama) behave correctly.
+        """
+        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
+        return sdk_type != "ollama"
+
+    @staticmethod
+    def _normalize_base_host(base_url: str) -> str:
+        """Extract normalized host from base URL (supports URLs without scheme)."""
+        if not base_url:
+            return ""
+
+        candidate = base_url.strip()
+        if not candidate:
+            return ""
+
+        if "://" not in candidate:
+            candidate = f"https://{candidate}"
+
+        try:
+            parsed = urlparse(candidate)
+            return (parsed.hostname or "").strip().lower().rstrip(".")
+        except Exception:
+            return ""
+
+    def is_openai_official_provider(self, provider: Provider | ProviderConfig) -> bool:
+        """
+        Determine whether a provider should be treated as OpenAI official.
+
+        Primary rule:
+        - provider id is "openai"
+
+        Fallback rule:
+        - base_url host is api.openai.com
+        """
+        provider_id = (getattr(provider, "id", "") or "").strip().lower()
+        if provider_id == "openai":
+            return True
+
+        base_url = getattr(provider, "base_url", "") or ""
+        host = self._normalize_base_host(base_url)
+        return host == "api.openai.com"
+
+    def resolve_effective_call_mode(self, provider: Provider | ProviderConfig) -> CallMode:
+        """
+        Resolve effective call mode with auto policy.
+
+        Auto policy:
+        - Anthropic/Gemini/Ollama adapter families -> native
+        - OpenAI official -> responses
+        - Others -> chat_completions
+        """
+        raw_mode = getattr(provider, "call_mode", CallMode.AUTO)
+        if isinstance(raw_mode, CallMode):
+            configured_mode = raw_mode
+        else:
+            try:
+                configured_mode = CallMode(raw_mode)
+            except Exception:
+                configured_mode = CallMode.AUTO
+
+        if configured_mode != CallMode.AUTO:
+            return configured_mode
+
+        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
+
+        if sdk_type in {"anthropic", "gemini", "ollama"}:
+            return CallMode.NATIVE
+        if self.is_openai_official_provider(provider_cfg):
+            return CallMode.RESPONSES
+        return CallMode.CHAT_COMPLETIONS
 
     def resolve_provider_api_key_sync(self, provider: Provider) -> str:
         """
@@ -981,6 +1063,7 @@ class ModelConfigService:
             name=provider.name,
             type=provider.type if hasattr(provider, 'type') and provider.type else ProviderType.BUILTIN,
             protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
+            call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
             base_url=provider.base_url,
             enabled=provider.enabled,
             default_capabilities=provider.default_capabilities,

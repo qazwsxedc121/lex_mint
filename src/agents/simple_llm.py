@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Base
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.file_service import FileService
-from src.providers.types import TokenUsage
+from src.providers.types import CallMode, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -413,6 +413,13 @@ async def call_llm_stream(
 
     # Get the appropriate adapter via registry (no text matching!)
     adapter = model_service.get_adapter_for_provider(provider_config)
+    resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
+    effective_call_mode = (
+        resolved_call_mode
+        if isinstance(resolved_call_mode, CallMode)
+        else CallMode.AUTO
+    )
+    allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
     # Determine reasoning behavior from explicit mode selection
     reasoning_mode = (reasoning_effort or "").strip().lower()
@@ -465,6 +472,7 @@ async def call_llm_stream(
         api_key=api_key,
         temperature=temperature_value,
         streaming=True,
+        call_mode=effective_call_mode.value,
         thinking_enabled=thinking_enabled,
         reasoning_effort=effective_reasoning_effort,
         disable_thinking=explicit_disable_reasoning,
@@ -474,6 +482,7 @@ async def call_llm_stream(
     actual_model_id = f"{provider_config.id}:{model_config.id}"
 
     print(f"[LLM] Preparing streaming call (model: {actual_model_id})")
+    print(f"      Call mode: {effective_call_mode.value}")
     print(f"      History messages: {len(messages)}")
     if system_prompt:
         print(f"      Using system prompt: {system_prompt[:50]}...")
@@ -584,7 +593,8 @@ async def call_llm_stream(
 
             # Stream via adapter (unified interface)
             active_llm = llm_for_call if tools else llm
-            async for chunk in adapter.stream(active_llm, current_messages):
+            stream_kwargs = {"allow_responses_fallback": True} if allow_responses_fallback else {}
+            async for chunk in adapter.stream(active_llm, current_messages, **stream_kwargs):
                 # Handle thinking/reasoning content
                 if chunk.thinking and not explicit_disable_reasoning:
                     full_reasoning += chunk.thinking
@@ -715,7 +725,11 @@ async def call_llm_stream(
         from langchain_core.messages import AIMessage as AIMsg
         response_msg = AIMsg(content=full_response)
 
-        log_extra_params = {"request_params": request_params}
+        log_extra_params = {
+            "request_params": request_params,
+            "call_mode": effective_call_mode.value,
+            "responses_fallback_enabled": allow_responses_fallback,
+        }
         if explicit_disable_reasoning:
             log_extra_params["thinking_enabled"] = False
             log_extra_params["reasoning_mode"] = "none"

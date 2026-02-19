@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage
+from types import SimpleNamespace
 
 from src.agents.simple_llm import call_llm, call_llm_stream
 from src.providers.types import TokenUsage
@@ -23,7 +24,17 @@ class TestCallLLM:
         mock_llm.model_name = "deepseek-chat"
 
         # Mock ModelConfigService
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_capabilities = Mock()
+        mock_capabilities.context_length = None
+
         mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
         mock_service.get_llm_instance.return_value = mock_llm
         mock_model_service_class.return_value = mock_service
 
@@ -52,7 +63,17 @@ class TestCallLLM:
         mock_llm.invoke.return_value = mock_response
         mock_llm.model_name = "deepseek-chat"
 
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_capabilities = Mock()
+        mock_capabilities.context_length = None
+
         mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
         mock_service.get_llm_instance.return_value = mock_llm
         mock_model_service_class.return_value = mock_service
 
@@ -82,7 +103,17 @@ class TestCallLLM:
         mock_llm.invoke.side_effect = Exception("API Error")
         mock_llm.model_name = "deepseek-chat"
 
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_capabilities = Mock()
+        mock_capabilities.context_length = None
+
         mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
         mock_service.get_llm_instance.return_value = mock_llm
         mock_model_service_class.return_value = mock_service
 
@@ -122,7 +153,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         # Mock adapter
         mock_adapter = Mock()
@@ -137,16 +168,20 @@ class TestCallLLMStream:
                 chunk.content = chunk_text
                 chunk.thinking = None
                 chunk.usage = None
+                chunk.raw = None
                 yield chunk
 
             # Final chunk with usage
             final_chunk = Mock()
             final_chunk.content = ""
             final_chunk.thinking = None
-            final_chunk.usage = TokenUsage(
-                prompt_tokens=10,
-                completion_tokens=20,
-                total_tokens=30
+            final_chunk.usage = None
+            final_chunk.raw = SimpleNamespace(
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                    "total_tokens": 30,
+                }
             )
             yield final_chunk
 
@@ -171,7 +206,7 @@ class TestCallLLMStream:
         assert "".join(text_chunks) == "Hello world!"
 
         # Verify usage data
-        usage_chunks = [c for c in result_chunks if isinstance(c, dict)]
+        usage_chunks = [c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"]
         assert len(usage_chunks) == 1
         assert usage_chunks[0]["type"] == "usage"
         assert usage_chunks[0]["usage"].total_tokens == 30
@@ -194,7 +229,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         # Mock adapter
         mock_adapter = Mock()
@@ -211,6 +246,7 @@ class TestCallLLMStream:
             chunk.content = "Response"
             chunk.thinking = None
             chunk.usage = None
+            chunk.raw = None
             yield chunk
 
         mock_adapter.stream = mock_stream
@@ -250,7 +286,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         # Mock adapter
         mock_adapter = Mock()
@@ -263,6 +299,7 @@ class TestCallLLMStream:
             thinking_chunk.content = None
             thinking_chunk.thinking = "Let me analyze this..."
             thinking_chunk.usage = None
+            thinking_chunk.raw = None
             yield thinking_chunk
 
             # Content phase
@@ -270,6 +307,7 @@ class TestCallLLMStream:
             content_chunk.content = "The answer is 42."
             content_chunk.thinking = None
             content_chunk.usage = None
+            content_chunk.raw = None
             yield content_chunk
 
         mock_adapter.stream = mock_stream
@@ -313,7 +351,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         mock_adapter = Mock()
         mock_llm = Mock()

@@ -15,6 +15,13 @@ import i18n from '../../../i18n';
 const BAILIAN_PROVIDER_ID = 'bailian';
 const BAILIAN_DEFAULT_TEST_MODEL = 'qwen-plus';
 const PROMPT_MODEL_PREVIEW_LIMIT = 12;
+const SHOW_ADVANCED_FIELD = '__show_advanced';
+
+const showAdvanced = (formData: Record<string, any>) => Boolean(formData?.[SHOW_ADVANCED_FIELD]);
+const protocolLabel = (protocol?: string) =>
+  i18n.t(`settings:providers.field.protocol.option.${protocol || 'openai'}`, {
+    defaultValue: protocol || 'openai',
+  });
 
 async function pickBailianTestModel(provider: Provider): Promise<string | undefined | null> {
   try {
@@ -83,7 +90,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
             {row.name}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {row.type === 'builtin' ? i18n.t('settings:configField.builtin') : i18n.t('settings:configField.custom')} - {row.protocol || 'openai'}
+            {row.type === 'builtin' ? i18n.t('settings:configField.builtin') : i18n.t('settings:configField.custom')} - {protocolLabel(row.protocol)}
           </div>
         </div>
       )
@@ -139,18 +146,41 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       required: true
     },
     {
+      type: 'checkbox',
+      name: SHOW_ADVANCED_FIELD,
+      get label() { return i18n.t('settings:providers.field.advanced'); },
+      defaultValue: false,
+      get helpText() { return i18n.t('settings:providers.field.advanced.help'); }
+    },
+    {
       type: 'select',
       name: 'protocol',
       get label() { return i18n.t('settings:providers.field.protocol'); },
-      required: true,
+      required: false,
       defaultValue: 'openai',
       options: [
-        { value: 'openai', label: 'OpenAI' },
-        { value: 'anthropic', label: 'Anthropic' },
-        { value: 'gemini', label: 'Google Gemini' },
-        { value: 'ollama', label: 'Ollama' }
+        { value: 'openai', label: i18n.t('settings:providers.field.protocol.option.openai') },
+        { value: 'anthropic', label: i18n.t('settings:providers.field.protocol.option.anthropic') },
+        { value: 'gemini', label: i18n.t('settings:providers.field.protocol.option.gemini') },
+        { value: 'ollama', label: i18n.t('settings:providers.field.protocol.option.ollama') }
       ],
-      get helpText() { return i18n.t('settings:providers.field.protocol.help'); }
+      get helpText() { return i18n.t('settings:providers.field.protocol.help'); },
+      condition: (formData) => showAdvanced(formData)
+    },
+    {
+      type: 'select',
+      name: 'call_mode',
+      get label() { return i18n.t('settings:providers.field.callMode'); },
+      required: false,
+      defaultValue: 'auto',
+      options: [
+        { value: 'auto', label: i18n.t('settings:providers.field.callMode.option.auto') },
+        { value: 'native', label: i18n.t('settings:providers.field.callMode.option.native') },
+        { value: 'chat_completions', label: i18n.t('settings:providers.field.callMode.option.chatCompletions') },
+        { value: 'responses', label: i18n.t('settings:providers.field.callMode.option.responses') }
+      ],
+      get helpText() { return i18n.t('settings:providers.field.callMode.help'); },
+      condition: (formData) => showAdvanced(formData)
     },
     {
       type: 'text',
@@ -191,17 +221,40 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       required: true
     },
     {
+      type: 'checkbox',
+      name: SHOW_ADVANCED_FIELD,
+      get label() { return i18n.t('settings:providers.field.advanced'); },
+      defaultValue: false,
+      get helpText() { return i18n.t('settings:providers.field.advanced.help'); }
+    },
+    {
       type: 'select',
       name: 'protocol',
       get label() { return i18n.t('settings:providers.field.protocol'); },
-      required: true,
+      required: false,
       options: [
-        { value: 'openai', label: 'OpenAI' },
-        { value: 'anthropic', label: 'Anthropic' },
-        { value: 'gemini', label: 'Google Gemini' },
-        { value: 'ollama', label: 'Ollama' }
+        { value: 'openai', label: i18n.t('settings:providers.field.protocol.option.openai') },
+        { value: 'anthropic', label: i18n.t('settings:providers.field.protocol.option.anthropic') },
+        { value: 'gemini', label: i18n.t('settings:providers.field.protocol.option.gemini') },
+        { value: 'ollama', label: i18n.t('settings:providers.field.protocol.option.ollama') }
       ],
-      get helpText() { return i18n.t('settings:providers.field.protocol.help'); }
+      get helpText() { return i18n.t('settings:providers.field.protocol.help'); },
+      condition: (formData) => showAdvanced(formData)
+    },
+    {
+      type: 'select',
+      name: 'call_mode',
+      get label() { return i18n.t('settings:providers.field.callMode'); },
+      required: false,
+      defaultValue: 'auto',
+      options: [
+        { value: 'auto', label: i18n.t('settings:providers.field.callMode.option.auto') },
+        { value: 'native', label: i18n.t('settings:providers.field.callMode.option.native') },
+        { value: 'chat_completions', label: i18n.t('settings:providers.field.callMode.option.chatCompletions') },
+        { value: 'responses', label: i18n.t('settings:providers.field.callMode.option.responses') }
+      ],
+      get helpText() { return i18n.t('settings:providers.field.callMode.help'); },
+      condition: (formData) => showAdvanced(formData)
     },
     {
       type: 'text',
@@ -246,7 +299,10 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       label: '',
       icon: SignalIcon,
       get tooltip() { return i18n.t('settings:providers.action.testConnection'); },
-      disabled: (item: Provider) => !item.has_api_key,
+      disabled: (item: Provider) => {
+        const requiresApiKey = item.requires_api_key !== false;
+        return requiresApiKey && !item.has_api_key;
+      },
       onClick: async (item: Provider) => {
         try {
           let selectedModelId: string | undefined;

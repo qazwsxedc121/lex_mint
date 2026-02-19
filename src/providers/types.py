@@ -16,6 +16,14 @@ class ApiProtocol(str, Enum):
     OLLAMA = "ollama"           # Ollama local models
 
 
+class CallMode(str, Enum):
+    """Provider call mode within an adapter family."""
+    AUTO = "auto"                           # Resolve mode automatically
+    NATIVE = "native"                       # Use provider-native request shape
+    CHAT_COMPLETIONS = "chat_completions"   # OpenAI Chat Completions shape
+    RESPONSES = "responses"                 # OpenAI Responses shape
+
+
 class ProviderType(str, Enum):
     """Provider source type"""
     BUILTIN = "builtin"    # Built-in provider (e.g., deepseek, openai)
@@ -168,6 +176,7 @@ class ProviderConfig(BaseModel):
 
     # === API configuration ===
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API protocol type")
+    call_mode: CallMode = Field(default=CallMode.AUTO, description="Provider call mode")
     base_url: str = Field(..., description="API base URL")
     api_keys: List[str] = Field(default_factory=list, description="Multiple API keys for rotation")
 
