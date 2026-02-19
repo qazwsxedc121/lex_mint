@@ -27,20 +27,52 @@ class RagConfigResponse(BaseModel):
     embedding_local_gguf_n_threads: int
     embedding_local_gguf_n_gpu_layers: int
     embedding_local_gguf_normalize: bool
+    embedding_batch_size: int
+    embedding_batch_delay_seconds: float
+    embedding_batch_max_retries: int
     chunk_size: int
     chunk_overlap: int
+    retrieval_mode: str
     top_k: int
     score_threshold: float
     recall_k: int
+    vector_recall_k: int
+    bm25_recall_k: int
+    bm25_min_term_coverage: float
+    fusion_top_k: int
+    fusion_strategy: str
+    rrf_k: int
+    vector_weight: float
+    bm25_weight: float
     max_per_doc: int
     reorder_strategy: str
+    context_neighbor_window: int
+    context_neighbor_max_total: int
+    context_neighbor_dedup_coverage: float
+    retrieval_query_planner_enabled: bool
+    retrieval_query_planner_model_id: str
+    retrieval_query_planner_max_queries: int
+    retrieval_query_planner_timeout_seconds: int
+    structured_source_context_enabled: bool
+    query_transform_enabled: bool
+    query_transform_mode: str
+    query_transform_model_id: str
+    query_transform_timeout_seconds: int
+    query_transform_guard_enabled: bool
+    query_transform_guard_max_new_terms: int
+    query_transform_crag_enabled: bool
+    query_transform_crag_lower_threshold: float
+    query_transform_crag_upper_threshold: float
     rerank_enabled: bool
     rerank_api_model: str
     rerank_api_base_url: str
     rerank_api_key: str = ""
     rerank_timeout_seconds: int
     rerank_weight: float
+    vector_store_backend: str
+    vector_sqlite_path: str
     persist_directory: str
+    bm25_sqlite_path: str
 
 
 class RagConfigUpdate(BaseModel):
@@ -56,20 +88,52 @@ class RagConfigUpdate(BaseModel):
     embedding_local_gguf_n_threads: Optional[int] = Field(None, ge=0, le=256)
     embedding_local_gguf_n_gpu_layers: Optional[int] = Field(None, ge=0, le=1024)
     embedding_local_gguf_normalize: Optional[bool] = None
+    embedding_batch_size: Optional[int] = Field(None, ge=1, le=1000)
+    embedding_batch_delay_seconds: Optional[float] = Field(None, ge=0.0, le=60.0)
+    embedding_batch_max_retries: Optional[int] = Field(None, ge=0, le=20)
     chunk_size: Optional[int] = Field(None, ge=100, le=10000)
     chunk_overlap: Optional[int] = Field(None, ge=0, le=5000)
+    retrieval_mode: Optional[Literal["vector", "bm25", "hybrid"]] = None
     top_k: Optional[int] = Field(None, ge=1, le=50)
     score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     recall_k: Optional[int] = Field(None, ge=1, le=200)
-    max_per_doc: Optional[int] = Field(None, ge=1, le=20)
+    vector_recall_k: Optional[int] = Field(None, ge=1, le=500)
+    bm25_recall_k: Optional[int] = Field(None, ge=1, le=500)
+    bm25_min_term_coverage: Optional[float] = Field(None, ge=0.0, le=1.0)
+    fusion_top_k: Optional[int] = Field(None, ge=1, le=500)
+    fusion_strategy: Optional[Literal["rrf"]] = None
+    rrf_k: Optional[int] = Field(None, ge=1, le=500)
+    vector_weight: Optional[float] = Field(None, ge=0.0, le=10.0)
+    bm25_weight: Optional[float] = Field(None, ge=0.0, le=10.0)
+    max_per_doc: Optional[int] = Field(None, ge=0, le=20)
     reorder_strategy: Optional[Literal["none", "long_context"]] = None
+    context_neighbor_window: Optional[int] = Field(None, ge=0, le=10)
+    context_neighbor_max_total: Optional[int] = Field(None, ge=0, le=200)
+    context_neighbor_dedup_coverage: Optional[float] = Field(None, ge=0.5, le=1.0)
+    retrieval_query_planner_enabled: Optional[bool] = None
+    retrieval_query_planner_model_id: Optional[str] = None
+    retrieval_query_planner_max_queries: Optional[int] = Field(None, ge=1, le=8)
+    retrieval_query_planner_timeout_seconds: Optional[int] = Field(None, ge=1, le=30)
+    structured_source_context_enabled: Optional[bool] = None
+    query_transform_enabled: Optional[bool] = None
+    query_transform_mode: Optional[Literal["none", "rewrite"]] = None
+    query_transform_model_id: Optional[str] = None
+    query_transform_timeout_seconds: Optional[int] = Field(None, ge=1, le=30)
+    query_transform_guard_enabled: Optional[bool] = None
+    query_transform_guard_max_new_terms: Optional[int] = Field(None, ge=0, le=20)
+    query_transform_crag_enabled: Optional[bool] = None
+    query_transform_crag_lower_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    query_transform_crag_upper_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     rerank_enabled: Optional[bool] = None
     rerank_api_model: Optional[str] = None
     rerank_api_base_url: Optional[str] = None
     rerank_api_key: Optional[str] = None
     rerank_timeout_seconds: Optional[int] = Field(None, ge=1, le=120)
     rerank_weight: Optional[float] = Field(None, ge=0.0, le=1.0)
+    vector_store_backend: Optional[Literal["sqlite_vec", "chroma"]] = None
+    vector_sqlite_path: Optional[str] = None
     persist_directory: Optional[str] = None
+    bm25_sqlite_path: Optional[str] = None
 
 
 def get_rag_config_service() -> RagConfigService:
@@ -115,6 +179,40 @@ async def update_config(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported reorder strategy: {update_dict['reorder_strategy']}"
+                )
+        if 'query_transform_mode' in update_dict:
+            allowed_modes = {"none", "rewrite"}
+            if update_dict['query_transform_mode'] not in allowed_modes:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported query transform mode: {update_dict['query_transform_mode']}"
+                )
+        if 'query_transform_crag_lower_threshold' in update_dict or 'query_transform_crag_upper_threshold' in update_dict:
+            current = service.get_flat_config()
+            lower_value = float(
+                update_dict.get('query_transform_crag_lower_threshold', current['query_transform_crag_lower_threshold'])
+            )
+            upper_value = float(
+                update_dict.get('query_transform_crag_upper_threshold', current['query_transform_crag_upper_threshold'])
+            )
+            if lower_value >= upper_value:
+                raise HTTPException(
+                    status_code=400,
+                    detail="query_transform_crag_lower_threshold must be smaller than query_transform_crag_upper_threshold"
+                )
+        if 'fusion_strategy' in update_dict:
+            allowed_fusion = {"rrf"}
+            if update_dict['fusion_strategy'] not in allowed_fusion:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported fusion strategy: {update_dict['fusion_strategy']}"
+                )
+        if 'vector_store_backend' in update_dict:
+            allowed_backends = {"sqlite_vec", "chroma"}
+            if update_dict['vector_store_backend'] not in allowed_backends:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported vector backend: {update_dict['vector_store_backend']}"
                 )
 
         service.save_flat_config(update_dict)

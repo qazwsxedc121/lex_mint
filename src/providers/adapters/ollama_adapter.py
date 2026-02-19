@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
+from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ class OllamaAdapter(BaseLLMAdapter):
             yield StreamChunk(
                 content=content,
                 thinking=thinking,
+                tool_calls=extract_tool_calls(chunk),
                 usage=usage_data,
                 raw=chunk,
             )
@@ -197,10 +199,42 @@ class OllamaAdapter(BaseLLMAdapter):
                     model_name = model.get("name", "")
                     # Remove tag suffix for display name
                     display_name = model_name.split(":")[0] if ":" in model_name else model_name
-                    models.append({
+
+                    entry = {
                         "id": model_name,
                         "name": display_name.title(),
-                    })
+                    }
+
+                    # Parse Ollama details for capability hints
+                    details = model.get("details", {})
+                    if details:
+                        families = details.get("families") or []
+                        family = details.get("family", "")
+                        all_families = set(families + ([family] if family else []))
+
+                        has_vision = any(
+                            f in all_families
+                            for f in ("clip", "mllama", "llava")
+                        ) or "vision" in model_name.lower()
+
+                        tags = []
+                        if has_vision:
+                            tags.append("vision")
+                        if not tags:
+                            tags.append("chat")
+
+                        entry["capabilities"] = {
+                            "context_length": 4096,
+                            "vision": has_vision,
+                            "function_calling": False,
+                            "reasoning": False,
+                            "streaming": True,
+                            "file_upload": False,
+                            "image_output": False,
+                        }
+                        entry["tags"] = tags
+
+                    models.append(entry)
 
                 return sorted(models, key=lambda x: x["id"])
 

@@ -1,6 +1,6 @@
 # API Keys Configuration Template
-# Copy this file to keys_config.yaml and add your actual API keys
-# The keys_config.yaml file is gitignored for security
+# Copy this file to: config/local/keys_config.yaml
+# Shared file ~/.lex_mint/keys_config.yaml is bootstrap-only (read-only in runtime)
 
 providers:
   deepseek:

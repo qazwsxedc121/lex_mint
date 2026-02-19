@@ -10,6 +10,7 @@ from src.state.agent_state import SimpleAgentState
 def mock_llm_response():
     """Mock LLM response."""
     mock = Mock()
+    mock.role = "assistant"
     mock.content = "Hello! This is a test response."
     return mock
 
@@ -21,7 +22,12 @@ def test_chat_node(mock_llm_response):
         "current_step": 0
     }
     
-    with patch('src.agents.simple_agent.ChatOpenAI') as mock_llm:
+    with patch('src.agents.simple_agent.ModelConfigService') as mock_model_service, \
+         patch('src.agents.simple_agent.ChatOpenAI') as mock_llm:
+        mock_provider = Mock()
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_model_service.return_value.get_model_and_provider_sync.return_value = (None, mock_provider)
+        mock_model_service.return_value.resolve_provider_api_key_sync.return_value = "test_key"
         mock_llm.return_value.invoke.return_value = mock_llm_response
         
         result = chat_node(state)

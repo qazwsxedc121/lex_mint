@@ -96,10 +96,15 @@ export const ProjectExplorer: React.FC = () => {
   const { tree, loading: treeLoading, error: treeError, refreshTree } = useFileTree(projectId || null);
 
   // Load file content when a file is selected
-  const { content, loading: contentLoading, error: contentError } = useFileContent(
+  const { content, loading: contentLoading, error: contentError, refreshContent } = useFileContent(
     projectId || null,
     selectedFilePath
   );
+
+  const handleRefreshProject = useCallback(async () => {
+    await refreshTree();
+    await refreshContent();
+  }, [refreshTree, refreshContent]);
 
   const handleFileSelect = (path: string) => {
     setSelectedFilePath(path);
@@ -333,6 +338,7 @@ export const ProjectExplorer: React.FC = () => {
                 content={content}
                 loading={contentLoading}
                 error={contentError}
+                onRefreshProject={handleRefreshProject}
                 chatSidebarOpen={chatSidebarOpen}
                 fileTreeOpen={fileTreeOpen}
                 onToggleChatSidebar={toggleChatSidebar}

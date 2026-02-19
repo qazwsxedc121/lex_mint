@@ -10,5 +10,6 @@ export { LoadingSpinner } from './LoadingSpinner';
 export { Modal } from './Modal';
 export { PageHeader } from './PageHeader';
 export { StatusBadge } from './StatusBadge';
+export { StatusToggle } from './StatusToggle';
 export { SuccessMessage } from './SuccessMessage';
 export { Table } from './Table';

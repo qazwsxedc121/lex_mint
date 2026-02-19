@@ -5,12 +5,19 @@
 import React, { useEffect, useRef } from 'react';
 import type { Message } from '../../../types/message';
 import { MessageBubble } from './MessageBubble';
+import type { ChatTargetType } from '../../../types/message';
 
 interface MessageListProps {
   messages: Message[];
   loading?: boolean;
   isStreaming?: boolean;
   sessionId?: string;
+  currentTargetType?: ChatTargetType;
+  currentAssistantId?: string | null;
+  currentModelId?: string | null;
+  assistantNameById?: Record<string, string>;
+  assistantModelIdById?: Record<string, string>;
+  modelNameById?: Record<string, string>;
   onEditMessage?: (messageId: string, content: string) => void;
   onSaveMessageOnly?: (messageId: string, content: string) => void;
   onRegenerateMessage?: (messageId: string) => void;
@@ -24,6 +31,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   loading = false,
   isStreaming = false,
   sessionId,
+  currentTargetType = 'model',
+  currentAssistantId,
+  currentModelId,
+  assistantNameById = {},
+  assistantModelIdById = {},
+  modelNameById = {},
   onEditMessage,
   onSaveMessageOnly,
   onRegenerateMessage,
@@ -54,6 +67,12 @@ export const MessageList: React.FC<MessageListProps> = ({
               messageIndex={index}
               isStreaming={isStreaming}
               sessionId={sessionId}
+              currentTargetType={currentTargetType}
+              currentAssistantId={currentAssistantId}
+              currentModelId={currentModelId}
+              assistantNameById={assistantNameById}
+              assistantModelIdById={assistantModelIdById}
+              modelNameById={modelNameById}
               onEdit={onEditMessage}
               onSaveOnly={onSaveMessageOnly}
               onRegenerate={onRegenerateMessage}
@@ -80,5 +99,4 @@ export const MessageList: React.FC<MessageListProps> = ({
     </div>
   );
 };
-
 

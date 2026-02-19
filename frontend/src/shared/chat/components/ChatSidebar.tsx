@@ -16,6 +16,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
   EllipsisHorizontalIcon,
+  UsersIcon,
 } from '@heroicons/react/24/outline';
 import {
   DndContext,
@@ -35,6 +36,7 @@ import { SessionTransferModal } from './SessionTransferModal';
 import { FolderModal } from './FolderModal';
 import { DraggableSession } from './DraggableSession';
 import { DroppableFolderHeader } from './DroppableFolderHeader';
+import { GroupChatCreateModal } from './GroupChatCreateModal';
 
 /**
  * Group sessions by time period based on updated_at (or created_at fallback).
@@ -128,6 +130,7 @@ export const ChatSidebar: React.FC = () => {
     data: any;
   } | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [showGroupChatModal, setShowGroupChatModal] = useState(false);
 
   // Folder UI states
   const [folderModalState, setFolderModalState] = useState<{
@@ -574,6 +577,13 @@ export const ChatSidebar: React.FC = () => {
         >
           <PlusIcon className="h-5 w-5" />
         </button>
+        <button
+          onClick={() => setShowGroupChatModal(true)}
+          className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title={t('sidebar.groupChat')}
+        >
+          <UsersIcon className="h-5 w-5" />
+        </button>
 
         {/* "More" dropdown menu */}
         <div data-name="chat-sidebar-more-menu" className="relative">
@@ -831,6 +841,18 @@ export const ChatSidebar: React.FC = () => {
         onClose={() => setTransferState(null)}
         onSelectTarget={handleSelectTransferTarget}
         onRetry={loadProjects}
+      />
+      <GroupChatCreateModal
+        open={showGroupChatModal}
+        onClose={() => setShowGroupChatModal(false)}
+        onCreated={(sessionId) => {
+          void refreshSessions();
+          if (navigation) {
+            navigation.navigateToSession(sessionId);
+          } else {
+            navigate(`/chat/${sessionId}`);
+          }
+        }}
       />
     </div>
   );

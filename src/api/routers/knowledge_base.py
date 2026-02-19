@@ -4,12 +4,12 @@ Knowledge Base API Router
 Provides CRUD endpoints for knowledge bases and document management.
 """
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
-from pydantic import BaseModel
 from typing import List, Optional
 import logging
 import uuid
 import asyncio
 import os
+import aiofiles
 from pathlib import Path
 
 from ..models.knowledge_base import (
@@ -20,16 +20,56 @@ from ..models.knowledge_base import (
     KnowledgeBaseChunk,
 )
 from ..services.knowledge_base_service import KnowledgeBaseService
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
 ALLOWED_EXTENSIONS = {'.txt', '.md', '.pdf', '.docx', '.html'}
+UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
+MAX_KB_UPLOAD_SIZE_BYTES = max(1, int(settings.max_file_size_mb)) * 1024 * 1024
 
 
 def get_kb_service() -> KnowledgeBaseService:
     """Dependency injection for KnowledgeBaseService."""
     return KnowledgeBaseService()
+
+
+async def _persist_upload_file(
+    upload_file: UploadFile,
+    storage_path: Path,
+    *,
+    chunk_size_bytes: int = UPLOAD_CHUNK_SIZE_BYTES,
+    max_size_bytes: int = MAX_KB_UPLOAD_SIZE_BYTES,
+) -> int:
+    """Persist uploaded content incrementally to avoid large in-memory buffers."""
+    file_size = 0
+    try:
+        async with aiofiles.open(storage_path, 'wb') as f:
+            while True:
+                chunk = await upload_file.read(chunk_size_bytes)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > max_size_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Max size is {settings.max_file_size_mb} MB",
+                    )
+                await f.write(chunk)
+        return file_size
+    except HTTPException:
+        storage_path.unlink(missing_ok=True)
+        raise
+    except Exception as e:
+        storage_path.unlink(missing_ok=True)
+        logger.error(f"Failed to persist uploaded file '{upload_file.filename}' to {storage_path}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+    finally:
+        try:
+            await upload_file.close()
+        except Exception:
+            pass
 
 
 # ==================== Knowledge Base CRUD ====================
@@ -158,17 +198,12 @@ async def upload_document(
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    # Read file content
-    content = await file.read()
-    file_size = len(content)
-
     # Generate document ID
     doc_id = str(uuid.uuid4())[:8]
 
     # Save file to storage
     storage_path = service.get_document_storage_path(kb_id, doc_id, filename)
-    with open(storage_path, 'wb') as f:
-        f.write(content)
+    file_size = await _persist_upload_file(file, storage_path)
 
     # Create document record with pending status
     doc = KnowledgeBaseDocument(
@@ -252,33 +287,53 @@ async def list_chunks(
     try:
         from ..services.rag_config_service import RagConfigService
         rag_config = RagConfigService()
-        persist_dir = Path(rag_config.config.storage.persist_directory)
-        if not persist_dir.is_absolute():
-            persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
-
-        import chromadb
-        client = chromadb.PersistentClient(path=str(persist_dir))
-        collection_name = f"kb_{kb_id}"
-        collection = client.get_collection(collection_name)
-        query = {"include": ["documents", "metadatas"]}
-        if doc_id:
-            query["where"] = {"doc_id": doc_id}
-        data = collection.get(**query)
-
-        documents = data.get("documents", []) or []
-        metadatas = data.get("metadatas", []) or []
-        ids = data.get("ids", []) or []
+        backend = str(
+            getattr(rag_config.config.storage, "vector_store_backend", "chroma")
+            or "chroma"
+        ).lower()
         items: List[KnowledgeBaseChunk] = []
-        for index, content in enumerate(documents):
-            meta = metadatas[index] or {}
-            items.append(KnowledgeBaseChunk(
-                id=ids[index],
-                kb_id=meta.get("kb_id", kb_id),
-                doc_id=meta.get("doc_id"),
-                filename=meta.get("filename"),
-                chunk_index=meta.get("chunk_index", 0),
-                content=content or "",
-            ))
+        if backend == "sqlite_vec":
+            from ..services.sqlite_vec_service import SqliteVecService
+
+            rows = SqliteVecService().list_chunks(kb_id=kb_id, doc_id=doc_id, limit=limit)
+            for row in rows:
+                items.append(
+                    KnowledgeBaseChunk(
+                        id=str(row.get("id") or ""),
+                        kb_id=str(row.get("kb_id") or kb_id),
+                        doc_id=str(row.get("doc_id") or ""),
+                        filename=str(row.get("filename") or ""),
+                        chunk_index=int(row.get("chunk_index", 0) or 0),
+                        content=str(row.get("content") or ""),
+                    )
+                )
+        else:
+            persist_dir = Path(rag_config.config.storage.persist_directory)
+            if not persist_dir.is_absolute():
+                persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+
+            import chromadb
+            client = chromadb.PersistentClient(path=str(persist_dir))
+            collection_name = f"kb_{kb_id}"
+            collection = client.get_collection(collection_name)
+            query = {"include": ["documents", "metadatas"]}
+            if doc_id:
+                query["where"] = {"doc_id": doc_id}
+            data = collection.get(**query)
+
+            documents = data.get("documents", []) or []
+            metadatas = data.get("metadatas", []) or []
+            ids = data.get("ids", []) or []
+            for index, content in enumerate(documents):
+                meta = metadatas[index] or {}
+                items.append(KnowledgeBaseChunk(
+                    id=ids[index],
+                    kb_id=meta.get("kb_id", kb_id),
+                    doc_id=meta.get("doc_id"),
+                    filename=meta.get("filename"),
+                    chunk_index=meta.get("chunk_index", 0),
+                    content=content or "",
+                ))
 
         items.sort(key=lambda item: (item.doc_id or "", item.chunk_index, item.id))
         return items[:limit]

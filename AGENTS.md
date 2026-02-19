@@ -18,7 +18,7 @@ Backend (always use venv scripts, do not use system python):
 ./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ./venv/Scripts/python -m src.main
 ```
-UI runs at `http://localhost:5173` after `npm run dev`.
+UI runs at `http://localhost:<FRONTEND_PORT>` after `npm run dev`.
 Frontend:
 ```
 cd frontend
@@ -39,7 +39,8 @@ npm run lint
 - Framework: pytest. Naming: `tests/**/test_*.py` and `test_*` functions.
 - Run all tests: `./venv/Scripts/pytest`
 - Run one test: `./venv/Scripts/pytest tests/unit/test_file.py::test_case`
-- Frontend tests are not configured yet; rely on `npm run lint` and manual UI checks.
+- Frontend e2e tests use Playwright in `frontend/tests/e2e/specs/`.
+- E2E runbook (including port reuse/auto-start behavior): `docs/e2e_testing.md`.
 
 ## Commit and Pull Request Guidelines
 - Commit history uses short, lowercase summaries, often imperative and sometimes comma-separated (example: "fix switch project bug, change some ui bug").
@@ -47,7 +48,7 @@ npm run lint
 
 ## Security and Configuration Tips
 - Do not commit secrets; use `.env` and `.env.example`.
-- Required: `DEEPSEEK_API_KEY`. Optional: `API_PORT`, `CORS_ORIGINS`.
+- API keys are stored in `$HOME/.lex_mint/keys_config.yaml`. Optional env config: `API_PORT`, `CORS_ORIGINS`.
 - Conversations and logs may contain user data; handle with care.
 
 ## Platform and Tooling Notes

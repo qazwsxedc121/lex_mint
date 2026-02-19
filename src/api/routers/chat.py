@@ -237,19 +237,50 @@ async def chat_stream(
                     project_id=request.project_id
                 )
 
-            # Stream process messages
-            async for chunk in agent.process_message_stream(
+            # Check for group chat mode
+            session_data = await agent.storage.get_session(
                 request.session_id,
-                request.message,
-                skip_user_append=request.skip_user_message,
-                reasoning_effort=request.reasoning_effort,
-                attachments=request.attachments,
                 context_type=request.context_type,
-                project_id=request.project_id,
-                use_web_search=request.use_web_search,
-                search_query=request.search_query,
-                file_references=request.file_references
-            ):
+                project_id=request.project_id
+            )
+            group_assistants = session_data.get("group_assistants")
+            group_mode = session_data.get("group_mode", "round_robin")
+            group_settings = session_data.get("group_settings")
+
+            if group_assistants and len(group_assistants) >= 2:
+                # Group chat: process with multiple assistants
+                stream_fn = agent.process_group_message_stream(
+                    request.session_id,
+                    request.message,
+                    group_assistants=group_assistants,
+                    group_mode=group_mode,
+                    group_settings=group_settings,
+                    skip_user_append=request.skip_user_message,
+                    reasoning_effort=request.reasoning_effort,
+                    attachments=request.attachments,
+                    context_type=request.context_type,
+                    project_id=request.project_id,
+                    use_web_search=request.use_web_search,
+                    search_query=request.search_query,
+                    file_references=request.file_references
+                )
+            else:
+                # Single assistant: normal processing
+                stream_fn = agent.process_message_stream(
+                    request.session_id,
+                    request.message,
+                    skip_user_append=request.skip_user_message,
+                    reasoning_effort=request.reasoning_effort,
+                    attachments=request.attachments,
+                    context_type=request.context_type,
+                    project_id=request.project_id,
+                    use_web_search=request.use_web_search,
+                    search_query=request.search_query,
+                    file_references=request.file_references
+                )
+
+            # Stream process messages
+            async for chunk in stream_fn:
                 # Check if chunk is a dict event (usage, user_message_id, assistant_message_id)
                 if isinstance(chunk, dict):
                     # Forward dict events as-is

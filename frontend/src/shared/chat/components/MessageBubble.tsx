@@ -8,16 +8,19 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, PhotoIcon, ArrowDownTrayIcon, ArrowUturnRightIcon, LanguageIcon, SpeakerWaveIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import type { Message } from '../../../types/message';
+import type { ChatTargetType, Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { ThinkingBlock } from './ThinkingBlock';
+import { ToolCallBlock } from './ToolCallBlock';
 import { TranslationBlock } from './TranslationBlock';
 import { CompareResponseView } from './CompareResponseView';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
 import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
+import { getAssistantIcon } from '../../constants/assistantIcons';
+import { useTranslation } from 'react-i18next';
 import {
   buildFileReferencePreview,
   ensureFileReferencePreviewConfigLoaded,
@@ -31,6 +34,12 @@ interface MessageBubbleProps {
   messageIndex: number;  // Still needed for file attachment URLs (backward compatibility)
   isStreaming: boolean;
   sessionId?: string;
+  currentTargetType?: ChatTargetType;
+  currentAssistantId?: string | null;
+  currentModelId?: string | null;
+  assistantNameById?: Record<string, string>;
+  assistantModelIdById?: Record<string, string>;
+  modelNameById?: Record<string, string>;
   onEdit?: (messageId: string, content: string) => void;
   onSaveOnly?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
@@ -61,6 +70,8 @@ const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'German', label: 'German' },
   { value: 'Spanish', label: 'Spanish' },
 ];
+
+const MODEL_PARTICIPANT_PREFIX = 'model::';
 
 const normalizeNewlines = (text: string) => text.replace(/\r\n/g, '\n');
 
@@ -260,12 +271,63 @@ function formatMessageTime(timestamp: string | undefined): string | null {
   return null;
 }
 
+const GROUP_ASSISTANT_STYLE_TOKENS = [
+  {
+    avatar: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200',
+    label: 'text-rose-700 dark:text-rose-300',
+    accent: 'border-l-rose-400 dark:border-l-rose-500',
+    surface: 'bg-rose-50/70 dark:bg-rose-900/15',
+  },
+  {
+    avatar: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200',
+    label: 'text-emerald-700 dark:text-emerald-300',
+    accent: 'border-l-emerald-400 dark:border-l-emerald-500',
+    surface: 'bg-emerald-50/70 dark:bg-emerald-900/15',
+  },
+  {
+    avatar: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200',
+    label: 'text-sky-700 dark:text-sky-300',
+    accent: 'border-l-sky-400 dark:border-l-sky-500',
+    surface: 'bg-sky-50/70 dark:bg-sky-900/15',
+  },
+  {
+    avatar: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
+    label: 'text-amber-700 dark:text-amber-300',
+    accent: 'border-l-amber-400 dark:border-l-amber-500',
+    surface: 'bg-amber-50/70 dark:bg-amber-900/15',
+  },
+];
+
+function getAssistantStyle(seed: string | undefined) {
+  if (!seed) {
+    return {
+      avatar: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+      label: 'text-gray-500 dark:text-gray-400',
+      accent: 'border-l-gray-300 dark:border-l-gray-600',
+      surface: 'bg-gray-200 dark:bg-gray-700',
+    };
+  }
+
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % GROUP_ASSISTANT_STYLE_TOKENS.length;
+  return GROUP_ASSISTANT_STYLE_TOKENS[index];
+}
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   messageId,
   messageIndex,
   isStreaming,
   sessionId,
+  currentTargetType = 'model',
+  currentAssistantId,
+  currentModelId,
+  assistantNameById = {},
+  assistantModelIdById = {},
+  modelNameById = {},
   onEdit,
   onSaveOnly,
   onRegenerate,
@@ -275,9 +337,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   hasSubsequentMessages,
 }) => {
   const { api } = useChatServices();
+  const { t } = useTranslation('chat');
   const isUser = message.role === 'user';
   const isSeparator = message.role === 'separator';
   const isSummary = message.role === 'summary';
+  const isGroupAssistantMessage = !isUser && !!message.assistant_id;
+  const assistantDisplayName = message.assistant_name || (message.assistant_id ? `AI-${message.assistant_id.slice(0, 4)}` : '');
+  const assistantStyle = useMemo(
+    () => getAssistantStyle(message.assistant_id || message.assistant_name),
+    [message.assistant_id, message.assistant_name]
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isCopied, setIsCopied] = useState(false);
@@ -317,6 +386,67 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const ragSources = sources.filter((source) => source.type === 'rag');
   const otherSources = sources.filter((source) => source.type !== 'rag' && source.type !== 'rag_diagnostics');
   const latestRagDiagnostics = ragDiagnostics.length > 0 ? ragDiagnostics[ragDiagnostics.length - 1] : null;
+  const responderInfoText = useMemo(() => {
+    if (message.role !== 'assistant') {
+      return null;
+    }
+
+    let resolvedAssistantName = (message.assistant_name || '').trim();
+    let resolvedModelId: string | undefined;
+
+    const assistantId = message.assistant_id;
+    if (assistantId) {
+      if (assistantId.startsWith(MODEL_PARTICIPANT_PREFIX)) {
+        resolvedModelId = assistantId.slice(MODEL_PARTICIPANT_PREFIX.length);
+        if (!resolvedAssistantName) {
+          resolvedAssistantName = modelNameById[resolvedModelId] || resolvedModelId;
+        }
+      } else {
+        if (!resolvedAssistantName) {
+          resolvedAssistantName = assistantNameById[assistantId] || assistantId;
+        }
+        resolvedModelId = assistantModelIdById[assistantId];
+      }
+    }
+
+    if (!resolvedAssistantName) {
+      if (currentTargetType === 'assistant' && currentAssistantId) {
+        resolvedAssistantName = assistantNameById[currentAssistantId] || currentAssistantId;
+      } else if (currentTargetType === 'model') {
+        resolvedAssistantName = t('bubble.modelTargetLabel');
+      }
+    }
+
+    if (!resolvedModelId) {
+      if (currentTargetType === 'assistant' && currentAssistantId) {
+        resolvedModelId = assistantModelIdById[currentAssistantId] || currentModelId || undefined;
+      } else {
+        resolvedModelId = currentModelId || undefined;
+      }
+    }
+
+    const resolvedModelName = resolvedModelId ? (modelNameById[resolvedModelId] || resolvedModelId) : '';
+    if (!resolvedAssistantName && !resolvedModelName) {
+      return null;
+    }
+
+    return t('bubble.responderInfo', {
+      assistant: resolvedAssistantName || '-',
+      model: resolvedModelName || '-',
+    });
+  }, [
+    assistantModelIdById,
+    assistantNameById,
+    currentAssistantId,
+    currentModelId,
+    currentTargetType,
+    message.assistant_id,
+    message.assistant_name,
+    message.role,
+    modelNameById,
+    t,
+  ]);
+
   const formatRagSnippet = (content?: string) => {
     if (!content) return '';
     const normalized = content.replace(/\s+/g, ' ').trim();
@@ -594,12 +724,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
       <div data-name="message-bubble-content-wrapper" className={isUser ? 'max-w-[80%]' : 'w-full'}>
+        {/* Group chat: assistant identity label */}
+        {!isUser && assistantDisplayName && (
+          <div data-name="message-bubble-assistant-label" className="flex items-center gap-1.5 mb-1 ml-1">
+            <span
+              data-name="message-bubble-assistant-avatar"
+              className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${assistantStyle.avatar}`}
+            >
+              {React.createElement(getAssistantIcon(message.assistant_icon), { className: 'w-3 h-3' })}
+            </span>
+            <span className={`text-xs font-semibold ${isGroupAssistantMessage ? assistantStyle.label : 'text-gray-500 dark:text-gray-400'}`}>
+              {assistantDisplayName}
+            </span>
+          </div>
+        )}
         <div
           data-name="message-bubble-content"
           className={`rounded-lg px-4 py-3 ${
             isUser
               ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+              : isGroupAssistantMessage
+                ? `border border-gray-200 dark:border-gray-600 border-l-4 ${assistantStyle.accent} ${assistantStyle.surface} text-gray-900 dark:text-gray-100`
+                : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
           }`}
         >
           {isEditing ? (
@@ -821,14 +967,35 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     <div data-name="message-bubble-rag-diagnostics" className="not-prose mb-3 rounded-md border border-amber-200 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-900/30">
                       <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
                         <span>RAG Diagnostics</span>
-                        <span>{latestRagDiagnostics.reorder_strategy || 'long_context'}</span>
+                        <span>
+                          {(latestRagDiagnostics.retrieval_mode || 'vector')}
+                          {' / '}
+                          {(latestRagDiagnostics.reorder_strategy || 'long_context')}
+                        </span>
                       </div>
                       <div className="px-3 pb-2 text-[11px] text-amber-800/90 dark:text-amber-200/90 space-y-1">
                         <div>
                           raw {latestRagDiagnostics.raw_count ?? 0}{' -> '}dedup {latestRagDiagnostics.deduped_count ?? 0}{' -> '}diversified {latestRagDiagnostics.diversified_count ?? 0}{' -> '}selected {latestRagDiagnostics.selected_count ?? 0}
                         </div>
                         <div>
-                          top_k {latestRagDiagnostics.top_k ?? '-'} | recall_k {latestRagDiagnostics.recall_k ?? '-'} | max_per_doc {latestRagDiagnostics.max_per_doc ?? '-'} | threshold {latestRagDiagnostics.score_threshold != null ? latestRagDiagnostics.score_threshold.toFixed(2) : '-'} | kb {latestRagDiagnostics.searched_kb_count ?? 0}
+                          top_k {latestRagDiagnostics.top_k ?? '-'}
+                          {' | '}recall_k {latestRagDiagnostics.recall_k ?? '-'}
+                          {' | '}max_per_doc {latestRagDiagnostics.max_per_doc ?? '-'}
+                          {' | '}threshold {latestRagDiagnostics.score_threshold != null ? latestRagDiagnostics.score_threshold.toFixed(2) : '-'}
+                          {' | '}kb {(latestRagDiagnostics.searched_kb_count ?? 0)}/{(latestRagDiagnostics.requested_kb_count ?? latestRagDiagnostics.searched_kb_count ?? 0)}
+                          {' | '}best {latestRagDiagnostics.best_score != null ? latestRagDiagnostics.best_score.toFixed(3) : '-'}
+                        </div>
+                        <div>
+                          vector_raw {latestRagDiagnostics.vector_raw_count ?? '-'}
+                          {' | '}bm25_raw {latestRagDiagnostics.bm25_raw_count ?? '-'}
+                          {' | '}bm25_cov {latestRagDiagnostics.bm25_min_term_coverage != null ? latestRagDiagnostics.bm25_min_term_coverage.toFixed(2) : '-'}
+                        </div>
+                        <div>
+                          tool_search {latestRagDiagnostics.tool_search_count ?? 0}
+                          {' | '}tool_unique {latestRagDiagnostics.tool_search_unique_count ?? 0}
+                          {' | '}tool_dup {latestRagDiagnostics.tool_search_duplicate_count ?? 0}
+                          {' | '}tool_read {latestRagDiagnostics.tool_read_count ?? 0}
+                          {' | '}tool_finalize {latestRagDiagnostics.tool_finalize_reason || '-'}
                         </div>
                       </div>
                     </div>
@@ -931,6 +1098,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       thinkingDurationMs={message.thinkingDurationMs}
                     />
                   )}
+                  {/* Tool call block */}
+                  {message.toolCalls && message.toolCalls.length > 0 && (
+                    <ToolCallBlock toolCalls={message.toolCalls} />
+                  )}
                   {/* Main content */}
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
@@ -1012,9 +1183,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {message.created_at && (
               <span>{formatMessageTime(message.created_at)}</span>
             )}
-            {!isUser && message.usage && !isStreaming && (
+            {!isUser && responderInfoText && (
               <>
                 {message.created_at && <span className="text-gray-300 dark:text-gray-600">|</span>}
+                <span>{responderInfoText}</span>
+              </>
+            )}
+            {!isUser && message.usage && !isStreaming && (
+              <>
+                {(message.created_at || responderInfoText) && <span className="text-gray-300 dark:text-gray-600">|</span>}
                 <span>{message.usage.prompt_tokens} in</span>
                 <span className="text-gray-300 dark:text-gray-600">|</span>
                 <span>{message.usage.completion_tokens} out</span>

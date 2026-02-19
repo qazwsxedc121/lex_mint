@@ -9,6 +9,7 @@ from src.api.services.model_config_service import ModelConfigService
 from src.api.services.translation_config_service import TranslationConfigService
 from src.api.services.local_llama_cpp_service import LocalLlamaCppService
 from src.api.services.think_tag_filter import ThinkTagStreamFilter
+from src.providers.types import CallMode
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,13 @@ class TranslationService:
         )
 
         adapter = model_service.get_adapter_for_provider(provider_config)
+        resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
+        effective_call_mode = (
+            resolved_call_mode
+            if isinstance(resolved_call_mode, CallMode)
+            else CallMode.AUTO
+        )
+        allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
         try:
             api_key = model_service.resolve_provider_api_key_sync(provider_config)
@@ -207,17 +215,20 @@ class TranslationService:
             api_key=api_key,
             temperature=config.temperature,
             streaming=True,
+            call_mode=effective_call_mode.value,
         )
 
         actual_model_id = f"{provider_config.id}:{model_config.id}"
         print(
             f"[TRANSLATE] Starting translation to {effective_target_language} "
-            f"(model: {actual_model_id})"
+            f"(model: {actual_model_id}, call_mode: {effective_call_mode.value})"
         )
         logger.info(
-            "Translation started: target=%s, model=%s",
+            "Translation started: target=%s, model=%s, call_mode=%s, responses_fallback=%s",
             effective_target_language,
             actual_model_id,
+            effective_call_mode.value,
+            allow_responses_fallback,
         )
 
         from langchain_core.messages import HumanMessage as HMsg
@@ -228,7 +239,8 @@ class TranslationService:
             full_response = ""
             think_filter = ThinkTagStreamFilter()
 
-            async for chunk in adapter.stream(llm, langchain_messages):
+            stream_kwargs = {"allow_responses_fallback": True} if allow_responses_fallback else {}
+            async for chunk in adapter.stream(llm, langchain_messages, **stream_kwargs):
                 if chunk.content:
                     visible = think_filter.feed(chunk.content)
                     if visible:

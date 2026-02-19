@@ -28,7 +28,7 @@
 ### Windows 脚本方式（推荐）
 
 1. 复制 `.env.example` 为 `.env`
-2. 在 `.env` 中配置 `DEEPSEEK_API_KEY`
+2. 在 `$HOME/.lex_mint/keys_config.yaml` 中配置 API Key（见 `docs/worktree_bootstrap.md`）
 3. 运行 `install.bat`
 4. 运行 `start.bat`
 
@@ -38,7 +38,15 @@
 
 ```powershell
 ./venv/Scripts/pip install -r requirements.txt
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8988
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
+```
+
+可选：NVIDIA GPU 机器可将 `llama-cpp-python` 切到 CUDA 构建（按机器安装）：
+
+```powershell
+$env:CMAKE_ARGS='-DGGML_CUDA=on'
+$env:FORCE_CMAKE='1'
+./venv/Scripts/pip install --upgrade --force-reinstall -r requirements.gpu_nvidia.txt
 ```
 
 前端：
@@ -51,13 +59,13 @@ npm run dev
 
 访问地址：
 
-- 前端：`http://localhost:5173`
-- API 文档：`http://localhost:8988/docs`
+- 前端：`http://localhost:<FRONTEND_PORT>`
+- API 文档：`http://localhost:<API_PORT>/docs`
 
 ### Docker Compose 启动
 
 1. 复制 `.env.example` 为 `.env`
-2. 在 `.env` 中配置 `DEEPSEEK_API_KEY`
+2. 在 `$HOME/.lex_mint/keys_config.yaml` 中配置 API Key（或启动后在设置页配置）
 3. 启动服务：
 
 ```powershell

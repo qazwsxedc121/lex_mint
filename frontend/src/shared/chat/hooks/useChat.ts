@@ -3,7 +3,17 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Message, TokenUsage, CostInfo, UploadedFile, ParamOverrides, ContextInfo } from '../../../types/message';
+import type {
+  Message,
+  TokenUsage,
+  CostInfo,
+  UploadedFile,
+  ParamOverrides,
+  ContextInfo,
+  GroupChatMode,
+  GroupTimelineEvent,
+  ChatTargetType,
+} from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
 type SendMessageOptions = {
@@ -30,6 +40,7 @@ export function useChat(sessionId: string | null) {
   const [isComparing, setIsComparing] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
+  const [currentTargetType, setCurrentTargetType] = useState<ChatTargetType>('model');
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
   const [totalCost, setTotalCost] = useState<CostInfo | null>(null);
   const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
@@ -37,8 +48,56 @@ export function useChat(sessionId: string | null) {
   const [lastPromptTokens, setLastPromptTokens] = useState<number | null>(null);
   const [paramOverrides, setParamOverrides] = useState<ParamOverrides>({});
   const [isTemporary, setIsTemporary] = useState(false);
+  const [groupAssistants, setGroupAssistants] = useState<string[] | null>(null);
+  const [groupMode, setGroupMode] = useState<GroupChatMode | null>(null);
+  const [groupTimeline, setGroupTimeline] = useState<GroupTimelineEvent[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
+
+  const appendGroupTimelineEvent = (event: {
+    type: string;
+    mode?: string;
+    round?: number;
+    max_rounds?: number;
+    action?: string;
+    reason?: string;
+    supervisor_id?: string;
+    supervisor_name?: string;
+    assistant_id?: string;
+    assistant_name?: string;
+    assistant_ids?: string[];
+    assistant_names?: string[];
+    instruction?: string;
+    rounds?: number;
+  }) => {
+    const eventType = event.type;
+    if (
+      eventType !== 'group_round_start' &&
+      eventType !== 'group_action' &&
+      eventType !== 'group_done'
+    ) {
+      return;
+    }
+    const timelineEvent: GroupTimelineEvent = {
+      event_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      created_at: nowTimestamp(),
+      type: eventType,
+      mode: event.mode,
+      round: event.round,
+      max_rounds: event.max_rounds,
+      action: event.action,
+      reason: event.reason,
+      supervisor_id: event.supervisor_id,
+      supervisor_name: event.supervisor_name,
+      assistant_id: event.assistant_id,
+      assistant_name: event.assistant_name,
+      assistant_ids: event.assistant_ids,
+      assistant_names: event.assistant_names,
+      instruction: event.instruction,
+      rounds: event.rounds,
+    };
+    setGroupTimeline(prev => [...prev.slice(-39), timelineEvent]);
+  };
 
   // Extract loadSession as a standalone function so it can be called after sending messages
   const loadSession = useCallback(async () => {
@@ -46,6 +105,7 @@ export function useChat(sessionId: string | null) {
       setMessages([]);
       setCurrentModelId(null);
       setCurrentAssistantId(null);
+      setCurrentTargetType('model');
       setTotalUsage(null);
       setTotalCost(null);
       setFollowupQuestions([]);
@@ -53,6 +113,9 @@ export function useChat(sessionId: string | null) {
       setLastPromptTokens(null);
       setParamOverrides({});
       setIsTemporary(false);
+      setGroupAssistants(null);
+      setGroupMode(null);
+      setGroupTimeline([]);
       return;
     }
 
@@ -62,6 +125,46 @@ export function useChat(sessionId: string | null) {
       setFollowupQuestions([]);
       const session = await api.getSession(sessionId);
       let loadedMessages = session.state.messages;
+
+      if (session.group_assistants && session.group_assistants.length >= 2) {
+        const needsAssistantMetadata = loadedMessages.some(
+          (msg) =>
+            msg.role === 'assistant' &&
+            msg.assistant_id &&
+            (!msg.assistant_name || !msg.assistant_icon)
+        );
+
+        if (needsAssistantMetadata) {
+          try {
+            const assistants = await api.listAssistants();
+            const assistantMap = new Map(assistants.map((assistant) => [assistant.id, assistant]));
+            loadedMessages = loadedMessages.map((msg) => {
+              if (msg.role !== 'assistant' || !msg.assistant_id) {
+                return msg;
+              }
+              const modelParticipantMatch = msg.assistant_id.match(/^model::(.+)$/);
+              if (modelParticipantMatch) {
+                const modelCompositeId = modelParticipantMatch[1];
+                return {
+                  ...msg,
+                  assistant_name: msg.assistant_name || modelCompositeId,
+                };
+              }
+              const assistant = assistantMap.get(msg.assistant_id);
+              if (!assistant) {
+                return msg;
+              }
+              return {
+                ...msg,
+                assistant_name: msg.assistant_name || assistant.name,
+                assistant_icon: msg.assistant_icon || assistant.icon,
+              };
+            });
+          } catch {
+            // Keep loaded messages as-is when assistant metadata cannot be fetched.
+          }
+        }
+      }
 
       // Merge comparison data into messages
       if (session.compare_data) {
@@ -79,10 +182,20 @@ export function useChat(sessionId: string | null) {
       setMessages(loadedMessages);
       setCurrentModelId(session.model_id || null);
       setCurrentAssistantId(session.assistant_id || null);
+      const inferredTargetType: ChatTargetType =
+        session.target_type ||
+        (session.assistant_id && !session.assistant_id.startsWith('__legacy_model_') ? 'assistant' : 'model');
+      setCurrentTargetType(inferredTargetType);
       setTotalUsage(session.total_usage || null);
       setTotalCost(session.total_cost || null);
       setParamOverrides(session.param_overrides || {});
       setIsTemporary(session.temporary || false);
+      setGroupAssistants(session.group_assistants || null);
+      setGroupMode(
+        session.group_mode ||
+        (session.group_assistants && session.group_assistants.length >= 2 ? 'round_robin' : null)
+      );
+      setGroupTimeline([]);
 
       // Derive lastPromptTokens from last assistant message's usage
       const msgs = session.state.messages;
@@ -99,12 +212,16 @@ export function useChat(sessionId: string | null) {
       setMessages([]);
       setCurrentModelId(null);
       setCurrentAssistantId(null);
+      setCurrentTargetType('model');
       setTotalUsage(null);
       setTotalCost(null);
       setContextInfo(null);
       setLastPromptTokens(null);
       setParamOverrides({});
       setIsTemporary(false);
+      setGroupAssistants(null);
+      setGroupMode(null);
+      setGroupTimeline([]);
     } finally {
       setLoading(false);
     }
@@ -181,6 +298,11 @@ export function useChat(sessionId: string | null) {
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
 
+    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
+    if (initialIsGroupChat) {
+      setGroupTimeline([]);
+    }
+
     // Optimistically add user message to UI (without message_id, wait for backend)
     const userMessage: Message = {
       role: 'user',
@@ -194,13 +316,15 @@ export function useChat(sessionId: string | null) {
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Add placeholder for assistant message (without message_id, wait for backend)
-    const assistantMessage: Message = {
-      role: 'assistant',
-      content: '',
-      created_at: nowTimestamp(),
-    };
-    setMessages(prev => [...prev, assistantMessage]);
+    // For single-assistant: add placeholder. For group chat: no placeholder (added on assistant_start).
+    if (!initialIsGroupChat) {
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: '',
+        created_at: nowTimestamp(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     setLoading(true);
     setIsStreaming(true);
@@ -208,6 +332,85 @@ export function useChat(sessionId: string | null) {
 
     let streamedContent = '';
     let latestUserMessageId: string | null = null;
+    let activeAssistantTurnId: string | null = null;
+    let runtimeIsGroupChat = initialIsGroupChat;
+
+    const activateRuntimeGroupChatMode = () => {
+      if (runtimeIsGroupChat) {
+        return;
+      }
+      runtimeIsGroupChat = true;
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        // If a single-chat placeholder was created before group metadata loaded,
+        // remove it once group events are detected.
+        if (
+          lastMessage &&
+          lastMessage.role === 'assistant' &&
+          !lastMessage.assistant_id &&
+          !lastMessage.message_id &&
+          !lastMessage.content.trim()
+        ) {
+          newMessages.pop();
+          return newMessages;
+        }
+        return prev;
+      });
+    };
+
+    const updateAssistantMessage = (
+      updater: (message: Message) => Message,
+      options?: { assistantId?: string | null; assistantTurnId?: string | null; allowSingleFallback?: boolean }
+    ) => {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        let targetIndex = -1;
+        const assistantTurnId = options?.assistantTurnId;
+        const assistantId = options?.assistantId;
+        const allowSingleFallback = options?.allowSingleFallback ?? true;
+        const hasGroupAssistantMessages = newMessages.some(
+          (message) => message.role === 'assistant' && !!message.assistant_id
+        );
+
+        if (assistantTurnId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_turn_id === assistantTurnId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0 && assistantId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          if (!allowSingleFallback || runtimeIsGroupChat || hasGroupAssistantMessages) {
+            return prev;
+          }
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && !newMessages[i].assistant_id) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          return prev;
+        }
+
+        newMessages[targetIndex] = updater(newMessages[targetIndex]);
+        return newMessages;
+      });
+    };
 
     try {
       await api.sendMessageStream(
@@ -216,17 +419,18 @@ export function useChat(sessionId: string | null) {
         null,
         false,
         (chunk: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           streamedContent += chunk;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
-            }
-            return newMessages;
-          });
+          const contentSnapshot = streamedContent;
+          updateAssistantMessage(
+            (message) => ({ ...message, content: contentSnapshot }),
+            { allowSingleFallback: true }
+          );
         },
         () => {
+          activeAssistantTurnId = null;
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
@@ -235,24 +439,24 @@ export function useChat(sessionId: string | null) {
           }
         },
         (error: string) => {
+          activeAssistantTurnId = null;
           setError(error);
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
-          setMessages(prev => prev.slice(0, -2));
+          // Remove optimistic messages: for group chat only user msg, for single both user+assistant
+          setMessages(prev => prev.slice(0, runtimeIsGroupChat ? -1 : -2));
         },
         abortControllerRef,
         options?.reasoningEffort,
         (usage: TokenUsage, cost?: CostInfo) => {
-          // Update the last assistant message with usage/cost data
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
-            }
-            return newMessages;
-          });
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, usage, cost }),
+            { allowSingleFallback: true }
+          );
           // Update session totals
           setTotalUsage(prev => prev ? {
             prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
@@ -269,14 +473,13 @@ export function useChat(sessionId: string | null) {
           setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
-            }
-            return newMessages;
-          });
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, sources }),
+            { allowSingleFallback: true }
+          );
         },
         options?.attachments,
         (userMessageId: string) => {
@@ -284,28 +487,41 @@ export function useChat(sessionId: string | null) {
           // Backend returned user message ID, update the user message
           setMessages(prev => {
             const newMessages = [...prev];
-            if (newMessages.length >= 2) {
-              newMessages[newMessages.length - 2] = {
-                ...newMessages[newMessages.length - 2],
+            let userMessageIndex = -1;
+            for (let i = newMessages.length - 1; i >= 0; i--) {
+              if (newMessages[i].role === 'user' && !newMessages[i].message_id) {
+                userMessageIndex = i;
+                break;
+              }
+            }
+            if (userMessageIndex < 0) {
+              for (let i = newMessages.length - 1; i >= 0; i--) {
+                if (newMessages[i].role === 'user') {
+                  userMessageIndex = i;
+                  break;
+                }
+              }
+            }
+            if (userMessageIndex >= 0) {
+              newMessages[userMessageIndex] = {
+                ...newMessages[userMessageIndex],
                 message_id: userMessageId
               };
+              return newMessages;
             }
-            return newMessages;
+            return prev;
           });
           void hydrateUserMessageFromServer(userMessageId);
         },
         (assistantMessageId: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           // Backend returned assistant message ID, update the assistant message
-          setMessages(prev => {
-            const newMessages = [...prev];
-            if (newMessages.length >= 1) {
-              newMessages[newMessages.length - 1] = {
-                ...newMessages[newMessages.length - 1],
-                message_id: assistantMessageId
-              };
-            }
-            return newMessages;
-          });
+          updateAssistantMessage(
+            (message) => ({ ...message, message_id: assistantMessageId }),
+            { allowSingleFallback: true }
+          );
         },
         options?.useWebSearch,
         (questions: string[]) => {
@@ -316,24 +532,252 @@ export function useChat(sessionId: string | null) {
           setContextInfo(info);
         },
         (durationMs: number) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           // Backend returned thinking duration
+          updateAssistantMessage(
+            (message) => ({ ...message, thinkingDurationMs: durationMs }),
+            { allowSingleFallback: true }
+          );
+        },
+        options?.fileReferences,
+        // Tool calls: onToolCalls
+        (calls: Array<{ name: string; args: Record<string, unknown> }>) => {
+          if (runtimeIsGroupChat) return;
+          // Add tool calls with 'calling' status
+          const toolCalls = calls.map(c => ({ name: c.name, args: c.args, status: 'calling' as const }));
+          updateAssistantMessage(
+            (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
+            { allowSingleFallback: true }
+          );
+        },
+        // Tool results: onToolResults
+        (results: Array<{ name: string; result: string; tool_call_id: string }>) => {
+          if (runtimeIsGroupChat) return;
+          // Update tool calls with results
+          updateAssistantMessage(
+            (message) => {
+              const updated = (message.toolCalls || []).map(tc => {
+                const match = results.find(r => r.name === tc.name && tc.status === 'calling');
+                if (match) {
+                  return { ...tc, result: match.result, status: 'done' as const };
+                }
+                return tc;
+              });
+              return { ...message, toolCalls: updated };
+            },
+            { allowSingleFallback: true }
+          );
+        },
+        // Group chat: onAssistantStart
+        (assistantId: string, name: string, icon?: string) => {
+          if (!runtimeIsGroupChat) {
+            activateRuntimeGroupChatMode();
+          }
+          // Reset streamed content for new assistant
+          activeAssistantTurnId = null;
+          // Add new empty assistant message with identity
+          const newAssistantMsg: Message = {
+            role: 'assistant',
+            content: '',
+            created_at: nowTimestamp(),
+            assistant_id: assistantId,
+            assistant_name: name,
+            assistant_icon: icon,
+          };
           setMessages(prev => {
             const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
+            const lastMessage = newMessages[newMessages.length - 1];
+            // If group metadata loaded late, remove the single-chat placeholder
+            // before appending the first assistant in group mode.
+            if (
+              lastMessage &&
+              lastMessage.role === 'assistant' &&
+              !lastMessage.assistant_id &&
+              !lastMessage.message_id &&
+              !lastMessage.content.trim()
+            ) {
+              newMessages.pop();
             }
+            newMessages.push(newAssistantMsg);
             return newMessages;
           });
         },
-        options?.fileReferences
+        // Group chat: onAssistantDone
+        () => {
+          // Controlled by onGroupEvent when available.
+        },
+        (event) => {
+          const isGroupEventType = (
+            event.type === 'assistant_start' ||
+            event.type === 'assistant_chunk' ||
+            event.type === 'assistant_done' ||
+            event.type === 'assistant_message_id' ||
+            event.type === 'usage' ||
+            event.type === 'sources' ||
+            event.type === 'thinking_duration'
+          );
+          const isGroupOrchestrationEvent = (
+            event.type === 'group_round_start' ||
+            event.type === 'group_action' ||
+            event.type === 'group_done'
+          );
+          const hasGroupIdentity =
+            typeof event.assistant_turn_id === 'string' ||
+            typeof event.assistant_id === 'string';
+          if ((isGroupEventType && hasGroupIdentity) || isGroupOrchestrationEvent) {
+            activateRuntimeGroupChatMode();
+          }
+          if (!runtimeIsGroupChat) {
+            return;
+          }
+          if (isGroupOrchestrationEvent) {
+            appendGroupTimelineEvent({
+              type: event.type,
+              mode: typeof event.mode === 'string' ? event.mode : undefined,
+              round: typeof event.round === 'number' ? event.round : undefined,
+              max_rounds: typeof event.max_rounds === 'number' ? event.max_rounds : undefined,
+              action: typeof event.action === 'string' ? event.action : undefined,
+              reason: typeof event.reason === 'string' ? event.reason : undefined,
+              supervisor_id: typeof event.supervisor_id === 'string' ? event.supervisor_id : undefined,
+              supervisor_name: typeof event.supervisor_name === 'string' ? event.supervisor_name : undefined,
+              assistant_id: typeof event.assistant_id === 'string' ? event.assistant_id : undefined,
+              assistant_name: typeof event.assistant_name === 'string' ? event.assistant_name : undefined,
+              assistant_ids: Array.isArray(event.assistant_ids)
+                ? event.assistant_ids.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              assistant_names: Array.isArray(event.assistant_names)
+                ? event.assistant_names.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              instruction: typeof event.instruction === 'string' ? event.instruction : undefined,
+              rounds: typeof event.rounds === 'number' ? event.rounds : undefined,
+            });
+            return;
+          }
+          switch (event.type) {
+            case 'assistant_start': {
+              const assistantId = typeof event.assistant_id === 'string' ? event.assistant_id : null;
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const assistantName = typeof event.name === 'string' ? event.name : '';
+              const assistantIcon = typeof event.icon === 'string' ? event.icon : undefined;
+              if (!assistantId || !assistantTurnId) {
+                return;
+              }
+              activeAssistantTurnId = assistantTurnId;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const exists = newMessages.some(
+                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
+                );
+                if (exists) {
+                  return prev;
+                }
+                newMessages.push({
+                  role: 'assistant',
+                  content: '',
+                  created_at: nowTimestamp(),
+                  assistant_id: assistantId,
+                  assistant_turn_id: assistantTurnId,
+                  assistant_name: assistantName || undefined,
+                  assistant_icon: assistantIcon,
+                });
+                return newMessages;
+              });
+              return;
+            }
+            case 'assistant_chunk': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const chunk = typeof event.chunk === 'string' ? event.chunk : '';
+              if (!assistantTurnId || !chunk) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'usage': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const usage = event.usage as TokenUsage | undefined;
+              const cost = event.cost as CostInfo | undefined;
+              if (!assistantTurnId || !usage) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, usage, cost }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              setTotalUsage(prev => prev ? {
+                prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
+                completion_tokens: prev.completion_tokens + usage.completion_tokens,
+                total_tokens: prev.total_tokens + usage.total_tokens,
+              } : usage);
+              if (cost) {
+                setTotalCost(prev => prev ? {
+                  ...prev,
+                  total_cost: prev.total_cost + cost.total_cost,
+                } : cost);
+              }
+              setLastPromptTokens(usage.prompt_tokens);
+              return;
+            }
+            case 'sources': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const sources = event.sources as Message['sources'];
+              if (!assistantTurnId || !sources) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, sources }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'thinking_duration': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const durationMs = typeof event.duration_ms === 'number' ? event.duration_ms : null;
+              if (!assistantTurnId || durationMs === null) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, thinkingDurationMs: durationMs }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_message_id': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const messageId = typeof event.message_id === 'string' ? event.message_id : null;
+              if (!assistantTurnId || !messageId) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, message_id: messageId }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_done': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              if (assistantTurnId && activeAssistantTurnId === assistantTurnId) {
+                activeAssistantTurnId = null;
+              }
+              return;
+            }
+            default:
+              return;
+          }
+        }
       );
     } catch (err) {
+      activeAssistantTurnId = null;
       setError(err instanceof Error ? err.message : 'Failed to send message');
       setLoading(false);
       setIsStreaming(false);
       isProcessingRef.current = false;
-      setMessages(prev => prev.slice(0, -2));
+      setMessages(prev => prev.slice(0, runtimeIsGroupChat ? -1 : -2));
     }
   };
 
@@ -711,23 +1155,106 @@ export function useChat(sessionId: string | null) {
 
     isProcessingRef.current = true;
     const originalMessages = [...messages];
+    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
 
     // Keep messages up to and including truncateIndex
     const truncatedMessages = messages.slice(0, truncateIndex + 1);
     setMessages(truncatedMessages);
 
-    const assistantMessage: Message = {
-      role: 'assistant',  // No UUID, wait for backend
-      content: '',
-      created_at: nowTimestamp(),
-    };
-    setMessages(prev => [...prev, assistantMessage]);
+    if (!initialIsGroupChat) {
+      const assistantMessage: Message = {
+        role: 'assistant',  // No UUID, wait for backend
+        content: '',
+        created_at: nowTimestamp(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }
 
     setLoading(true);
     setIsStreaming(true);
     setError(null);
 
     let streamedContent = '';
+    let runtimeIsGroupChat = initialIsGroupChat;
+    let activeAssistantTurnId: string | null = null;
+    if (initialIsGroupChat) {
+      setGroupTimeline([]);
+    }
+
+    const activateRuntimeGroupChatMode = () => {
+      if (runtimeIsGroupChat) {
+        return;
+      }
+      runtimeIsGroupChat = true;
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (
+          lastMessage &&
+          lastMessage.role === 'assistant' &&
+          !lastMessage.assistant_id &&
+          !lastMessage.message_id &&
+          !lastMessage.content.trim()
+        ) {
+          newMessages.pop();
+          return newMessages;
+        }
+        return prev;
+      });
+    };
+
+    const updateAssistantMessage = (
+      updater: (message: Message) => Message,
+      options?: { assistantId?: string | null; assistantTurnId?: string | null; allowSingleFallback?: boolean }
+    ) => {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        let targetIndex = -1;
+        const assistantTurnId = options?.assistantTurnId;
+        const assistantId = options?.assistantId;
+        const allowSingleFallback = options?.allowSingleFallback ?? true;
+        const hasGroupAssistantMessages = newMessages.some(
+          (message) => message.role === 'assistant' && !!message.assistant_id
+        );
+
+        if (assistantTurnId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_turn_id === assistantTurnId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0 && assistantId) {
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantId) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          if (!allowSingleFallback || runtimeIsGroupChat || hasGroupAssistantMessages) {
+            return prev;
+          }
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].role === 'assistant' && !newMessages[i].assistant_id) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          return prev;
+        }
+
+        newMessages[targetIndex] = updater(newMessages[targetIndex]);
+        return newMessages;
+      });
+    };
 
     try {
       await api.sendMessageStream(
@@ -736,22 +1263,23 @@ export function useChat(sessionId: string | null) {
         truncateIndex,
         true, // skip user message since it already exists
         (chunk: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           streamedContent += chunk;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], role: 'assistant', content: streamedContent };
-            }
-            return newMessages;
-          });
+          updateAssistantMessage(
+            (message) => ({ ...message, role: 'assistant', content: streamedContent }),
+            { allowSingleFallback: true }
+          );
         },
         () => {
+          activeAssistantTurnId = null;
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
         },
         (error: string) => {
+          activeAssistantTurnId = null;
           setError(error);
           setLoading(false);
           setIsStreaming(false);
@@ -761,52 +1289,37 @@ export function useChat(sessionId: string | null) {
         abortControllerRef,
         undefined,
         (usage: TokenUsage, cost?: CostInfo) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], usage, cost };
-            }
-            return newMessages;
-          });
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, usage, cost }),
+            { allowSingleFallback: true }
+          );
           setLastPromptTokens(usage.prompt_tokens);
         },
         (sources) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
-            }
-            return newMessages;
-          });
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, sources }),
+            { allowSingleFallback: true }
+          );
         },
         undefined,
-        (userMessageId: string) => {
-          // Backend returned user message ID
-          setMessages(prev => {
-            const newMessages = [...prev];
-            if (newMessages.length >= 2) {
-              newMessages[newMessages.length - 2] = {
-                ...newMessages[newMessages.length - 2],
-                message_id: userMessageId
-              };
-            }
-            return newMessages;
-          });
+        () => {
+          // Regenerate uses skip_user_message=true, no user message should be appended.
         },
         (assistantMessageId: string) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
           // Backend returned assistant message ID
-          setMessages(prev => {
-            const newMessages = [...prev];
-            if (newMessages.length >= 1) {
-              newMessages[newMessages.length - 1] = {
-                ...newMessages[newMessages.length - 1],
-                message_id: assistantMessageId
-              };
-            }
-            return newMessages;
-          });
+          updateAssistantMessage(
+            (message) => ({ ...message, message_id: assistantMessageId }),
+            { allowSingleFallback: true }
+          );
         },
         undefined,
         undefined,
@@ -814,17 +1327,216 @@ export function useChat(sessionId: string | null) {
           setContextInfo(info);
         },
         (durationMs: number) => {
+          if (runtimeIsGroupChat) {
+            return;
+          }
+          updateAssistantMessage(
+            (message) => ({ ...message, thinkingDurationMs: durationMs }),
+            { allowSingleFallback: true }
+          );
+        },
+        undefined,
+        // onToolCalls (regenerate)
+        (calls: Array<{ name: string; args: Record<string, unknown> }>) => {
+          if (runtimeIsGroupChat) return;
+          const toolCalls = calls.map(c => ({ name: c.name, args: c.args, status: 'calling' as const }));
+          updateAssistantMessage(
+            (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
+            { allowSingleFallback: true }
+          );
+        },
+        // onToolResults (regenerate)
+        (results: Array<{ name: string; result: string; tool_call_id: string }>) => {
+          if (runtimeIsGroupChat) return;
+          updateAssistantMessage(
+            (message) => {
+              const updated = (message.toolCalls || []).map(tc => {
+                const match = results.find(r => r.name === tc.name && tc.status === 'calling');
+                if (match) {
+                  return { ...tc, result: match.result, status: 'done' as const };
+                }
+                return tc;
+              });
+              return { ...message, toolCalls: updated };
+            },
+            { allowSingleFallback: true }
+          );
+        },
+        (assistantId: string, name: string, icon?: string) => {
+          if (!runtimeIsGroupChat) {
+            activateRuntimeGroupChatMode();
+          }
+          activeAssistantTurnId = null;
           setMessages(prev => {
             const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], thinkingDurationMs: durationMs };
-            }
+            newMessages.push({
+              role: 'assistant',
+              content: '',
+              created_at: nowTimestamp(),
+              assistant_id: assistantId,
+              assistant_name: name,
+              assistant_icon: icon,
+            });
             return newMessages;
           });
+        },
+        () => {
+          // Controlled by onGroupEvent when available.
+        },
+        (event) => {
+          const isGroupEventType = (
+            event.type === 'assistant_start' ||
+            event.type === 'assistant_chunk' ||
+            event.type === 'assistant_done' ||
+            event.type === 'assistant_message_id' ||
+            event.type === 'usage' ||
+            event.type === 'sources' ||
+            event.type === 'thinking_duration'
+          );
+          const isGroupOrchestrationEvent = (
+            event.type === 'group_round_start' ||
+            event.type === 'group_action' ||
+            event.type === 'group_done'
+          );
+          const hasGroupIdentity =
+            typeof event.assistant_turn_id === 'string' ||
+            typeof event.assistant_id === 'string';
+          if ((isGroupEventType && hasGroupIdentity) || isGroupOrchestrationEvent) {
+            activateRuntimeGroupChatMode();
+          }
+          if (!runtimeIsGroupChat) {
+            return;
+          }
+          if (isGroupOrchestrationEvent) {
+            appendGroupTimelineEvent({
+              type: event.type,
+              mode: typeof event.mode === 'string' ? event.mode : undefined,
+              round: typeof event.round === 'number' ? event.round : undefined,
+              max_rounds: typeof event.max_rounds === 'number' ? event.max_rounds : undefined,
+              action: typeof event.action === 'string' ? event.action : undefined,
+              reason: typeof event.reason === 'string' ? event.reason : undefined,
+              supervisor_id: typeof event.supervisor_id === 'string' ? event.supervisor_id : undefined,
+              supervisor_name: typeof event.supervisor_name === 'string' ? event.supervisor_name : undefined,
+              assistant_id: typeof event.assistant_id === 'string' ? event.assistant_id : undefined,
+              assistant_name: typeof event.assistant_name === 'string' ? event.assistant_name : undefined,
+              assistant_ids: Array.isArray(event.assistant_ids)
+                ? event.assistant_ids.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              assistant_names: Array.isArray(event.assistant_names)
+                ? event.assistant_names.filter((value): value is string => typeof value === 'string')
+                : undefined,
+              instruction: typeof event.instruction === 'string' ? event.instruction : undefined,
+              rounds: typeof event.rounds === 'number' ? event.rounds : undefined,
+            });
+            return;
+          }
+          switch (event.type) {
+            case 'assistant_start': {
+              const assistantId = typeof event.assistant_id === 'string' ? event.assistant_id : null;
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const assistantName = typeof event.name === 'string' ? event.name : '';
+              const assistantIcon = typeof event.icon === 'string' ? event.icon : undefined;
+              if (!assistantId || !assistantTurnId) {
+                return;
+              }
+              activeAssistantTurnId = assistantTurnId;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const exists = newMessages.some(
+                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
+                );
+                if (exists) {
+                  return prev;
+                }
+                newMessages.push({
+                  role: 'assistant',
+                  content: '',
+                  created_at: nowTimestamp(),
+                  assistant_id: assistantId,
+                  assistant_turn_id: assistantTurnId,
+                  assistant_name: assistantName || undefined,
+                  assistant_icon: assistantIcon,
+                });
+                return newMessages;
+              });
+              return;
+            }
+            case 'assistant_chunk': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const chunk = typeof event.chunk === 'string' ? event.chunk : '';
+              if (!assistantTurnId || !chunk) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'usage': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const usage = event.usage as TokenUsage | undefined;
+              const cost = event.cost as CostInfo | undefined;
+              if (!assistantTurnId || !usage) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, usage, cost }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              setLastPromptTokens(usage.prompt_tokens);
+              return;
+            }
+            case 'sources': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const sources = event.sources as Message['sources'];
+              if (!assistantTurnId || !sources) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, sources }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'thinking_duration': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const durationMs = typeof event.duration_ms === 'number' ? event.duration_ms : null;
+              if (!assistantTurnId || durationMs === null) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, thinkingDurationMs: durationMs }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_message_id': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              const messageIdFromEvent = typeof event.message_id === 'string' ? event.message_id : null;
+              if (!assistantTurnId || !messageIdFromEvent) {
+                return;
+              }
+              updateAssistantMessage(
+                (message) => ({ ...message, message_id: messageIdFromEvent }),
+                { assistantTurnId, allowSingleFallback: false }
+              );
+              return;
+            }
+            case 'assistant_done': {
+              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
+              if (assistantTurnId && activeAssistantTurnId === assistantTurnId) {
+                activeAssistantTurnId = null;
+              }
+              return;
+            }
+            default:
+              return;
+          }
         }
       );
     } catch (err) {
+      activeAssistantTurnId = null;
       setError(err instanceof Error ? err.message : 'Failed to regenerate message');
       setLoading(false);
       setIsStreaming(false);
@@ -911,12 +1623,50 @@ export function useChat(sessionId: string | null) {
 
   const updateModelId = (modelId: string) => {
     setCurrentModelId(modelId);
+    setCurrentAssistantId(null);
+    setCurrentTargetType('model');
+    setParamOverrides({});
   };
 
-  const updateAssistantId = (assistantId: string) => {
+  const updateAssistantId = (assistantId: string, modelId?: string) => {
     setCurrentAssistantId(assistantId);
+    if (modelId) {
+      setCurrentModelId(modelId);
+    }
+    setCurrentTargetType('assistant');
     // Clear overrides when switching assistants
     setParamOverrides({});
+  };
+
+  const updateTarget = (targetType: ChatTargetType, targetId: string, modelId?: string) => {
+    if (targetType === 'assistant') {
+      updateAssistantId(targetId, modelId);
+      return;
+    }
+    setCurrentModelId(targetId);
+    setCurrentAssistantId(null);
+    setCurrentTargetType('model');
+    setParamOverrides({});
+  };
+
+  const updateGroupAssistantOrder = async (nextGroupAssistants: string[]) => {
+    if (!sessionId || nextGroupAssistants.length < 2) return;
+    const previousOrder = groupAssistants;
+    if (!previousOrder || previousOrder.length < 2) return;
+
+    const orderUnchanged =
+      previousOrder.length === nextGroupAssistants.length &&
+      previousOrder.every((assistantId, index) => assistantId === nextGroupAssistants[index]);
+    if (orderUnchanged) return;
+
+    setGroupAssistants(nextGroupAssistants);
+    try {
+      await api.updateGroupAssistants(sessionId, nextGroupAssistants);
+    } catch (err) {
+      setGroupAssistants(previousOrder);
+      setError(err instanceof Error ? err.message : 'Failed to update group assistant order');
+      throw err;
+    }
   };
 
   const updateParamOverrides = async (overrides: ParamOverrides) => {
@@ -1021,6 +1771,7 @@ export function useChat(sessionId: string | null) {
     isComparing,
     currentModelId,
     currentAssistantId,
+    currentTargetType,
     totalUsage,
     totalCost,
     followupQuestions,
@@ -1040,10 +1791,15 @@ export function useChat(sessionId: string | null) {
     stopGeneration,
     updateModelId,
     updateAssistantId,
+    updateTarget,
+    updateGroupAssistantOrder,
     clearFollowupQuestions,
     generateFollowups,
     paramOverrides,
     hasActiveOverrides,
     updateParamOverrides,
+    groupAssistants,
+    groupMode,
+    groupTimeline,
   };
 }

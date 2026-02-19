@@ -11,7 +11,11 @@ interface ModelCapabilities {
   loading: boolean;
 }
 
-export function useModelCapabilities(assistantId: string | null): ModelCapabilities {
+export function useModelCapabilities(
+  targetType: 'assistant' | 'model',
+  assistantId: string | null,
+  modelId: string | null,
+): ModelCapabilities {
   const { api } = useChatServices();
   const [supportsVision, setSupportsVision] = useState(false);
   const [supportsReasoning, setSupportsReasoning] = useState(false);
@@ -19,25 +23,29 @@ export function useModelCapabilities(assistantId: string | null): ModelCapabilit
 
   useEffect(() => {
     const checkCapabilities = async () => {
-      if (!assistantId || assistantId.startsWith('__legacy_model_')) {
-        setSupportsVision(false);
-        setSupportsReasoning(false);
-        return;
-      }
-
       try {
         setLoading(true);
-        const assistant = await api.getAssistant(assistantId);
-        const modelId = assistant.model_id;
+        let effectiveModelId: string | null = null;
 
-        if (!modelId) {
+        if (targetType === 'assistant') {
+          if (!assistantId || assistantId.startsWith('__legacy_model_')) {
+            setSupportsVision(false);
+            setSupportsReasoning(false);
+            return;
+          }
+          const assistant = await api.getAssistant(assistantId);
+          effectiveModelId = assistant.model_id;
+        } else {
+          effectiveModelId = modelId;
+        }
+
+        if (!effectiveModelId) {
           setSupportsVision(false);
           setSupportsReasoning(false);
           return;
         }
 
-        // Query model capabilities from backend
-        const response = await api.getModelCapabilities(modelId);
+        const response = await api.getModelCapabilities(effectiveModelId);
         setSupportsVision(response.capabilities.vision || false);
         setSupportsReasoning(response.capabilities.reasoning || false);
       } catch (error) {
@@ -50,7 +58,7 @@ export function useModelCapabilities(assistantId: string | null): ModelCapabilit
     };
 
     checkCapabilities();
-  }, [assistantId, api]);
+  }, [targetType, assistantId, modelId, api]);
 
   return { supportsVision, supportsReasoning, loading };
 }

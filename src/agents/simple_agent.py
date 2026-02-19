@@ -1,6 +1,5 @@
 """Simple agent implementation using LangGraph."""
 
-import os
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
@@ -8,6 +7,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from src.state.agent_state import SimpleAgentState
 from src.utils.llm_logger import get_llm_logger
+from src.api.services.model_config_service import ModelConfigService
 
 
 def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
@@ -21,16 +21,20 @@ def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
     # Get session_id from state metadata if available, otherwise use "unknown"
     session_id = state.get("session_id", "unknown")
 
-    print(f"🔧 chat_node: 准备调用 DeepSeek")
+    print(f" chat_node: 准备调用 DeepSeek")
     print(f"   会话历史消息数: {len(messages)}")
     logger.info(f"🔧 chat_node: 准备调用 DeepSeek")
     logger.info(f"   会话历史消息数: {len(messages)}")
 
+    model_service = ModelConfigService()
+    provider = model_service.get_model_and_provider_sync("deepseek:deepseek-chat")[1]
+    api_key = model_service.resolve_provider_api_key_sync(provider)
+
     llm = ChatOpenAI(
         model="deepseek-chat",
         temperature=0.7,
-        base_url="https://api.deepseek.com",
-        api_key=os.getenv("DEEPSEEK_API_KEY")
+        base_url=provider.base_url,
+        api_key=api_key,
     )
 
     langchain_messages = []

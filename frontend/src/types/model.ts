@@ -5,6 +5,9 @@
 // API Protocol types
 export type ApiProtocol = 'openai' | 'anthropic' | 'gemini' | 'ollama';
 
+// Provider call mode
+export type CallMode = 'auto' | 'native' | 'chat_completions' | 'responses';
+
 // Provider type (builtin vs custom)
 export type ProviderType = 'builtin' | 'custom';
 
@@ -17,6 +20,15 @@ export interface ModelCapabilities {
   streaming: boolean;
   file_upload: boolean;
   image_output: boolean;
+}
+
+export interface ChatTemplate {
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
 }
 
 // Default capabilities
@@ -35,11 +47,12 @@ export interface Provider {
   name: string;
   type?: ProviderType;           // builtin or custom
   protocol?: ApiProtocol;        // API protocol type
+  call_mode?: CallMode;          // Call mode within adapter family
   base_url: string;
-  api_key_env: string;
   api_keys?: string[];           // Multiple keys for rotation
   enabled: boolean;
   has_api_key?: boolean;         // Flag indicating if API key is configured
+  requires_api_key?: boolean;    // Whether API key is required
   api_key?: string;              // Only used in create/update requests
 
   // Capability declaration (provider-level defaults)
@@ -56,11 +69,12 @@ export interface Model {
   id: string;
   name: string;
   provider_id: string;
-  group: string;
+  tags: string[];
   enabled: boolean;
 
   // Model capabilities (overrides provider defaults)
   capabilities?: ModelCapabilities;
+  chat_template?: ChatTemplate;
 }
 
 export interface DefaultConfig {
@@ -80,17 +94,17 @@ export interface BuiltinProviderInfo {
   name: string;
   protocol: string;
   base_url: string;
-  api_key_env: string;
   sdk_class: string;
   supports_model_list: boolean;
   default_capabilities: ModelCapabilities;
-  builtin_models: { id: string; name: string }[];
 }
 
 // Model info (from fetch models API)
 export interface ModelInfo {
   id: string;
   name: string;
+  capabilities?: ModelCapabilities;
+  tags?: string[];
 }
 
 // Capabilities response

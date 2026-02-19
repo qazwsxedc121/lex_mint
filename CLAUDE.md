@@ -152,6 +152,18 @@ LangGraph-based AI agent system with web interface using FastAPI backend and Rea
 - **Storage**: Markdown files with YAML frontmatter (text-based, sync-friendly)
 - **LLM**: DeepSeek chat model via LangChain
 
+## Process Management (CRITICAL)
+
+**NEVER start backend or frontend processes without checking first.**
+
+Before starting any dev server (uvicorn, vite, npm run dev, etc.):
+1. Read `.env` to get `API_PORT` and `FRONTEND_PORT`
+2. Check if ports are already occupied: `netstat -ano | grep <PORT>`
+3. **If port is occupied**: The service is already running. Both backend (uvicorn) and frontend (vite) have `--reload` / HMR enabled — code changes are picked up automatically. Do NOT start a new process.
+4. **If service needs restart**: Do NOT restart it yourself. Notify the user and let them handle it (e.g., re-run `start.bat`). Background processes started by Claude Code are invisible to the user and impossible for them to manage.
+
+**Why**: The user runs `start.bat` which manages both backend and frontend in one terminal window. Starting orphan processes from Claude Code creates invisible zombie processes the user cannot find or stop.
+
 ## Development Environment
 
 **Primary Platform**: Windows
@@ -184,7 +196,7 @@ cd frontend
 npm run dev
 ```
 
-Access the web interface at http://localhost:5173
+Access the web interface at http://localhost:<FRONTEND_PORT>
 
 **CLI Mode** (original):
 ```bash
@@ -205,6 +217,9 @@ Access the web interface at http://localhost:5173
 
 # Run with coverage
 ./venv/Scripts/pytest --cov=src --cov-report=html
+
+# Run frontend e2e smoke test
+cd frontend && npx playwright test tests/e2e/specs/chat-llm-smoke.spec.ts --project=chromium --workers=1
 ```
 
 ### Logging
@@ -218,6 +233,7 @@ For detailed documentation, see `docs/`:
 - `docs/api_endpoints.md` - API endpoint specifications and usage
 - `docs/llm_logging.md` - LLM logging system documentation
 - `docs/port_configuration.md` - Backend port configuration guide
+- `docs/e2e_testing.md` - Playwright e2e setup, runbook, and port handling
 
 ### Key Concepts
 - **Backend**: FastAPI REST API (`src/api/`)
@@ -230,14 +246,15 @@ For detailed documentation, see `docs/`:
 
 Required `.env` file:
 ```
-DEEPSEEK_API_KEY=your_key_here
+# API keys are NOT stored in .env
+# Use $HOME/.lex_mint/keys_config.yaml instead
 ```
 
 Optional for API configuration:
 ```
 API_HOST=0.0.0.0
 API_PORT=<API_PORT>    # Backend port (see .env.example for suggested value)
-CORS_ORIGINS=http://localhost:5173
+CORS_ORIGINS=http://localhost:<FRONTEND_PORT>
 CONVERSATIONS_DIR=conversations
 LOG_LEVEL=INFO
 ```

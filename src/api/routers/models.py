@@ -23,10 +23,9 @@ from ..services.model_config_service import ModelConfigService
 from src.providers import (
     BUILTIN_PROVIDERS,
     ModelCapabilities,
-    AdapterRegistry,
     get_builtin_provider,
 )
-from src.providers.types import ProviderDefinition, ApiProtocol, ProviderType
+from src.providers.types import ApiProtocol, ProviderType
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -47,17 +46,17 @@ class BuiltinProviderInfo(BaseModel):
     name: str
     protocol: str
     base_url: str
-    api_key_env: str
     sdk_class: str
     supports_model_list: bool
     default_capabilities: ModelCapabilities
-    builtin_models: List[dict] = []
 
 
 class ModelInfo(BaseModel):
-    """模型信息"""
+    """模型信息（含可选的能力和标签）"""
     id: str
     name: str
+    capabilities: Optional[dict] = None
+    tags: Optional[List[str]] = None
 
 
 @router.get("/providers/builtin", response_model=List[BuiltinProviderInfo])
@@ -69,20 +68,14 @@ async def get_builtin_providers():
     """
     result = []
     for provider_id, definition in BUILTIN_PROVIDERS.items():
-        builtin_models = [
-            {"id": m.id, "name": m.name}
-            for m in definition.builtin_models
-        ]
         result.append(BuiltinProviderInfo(
             id=definition.id,
             name=definition.name,
             protocol=definition.protocol.value,
             base_url=definition.base_url,
-            api_key_env=definition.api_key_env,
             sdk_class=definition.sdk_class,
             supports_model_list=definition.supports_model_list,
             default_capabilities=definition.default_capabilities,
-            builtin_models=builtin_models,
         ))
     return result
 
@@ -102,21 +95,14 @@ async def get_builtin_provider_info(provider_id: str):
             detail=f"Builtin provider '{provider_id}' not found"
         )
 
-    builtin_models = [
-        {"id": m.id, "name": m.name}
-        for m in definition.builtin_models
-    ]
-
     return BuiltinProviderInfo(
         id=definition.id,
         name=definition.name,
         protocol=definition.protocol.value,
         base_url=definition.base_url,
-        api_key_env=definition.api_key_env,
         sdk_class=definition.sdk_class,
         supports_model_list=definition.supports_model_list,
         default_capabilities=definition.default_capabilities,
-        builtin_models=builtin_models,
     )
 
 
@@ -152,14 +138,20 @@ async def create_provider(
 ):
     """创建新提供商（包含 API 密钥）"""
     try:
+        if provider_data.type == ProviderType.BUILTIN:
+            raise HTTPException(
+                status_code=400,
+                detail="Built-in providers are preloaded. Use create provider for custom providers only."
+            )
+
         # 创建 Provider 对象（不包含 api_key）
         provider = Provider(
             id=provider_data.id,
             name=provider_data.name,
             type=provider_data.type,
             protocol=provider_data.protocol,
+            call_mode=provider_data.call_mode,
             base_url=provider_data.base_url,
-            api_key_env=f"{provider_data.id.upper()}_API_KEY",  # 生成默认环境变量名
             enabled=provider_data.enabled,
             default_capabilities=provider_data.default_capabilities,
             auto_append_path=provider_data.auto_append_path,
@@ -196,6 +188,8 @@ async def update_provider(
             updated_data['name'] = provider_update.name
         if provider_update.protocol is not None:
             updated_data['protocol'] = provider_update.protocol
+        if provider_update.call_mode is not None:
+            updated_data['call_mode'] = provider_update.call_mode
         if provider_update.base_url is not None:
             updated_data['base_url'] = provider_update.base_url
         if provider_update.enabled is not None:
@@ -208,6 +202,7 @@ async def update_provider(
         # 创建更新后的 Provider 对象（不包含api_key，因为它不在Provider的配置中）
         updated_data.pop('api_key', None)
         updated_data.pop('has_api_key', None)
+        updated_data.pop('requires_api_key', None)
         updated_provider = Provider(**updated_data)
         await service.update_provider(provider_id, updated_provider)
 
@@ -241,10 +236,15 @@ async def test_provider_connection(
     service: ModelConfigService = Depends(get_model_service)
 ):
     """测试提供商连接是否有效（使用提供的API Key）"""
+    provider = None
+    if test_request.provider_id:
+        provider = await service.get_provider(test_request.provider_id)
+
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
         api_key=test_request.api_key,
-        model_id=test_request.model_id
+        model_id=test_request.model_id,
+        provider=provider,
     )
     return ProviderTestResponse(success=success, message=message)
 
@@ -255,9 +255,17 @@ async def test_provider_stored_connection(
     service: ModelConfigService = Depends(get_model_service)
 ):
     """测试提供商连接是否有效（使用已存储的API Key）"""
+    # 获取提供商配置
+    provider = await service.get_provider(test_request.provider_id)
+    if not provider:
+        return ProviderTestResponse(
+            success=False,
+            message=f"Provider '{test_request.provider_id}' not found"
+        )
+
     # 获取已存储的API Key
     api_key = await service.get_api_key(test_request.provider_id)
-    if not api_key:
+    if not api_key and service.provider_requires_api_key(provider):
         return ProviderTestResponse(
             success=False,
             message="No API key found for this provider"
@@ -265,8 +273,9 @@ async def test_provider_stored_connection(
 
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
-        api_key=api_key,
-        model_id=test_request.model_id
+        api_key=api_key or "",
+        model_id=test_request.model_id,
+        provider=provider
     )
     return ProviderTestResponse(success=success, message=message)
 
@@ -389,7 +398,8 @@ async def test_model_connection(
     success, message = await service.test_provider_connection(
         base_url=provider.base_url,
         api_key=api_key,
-        model_id=simple_model_id
+        model_id=simple_model_id,
+        provider=provider
     )
 
     return ProviderTestResponse(success=success, message=message)
@@ -468,19 +478,29 @@ async def fetch_provider_models(
             detail=f"Provider '{provider_id}' does not support model listing"
         )
 
-    # Get API key
-    api_key = await service.get_api_key(provider_id)
-    if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No API key configured for provider '{provider_id}'"
-        )
+    # Get API key (optional - some providers like OpenRouter have public model lists)
+    api_key = await service.get_api_key(provider_id) or ""
 
     # Get adapter and fetch models
     adapter = service.get_adapter_for_provider(provider)
     try:
         models = await adapter.fetch_models(provider.base_url, api_key)
-        return [ModelInfo(id=m["id"], name=m.get("name", m["id"])) for m in models]
+        if not models and not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No models found. Try configuring an API key for provider '{provider_id}'"
+            )
+        return [
+            ModelInfo(
+                id=m["id"],
+                name=m.get("name", m["id"]),
+                capabilities=m.get("capabilities"),
+                tags=m.get("tags"),
+            )
+            for m in models
+        ]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

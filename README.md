@@ -61,7 +61,7 @@ flowchart LR
 ### Option A: Windows one-click scripts
 
 1. Copy `.env.example` to `.env`
-2. Set `DEEPSEEK_API_KEY` in `.env`
+2. Set API key in `$HOME/.lex_mint/keys_config.yaml` (see `docs/worktree_bootstrap.md`)
 3. Run `install.bat`
 4. Run `start.bat`
 
@@ -71,7 +71,15 @@ Backend (Windows, use venv executables directly):
 
 ```powershell
 ./venv/Scripts/pip install -r requirements.txt
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8988
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
+```
+
+Optional NVIDIA GPU build for `llama-cpp-python` (keep this machine-specific):
+
+```powershell
+$env:CMAKE_ARGS='-DGGML_CUDA=on'
+$env:FORCE_CMAKE='1'
+./venv/Scripts/pip install --upgrade --force-reinstall -r requirements.gpu_nvidia.txt
 ```
 
 Frontend:
@@ -84,13 +92,13 @@ npm run dev
 
 Open:
 
-- App: `http://localhost:5173`
-- API docs: `http://localhost:8988/docs`
+- App: `http://localhost:<FRONTEND_PORT>`
+- API docs: `http://localhost:<API_PORT>/docs`
 
 ### Option C: Docker Compose
 
 1. Copy `.env.example` to `.env`
-2. Set `DEEPSEEK_API_KEY` in `.env`
+2. Set API key in `$HOME/.lex_mint/keys_config.yaml` (or via Settings -> Providers after startup)
 3. Start services:
 
 ```powershell
@@ -107,11 +115,12 @@ docker compose down
 
 | Variable | Required | Description |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | Yes | Required base LLM key |
 | `API_PORT` | No | Backend port (default in `.env.example`) |
-| `CORS_ORIGINS` | No | Comma-separated allowed origins |
+| `CORS_ORIGINS` | No | JSON array of allowed origins |
 | `PROJECTS_BROWSE_ROOTS` | No | Allowed server-side roots for project picker |
 | `LANGCHAIN_API_KEY` | No | Optional LangSmith tracing |
+
+API keys are stored in `~/.lex_mint/keys_config.yaml` (not in `.env`).
 
 ## Repository Layout
 

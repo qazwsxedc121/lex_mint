@@ -168,6 +168,40 @@ export interface TemplateVariablesFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Preset field: renders a button group that batch-applies effects to other fields.
+ * The preset value itself is NOT persisted -- strip it via `transformSave`.
+ */
+export interface PresetFieldConfig extends BaseFieldConfig {
+  type: 'preset';
+  /** Available presets */
+  options: Array<{
+    /** Unique preset identifier */
+    value: string;
+    /** Display label */
+    label: string;
+    /** Short description shown below label */
+    description?: string;
+    /** Field values to apply when this preset is selected */
+    effects: Record<string, any>;
+  }>;
+}
+
+/**
+ * Model ID field with async provider-model discovery.
+ * Fetches available models from the provider API and shows them
+ * as selectable suggestions alongside a free-text input.
+ */
+export interface ModelIdFieldConfig extends BaseFieldConfig {
+  type: 'model-id';
+  /** Default value */
+  defaultValue?: string;
+  /** Form field that holds the provider ID (default: 'provider_id') */
+  providerField?: string;
+  /** Form field to auto-fill with the display name (default: 'name') */
+  nameField?: string;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -179,7 +213,9 @@ export type FieldConfig =
   | TextareaFieldConfig
   | IconPickerFieldConfig
   | MultiSelectFieldConfig
-  | TemplateVariablesFieldConfig;
+  | TemplateVariablesFieldConfig
+  | PresetFieldConfig
+  | ModelIdFieldConfig;
 
 // ==================== Table Configuration ====================
 
@@ -201,6 +237,10 @@ export interface TableColumnConfig<T = any> {
   sortFn?: (a: T, b: T) => number;
   /** Whether to hide on mobile */
   hideOnMobile?: boolean;
+  /** Custom header click handler (overrides sort behavior) */
+  onHeaderClick?: () => void;
+  /** Extra content rendered after the label in the header */
+  headerExtra?: ReactNode;
 }
 
 /**
@@ -309,6 +349,12 @@ export interface CrudSettingsConfig<T = any> {
     edit?: boolean;
     delete?: boolean;
     setDefault?: boolean;
+  };
+  /** Per-item visibility control for default actions */
+  defaultActionVisibility?: {
+    edit?: (item: T, context: ConfigContext) => boolean;
+    delete?: (item: T, context: ConfigContext) => boolean;
+    setDefault?: (item: T, context: ConfigContext) => boolean;
   };
 
   // Validation

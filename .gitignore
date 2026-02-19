@@ -31,6 +31,9 @@ config/*.tmp
 
 # Testing
 .pytest_cache/
+.pytest_tmp/
+.pytest_work/
+.tmp/
 .coverage
 htmlcov/
 *.cover
@@ -55,6 +58,7 @@ logs/
 conversations/
 attachments/
 knowledge_bases/
+data/
 data/chromadb/
 data/knowledge_bases/
 
@@ -67,3 +71,7 @@ models/**/*.gguf
 
 # Learn Projects
 learn_proj/
+
+# Local temp workdirs
+.tmp/
+frontend/.tmp_e2e/

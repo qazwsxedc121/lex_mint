@@ -81,8 +81,35 @@ export function Table<T = any>({
 
   if (data.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-        {resolvedEmptyMessage}
+      <div className="overflow-x-auto" data-name="table">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-900">
+            <tr>
+              {columns.map((column) => (
+                <th
+                  key={column.key}
+                  onClick={() => column.onHeaderClick ? column.onHeaderClick() : handleSort(column)}
+                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${
+                    column.sortable || column.onHeaderClick ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : ''
+                  } ${column.hideOnMobile ? 'hidden md:table-cell' : ''} ${column.width || ''}`}
+                >
+                  <div className="flex items-center gap-1">
+                    {column.label}
+                    {column.headerExtra}
+                    {column.sortable && sortKey === column.key && (
+                      <span className="text-blue-600 dark:text-blue-400">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+        </table>
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          {resolvedEmptyMessage}
+        </div>
       </div>
     );
   }
@@ -95,13 +122,14 @@ export function Table<T = any>({
             {columns.map((column) => (
               <th
                 key={column.key}
-                onClick={() => handleSort(column)}
+                onClick={() => column.onHeaderClick ? column.onHeaderClick() : handleSort(column)}
                 className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${
-                  column.sortable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : ''
+                  column.sortable || column.onHeaderClick ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : ''
                 } ${column.hideOnMobile ? 'hidden md:table-cell' : ''} ${column.width || ''}`}
               >
                 <div className="flex items-center gap-1">
                   {column.label}
+                  {column.headerExtra}
                   {column.sortable && sortKey === column.key && (
                     <span className="text-blue-600 dark:text-blue-400">
                       {sortDirection === 'asc' ? '↑' : '↓'}

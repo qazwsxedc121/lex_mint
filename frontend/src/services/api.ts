@@ -92,9 +92,22 @@ export async function createSession(
   assistantId?: string,
   contextType: string = 'chat',
   projectId?: string,
-  temporary: boolean = false
+  temporary: boolean = false,
+  groupAssistants?: string[],
+  groupMode?: 'round_robin' | 'committee',
+  targetType?: 'assistant' | 'model'
 ): Promise<string> {
-  const body: { model_id?: string; assistant_id?: string; temporary?: boolean } = {};
+  const body: {
+    model_id?: string;
+    assistant_id?: string;
+    target_type?: 'assistant' | 'model';
+    temporary?: boolean;
+    group_assistants?: string[];
+    group_mode?: 'round_robin' | 'committee';
+  } = {};
+  if (targetType) {
+    body.target_type = targetType;
+  }
   if (assistantId) {
     body.assistant_id = assistantId;
   } else if (modelId) {
@@ -102,6 +115,10 @@ export async function createSession(
   }
   if (temporary) {
     body.temporary = true;
+  }
+  if (groupAssistants && groupAssistants.length >= 2) {
+    body.group_assistants = groupAssistants;
+    body.group_mode = groupMode || 'round_robin';
   }
 
   // Build query params
@@ -651,7 +668,34 @@ export async function sendMessageStream(
   onFollowupQuestions?: (questions: string[]) => void,
   onContextInfo?: (info: ContextInfo) => void,
   onThinkingDuration?: (durationMs: number) => void,
-  fileReferences?: Array<{ path: string; project_id: string }>
+  fileReferences?: Array<{ path: string; project_id: string }>,
+  onToolCalls?: (calls: Array<{ name: string; args: Record<string, unknown> }>) => void,
+  onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
+  onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
+  onAssistantDone?: (assistantId: string) => void,
+  onGroupEvent?: (event: {
+    type: string;
+    assistant_id?: string;
+    assistant_turn_id?: string;
+    assistant_ids?: string[];
+    assistant_names?: string[];
+    name?: string;
+    icon?: string;
+    chunk?: string;
+    message_id?: string;
+    round?: number;
+    max_rounds?: number;
+    action?: string;
+    reason?: string;
+    supervisor_id?: string;
+    supervisor_name?: string;
+    rounds?: number;
+    usage?: TokenUsage;
+    cost?: CostInfo;
+    sources?: SearchSource[];
+    duration_ms?: number;
+    [key: string]: unknown;
+  }) => void
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -665,9 +709,12 @@ export async function sendMessageStream(
       message,
       truncate_after_index: truncateAfterIndex,
       skip_user_message: skipUserMessage,
-      reasoning_effort: reasoningEffort || null,
       context_type: contextType,
     };
+
+    if (reasoningEffort !== undefined && reasoningEffort !== '') {
+      requestBody.reasoning_effort = reasoningEffort;
+    }
 
     if (projectId) {
       requestBody.project_id = projectId;
@@ -725,14 +772,24 @@ export async function sendMessageStream(
           }
 
           // Handle usage/cost event
-          if (data.type === 'usage' && data.usage && onUsage) {
-            onUsage(data.usage, data.cost);
+          if (data.type === 'usage' && data.usage) {
+            if (onUsage) {
+              onUsage(data.usage, data.cost);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
           // Handle sources event
-          if (data.type === 'sources' && data.sources && onSources) {
-            onSources(data.sources);
+          if (data.type === 'sources' && data.sources) {
+            if (onSources) {
+              onSources(data.sources);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
@@ -743,8 +800,13 @@ export async function sendMessageStream(
           }
 
           // Handle assistant_message_id event
-          if (data.type === 'assistant_message_id' && data.message_id && onAssistantMessageId) {
-            onAssistantMessageId(data.message_id);
+          if (data.type === 'assistant_message_id' && data.message_id) {
+            if (onAssistantMessageId) {
+              onAssistantMessageId(data.message_id);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
             continue;
           }
 
@@ -761,8 +823,64 @@ export async function sendMessageStream(
           }
 
           // Handle thinking_duration event
-          if (data.type === 'thinking_duration' && onThinkingDuration) {
-            onThinkingDuration(data.duration_ms);
+          if (data.type === 'thinking_duration') {
+            if (onThinkingDuration) {
+              onThinkingDuration(data.duration_ms);
+            }
+            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+              onGroupEvent(data);
+            }
+            continue;
+          }
+
+          // Handle tool_calls event
+          if (data.type === 'tool_calls' && data.calls && onToolCalls) {
+            onToolCalls(data.calls);
+            continue;
+          }
+
+          // Handle tool_results event
+          if (data.type === 'tool_results' && data.results && onToolResults) {
+            onToolResults(data.results);
+            continue;
+          }
+
+          // Handle assistant_start event (group chat)
+          if (data.type === 'assistant_start') {
+            if (onGroupEvent) {
+              onGroupEvent(data);
+            } else if (onAssistantStart) {
+              onAssistantStart(data.assistant_id, data.name, data.icon);
+            }
+            continue;
+          }
+
+          // Handle assistant_done event (group chat)
+          if (data.type === 'assistant_done') {
+            if (onGroupEvent) {
+              onGroupEvent(data);
+            } else if (onAssistantDone) {
+              onAssistantDone(data.assistant_id);
+            }
+            continue;
+          }
+
+          // Handle assistant_chunk event (group chat)
+          if (data.type === 'assistant_chunk' && data.chunk) {
+            if (onGroupEvent) {
+              onGroupEvent(data);
+            } else {
+              onChunk(data.chunk);
+            }
+            continue;
+          }
+
+          // Handle committee orchestration events
+          if (
+            onGroupEvent &&
+            (data.type === 'group_round_start' || data.type === 'group_action' || data.type === 'group_done')
+          ) {
+            onGroupEvent(data);
             continue;
           }
 
@@ -831,10 +949,13 @@ export async function sendCompareStream(
       session_id: sessionId,
       message,
       model_ids: modelIds,
-      reasoning_effort: options?.reasoningEffort || null,
       context_type: options?.contextType || 'chat',
       use_web_search: options?.useWebSearch || false,
     };
+
+    if (options?.reasoningEffort !== undefined && options.reasoningEffort !== '') {
+      requestBody.reasoning_effort = options.reasoningEffort;
+    }
 
     if (options?.projectId) {
       requestBody.project_id = options.projectId;
@@ -1146,6 +1267,49 @@ export async function updateSessionAssistant(sessionId: string, assistantId: str
 }
 
 /**
+ * Update session target (assistant or model).
+ */
+export async function updateSessionTarget(
+  sessionId: string,
+  targetType: 'assistant' | 'model',
+  contextType: string = 'chat',
+  projectId?: string,
+  options?: { assistantId?: string; modelId?: string }
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/target?${params.toString()}`, {
+    target_type: targetType,
+    assistant_id: options?.assistantId,
+    model_id: options?.modelId,
+  });
+}
+
+/**
+ * Update group assistant order for a session.
+ */
+export async function updateGroupAssistants(
+  sessionId: string,
+  groupAssistants: string[],
+  contextType: string = 'chat',
+  projectId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/group-assistants?${params.toString()}`, {
+    group_assistants: groupAssistants,
+  });
+}
+
+/**
  * Update session parameter overrides.
  */
 export async function updateSessionParamOverrides(
@@ -1292,13 +1456,15 @@ export async function searchMemories(payload: MemorySearchRequest): Promise<Memo
 export async function testProviderConnection(
   baseUrl: string,
   apiKey: string,
-  modelId: string = 'gpt-3.5-turbo'
+  providerId?: string,
+  modelId?: string
 ): Promise<{ success: boolean; message: string }> {
   const response = await api.post<{ success: boolean; message: string }>(
     '/api/models/providers/test',
     {
       base_url: baseUrl,
       api_key: apiKey,
+      provider_id: providerId,
       model_id: modelId,
     }
   );
@@ -1311,7 +1477,7 @@ export async function testProviderConnection(
 export async function testProviderStoredConnection(
   providerId: string,
   baseUrl: string,
-  modelId: string = 'gpt-3.5-turbo'
+  modelId?: string
 ): Promise<{ success: boolean; message: string }> {
   const response = await api.post<{ success: boolean; message: string }>(
     '/api/models/providers/test-stored',
@@ -1865,21 +2031,54 @@ export async function listKnowledgeBaseChunks(
 /**
  * Upload a document to a knowledge base.
  */
-export async function uploadDocument(kbId: string, file: File): Promise<KnowledgeBaseDocument> {
+export async function uploadDocument(
+  kbId: string,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<KnowledgeBaseDocument> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${API_BASE}/api/knowledge-bases/${kbId}/documents/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await axios.post<KnowledgeBaseDocument>(
+      `${API_BASE}/api/knowledge-bases/${kbId}/documents/upload`,
+      formData,
+      {
+        onUploadProgress: (event) => {
+          const total = event.total ?? file.size;
+          if (!total || total <= 0) {
+            return;
+          }
+          const percent = Math.min(100, Math.round((event.loaded / total) * 100));
+          onProgress?.(percent);
+        },
+      }
+    );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Upload failed');
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data;
+      if (data && typeof data === 'object' && 'detail' in data) {
+        const detailValue = (data as { detail?: unknown }).detail;
+        const detail = Array.isArray(detailValue)
+          ? detailValue
+              .map((item) => {
+                if (item && typeof item === 'object' && 'msg' in (item as Record<string, unknown>)) {
+                  return String((item as { msg?: unknown }).msg ?? '');
+                }
+                return String(item ?? '');
+              })
+              .filter(Boolean)
+              .join('; ')
+          : String(detailValue ?? '');
+        if (detail) {
+          throw new Error(detail);
+        }
+      }
+    }
+    throw error instanceof Error ? error : new Error('Upload failed');
   }
-
-  return response.json();
 }
 
 /**

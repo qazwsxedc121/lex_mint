@@ -20,6 +20,15 @@ interface DocumentManagerProps {
   kbId: string;
 }
 
+interface UploadProgressState {
+  total: number;
+  completed: number;
+  failed: number;
+  currentFile: string;
+  currentFilePercent: number;
+  overallPercent: number;
+}
+
 const statusConfig: Record<string, { labelKey: string; className: string }> = {
   pending: {
     labelKey: 'documents.pending',
@@ -50,7 +59,9 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
   const [documents, setDocuments] = useState<KnowledgeBaseDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const [reprocessingAll, setReprocessingAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -96,18 +107,81 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    const uploadQueue = Array.from(files);
     setUploading(true);
+    setUploadProgress({
+      total: uploadQueue.length,
+      completed: 0,
+      failed: 0,
+      currentFile: uploadQueue[0]?.name || '',
+      currentFilePercent: 0,
+      overallPercent: 0,
+    });
     setError(null);
+
+    let successCount = 0;
+    let failedCount = 0;
+    const failedFiles: string[] = [];
+
     try {
-      for (const file of Array.from(files)) {
-        await api.uploadDocument(kbId, file);
+      for (const [index, file] of uploadQueue.entries()) {
+        setUploadProgress((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            currentFile: file.name,
+            currentFilePercent: 0,
+            overallPercent: Math.max(prev.overallPercent, Math.round((index / uploadQueue.length) * 100)),
+          };
+        });
+
+        try {
+          await api.uploadDocument(kbId, file, (percent) => {
+            setUploadProgress((prev) => {
+              if (!prev) return prev;
+              const currentPercent = Math.max(0, Math.min(100, Math.round(percent)));
+              const doneCount = successCount + failedCount;
+              const overallPercent = Math.min(
+                100,
+                Math.round(((doneCount + currentPercent / 100) / uploadQueue.length) * 100)
+              );
+              return {
+                ...prev,
+                currentFile: file.name,
+                currentFilePercent: currentPercent,
+                overallPercent,
+              };
+            });
+          });
+          successCount += 1;
+        } catch {
+          failedCount += 1;
+          failedFiles.push(file.name);
+        } finally {
+          setUploadProgress((prev) => {
+            if (!prev) return prev;
+            const doneCount = successCount + failedCount;
+            return {
+              ...prev,
+              completed: successCount,
+              failed: failedCount,
+              currentFilePercent: 100,
+              overallPercent: Math.min(100, Math.round((doneCount / uploadQueue.length) * 100)),
+            };
+          });
+        }
       }
+
       await loadDocuments();
+      if (failedCount > 0) {
+        setError(t('documents.uploadFailedSome', { count: failedCount, files: failedFiles.join(', ') }));
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : t('documents.uploadFailed');
       setError(message);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -122,6 +196,38 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : t('documents.failedToDelete');
       setError(message);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (documents.length === 0) {
+      setError(t('documents.noDocsForDelete'));
+      return;
+    }
+    if (!confirm(t('documents.confirmDeleteAll', { count: documents.length }))) {
+      return;
+    }
+
+    setDeletingAll(true);
+    setError(null);
+    let failed = 0;
+    try {
+      for (const doc of documents) {
+        try {
+          await api.deleteDocument(kbId, doc.id);
+        } catch {
+          failed += 1;
+        }
+      }
+      await loadDocuments();
+      if (failed > 0) {
+        setError(t('documents.failedToDeleteSome', { count: failed }));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('documents.failedToDeleteAll');
+      setError(message);
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -162,6 +268,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploading) return;
     handleUpload(e.dataTransfer.files);
   };
 
@@ -175,15 +282,26 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
           {t('documents.title')}
         </h3>
-        <button
-          type="button"
-          onClick={handleReprocessAll}
-          disabled={reprocessingAll || documents.length === 0}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60"
-        >
-          <ArrowPathIcon className="h-4 w-4" />
-          {reprocessingAll ? t('documents.reprocessing') : t('documents.reprocessAll')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleReprocessAll}
+            disabled={reprocessingAll || deletingAll || documents.length === 0}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            {reprocessingAll ? t('documents.reprocessing') : t('documents.reprocessAll')}
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteAll}
+            disabled={deletingAll || reprocessingAll || documents.length === 0}
+            className="inline-flex items-center gap-2 rounded-md border border-red-300 dark:border-red-800 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60"
+          >
+            <TrashIcon className="h-4 w-4" />
+            {deletingAll ? t('documents.deletingAll') : t('documents.deleteAll')}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -194,15 +312,61 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
 
       {/* Upload area */}
       <div
-        className="mb-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-blue-400 dark:hover:border-blue-500 transition-colors cursor-pointer"
+        className={`mb-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center transition-colors ${
+          uploading
+            ? 'cursor-not-allowed opacity-70'
+            : 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500'
+        }`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (!uploading) {
+            fileInputRef.current?.click();
+          }
+        }}
       >
         <DocumentArrowUpIcon className="mx-auto h-8 w-8 text-gray-400 dark:text-gray-500 mb-2" />
         <p className="text-sm text-gray-600 dark:text-gray-400">
           {uploading ? t('documents.uploading') : t('documents.dropOrClick')}
         </p>
+        {uploading && uploadProgress && (
+          <div data-name="upload-progress" className="mt-3 space-y-2 text-left">
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('documents.currentFileProgress', {
+                  name: uploadProgress.currentFile,
+                  percent: uploadProgress.currentFilePercent,
+                })}
+              </p>
+              <progress
+                className="mt-1 h-2 w-full overflow-hidden rounded bg-gray-200 dark:bg-gray-700"
+                value={uploadProgress.currentFilePercent}
+                max={100}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {uploadProgress.failed > 0
+                  ? t('documents.batchProgressWithFailed', {
+                      done: uploadProgress.completed,
+                      total: uploadProgress.total,
+                      overall: uploadProgress.overallPercent,
+                      failed: uploadProgress.failed,
+                    })
+                  : t('documents.batchProgress', {
+                      done: uploadProgress.completed,
+                      total: uploadProgress.total,
+                      overall: uploadProgress.overallPercent,
+                    })}
+              </p>
+              <progress
+                className="mt-1 h-2 w-full overflow-hidden rounded bg-gray-200 dark:bg-gray-700"
+                value={uploadProgress.overallPercent}
+                max={100}
+              />
+            </div>
+          </div>
+        )}
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
           {t('documents.supportedTypes')}
         </p>
@@ -211,6 +375,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
           type="file"
           accept={ACCEPTED_TYPES}
           multiple
+          disabled={uploading}
           className="hidden"
           onChange={(e) => handleUpload(e.target.files)}
         />
@@ -289,7 +454,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                           onClick={() => handleReprocess(doc.id)}
                           className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                           title={t('documents.reprocess')}
-                          disabled={doc.status === 'processing'}
+                          disabled={doc.status === 'processing' || deletingAll}
                         >
                           <ArrowPathIcon className="h-4 w-4" />
                         </button>
@@ -297,6 +462,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
                           onClick={() => handleDelete(doc.id)}
                           className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                           title={t('common:delete')}
+                          disabled={deletingAll}
                         >
                           <TrashIcon className="h-4 w-4" />
                         </button>

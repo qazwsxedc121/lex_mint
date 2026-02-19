@@ -1,29 +1,44 @@
 """Shared pytest fixtures for all tests."""
 
-import os
 import pytest
-import tempfile
 import shutil
+import uuid
 from pathlib import Path
 from typing import Dict, Any
 from unittest.mock import Mock, AsyncMock
 
 
+def _create_workspace_temp_dir(kind: str) -> Path:
+    """Create a temporary directory under repository-local .pytest_work."""
+    repo_root = Path(__file__).resolve().parents[1]
+    root_dir = repo_root / ".pytest_work" / kind
+    root_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir = root_dir / f"{kind}_{uuid.uuid4().hex[:8]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
+
+@pytest.fixture
+def tmp_path():
+    """Workspace-local replacement for pytest's tmp_path fixture."""
+    temp_dir = _create_workspace_temp_dir("tmp_path")
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 @pytest.fixture
 def temp_conversation_dir():
     """Create temporary directory for conversation files."""
-    temp_dir = Path(tempfile.mkdtemp())
+    temp_dir = _create_workspace_temp_dir("conversations")
     yield temp_dir
-    # Cleanup after test
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
 def temp_config_dir():
     """Create temporary directory for config files."""
-    temp_dir = Path(tempfile.mkdtemp())
+    temp_dir = _create_workspace_temp_dir("config")
     yield temp_dir
-    # Cleanup after test
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -61,18 +76,6 @@ def sample_messages():
 
 
 @pytest.fixture
-def mock_env(monkeypatch):
-    """Mock environment variables."""
-    test_env = {
-        "DEEPSEEK_API_KEY": "test_deepseek_key_12345",
-        "OPENAI_API_KEY": "test_openai_key_67890"
-    }
-    for key, value in test_env.items():
-        monkeypatch.setenv(key, value)
-    return test_env
-
-
-@pytest.fixture
 def sample_model_config():
     """Sample model configuration for testing."""
     return {
@@ -87,7 +90,6 @@ def sample_model_config():
                 "type": "builtin",
                 "protocol": "openai",
                 "base_url": "https://api.deepseek.com",
-                "api_key_env": "DEEPSEEK_API_KEY",
                 "enabled": True,
                 "sdk_class": "deepseek"
             }
@@ -97,7 +99,7 @@ def sample_model_config():
                 "id": "deepseek-chat",
                 "name": "DeepSeek Chat",
                 "provider_id": "deepseek",
-                "group": "chat",
+                "tags": ["chat"],
                 "enabled": True
             }
         ]

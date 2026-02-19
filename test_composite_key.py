@@ -26,7 +26,6 @@ async def test_composite_key():
             id="openrouter",
             name="OpenRouter",
             base_url="https://openrouter.ai/api/v1",
-            api_key_env="OPENROUTER_API_KEY",
             enabled=True
         ))
         print("OK: Added OpenRouter provider")

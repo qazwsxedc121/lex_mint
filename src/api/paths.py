@@ -28,8 +28,20 @@ def config_local_dir() -> Path:
     return repo_root() / "config" / "local"
 
 
+def local_keys_config_path() -> Path:
+    return config_local_dir() / "keys_config.yaml"
+
+
 def data_state_dir() -> Path:
     return repo_root() / "data" / "state"
+
+
+def lex_mint_home_dir() -> Path:
+    return Path.home() / ".lex_mint"
+
+
+def shared_keys_config_path() -> Path:
+    return lex_mint_home_dir() / "keys_config.yaml"
 
 
 def legacy_config_dir() -> Path:
@@ -105,4 +117,3 @@ def resolve_layered_read_path(
 
     existing = first_existing(candidates)
     return existing or local_path
-

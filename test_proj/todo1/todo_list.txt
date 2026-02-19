@@ -12,7 +12,7 @@
 [X] 全局记忆
 [X] 常用提示词
 [X] @文件名
-[] 多个LLM开会
+[X] 多个LLM开会
 [X] 导入chatgpt对话
 [] 导出图片
 [] 导出PDF
@@ -23,7 +23,7 @@
 [X] i18n
 [X] RAG Reorder
 [] RAG by tool use
-[] RAG word search (BM25)
+[X] RAG word search (BM25)
 [X] conversation in Project path
 [X] 数学公式
 [] SVG渲染
@@ -31,16 +31,21 @@
 [] 完善话题分支
 [X] 对话文件夹组织
 [] projects专用目录
-[] function call初步
+[X] function call初步
 [] apply_diff功能
 [] 用户管理,认证,权限
 [] MCP客户端最小版
 [] STT语音输入
-[] RAG评估体系
+[X] RAG评估体系
 [X] 本地embedding
 [] 本地reranking
 [X] 本地LLM总结
 [X] 本地LLM翻译
-[] 超长分段总结
+[X] 超长分段总结
 [X] 翻译文本自动检查语言/自动中英互译
-[] 增强模板参数
+[X] 增强模板参数
+[X] 向量数据库可选sqlite vec
+[X] 增强提供商选择,提供默认服务商
+[X] 服务商接入智谱
+[X] RAG批量上传
+[X] 批量删除知识

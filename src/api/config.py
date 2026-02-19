@@ -1,17 +1,30 @@
 """Configuration management using pydantic-settings."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pathlib import Path
 from typing import List
 import os
 
 
+def _default_cors_origins() -> List[str]:
+    """Build sane CORS defaults without hardcoded project port literals."""
+    frontend_port = os.getenv("FRONTEND_PORT", "").strip()
+    origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    if frontend_port:
+        origins = [
+            f"http://localhost:{frontend_port}",
+            f"http://127.0.0.1:{frontend_port}",
+            *origins,
+        ]
+    return origins
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-
-    # LLM Configuration
-    deepseek_api_key: str
 
     # API Configuration
     api_host: str = "0.0.0.0"
@@ -33,19 +46,15 @@ class Settings(BaseSettings):
     ]
 
     # CORS Configuration
-    cors_origins: List[str] = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ]
+    cors_origins: List[str] = Field(default_factory=_default_cors_origins)
 
     # Logging
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore",
     )
 
     @field_validator("projects_browse_roots", mode="before")

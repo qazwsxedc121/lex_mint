@@ -94,6 +94,10 @@
   "fileViewer.emptyState": "Select a file to view",
   "fileViewer.hideTree": "Hide file tree",
   "fileViewer.showTree": "Show file tree",
+  "fileViewer.refresh": "Refresh project files",
+  "fileViewer.refreshing": "Refreshing...",
+  "fileViewer.refreshConfirmDiscard": "You have unsaved changes. Refreshing will discard them. Continue?",
+  "fileViewer.refreshFailed": "Failed to refresh project files.",
 
   "editor.save": "Save (Ctrl+S)",
   "editor.saving": "Saving...",

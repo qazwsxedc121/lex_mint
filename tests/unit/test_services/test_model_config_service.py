@@ -2,6 +2,7 @@
 
 import pytest
 import yaml
+import shutil
 from pathlib import Path
 from unittest.mock import patch, Mock
 
@@ -11,6 +12,11 @@ from src.api.models.model_config import Provider, Model, ModelsConfig
 
 class TestModelConfigService:
     """Test cases for ModelConfigService class."""
+
+    @pytest.fixture(autouse=True)
+    def _disable_builtin_sync(self, monkeypatch):
+        """Keep unit tests focused on local file behavior, not builtin auto-sync."""
+        monkeypatch.setattr(ModelConfigService, "_sync_builtin_entries", lambda self: None)
 
     @pytest.mark.asyncio
     async def test_ensure_config_exists(self, temp_config_dir):
@@ -29,6 +35,171 @@ class TestModelConfigService:
             assert "default" in data
             assert "providers" in data
             assert "models" in data
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_supports_model_list_flag(self):
+        """Builtin providers should refresh non-editable model-list support flags."""
+        test_dir = Path(".tmp") / "test_sync_builtin_supports_model_list_flag"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        stale_config = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": False,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(stale_config, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            provider = await service.get_provider("deepseek")
+
+            assert provider is not None
+            assert provider.supports_model_list is True
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_migrates_siliconflow_legacy_base_url(self):
+        """Builtin sync should migrate legacy SiliconFlow .com base URL to .cn."""
+        test_dir = Path(".tmp") / "test_sync_builtin_migrates_siliconflow_legacy_base_url"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        stale_config = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "siliconflow",
+                    "name": "SiliconFlow",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.siliconflow.com/v1",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "siliconflow",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(stale_config, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            provider = await service.get_provider("siliconflow")
+
+            assert provider is not None
+            assert provider.base_url == "https://api.siliconflow.cn/v1"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_default_config_uses_single_bootstrap_model(self):
+        """Fresh config should avoid preloading large builtin model catalogs."""
+        test_dir = Path(".tmp") / "test_default_config_uses_single_bootstrap_model"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        try:
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert config.default.provider == "deepseek"
+            assert config.default.model == "deepseek-chat"
+            assert len(config.models) == 1
+            assert config.models[0].provider_id == "deepseek"
+            assert config.models[0].id == "deepseek-chat"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_does_not_auto_seed_builtin_model_catalog(self):
+        """Builtin sync should not append large curated model lists."""
+        test_dir = Path(".tmp") / "test_sync_builtin_does_not_auto_seed_builtin_model_catalog"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        config_data = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(config_data, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert len(config.models) == 1
+            assert config.models[0].id == "deepseek-chat"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
     async def test_load_config(self, temp_config_dir, sample_model_config):
@@ -90,7 +261,6 @@ class TestModelConfigService:
             "type": "builtin",
             "protocol": "openai",
             "base_url": "https://api.openai.com/v1",
-            "api_key_env": "OPENAI_API_KEY",
             "enabled": True
         }
         new_provider = Provider(**new_provider_dict)
@@ -121,7 +291,6 @@ class TestModelConfigService:
             type="builtin",
             protocol="openai",
             base_url="https://test.com",
-            api_key_env="TEST_KEY",
             enabled=True
         )
 
@@ -133,12 +302,11 @@ class TestModelConfigService:
         """Test deleting a provider."""
         # Add second provider to config
         sample_model_config["providers"].append({
-            "id": "openai",
-            "name": "OpenAI",
-            "type": "builtin",
+            "id": "custom-openai",
+            "name": "Custom OpenAI",
+            "type": "custom",
             "protocol": "openai",
             "base_url": "https://api.openai.com/v1",
-            "api_key_env": "OPENAI_API_KEY",
             "enabled": True
         })
 
@@ -151,7 +319,7 @@ class TestModelConfigService:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
-        await service.delete_provider("openai")
+        await service.delete_provider("custom-openai")
 
         # Verify
         providers = await service.get_providers()
@@ -245,7 +413,7 @@ class TestModelConfigService:
             id="deepseek-coder",
             name="DeepSeek Coder",
             provider_id="deepseek",
-            group="chat",
+            tags=["chat"],
             enabled=True
         )
 
@@ -264,7 +432,7 @@ class TestModelConfigService:
             "id": "deepseek-coder",
             "name": "DeepSeek Coder",
             "provider_id": "deepseek",
-            "group": "chat",
+            "tags": ["chat"],
             "enabled": True
         })
 
@@ -340,3 +508,55 @@ class TestModelConfigService:
         # Short key
         masked_short = service._mask_api_key("short")
         assert masked_short == "****"
+
+    @pytest.mark.asyncio
+    async def test_shared_keys_path_is_read_only(self, temp_config_dir, sample_model_config):
+        """Shared key file must never be modified by runtime key operations."""
+        config_path = temp_config_dir / "models_config.yaml"
+        shared_keys_path = temp_config_dir / "shared" / "keys_config.yaml"
+        shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(sample_model_config, f)
+        with open(shared_keys_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump({"providers": {"deepseek": {"api_key": "old_value"}}}, f)
+
+        with patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+            service = ModelConfigService(config_path, shared_keys_path)
+
+            with pytest.raises(PermissionError, match="bootstrap-only"):
+                await service.set_api_key("deepseek", "new_value")
+
+        with open(shared_keys_path, 'r', encoding='utf-8') as f:
+            shared_data = yaml.safe_load(f)
+        assert shared_data["providers"]["deepseek"]["api_key"] == "old_value"
+
+    @pytest.mark.asyncio
+    async def test_default_keys_path_bootstraps_from_shared_once(self, temp_config_dir):
+        """Default key path should be local, bootstrapped from shared file."""
+        config_local_path = temp_config_dir / "config" / "local"
+        config_defaults_path = temp_config_dir / "config" / "defaults"
+        legacy_config_path = temp_config_dir / "config"
+        shared_keys_path = temp_config_dir / "home" / ".lex_mint" / "keys_config.yaml"
+
+        config_defaults_path.mkdir(parents=True, exist_ok=True)
+        shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
+
+        shared_payload = {"providers": {"openai": {"api_key": "shared_key_value"}}}
+        with open(shared_keys_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(shared_payload, f)
+
+        with patch("src.api.services.model_config_service.config_local_dir", return_value=config_local_path), \
+                patch("src.api.services.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
+                patch("src.api.services.model_config_service.legacy_config_dir", return_value=legacy_config_path), \
+                patch("src.api.services.model_config_service.local_keys_config_path", return_value=config_local_path / "keys_config.yaml"), \
+                patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+            service = ModelConfigService()
+
+        expected_local_keys = config_local_path / "keys_config.yaml"
+        assert service.keys_path == expected_local_keys
+        assert expected_local_keys.exists()
+
+        with open(expected_local_keys, 'r', encoding='utf-8') as f:
+            local_data = yaml.safe_load(f)
+        assert local_data == shared_payload

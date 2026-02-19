@@ -1,20 +1,30 @@
 """Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
-from typing import Dict, AsyncIterator, Optional, Any, List
+from typing import Dict, AsyncIterator, Optional, Any, List, Tuple
 import logging
 import asyncio
+import uuid
+import re
+import os
+import json
+from types import SimpleNamespace
 
 from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
 from src.providers.types import TokenUsage, CostInfo
+from .agent_service_bootstrap import bootstrap_agent_service
 from .conversation_storage import ConversationStorage
-from .pricing_service import PricingService
-from .comparison_storage import ComparisonStorage
-from .file_service import FileService
-from .search_service import SearchService
-from .webpage_service import WebpageService
-from .memory_service import MemoryService
-from .file_reference_config_service import FileReferenceConfigService, FileReferenceConfig
-from ..config import settings
+from .file_reference_config_service import FileReferenceConfig
+from .group_participants import parse_group_participant
+from .group_orchestration import (
+    CommitteeOrchestrator,
+    CommitteePolicy,
+    GroupSettingsResolver,
+    ResolvedCommitteeSettings,
+    CommitteeRuntimeState,
+    CommitteeTurnExecutor,
+)
+from .rag_tool_service import RagToolService
+from .group_orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +46,7 @@ class AgentService:
         Args:
             storage: ConversationStorage instance for persistence
         """
-        self.storage = storage
-        self.pricing_service = PricingService()
-        self.file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
-        self.search_service = SearchService()
-        self.webpage_service = WebpageService()
-        self.memory_service = MemoryService()
-        self.file_reference_config_service = FileReferenceConfigService()
-        self.comparison_storage = ComparisonStorage(self.storage)
+        bootstrap_agent_service(self, storage)
         logger.info("AgentService initialized (simplified version)")
 
     _FILE_CONTEXT_CHUNK_SIZE = 2500
@@ -51,6 +54,84 @@ class AgentService:
     _FILE_CONTEXT_PREVIEW_CHARS = 600
     _FILE_CONTEXT_PREVIEW_LINES = 40
     _FILE_CONTEXT_TOTAL_BUDGET_CHARS = 18000
+    _GROUP_TRACE_PREVIEW_CHARS = 1600
+
+    @staticmethod
+    def _truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
+        """Trim text for debug logs while preserving head and tail context."""
+        return truncate_log_text(text, max_chars)
+
+    @staticmethod
+    def _build_messages_preview_for_log(
+        messages: List[Dict[str, Any]],
+        *,
+        max_messages: int = 10,
+        max_chars: int = 220,
+    ) -> List[Dict[str, Any]]:
+        """Build a compact recent message view for group context debugging."""
+        return build_messages_preview_for_log(
+            messages,
+            max_messages=max_messages,
+            max_chars=max_chars,
+        )
+
+    @staticmethod
+    def _is_group_trace_enabled() -> bool:
+        """Enable verbose group trace logging via env variable."""
+        value = os.getenv("LEX_MINT_GROUP_TRACE", "").strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    def _log_group_trace(self, trace_id: str, stage: str, payload: Dict[str, Any]) -> None:
+        """Emit structured group-trace logs when tracing is enabled."""
+        if not self._is_group_trace_enabled():
+            return
+        try:
+            serialized = json.dumps(payload, ensure_ascii=True, default=str)
+        except Exception:
+            serialized = str(payload)
+        logger.info("[GroupTrace][%s][%s] %s", trace_id, stage, serialized)
+
+    def _create_committee_turn_executor(self) -> CommitteeTurnExecutor:
+        """Build turn executor with service dependencies and prompt/context callbacks."""
+        return CommitteeTurnExecutor(
+            storage=self.storage,
+            pricing_service=self.pricing_service,
+            memory_service=self.memory_service,
+            file_service=self.file_service,
+            assistant_params_from_config=self._assistant_params_from_config,
+            build_group_history_hint=self._build_group_history_hint,
+            build_group_identity_prompt=self._build_group_identity_prompt,
+            build_group_instruction_prompt=self._build_group_instruction_prompt,
+            build_rag_context_and_sources=self._build_rag_context_and_sources,
+            truncate_log_text=self._truncate_log_text,
+            build_messages_preview_for_log=self._build_messages_preview_for_log,
+            log_group_trace=self._log_group_trace,
+            group_trace_preview_chars=self._GROUP_TRACE_PREVIEW_CHARS,
+        )
+
+    def _get_committee_turn_executor(self) -> CommitteeTurnExecutor:
+        """Lazily initialize turn executor for tests that construct AgentService via __new__."""
+        executor = getattr(self, "_committee_turn_executor", None)
+        if executor is None:
+            executor = self._create_committee_turn_executor()
+            self._committee_turn_executor = executor
+        return executor
+
+    def _create_committee_orchestrator(self) -> CommitteeOrchestrator:
+        """Build committee orchestrator from current service callbacks."""
+        return CommitteeOrchestrator(
+            llm_call=call_llm,
+            assistant_params_from_config=self._assistant_params_from_config,
+            stream_group_assistant_turn=self._stream_group_assistant_turn,
+            get_message_content_by_id=self._get_message_content_by_id,
+            build_structured_turn_summary=self._build_structured_turn_summary,
+            build_committee_turn_packet=self._build_committee_turn_packet,
+            detect_group_role_drift=self._detect_group_role_drift,
+            build_role_retry_instruction=self._build_role_retry_instruction,
+            truncate_log_text=self._truncate_log_text,
+            log_group_trace=self._log_group_trace,
+            group_trace_preview_chars=self._GROUP_TRACE_PREVIEW_CHARS,
+        )
 
     def _get_file_reference_config(self) -> FileReferenceConfig:
         """Load latest runtime limits; fall back to hardcoded defaults on error."""
@@ -206,6 +287,161 @@ class AgentService:
 
         return "\n\n".join(parts)
 
+    async def _build_rag_context_and_sources(
+        self,
+        *,
+        raw_user_message: str,
+        assistant_id: Optional[str],
+        assistant_obj: Optional[Any] = None,
+        runtime_model_id: Optional[str] = None,
+    ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+        """Build RAG context and source metadata for the current assistant."""
+        rag_sources: List[Dict[str, Any]] = []
+        if not assistant_id or assistant_id.startswith("__legacy_model_"):
+            return None, rag_sources
+
+        try:
+            assistant_for_rag = assistant_obj
+            if assistant_for_rag is None:
+                from .assistant_config_service import AssistantConfigService
+
+                assistant_service = AssistantConfigService()
+                assistant_for_rag = await assistant_service.get_assistant(assistant_id)
+
+            kb_ids = list(getattr(assistant_for_rag, "knowledge_base_ids", None) or [])
+            if not kb_ids:
+                return None, rag_sources
+
+            from .rag_service import RagService
+
+            rag_service = RagService()
+            rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
+                raw_user_message,
+                kb_ids,
+                runtime_model_id=runtime_model_id,
+            )
+            rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
+            if not rag_results:
+                return None, rag_sources
+
+            rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
+            rag_sources.extend([r.to_dict() for r in rag_results])
+            return rag_context, rag_sources
+        except Exception as e:
+            logger.warning(f"RAG retrieval failed: {e}")
+            return None, rag_sources
+
+    @staticmethod
+    def _merge_all_sources(*source_groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        for group in source_groups:
+            if group:
+                merged.extend(group)
+        return merged
+
+    @staticmethod
+    def _merge_tool_diagnostics_into_sources(
+        all_sources: List[Dict[str, Any]],
+        tool_diagnostics: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not tool_diagnostics:
+            return all_sources
+
+        payload = {
+            "tool_search_count": int(tool_diagnostics.get("tool_search_count", 0) or 0),
+            "tool_search_unique_count": int(
+                tool_diagnostics.get("tool_search_unique_count", 0) or 0
+            ),
+            "tool_search_duplicate_count": int(
+                tool_diagnostics.get("tool_search_duplicate_count", 0) or 0
+            ),
+            "tool_read_count": int(tool_diagnostics.get("tool_read_count", 0) or 0),
+            "tool_finalize_reason": str(
+                tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
+            ),
+        }
+
+        diagnostics_source: Optional[Dict[str, Any]] = None
+        for source in reversed(all_sources):
+            if str(source.get("type", "")) == "rag_diagnostics":
+                diagnostics_source = source
+                break
+
+        should_create_new = (
+            payload["tool_search_count"] > 0
+            or payload["tool_read_count"] > 0
+            or payload["tool_search_duplicate_count"] > 0
+            or payload["tool_finalize_reason"] != "normal_no_tools"
+        )
+        if diagnostics_source is None:
+            if not should_create_new:
+                return all_sources
+            diagnostics_source = {
+                "type": "rag_diagnostics",
+                "title": "RAG Diagnostics",
+                "snippet": "Tool diagnostics",
+            }
+            all_sources.append(diagnostics_source)
+
+        diagnostics_source.update(payload)
+        tool_snippet = (
+            f"tool s:{payload['tool_search_count']} "
+            f"u:{payload['tool_search_unique_count']} "
+            f"d:{payload['tool_search_duplicate_count']} "
+            f"r:{payload['tool_read_count']} "
+            f"f:{payload['tool_finalize_reason']}"
+        )
+        existing_snippet = str(diagnostics_source.get("snippet", "") or "").strip()
+        diagnostics_source["snippet"] = (
+            f"{existing_snippet} | {tool_snippet}" if existing_snippet else tool_snippet
+        )
+        return all_sources
+
+    def _is_structured_source_context_enabled(self) -> bool:
+        try:
+            self.rag_config_service.reload_config()
+            return bool(
+                getattr(
+                    self.rag_config_service.config.retrieval,
+                    "structured_source_context_enabled",
+                    False,
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to read structured source context setting: %s", e)
+            return False
+
+    def _append_structured_source_context(
+        self,
+        *,
+        raw_user_message: str,
+        system_prompt: Optional[str],
+        all_sources: List[Dict[str, Any]],
+    ) -> Optional[str]:
+        if not all_sources or not self._is_structured_source_context_enabled():
+            return system_prompt
+        try:
+            source_tags = self.source_context_service.build_source_tags(
+                query=raw_user_message,
+                sources=all_sources,
+            )
+            if not source_tags:
+                return system_prompt
+            structured_context = self.source_context_service.apply_template(
+                query=raw_user_message,
+                source_context=source_tags,
+            )
+            if not structured_context:
+                return system_prompt
+            logger.info(
+                "[SOURCE_CONTEXT] structured source context injected: source_count=%d",
+                len(all_sources),
+            )
+            return f"{system_prompt}\n\n{structured_context}" if system_prompt else structured_context
+        except Exception as e:
+            logger.warning("Structured source context injection failed: %s", e)
+            return system_prompt
+
     async def process_message(
         self,
         session_id: str,
@@ -341,26 +577,26 @@ class AgentService:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
 
         # Optional RAG context from knowledge bases
-        rag_sources: List[Dict[str, Any]] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            try:
-                from .assistant_config_service import AssistantConfigService as _ACS
-                from .rag_service import RagService
-                _assistant_svc = _ACS()
-                _assistant_obj = await _assistant_svc.get_assistant(assistant_id)
-                if _assistant_obj and getattr(_assistant_obj, 'knowledge_base_ids', None):
-                    rag_service = RagService()
-                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                        raw_user_message, _assistant_obj.knowledge_base_ids
-                    )
-                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-                    if rag_results:
-                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources.extend([r.to_dict() for r in rag_results])
-                        if rag_context:
-                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
+        rag_context, rag_sources = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+
+        all_sources = self._merge_all_sources(
+            memory_sources,
+            webpage_sources,
+            search_sources,
+            rag_sources,
+        )
+        system_prompt = self._append_structured_source_context(
+            raw_user_message=raw_user_message,
+            system_prompt=system_prompt,
+            all_sources=all_sources,
+        )
 
         print(f"[OK] Session loaded, {len(messages)} messages, model: {model_id}")
 
@@ -382,15 +618,6 @@ class AgentService:
 
         print(f"📝 [步骤 4] 保存 AI 回复到文件...")
         logger.info(f"📝 [步骤 4] 保存 AI 回复")
-        all_sources: List[Dict[str, Any]] = []
-        if memory_sources:
-            all_sources.extend(memory_sources)
-        if webpage_sources:
-            all_sources.extend(webpage_sources)
-        if search_sources:
-            all_sources.extend(search_sources)
-        if rag_sources:
-            all_sources.extend(rag_sources)
 
         await self.storage.append_message(
             session_id,
@@ -635,39 +862,26 @@ class AgentService:
             system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
 
         # Optional RAG context from knowledge bases
-        rag_sources: List[Dict[str, Any]] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            try:
-                from .rag_service import RagService
-                # Re-use assistant object if already loaded above
-                _rag_assistant = None
-                if assistant_id:
-                    from .assistant_config_service import AssistantConfigService as _ACS2
-                    _rag_svc = _ACS2()
-                    _rag_assistant = await _rag_svc.get_assistant(assistant_id)
-                if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
-                    rag_service = RagService()
-                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                        raw_user_message, _rag_assistant.knowledge_base_ids
-                    )
-                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-                    if rag_results:
-                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources.extend([r.to_dict() for r in rag_results])
-                        if rag_context:
-                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
+        rag_context, rag_sources = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
-        all_sources: List[Dict[str, Any]] = []
-        if memory_sources:
-            all_sources.extend(memory_sources)
-        if webpage_sources:
-            all_sources.extend(webpage_sources)
-        if search_sources:
-            all_sources.extend(search_sources)
-        if rag_sources:
-            all_sources.extend(rag_sources)
+        all_sources = self._merge_all_sources(
+            memory_sources,
+            webpage_sources,
+            search_sources,
+            rag_sources,
+        )
+        system_prompt = self._append_structured_source_context(
+            raw_user_message=raw_user_message,
+            system_prompt=system_prompt,
+            all_sources=all_sources,
+        )
         if all_sources:
             yield {
                 "type": "sources",
@@ -728,13 +942,44 @@ class AgentService:
         print(f"[Step 3] Streaming LLM call...")
         logger.info(f"[Step 3] Streaming LLM call")
 
+        # Resolve tools if model supports function calling
+        llm_tools = None
+        rag_tool_executor = None
+        try:
+            from .model_config_service import ModelConfigService
+            model_service = ModelConfigService()
+            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
+            merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
+            if merged_caps.function_calling:
+                from src.tools.registry import get_tool_registry
+                llm_tools = list(get_tool_registry().get_all_tools())
+                kb_ids_for_tools = list(getattr(assistant_obj, "knowledge_base_ids", None) or [])
+                if assistant_id and not is_legacy_assistant and kb_ids_for_tools:
+                    rag_tool_service = RagToolService(
+                        assistant_id=assistant_id,
+                        allowed_kb_ids=kb_ids_for_tools,
+                        runtime_model_id=model_id,
+                    )
+                    rag_tools = rag_tool_service.get_tools()
+                    if rag_tools:
+                        llm_tools.extend(rag_tools)
+                        rag_tool_executor = rag_tool_service.execute_tool
+                        print(
+                            f"[TOOLS] Added RAG tools for assistant {assistant_id}: "
+                            f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
+                        )
+                print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
+        except Exception as e:
+            logger.warning(f"Failed to resolve tools: {e}")
+
         # Collect full response for saving
         full_response = ""
         usage_data: Optional[TokenUsage] = None
         cost_data: Optional[CostInfo] = None
+        tool_diagnostics: Optional[Dict[str, Any]] = None
 
         try:
-            # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort and file_service
+            # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort, file_service, tools
             async for chunk in call_llm_stream(
                 messages,
                 session_id=session_id,
@@ -743,6 +988,8 @@ class AgentService:
                 max_rounds=max_rounds,
                 reasoning_effort=reasoning_effort,
                 file_service=self.file_service,  # Pass file_service for image attachment support
+                tools=llm_tools,
+                tool_executor=rag_tool_executor,
                 **assistant_params
             ):
                 # Check if this is a usage data dict
@@ -768,6 +1015,15 @@ class AgentService:
                     yield chunk
                     continue
 
+                # Forward tool_calls and tool_results events to frontend
+                if isinstance(chunk, dict) and chunk.get("type") in ("tool_calls", "tool_results"):
+                    yield chunk
+                    continue
+
+                if isinstance(chunk, dict) and chunk.get("type") == "tool_diagnostics":
+                    tool_diagnostics = chunk
+                    continue
+
                 full_response += chunk
                 yield chunk
 
@@ -789,6 +1045,8 @@ class AgentService:
 
         print(f"[Step 4] Saving complete AI response to file...")
         logger.info(f"[Step 4] Saving complete AI response")
+        if tool_diagnostics:
+            all_sources = self._merge_tool_diagnostics_into_sources(all_sources, tool_diagnostics)
         assistant_message_id = await self.storage.append_message(
             session_id, "assistant", full_response,
             usage=usage_data, cost=cost_data,
@@ -848,6 +1106,12 @@ class AgentService:
             if cost_data:
                 usage_event["cost"] = cost_data.model_dump()
             yield usage_event
+
+        if all_sources:
+            yield {
+                "type": "sources",
+                "sources": all_sources,
+            }
 
         # Yield assistant message ID so frontend can update UI
         assistant_message_id_event = {
@@ -971,36 +1235,26 @@ class AgentService:
             except Exception as e:
                 logger.warning(f"Web search failed: {e}")
 
-        rag_sources: List[Dict[str, Any]] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            try:
-                from .rag_service import RagService
-                from .assistant_config_service import AssistantConfigService as _ACS2
-                _rag_svc = _ACS2()
-                _rag_assistant = await _rag_svc.get_assistant(assistant_id)
-                if _rag_assistant and getattr(_rag_assistant, 'knowledge_base_ids', None):
-                    rag_service = RagService()
-                    rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                        raw_user_message, _rag_assistant.knowledge_base_ids
-                    )
-                    rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-                    if rag_results:
-                        rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-                        rag_sources.extend([r.to_dict() for r in rag_results])
-                        if rag_context:
-                            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
+        rag_context, rag_sources = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
-        all_sources: List[Dict[str, Any]] = []
-        if memory_sources:
-            all_sources.extend(memory_sources)
-        if webpage_sources:
-            all_sources.extend(webpage_sources)
-        if search_sources:
-            all_sources.extend(search_sources)
-        if rag_sources:
-            all_sources.extend(rag_sources)
+        all_sources = self._merge_all_sources(
+            memory_sources,
+            webpage_sources,
+            search_sources,
+            rag_sources,
+        )
+        system_prompt = self._append_structured_source_context(
+            raw_user_message=raw_user_message,
+            system_prompt=system_prompt,
+            all_sources=all_sources,
+        )
 
         return {
             "messages": messages,
@@ -1013,6 +1267,583 @@ class AgentService:
             "assistant_memory_enabled": assistant_memory_enabled,
             "max_rounds": max_rounds,
         }
+
+    @staticmethod
+    def _build_group_identity_prompt(
+        current_assistant_id: str,
+        current_assistant_name: str,
+        group_assistants: List[str],
+        assistant_name_map: Dict[str, str],
+    ) -> str:
+        """Build explicit role and participant instructions for group chat rounds."""
+        participants: List[str] = []
+        for index, participant_id in enumerate(group_assistants, start=1):
+            participant_name = assistant_name_map.get(participant_id, participant_id)
+            marker = " (you)" if participant_id == current_assistant_id else ""
+            participants.append(f"{index}. {participant_name} [{participant_id}]{marker}")
+
+        participants_block = "\n".join(participants) if participants else "unknown"
+        return (
+            "Group chat identity:\n"
+            f"You are {current_assistant_name} [{current_assistant_id}] in a multi-assistant discussion.\n"
+            "Participants and speaking order:\n"
+            f"{participants_block}\n\n"
+            "Role rules:\n"
+            "- Do not claim other assistants' statements as your own.\n"
+            "- When responding, continue from your own perspective and style.\n"
+            "- Never output internal role labels or metadata markers to the user."
+        )
+
+    @staticmethod
+    def _build_group_history_hint(
+        messages: List[Dict[str, Any]],
+        current_assistant_id: str,
+        assistant_name_map: Dict[str, str],
+        max_turns: int = 12,
+    ) -> str:
+        """Build a compact speaker-labeled assistant turn summary for disambiguation."""
+        turn_lines: List[str] = []
+        for message in messages:
+            if message.get("role") != "assistant":
+                continue
+
+            speaker_id = message.get("assistant_id")
+            if not speaker_id:
+                continue
+
+            speaker_name = assistant_name_map.get(speaker_id, speaker_id)
+            ownership = "self" if speaker_id == current_assistant_id else "other"
+            content = (message.get("content") or "").replace("\n", " ").strip()
+            if len(content) > 120:
+                content = f"{content[:120]}..."
+            turn_lines.append(f"- {speaker_name} ({ownership}): {content}")
+
+        if not turn_lines:
+            return ""
+
+        recent_lines = turn_lines[-max_turns:]
+        return (
+            "Assistant turn history:\n"
+            "Use this speaker mapping to distinguish your own prior replies from other assistants:\n"
+            f"{chr(10).join(recent_lines)}\n"
+            "These labels are internal guidance only; do not output them verbatim."
+        )
+
+    @staticmethod
+    def _assistant_params_from_config(assistant_obj: Any) -> Dict[str, Any]:
+        """Extract generation params from assistant config object."""
+        return {
+            "temperature": assistant_obj.temperature,
+            "max_tokens": assistant_obj.max_tokens,
+            "top_p": assistant_obj.top_p,
+            "top_k": assistant_obj.top_k,
+            "frequency_penalty": assistant_obj.frequency_penalty,
+            "presence_penalty": assistant_obj.presence_penalty,
+        }
+
+    @staticmethod
+    def _extract_model_template_params(model_obj: Any) -> Dict[str, Any]:
+        """Extract per-model chat template params for runtime participant creation."""
+        template = getattr(model_obj, "chat_template", None)
+        if not template:
+            return {}
+        if hasattr(template, "model_dump"):
+            raw_template = template.model_dump(exclude_none=True)
+        elif isinstance(template, dict):
+            raw_template = {k: v for k, v in template.items() if v is not None}
+        else:
+            return {}
+        return {
+            "temperature": raw_template.get("temperature"),
+            "max_tokens": raw_template.get("max_tokens"),
+            "top_p": raw_template.get("top_p"),
+            "top_k": raw_template.get("top_k"),
+            "frequency_penalty": raw_template.get("frequency_penalty"),
+            "presence_penalty": raw_template.get("presence_penalty"),
+        }
+
+    async def _build_group_runtime_assistant(
+        self,
+        participant_token: str,
+    ) -> Optional[Tuple[str, Any, str]]:
+        """Resolve assistant/model participant token to runtime assistant object."""
+        try:
+            participant = parse_group_participant(participant_token)
+        except ValueError:
+            return None
+
+        if participant.kind == "assistant":
+            from .assistant_config_service import AssistantConfigService
+
+            assistant_service = AssistantConfigService()
+            assistant_obj = await assistant_service.get_assistant(participant.value)
+            if not assistant_obj or not assistant_obj.enabled:
+                return None
+            return participant.token, assistant_obj, assistant_obj.name
+
+        from .model_config_service import ModelConfigService
+
+        model_service = ModelConfigService()
+        model_obj = await model_service.get_model(participant.value)
+        if not model_obj or not model_obj.enabled:
+            return None
+
+        composite_model_id = f"{model_obj.provider_id}:{model_obj.id}"
+        template_params = self._extract_model_template_params(model_obj)
+        runtime_assistant = SimpleNamespace(
+            id=participant.token,
+            name=model_obj.name or model_obj.id,
+            icon="CpuChip",
+            description=f"Direct model participant: {composite_model_id}",
+            model_id=composite_model_id,
+            system_prompt=None,
+            temperature=template_params.get("temperature", 0.7),
+            max_tokens=template_params.get("max_tokens"),
+            top_p=template_params.get("top_p"),
+            top_k=template_params.get("top_k"),
+            frequency_penalty=template_params.get("frequency_penalty"),
+            presence_penalty=template_params.get("presence_penalty"),
+            max_rounds=None,
+            memory_enabled=False,
+            knowledge_base_ids=[],
+            enabled=True,
+        )
+        return participant.token, runtime_assistant, runtime_assistant.name
+
+    @staticmethod
+    def _resolve_group_round_limit(raw_limit: Optional[int], *, fallback: int = 3, hard_cap: int = 6) -> int:
+        """Normalize assistant max_rounds for committee orchestration loops."""
+        return CommitteePolicy.resolve_group_round_limit(
+            raw_limit,
+            fallback=fallback,
+            hard_cap=hard_cap,
+        )
+
+    @staticmethod
+    def _resolve_committee_round_policy(
+        raw_limit: Optional[int],
+        *,
+        participant_count: int,
+    ) -> Dict[str, int]:
+        """Derive round/depth policy for committee mode to avoid premature convergence."""
+        return CommitteePolicy.resolve_committee_round_policy(
+            raw_limit,
+            participant_count=participant_count,
+        )
+
+    def _resolve_group_settings(
+        self,
+        *,
+        group_mode: Optional[str],
+        group_assistants: List[str],
+        group_settings: Optional[Dict[str, Any]],
+        assistant_config_map: Dict[str, Any],
+    ):
+        """Resolve runtime group settings with backward-compatible defaults."""
+        return GroupSettingsResolver.resolve(
+            group_mode=group_mode,
+            group_assistants=group_assistants,
+            group_settings=group_settings,
+            assistant_config_map=assistant_config_map,
+            resolve_round_policy=self._resolve_committee_round_policy,
+        )
+
+    @staticmethod
+    def _build_group_instruction_prompt(
+        instruction: Optional[str],
+        structured_packet: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Wrap internal directives; optionally attach structured committee turn packet."""
+        if not instruction and not structured_packet:
+            return None
+
+        sections: List[str] = []
+        if instruction:
+            cleaned = instruction.strip()
+            if cleaned:
+                sections.append(
+                    "Committee instruction:\n"
+                    f"{cleaned}\n\n"
+                    "Follow this instruction while keeping role consistency and factual grounding."
+                )
+        if structured_packet:
+            try:
+                payload = json.dumps(structured_packet, ensure_ascii=True, default=str)
+            except Exception:
+                payload = str(structured_packet)
+            sections.append(
+                "Committee turn packet (JSON):\n"
+                f"```json\n{payload}\n```\n\n"
+                "Use this packet for planning and role consistency. "
+                "Do not output JSON unless the user explicitly asks for it."
+            )
+
+        if not sections:
+            return None
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _extract_bullet_items(text: str, *, limit: int = 5) -> List[str]:
+        """Extract concise bullet-like items from free-form text."""
+        return CommitteeTurnExecutor.extract_bullet_items(text, limit=limit)
+
+    @staticmethod
+    def _extract_keyword_sentences(
+        text: str,
+        *,
+        keywords: List[str],
+        limit: int = 4,
+    ) -> List[str]:
+        """Extract short sentences containing any keyword."""
+        return CommitteeTurnExecutor.extract_keyword_sentences(
+            text,
+            keywords=keywords,
+            limit=limit,
+        )
+
+    def _build_structured_turn_summary(self, content: str) -> Dict[str, Any]:
+        """Build lightweight structured summary from assistant natural-language output."""
+        return CommitteeTurnExecutor.build_structured_turn_summary(content)
+
+    def _build_committee_turn_packet(
+        self,
+        *,
+        state: CommitteeRuntimeState,
+        target_assistant_id: str,
+        assistant_name_map: Dict[str, str],
+        instruction: Optional[str],
+    ) -> Dict[str, Any]:
+        """Build structured per-turn packet used as internal context for committee members."""
+        return CommitteeTurnExecutor.build_committee_turn_packet(
+            state=state,
+            target_assistant_id=target_assistant_id,
+            assistant_name_map=assistant_name_map,
+            instruction=instruction,
+        )
+
+    @staticmethod
+    def _normalize_identity_token(value: str) -> str:
+        """Normalize identity labels for lightweight role-drift checks."""
+        return CommitteeTurnExecutor.normalize_identity_token(value)
+
+    def _detect_group_role_drift(
+        self,
+        *,
+        content: str,
+        expected_assistant_id: str,
+        expected_assistant_name: str,
+        participant_name_map: Dict[str, str],
+    ) -> Optional[str]:
+        """Detect obvious cases where a speaker claims another participant identity."""
+        return CommitteeTurnExecutor.detect_group_role_drift(
+            content=content,
+            expected_assistant_id=expected_assistant_id,
+            expected_assistant_name=expected_assistant_name,
+            participant_name_map=participant_name_map,
+        )
+
+    @staticmethod
+    def _build_role_retry_instruction(
+        *,
+        base_instruction: Optional[str],
+        expected_assistant_name: str,
+    ) -> str:
+        return CommitteeTurnExecutor.build_role_retry_instruction(
+            base_instruction=base_instruction,
+            expected_assistant_name=expected_assistant_name,
+        )
+
+    async def _get_message_content_by_id(
+        self,
+        *,
+        session_id: str,
+        message_id: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+    ) -> str:
+        """Read one message content from session state by message_id."""
+        return await self._get_committee_turn_executor().get_message_content_by_id(
+            session_id=session_id,
+            message_id=message_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    async def _stream_group_assistant_turn(
+        self,
+        *,
+        session_id: str,
+        assistant_id: str,
+        assistant_obj: Any,
+        group_assistants: List[str],
+        assistant_name_map: Dict[str, str],
+        raw_user_message: str,
+        reasoning_effort: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+        search_context: Optional[str],
+        search_sources: List[Dict[str, Any]],
+        instruction: Optional[str] = None,
+        committee_turn_packet: Optional[Dict[str, Any]] = None,
+        trace_id: Optional[str] = None,
+        trace_round: Optional[int] = None,
+        trace_mode: Optional[str] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Execute one assistant turn in group mode and stream structured events."""
+        async for event in self._get_committee_turn_executor().stream_group_assistant_turn(
+            session_id=session_id,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            group_assistants=group_assistants,
+            assistant_name_map=assistant_name_map,
+            raw_user_message=raw_user_message,
+            reasoning_effort=reasoning_effort,
+            context_type=context_type,
+            project_id=project_id,
+            search_context=search_context,
+            search_sources=search_sources,
+            instruction=instruction,
+            committee_turn_packet=committee_turn_packet,
+            trace_id=trace_id,
+            trace_round=trace_round,
+            trace_mode=trace_mode,
+        ):
+            yield event
+
+    async def _process_committee_group_message_stream(
+        self,
+        *,
+        session_id: str,
+        raw_user_message: str,
+        group_assistants: List[str],
+        assistant_name_map: Dict[str, str],
+        assistant_config_map: Dict[str, Any],
+        group_settings: Optional[Dict[str, Any]],
+        reasoning_effort: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+        search_context: Optional[str],
+        search_sources: List[Dict[str, Any]],
+        trace_id: Optional[str] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Committee mode orchestration: supervisor decides who speaks each round."""
+        if trace_id is None and self._is_group_trace_enabled():
+            trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
+
+        resolved_settings = self._resolve_group_settings(
+            group_mode="committee",
+            group_assistants=group_assistants,
+            group_settings=group_settings,
+            assistant_config_map=assistant_config_map,
+        )
+        committee_settings: Optional[ResolvedCommitteeSettings] = resolved_settings.committee
+        if committee_settings is None:
+            return
+
+        orchestrator = self._create_committee_orchestrator()
+        async for event in orchestrator.process(
+            session_id=session_id,
+            raw_user_message=raw_user_message,
+            group_assistants=group_assistants,
+            committee_settings=committee_settings,
+            assistant_name_map=assistant_name_map,
+            assistant_config_map=assistant_config_map,
+            reasoning_effort=reasoning_effort,
+            context_type=context_type,
+            project_id=project_id,
+            search_context=search_context,
+            search_sources=search_sources,
+            trace_id=trace_id,
+        ):
+            yield event
+
+    async def process_group_message_stream(
+        self,
+        session_id: str,
+        user_message: str,
+        group_assistants: List[str],
+        group_mode: str = "round_robin",
+        group_settings: Optional[Dict[str, Any]] = None,
+        skip_user_append: bool = False,
+        reasoning_effort: str = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None
+    ) -> AsyncIterator[Any]:
+        """Stream process user message with multiple assistants (group chat).
+
+        Supports:
+        - round_robin: fixed order speaking
+        - committee: supervisor chooses member turns and final synthesis
+
+        Yields:
+            - {"type": "user_message_id", "message_id": ...}
+            - {"type": "assistant_start", "assistant_id": ..., "name": ..., "icon": ...}
+            - String chunks (assistant response text)
+            - {"type": "usage", "usage": {...}, "cost": {...}}
+            - {"type": "assistant_message_id", "message_id": ...}
+            - {"type": "assistant_done", "assistant_id": ...}
+            - {"done": True}
+        """
+        original_user_message = user_message
+        file_context_block = await self._build_file_context_block(file_references)
+        if file_context_block:
+            user_message = f"{file_context_block}\n\n{user_message}"
+
+        raw_user_message = original_user_message
+
+        # Process attachments
+        attachment_metadata = []
+        full_message_content = user_message
+
+        if attachments:
+            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
+            message_index = len(session["state"]["messages"])
+
+            for idx, att in enumerate(attachments):
+                filename = att["filename"]
+                temp_path = att["temp_path"]
+                mime_type = att["mime_type"]
+                is_image = mime_type.startswith("image/")
+
+                attachment_metadata.append({
+                    "filename": filename,
+                    "size": att["size"],
+                    "mime_type": mime_type,
+                })
+
+                if not is_image:
+                    temp_file_path = self.file_service.attachments_dir / temp_path
+                    content = await self.file_service.get_file_content(temp_file_path)
+                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
+
+                await self.file_service.move_to_permanent(
+                    session_id, message_index, temp_path, filename
+                )
+
+        # Append user message
+        user_message_id = None
+        if not skip_user_append:
+            user_message_id = await self.storage.append_message(
+                session_id, "user", full_message_content,
+                attachments=attachment_metadata if attachment_metadata else None,
+                context_type=context_type,
+                project_id=project_id
+            )
+            yield {"type": "user_message_id", "message_id": user_message_id}
+
+        assistant_name_map: Dict[str, str] = {}
+        assistant_config_map: Dict[str, Any] = {}
+        resolved_group_assistants: List[str] = []
+        seen_participants = set()
+        for participant_token in group_assistants:
+            resolved = await self._build_group_runtime_assistant(participant_token)
+            if not resolved:
+                logger.warning("[GroupChat] Participant '%s' not found or disabled, skipping", participant_token)
+                continue
+            participant_id, participant_obj, participant_name = resolved
+            if participant_id in seen_participants:
+                continue
+            seen_participants.add(participant_id)
+            resolved_group_assistants.append(participant_id)
+            assistant_config_map[participant_id] = participant_obj
+            assistant_name_map[participant_id] = participant_name
+
+        group_assistants = resolved_group_assistants
+        if not group_assistants:
+            yield {
+                "type": "group_done",
+                "mode": (group_mode or "round_robin").strip().lower(),
+                "reason": "no_valid_participants",
+                "rounds": 0,
+            }
+            return
+
+        search_sources: List[Dict[str, Any]] = []
+        search_context = None
+        if use_web_search:
+            query = (search_query or raw_user_message).strip()
+            if query:
+                try:
+                    sources = await self.search_service.search(query)
+                    search_sources = [s.model_dump() for s in sources]
+                    if sources:
+                        search_context = self.search_service.build_search_context(query, sources)
+                except Exception as e:
+                    logger.warning(f"[GroupChat] Web search failed: {e}")
+
+        normalized_group_mode = (group_mode or "round_robin").strip().lower()
+        if normalized_group_mode == "committee":
+            trace_id: Optional[str] = None
+            if self._is_group_trace_enabled():
+                trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
+                self._log_group_trace(
+                    trace_id,
+                    "request",
+                    {
+                        "session_id": session_id,
+                        "group_mode": normalized_group_mode,
+                        "group_assistants": group_assistants,
+                        "raw_user_message": self._truncate_log_text(
+                            raw_user_message, self._GROUP_TRACE_PREVIEW_CHARS
+                        ),
+                    },
+                )
+            async for event in self._process_committee_group_message_stream(
+                session_id=session_id,
+                raw_user_message=raw_user_message,
+                group_assistants=group_assistants,
+                assistant_name_map=assistant_name_map,
+                assistant_config_map=assistant_config_map,
+                group_settings=group_settings,
+                reasoning_effort=reasoning_effort,
+                context_type=context_type,
+                project_id=project_id,
+                search_context=search_context,
+                search_sources=search_sources,
+                trace_id=trace_id,
+            ):
+                yield event
+        else:
+            for assistant_id in group_assistants:
+                assistant_obj = assistant_config_map.get(assistant_id)
+                if not assistant_obj:
+                    logger.warning(f"[GroupChat] Assistant '{assistant_id}' not found, skipping")
+                    continue
+                async for event in self._stream_group_assistant_turn(
+                    session_id=session_id,
+                    assistant_id=assistant_id,
+                    assistant_obj=assistant_obj,
+                    group_assistants=group_assistants,
+                    assistant_name_map=assistant_name_map,
+                    raw_user_message=raw_user_message,
+                    reasoning_effort=reasoning_effort,
+                    context_type=context_type,
+                    project_id=project_id,
+                    search_context=search_context,
+                    search_sources=search_sources,
+                ):
+                    yield event
+
+        # Title generation (once, after all assistants)
+        try:
+            from .title_generation_service import TitleGenerationService
+            title_service = TitleGenerationService(storage=self.storage)
+            updated_session = await self.storage.get_session(
+                session_id,
+                context_type=context_type,
+                project_id=project_id,
+            )
+            is_temporary = updated_session.get("temporary", False)
+            message_count = len(updated_session["state"]["messages"])
+            current_title = updated_session["title"]
+            if not is_temporary and title_service.should_generate_title(message_count, current_title):
+                asyncio.create_task(title_service.generate_title_async(session_id))
+        except Exception as e:
+            logger.warning(f"[GroupChat] Title generation failed: {e}")
 
     async def process_compare_stream(
         self,
@@ -1221,4 +2052,3 @@ class AgentService:
         )
 
         yield {"type": "assistant_message_id", "message_id": assistant_message_id}
-

@@ -1,10 +1,12 @@
 # 端口配置指南
 
+> 多 worktree 初始化流程请参考：`docs/worktree_bootstrap.md`
+
 ## 默认端口
 
 项目默认使用以下端口：
 - **后端 API**: 以根目录 `.env` 的 `API_PORT` 为准（见 `.env.example`）
-- **前端**: 5173 (Vite 默认)
+- **前端**: 以根目录 `.env` 的 `FRONTEND_PORT` 为准
 
 ## 为什么推荐自定义端口？
 
@@ -110,5 +112,5 @@ taskkill /F /PID <进程ID>
 ## 注意事项
 
 1. **前后端端口必须一致**：修改后端端口时，前端会自动跟随 `.env` 中的 `API_PORT`
-2. **CORS 配置**：如果前端使用非默认端口，需要在 `.env` 中更新 `CORS_ORIGINS`
+2. **CORS 配置**：如果前端使用非默认端口，需要在 `.env` 中更新 `CORS_ORIGINS`（JSON 数组格式）
 3. **环境变量优先级**：`.env` 文件中的配置会被实际的环境变量覆盖

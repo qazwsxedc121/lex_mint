@@ -14,7 +14,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { openSearchPanel, search } from '@codemirror/search';
-import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import type { FileContent } from '../../../types/project';
 import { Breadcrumb } from './Breadcrumb';
 import { writeFile } from '../../../services/api';
@@ -30,6 +30,7 @@ interface FileViewerProps {
   loading: boolean;
   error: string | null;
   onContentSaved?: () => void;
+  onRefreshProject?: () => Promise<void> | void;
   chatSidebarOpen: boolean;
   fileTreeOpen: boolean;
   onToggleChatSidebar: () => void;
@@ -104,6 +105,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   loading,
   error,
   onContentSaved,
+  onRefreshProject,
   chatSidebarOpen,
   fileTreeOpen,
   onToggleChatSidebar,
@@ -117,6 +119,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInsertingToChat, setIsInsertingToChat] = useState(false);
+  const [refreshingProject, setRefreshingProject] = useState(false);
 
   const { currentSessionId, createSession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
@@ -386,6 +389,27 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setSaveSuccess(false);
   };
 
+  const handleRefreshProject = useCallback(async () => {
+    if (!onRefreshProject || refreshingProject) {
+      return;
+    }
+
+    if (hasUnsavedChanges && !window.confirm(t('fileViewer.refreshConfirmDiscard'))) {
+      return;
+    }
+
+    setRefreshingProject(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    try {
+      await onRefreshProject();
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.detail || err?.message || t('fileViewer.refreshFailed'));
+    } finally {
+      setRefreshingProject(false);
+    }
+  }, [hasUnsavedChanges, onRefreshProject, refreshingProject, t]);
+
   // Ctrl+S handler
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -499,6 +523,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const insertToChatTitle = isInsertingToChat
     ? 'Inserting to chat...'
     : 'Insert selection or file to chat';
+  const refreshTitle = refreshingProject ? t('fileViewer.refreshing') : t('fileViewer.refresh');
 
   const renderBreadcrumbBar = (filePath?: string) => (
     <div data-name="file-viewer-breadcrumb-bar" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
@@ -521,13 +546,30 @@ export const FileViewer: React.FC<FileViewerProps> = ({
             <ChevronDoubleRightIcon className="h-4 w-4" />
           )}
         </button>
-        {filePath ? (
-          <Breadcrumb projectName={projectName} filePath={filePath} />
-        ) : (
-          <div data-name="file-viewer-breadcrumb-placeholder" className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-            {projectName}
-          </div>
-        )}
+        <div className="min-w-0 flex-1">
+          {filePath ? (
+            <Breadcrumb projectName={projectName} filePath={filePath} />
+          ) : (
+            <div data-name="file-viewer-breadcrumb-placeholder" className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+              {projectName}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          title={refreshTitle}
+          aria-label={refreshTitle}
+          onClick={handleRefreshProject}
+          disabled={refreshingProject || !onRefreshProject}
+          data-name="project-refresh-button"
+          className={`p-1.5 rounded ${
+            refreshingProject || !onRefreshProject
+              ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60'
+              : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          <ArrowPathIcon className={`h-4 w-4 ${refreshingProject ? 'animate-spin' : ''}`} />
+        </button>
       </div>
     </div>
   );

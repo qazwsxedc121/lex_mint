@@ -5,7 +5,7 @@
  * This component eliminates 200-400 lines of boilerplate per page.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon } from '@heroicons/react/24/outline';
@@ -37,6 +37,7 @@ export function CrudSettingsPage<T = any>({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const { t } = useTranslation('settings');
 
@@ -117,6 +118,26 @@ export function CrudSettingsPage<T = any>({
       console.error('Set default error:', err);
     }
   };
+
+  // Handle inline status toggle
+  const handleToggleStatus = useCallback(async (item: T) => {
+    if (!config.statusKey) return;
+    const itemId = getItemId(item);
+
+    setTogglingIds(prev => new Set(prev).add(itemId));
+    try {
+      const updated = { ...item, [config.statusKey!]: !(item as any)[config.statusKey!] };
+      await hook.updateItem(itemId, updated);
+    } catch (err) {
+      console.error('Toggle status error:', err);
+    } finally {
+      setTogglingIds(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+    }
+  }, [config.statusKey, getItemId, hook]);
 
   // Handle form submit
   const handleSubmit = async (e: React.FormEvent) => {
@@ -255,6 +276,8 @@ export function CrudSettingsPage<T = any>({
           onEdit={handleEdit}
           onDelete={handleDelete}
           onSetDefault={hook.setDefault ? handleSetDefault : undefined}
+          onToggleStatus={config.statusKey ? handleToggleStatus : undefined}
+          togglingIds={togglingIds}
           context={context}
           getItemId={getItemId}
         />

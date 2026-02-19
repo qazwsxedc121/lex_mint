@@ -49,14 +49,51 @@ export interface SearchSource {
   selected_count?: number;
   top_k?: number;
   recall_k?: number;
+  vector_recall_k?: number;
+  bm25_recall_k?: number;
+  bm25_min_term_coverage?: number;
+  fusion_top_k?: number;
+  fusion_strategy?: 'rrf';
+  retrieval_mode?: 'vector' | 'bm25' | 'hybrid';
+  vector_weight?: number;
+  bm25_weight?: number;
+  rrf_k?: number;
   score_threshold?: number;
   max_per_doc?: number;
   reorder_strategy?: 'none' | 'long_context';
   searched_kb_count?: number;
+  requested_kb_count?: number;
+  best_score?: number;
+  vector_raw_count?: number;
+  bm25_raw_count?: number;
+  query_transform_enabled?: boolean;
+  query_transform_mode?: 'none' | 'rewrite';
+  query_transform_applied?: boolean;
+  query_transform_model_id?: string;
+  query_transform_guard_blocked?: boolean;
+  query_transform_guard_reason?: string;
+  query_transform_crag_enabled?: boolean;
+  query_transform_crag_quality_score?: number;
+  query_transform_crag_quality_label?: 'correct' | 'ambiguous' | 'incorrect' | 'skipped';
+  query_transform_crag_decision?: string;
+  retrieval_queries?: string[];
+  retrieval_query_count?: number;
+  retrieval_query_planner_enabled?: boolean;
+  retrieval_query_planner_applied?: boolean;
+  retrieval_query_planner_model_id?: string;
+  retrieval_query_planner_fallback?: boolean;
+  retrieval_query_planner_reason?: string;
+  query_original?: string;
+  query_effective?: string;
   rerank_enabled?: boolean;
   rerank_applied?: boolean;
   rerank_weight?: number;
   rerank_model?: string;
+  tool_search_count?: number;
+  tool_search_unique_count?: number;
+  tool_search_duplicate_count?: number;
+  tool_read_count?: number;
+  tool_finalize_reason?: 'normal_no_tools' | 'max_round_force_finalize' | 'fallback_empty_answer';
 }
 
 export interface UploadedFile {
@@ -64,6 +101,28 @@ export interface UploadedFile {
   size: number;
   mime_type: string;
   temp_path: string;
+}
+
+export type GroupChatMode = 'round_robin' | 'committee';
+export type ChatTargetType = 'assistant' | 'model';
+
+export interface GroupTimelineEvent {
+  event_id: string;
+  created_at: string;
+  type: 'group_round_start' | 'group_action' | 'group_done';
+  mode?: GroupChatMode | string;
+  round?: number;
+  max_rounds?: number;
+  action?: string;
+  reason?: string;
+  supervisor_id?: string;
+  supervisor_name?: string;
+  assistant_id?: string;
+  assistant_name?: string;
+  assistant_ids?: string[];
+  assistant_names?: string[];
+  instruction?: string;
+  rounds?: number;
 }
 
 export interface CompareModelResponse {
@@ -76,6 +135,13 @@ export interface CompareModelResponse {
   error?: string;
 }
 
+export interface ToolCallInfo {
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+  status: 'calling' | 'done' | 'error';
+}
+
 export interface Message {
   message_id?: string;  // UUID for each message (optional for backward compatibility)
   role: 'user' | 'assistant' | 'separator' | 'summary';
@@ -86,7 +152,12 @@ export interface Message {
   cost?: CostInfo;
   sources?: SearchSource[];
   thinkingDurationMs?: number;
+  toolCalls?: ToolCallInfo[];
   compareResponses?: CompareModelResponse[];
+  assistant_id?: string;       // Group chat: which assistant generated this message
+  assistant_name?: string;     // Group chat: assistant display name
+  assistant_icon?: string;     // Group chat: Lucide icon key
+  assistant_turn_id?: string;  // Group chat: transient stream turn id for precise UI updates
 }
 
 export interface Session {
@@ -97,6 +168,10 @@ export interface Session {
   message_count?: number;
   temporary?: boolean;
   folder_id?: string;  // Chat folder ID (optional)
+  group_assistants?: string[];  // Group chat: assistant IDs and/or model::<provider:model> tokens
+  group_mode?: GroupChatMode;  // Group chat mode
+  target_type?: ChatTargetType;
+  target_id?: string;
 }
 
 export interface ParamOverrides {
@@ -116,11 +191,15 @@ export interface SessionDetail {
   created_at: string;
   model_id: string;  // Composite model ID
   assistant_id?: string;
+  target_type?: ChatTargetType;
+  target_id?: string;
   param_overrides?: ParamOverrides;
   total_usage?: TokenUsage;
   total_cost?: CostInfo;
   temporary?: boolean;
   compare_data?: Record<string, { responses: CompareModelResponse[] }>;
+  group_assistants?: string[];  // Group chat: assistant IDs and/or model::<provider:model> tokens
+  group_mode?: GroupChatMode;  // Group chat mode
   state: {
     messages: Message[];
     current_step: number;

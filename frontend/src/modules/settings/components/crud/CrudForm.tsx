@@ -51,7 +51,13 @@ export const CrudForm: React.FC<CrudFormProps> = ({
   const resolvedCancelLabel = cancelLabel ?? t('cancel');
 
   const handleFieldChange = (fieldName: string, value: any) => {
-    onChange({ ...formData, [fieldName]: value });
+    // Support batch field updates (e.g., from model-id field selecting a model)
+    if (value && typeof value === 'object' && value.__batchUpdate) {
+      const { __batchUpdate, ...fields } = value;
+      onChange({ ...formData, ...fields });
+    } else {
+      onChange({ ...formData, [fieldName]: value });
+    }
   };
 
   return (

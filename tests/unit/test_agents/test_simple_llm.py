@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage
+from types import SimpleNamespace
 
 from src.agents.simple_llm import call_llm, call_llm_stream
 from src.providers.types import TokenUsage
@@ -23,7 +24,16 @@ class TestCallLLM:
         mock_llm.model_name = "deepseek-chat"
 
         # Mock ModelConfigService
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_capabilities = Mock()
+        mock_capabilities.context_length = None
         mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
         mock_service.get_llm_instance.return_value = mock_llm
         mock_model_service_class.return_value = mock_service
 
@@ -52,7 +62,16 @@ class TestCallLLM:
         mock_llm.invoke.return_value = mock_response
         mock_llm.model_name = "deepseek-chat"
 
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_capabilities = Mock()
+        mock_capabilities.context_length = None
         mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
         mock_service.get_llm_instance.return_value = mock_llm
         mock_model_service_class.return_value = mock_service
 
@@ -82,7 +101,16 @@ class TestCallLLM:
         mock_llm.invoke.side_effect = Exception("API Error")
         mock_llm.model_name = "deepseek-chat"
 
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+        mock_capabilities = Mock()
+        mock_capabilities.context_length = None
         mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
         mock_service.get_llm_instance.return_value = mock_llm
         mock_model_service_class.return_value = mock_service
 
@@ -113,7 +141,6 @@ class TestCallLLMStream:
         mock_provider = Mock()
         mock_provider.id = "deepseek"
         mock_provider.base_url = "https://api.deepseek.com"
-        mock_provider.api_key_env = "DEEPSEEK_API_KEY"
 
         # Mock capabilities
         mock_capabilities = Mock()
@@ -123,7 +150,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         # Mock adapter
         mock_adapter = Mock()
@@ -138,17 +165,29 @@ class TestCallLLMStream:
                 chunk.content = chunk_text
                 chunk.thinking = None
                 chunk.usage = None
+                chunk.raw = None
                 yield chunk
 
             # Final chunk with usage
+            usage_raw = Mock()
+            usage_raw.usage_metadata = {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "total_tokens": 30,
+            }
+            usage_raw.tool_calls = []
             final_chunk = Mock()
             final_chunk.content = ""
             final_chunk.thinking = None
-            final_chunk.usage = TokenUsage(
-                prompt_tokens=10,
-                completion_tokens=20,
-                total_tokens=30
+            final_chunk.usage = None
+            final_chunk.raw = SimpleNamespace(
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                    "total_tokens": 30,
+                }
             )
+            final_chunk.raw = usage_raw
             yield final_chunk
 
         mock_adapter.stream = mock_stream
@@ -172,7 +211,7 @@ class TestCallLLMStream:
         assert "".join(text_chunks) == "Hello world!"
 
         # Verify usage data
-        usage_chunks = [c for c in result_chunks if isinstance(c, dict)]
+        usage_chunks = [c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"]
         assert len(usage_chunks) == 1
         assert usage_chunks[0]["type"] == "usage"
         assert usage_chunks[0]["usage"].total_tokens == 30
@@ -188,7 +227,6 @@ class TestCallLLMStream:
         mock_provider = Mock()
         mock_provider.id = "deepseek"
         mock_provider.base_url = "https://api.deepseek.com"
-        mock_provider.api_key_env = "DEEPSEEK_API_KEY"
 
         mock_capabilities = Mock()
         mock_capabilities.reasoning = False
@@ -196,7 +234,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         # Mock adapter
         mock_adapter = Mock()
@@ -213,6 +251,7 @@ class TestCallLLMStream:
             chunk.content = "Response"
             chunk.thinking = None
             chunk.usage = None
+            chunk.raw = None
             yield chunk
 
         mock_adapter.stream = mock_stream
@@ -244,7 +283,6 @@ class TestCallLLMStream:
         mock_provider = Mock()
         mock_provider.id = "deepseek"
         mock_provider.base_url = "https://api.deepseek.com"
-        mock_provider.api_key_env = "DEEPSEEK_API_KEY"
 
         # Enable reasoning capability
         mock_capabilities = Mock()
@@ -253,7 +291,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         # Mock adapter
         mock_adapter = Mock()
@@ -266,6 +304,7 @@ class TestCallLLMStream:
             thinking_chunk.content = None
             thinking_chunk.thinking = "Let me analyze this..."
             thinking_chunk.usage = None
+            thinking_chunk.raw = None
             yield thinking_chunk
 
             # Content phase
@@ -273,6 +312,7 @@ class TestCallLLMStream:
             content_chunk.content = "The answer is 42."
             content_chunk.thinking = None
             content_chunk.usage = None
+            content_chunk.raw = None
             yield content_chunk
 
         mock_adapter.stream = mock_stream
@@ -300,6 +340,297 @@ class TestCallLLMStream:
         assert "The answer is 42." in full_response
 
     @pytest.mark.asyncio
+    @patch('src.tools.registry.get_tool_registry')
+    @patch('src.agents.simple_llm.get_llm_logger')
+    @patch('src.agents.simple_llm.ModelConfigService')
+    async def test_call_llm_stream_forces_final_answer_after_max_tool_rounds(
+        self,
+        mock_model_service_class,
+        mock_logger,
+        mock_get_tool_registry,
+    ):
+        """When tool rounds hit the cap, stream should force a non-tool finalization pass."""
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+
+        mock_capabilities = Mock()
+        mock_capabilities.reasoning = False
+
+        mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
+
+        mock_adapter = Mock()
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_llm.bind_tools.return_value = mock_bound_llm
+        mock_adapter.create_llm.return_value = mock_llm
+
+        class _Raw:
+            def __init__(self, tool_calls=None):
+                self.tool_calls = tool_calls or []
+
+            def __add__(self, other):
+                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+
+        class _Chunk:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.thinking = None
+                self.raw = _Raw(tool_calls=tool_calls)
+
+        stream_state = {"count": 0}
+
+        async def mock_stream(active_llm, _messages):
+            idx = stream_state["count"]
+            stream_state["count"] += 1
+
+            if idx < 4:
+                assert active_llm is mock_bound_llm
+                yield _Chunk(
+                    content=f"round{idx + 1};",
+                    tool_calls=[{
+                        "name": "search_knowledge",
+                        "args": {"query": f"q{idx + 1}", "top_k": 5},
+                        "id": f"tc{idx + 1}",
+                    }],
+                )
+                return
+
+            assert active_llm is mock_llm
+            yield _Chunk(content="FINAL_ANSWER", tool_calls=[])
+
+        mock_adapter.stream = mock_stream
+        mock_service.get_adapter_for_provider.return_value = mock_adapter
+        mock_model_service_class.return_value = mock_service
+
+        mock_llm_logger = Mock()
+        mock_logger.return_value = mock_llm_logger
+
+        mock_registry = Mock()
+        mock_registry.execute_tool.return_value = '{"ok": true}'
+        mock_get_tool_registry.return_value = mock_registry
+
+        tool_executor = Mock(return_value='{"ok": true}')
+        messages = [{"role": "user", "content": "Test tool loop"}]
+        collected = []
+
+        async for chunk in call_llm_stream(
+            messages,
+            tools=[Mock()],
+            tool_executor=tool_executor,
+        ):
+            collected.append(chunk)
+
+        text = "".join([c for c in collected if isinstance(c, str)])
+        assert "FINAL_ANSWER" in text
+        assert stream_state["count"] == 5
+        assert tool_executor.call_count == 3
+
+    @pytest.mark.asyncio
+    @patch('src.agents.simple_llm.get_llm_logger')
+    @patch('src.agents.simple_llm.ModelConfigService')
+    async def test_call_llm_stream_injects_read_compensation_for_evidence_requests(
+        self,
+        mock_model_service_class,
+        mock_logger,
+    ):
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+
+        mock_capabilities = Mock()
+        mock_capabilities.reasoning = False
+
+        mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
+
+        mock_adapter = Mock()
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_llm.bind_tools.return_value = mock_bound_llm
+        mock_adapter.create_llm.return_value = mock_llm
+
+        class _Raw:
+            def __init__(self, tool_calls=None):
+                self.tool_calls = tool_calls or []
+
+            def __add__(self, other):
+                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+
+        class _Chunk:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.thinking = None
+                self.raw = _Raw(tool_calls=tool_calls)
+
+        stream_state = {"count": 0}
+
+        async def mock_stream(active_llm, _messages):
+            assert active_llm is mock_bound_llm
+            idx = stream_state["count"]
+            stream_state["count"] += 1
+
+            if idx == 0:
+                yield _Chunk(
+                    content="",
+                    tool_calls=[{
+                        "name": "search_knowledge",
+                        "args": {"query": "policy details", "top_k": 5},
+                        "id": "tc1",
+                    }],
+                )
+                return
+            if idx == 1:
+                # No tool call here; compensation prompt should trigger another pass.
+                yield _Chunk(content="draft answer", tool_calls=[])
+                return
+            if idx == 2:
+                yield _Chunk(
+                    content="",
+                    tool_calls=[{
+                        "name": "read_knowledge",
+                        "args": {"refs": ["kb:kb_test|doc:doc_1|chunk:3"]},
+                        "id": "tc2",
+                    }],
+                )
+                return
+
+            yield _Chunk(content="FINAL_ANSWER", tool_calls=[])
+
+        mock_adapter.stream = mock_stream
+        mock_service.get_adapter_for_provider.return_value = mock_adapter
+        mock_model_service_class.return_value = mock_service
+
+        mock_llm_logger = Mock()
+        mock_logger.return_value = mock_llm_logger
+
+        def _tool_executor(name, _args):
+            if name == "search_knowledge":
+                return (
+                    '{"ok": true, "hits": [{"ref_id": "kb:kb_test|doc:doc_1|chunk:3", '
+                    '"filename": "doc.md", "snippet": "snippet"}]}'
+                )
+            if name == "read_knowledge":
+                return (
+                    '{"ok": true, "sources": [{"ref_id": "kb:kb_test|doc:doc_1|chunk:3", '
+                    '"filename": "doc.md", "content": "exact quote"}]}'
+                )
+            return '{"ok": true}'
+
+        tool_executor = Mock(side_effect=_tool_executor)
+        messages = [{"role": "user", "content": "请给我逐字引用并附上出处"}]
+        collected = []
+
+        async for chunk in call_llm_stream(messages, tools=[Mock()], tool_executor=tool_executor):
+            collected.append(chunk)
+
+        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["tool_search_count"] == 1
+        assert diagnostics[0]["tool_search_unique_count"] == 1
+        assert diagnostics[0]["tool_search_duplicate_count"] == 0
+        assert diagnostics[0]["tool_read_count"] == 1
+        assert diagnostics[0]["tool_finalize_reason"] == "normal_no_tools"
+        assert stream_state["count"] == 4
+        assert [call.args[0] for call in tool_executor.call_args_list] == [
+            "search_knowledge",
+            "read_knowledge",
+        ]
+
+    @pytest.mark.asyncio
+    @patch('src.agents.simple_llm.get_llm_logger')
+    @patch('src.agents.simple_llm.ModelConfigService')
+    async def test_call_llm_stream_injects_fallback_when_final_answer_empty(
+        self,
+        mock_model_service_class,
+        mock_logger,
+    ):
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+
+        mock_capabilities = Mock()
+        mock_capabilities.reasoning = False
+
+        mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
+
+        mock_adapter = Mock()
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_llm.bind_tools.return_value = mock_bound_llm
+        mock_adapter.create_llm.return_value = mock_llm
+
+        class _Raw:
+            def __init__(self, tool_calls=None):
+                self.tool_calls = tool_calls or []
+
+            def __add__(self, other):
+                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+
+        class _Chunk:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.thinking = None
+                self.raw = _Raw(tool_calls=tool_calls)
+
+        stream_state = {"count": 0}
+
+        async def mock_stream(active_llm, _messages):
+            assert active_llm is mock_bound_llm
+            idx = stream_state["count"]
+            stream_state["count"] += 1
+            if idx == 0:
+                yield _Chunk(
+                    content="",
+                    tool_calls=[{
+                        "name": "search_knowledge",
+                        "args": {"query": "q1", "top_k": 5},
+                        "id": "tc1",
+                    }],
+                )
+                return
+            yield _Chunk(content="", tool_calls=[])
+
+        mock_adapter.stream = mock_stream
+        mock_service.get_adapter_for_provider.return_value = mock_adapter
+        mock_model_service_class.return_value = mock_service
+
+        mock_llm_logger = Mock()
+        mock_logger.return_value = mock_llm_logger
+
+        tool_executor = Mock(return_value='{"ok": true, "hits": [{"filename": "doc.md", "snippet": "snippet"}]}')
+        messages = [{"role": "user", "content": "normal request"}]
+        collected = []
+
+        async for chunk in call_llm_stream(messages, tools=[Mock()], tool_executor=tool_executor):
+            collected.append(chunk)
+
+        text = "".join([c for c in collected if isinstance(c, str)])
+        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        assert "I could not finalize a complete answer from the model stream." in text
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["tool_search_count"] == 1
+        assert diagnostics[0]["tool_read_count"] == 0
+        assert diagnostics[0]["tool_finalize_reason"] == "fallback_empty_answer"
+
+    @pytest.mark.asyncio
     @patch('src.agents.simple_llm.get_llm_logger')
     @patch('src.agents.simple_llm.ModelConfigService')
     async def test_call_llm_stream_error(self, mock_model_service_class, mock_logger):
@@ -316,7 +647,7 @@ class TestCallLLMStream:
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
-        mock_service.get_api_key_sync.return_value = "test_key_123"
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
 
         mock_adapter = Mock()
         mock_llm = Mock()

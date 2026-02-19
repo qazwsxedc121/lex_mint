@@ -1,15 +1,22 @@
 """Simple LLM call service - without LangGraph"""
 
 import time
+import json
 import logging
-from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple
+from typing import List, Dict, Any, AsyncIterator, Optional, Union, Tuple, Callable, Awaitable
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
 
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.file_service import FileService
-from src.providers.types import TokenUsage
+from src.agents.stream_call_policy import (
+    build_stream_kwargs,
+    select_stream_llm,
+    should_allow_responses_fallback,
+)
+from src.agents.tool_loop_runner import ToolLoopRunner, ToolLoopState
+from src.providers.types import CallMode, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +383,9 @@ async def call_llm_stream(
     frequency_penalty: Optional[float] = None,
     presence_penalty: Optional[float] = None,
     reasoning_effort: Optional[str] = None,
-    file_service: Optional[FileService] = None
+    file_service: Optional[FileService] = None,
+    tools: Optional[List] = None,
+    tool_executor: Optional[Callable[[str, Dict[str, Any]], Union[Optional[str], Awaitable[Optional[str]]]]] = None,
 ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
     """
     Streaming LLM call, yields tokens one by one.
@@ -390,8 +399,14 @@ async def call_llm_stream(
         model_id: Model ID, if None uses default model
         system_prompt: System prompt (optional)
         max_rounds: Max conversation rounds (optional), -1 or None means unlimited
-        reasoning_effort: Reasoning effort level: "low", "medium", "high"
+        reasoning_effort: Reasoning mode:
+            - "low"/"medium"/"high": enable reasoning with effort
+            - "none": force-disable reasoning output
+            - "default"/None: do not pass reasoning params
         file_service: File service for reading image attachments (optional)
+        tool_executor: Request-scoped tool executor. If provided, called as
+            `tool_executor(name, args)` before registry execution. Returning
+            None falls back to registry tools.
 
     Yields:
         String tokens during streaming, or dict with usage info at the end:
@@ -408,14 +423,32 @@ async def call_llm_stream(
 
     # Get the appropriate adapter via registry (no text matching!)
     adapter = model_service.get_adapter_for_provider(provider_config)
+    resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
+    effective_call_mode = (
+        resolved_call_mode
+        if isinstance(resolved_call_mode, CallMode)
+        else CallMode.AUTO
+    )
+    allow_responses_fallback = should_allow_responses_fallback(effective_call_mode)
 
-    # Determine if thinking should be enabled
+    # Determine reasoning behavior from explicit mode selection
+    reasoning_mode = (reasoning_effort or "").strip().lower()
+    explicit_disable_reasoning = reasoning_mode == "none"
+    explicit_enable_reasoning = reasoning_mode in {"low", "medium", "high"}
+    effective_reasoning_effort: Optional[str] = None
+
     thinking_enabled = False
-    if reasoning_effort and capabilities.reasoning:
-        thinking_enabled = True
-        logger.info(f"Thinking mode enabled for {model_config.id} (effort: {reasoning_effort})")
-    elif reasoning_effort and not capabilities.reasoning:
-        logger.warning(f"Model {model_config.id} does not support reasoning mode, ignoring reasoning_effort")
+    if explicit_disable_reasoning:
+        logger.info(f"Reasoning explicitly disabled for {model_config.id}")
+    elif explicit_enable_reasoning:
+        if capabilities.reasoning:
+            thinking_enabled = True
+            effective_reasoning_effort = reasoning_mode
+            logger.info(f"Thinking mode enabled for {model_config.id} (effort: {effective_reasoning_effort})")
+        else:
+            logger.warning(f"Model {model_config.id} does not support reasoning mode, ignoring reasoning_effort={reasoning_mode}")
+    elif reasoning_mode and reasoning_mode != "default":
+        logger.warning(f"Unknown reasoning_effort '{reasoning_mode}', falling back to model default behavior")
 
     # Get API key
     api_key = model_service.resolve_provider_api_key_sync(provider_config)
@@ -449,14 +482,17 @@ async def call_llm_stream(
         api_key=api_key,
         temperature=temperature_value,
         streaming=True,
+        call_mode=effective_call_mode.value,
         thinking_enabled=thinking_enabled,
-        reasoning_effort=reasoning_effort,
+        reasoning_effort=effective_reasoning_effort,
+        disable_thinking=explicit_disable_reasoning,
         **extra_params,
     )
 
     actual_model_id = f"{provider_config.id}:{model_config.id}"
 
     print(f"[LLM] Preparing streaming call (model: {actual_model_id})")
+    print(f"      Call mode: {effective_call_mode.value}")
     print(f"      History messages: {len(messages)}")
     if system_prompt:
         print(f"      Using system prompt: {system_prompt[:50]}...")
@@ -465,8 +501,10 @@ async def call_llm_stream(
             print(f"      Round limit: unlimited")
         else:
             print(f"      Max rounds: {max_rounds}")
-    if thinking_enabled:
-        print(f"      Thinking mode: enabled (effort: {reasoning_effort})")
+    if explicit_disable_reasoning:
+        print("      Thinking mode: forced off")
+    elif thinking_enabled:
+        print(f"      Thinking mode: enabled (effort: {effective_reasoning_effort})")
     logger.info(f"Preparing streaming LLM call (model: {actual_model_id}), messages: {len(messages)}")
 
     # === Filter messages after last context boundary (separator or summary) ===
@@ -529,6 +567,18 @@ async def call_llm_stream(
         "context_window": context_window,
     }
 
+    # Bind tools to LLM if provided
+    llm_for_call = llm
+    if tools:
+        try:
+            llm_for_call = llm.bind_tools(tools)
+            print(f"[TOOLS] Bound {len(tools)} tools to LLM")
+            logger.info(f"Bound {len(tools)} tools to LLM")
+        except Exception as e:
+            logger.warning(f"Failed to bind tools: {e}, proceeding without tools")
+            llm_for_call = llm
+            tools = None
+
     try:
         print(f"[LLM] Streaming {len(langchain_messages)} messages to LLM API...")
         logger.info(f"Streaming LLM API call...")
@@ -536,41 +586,161 @@ async def call_llm_stream(
         # Collect full response for logging
         full_response = ""
         full_reasoning = ""
-        in_thinking_phase = False
-        thinking_ended = False
-        thinking_start_time: Optional[float] = None
         final_usage: Optional[TokenUsage] = None
 
-        # Stream via adapter (unified interface)
-        async for chunk in adapter.stream(llm, langchain_messages):
-            # Handle thinking/reasoning content
-            if chunk.thinking:
-                full_reasoning += chunk.thinking
-                if not in_thinking_phase:
-                    in_thinking_phase = True
-                    thinking_start_time = time.time()
-                    yield "<think>"
-                yield chunk.thinking
+        tool_loop_runner = ToolLoopRunner(max_tool_rounds=3)
+        tool_loop_state = ToolLoopState(current_messages=list(langchain_messages))
+        latest_user_text = ""
+        for raw_msg in reversed(messages):
+            if str(raw_msg.get("role", "")).strip().lower() == "user":
+                latest_user_text = str(raw_msg.get("content") or "")
+                break
+        tool_loop_state.evidence_intent = tool_loop_runner.detect_evidence_intent(latest_user_text)
 
-            # Handle regular content
-            if chunk.content:
-                if in_thinking_phase and not thinking_ended:
-                    thinking_ended = True
-                    duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
-                    yield "</think>"
-                    yield {"type": "thinking_duration", "duration_ms": duration_ms}
-                full_response += chunk.content
-                yield chunk.content
+        while True:
+            in_thinking_phase = False
+            thinking_ended = False
+            thinking_start_time: Optional[float] = None
+            round_content = ""
+            round_tool_calls: List[Dict[str, Any]] = []
+            # Merge raw LangChain chunks to get complete tool_calls after stream ends
+            merged_chunk = None
 
-            # Capture usage data (usually in final chunk)
-            if chunk.usage:
-                final_usage = chunk.usage
+            # Stream via adapter (unified interface)
+            active_llm = select_stream_llm(
+                llm=llm,
+                llm_for_tools=llm_for_call,
+                tools_enabled=bool(tools),
+                force_finalize_without_tools=tool_loop_state.force_finalize_without_tools,
+            )
+            stream_kwargs = build_stream_kwargs(
+                allow_responses_fallback=allow_responses_fallback,
+            )
+            async for chunk in adapter.stream(active_llm, tool_loop_state.current_messages, **stream_kwargs):
+                # Handle thinking/reasoning content
+                if chunk.thinking and not explicit_disable_reasoning:
+                    full_reasoning += chunk.thinking
+                    if not in_thinking_phase:
+                        in_thinking_phase = True
+                        thinking_start_time = time.time()
+                        yield "<think>"
+                    yield chunk.thinking
 
-        # Close thinking tag if opened but no content followed
-        if in_thinking_phase and not thinking_ended:
-            duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
-            yield "</think>"
-            yield {"type": "thinking_duration", "duration_ms": duration_ms}
+                # Handle regular content
+                if chunk.content:
+                    if in_thinking_phase and not thinking_ended:
+                        thinking_ended = True
+                        duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                        yield "</think>"
+                        yield {"type": "thinking_duration", "duration_ms": duration_ms}
+                    round_content += chunk.content
+                    yield chunk.content
+
+                # Merge raw chunks for usage and tool_calls after stream ends
+                if chunk.raw is not None:
+                    try:
+                        merged_chunk = chunk.raw if merged_chunk is None else merged_chunk + chunk.raw
+                    except Exception:
+                        pass
+
+            # After stream ends: extract usage from merged chunk
+            if merged_chunk is not None:
+                extracted_usage = TokenUsage.extract_from_chunk(merged_chunk)
+                if extracted_usage:
+                    final_usage = extracted_usage
+
+            # After stream ends: extract complete tool_calls from merged chunk
+            round_tool_calls = tool_loop_runner.extract_tool_calls(
+                merged_chunk,
+                tools_enabled=bool(tools),
+                force_finalize_without_tools=tool_loop_state.force_finalize_without_tools,
+            )
+
+            # Close thinking tag if opened but no content followed
+            if in_thinking_phase and not thinking_ended:
+                duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                yield "</think>"
+                yield {"type": "thinking_duration", "duration_ms": duration_ms}
+
+            full_response += round_content
+
+            if tool_loop_runner.should_request_read_compensation(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+            ):
+                if round_content and full_response.endswith(round_content):
+                    full_response = full_response[: -len(round_content)]
+                print("[TOOLS] Evidence request detected, asking model to call read_knowledge before final answer")
+                logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
+                tool_loop_runner.apply_read_compensation_prompt(tool_loop_state)
+                continue
+
+            # Finalization pass intentionally disables tools; finish after this round.
+            if tool_loop_runner.should_finish_round(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+                tools_enabled=bool(tools),
+            ):
+                break
+
+            # Tool call loop: execute tools and re-call LLM
+            if tool_loop_runner.advance_round_or_force_finalize(
+                tool_loop_state,
+                round_content=round_content,
+            ):
+                print(f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping")
+                logger.warning("Max tool call rounds reached")
+                round_content = ""
+                round_tool_calls = []
+                continue
+
+            print(f"[TOOLS] Round {tool_loop_state.tool_round}: executing {len(round_tool_calls)} tool(s)")
+            logger.info(
+                "Tool call round %s: %s",
+                tool_loop_state.tool_round,
+                [tc["name"] for tc in round_tool_calls],
+            )
+
+            # Yield tool_calls event to frontend
+            yield tool_loop_runner.build_tool_calls_event(round_tool_calls)
+
+            # Execute tools
+            tool_results = await tool_loop_runner.execute_tool_calls(
+                round_tool_calls,
+                tool_executor=tool_executor,
+            )
+            tool_loop_runner.record_round_activity(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+                tool_results=tool_results,
+            )
+            for tr in tool_results:
+                print(f"[TOOLS]   {tr['name']} -> {tr['result'][:100]}")
+
+            # Yield tool_results event to frontend
+            yield tool_loop_runner.build_tool_results_event(tool_results)
+
+            # Append AI message with tool_calls and tool result messages
+            tool_loop_runner.append_round_with_tool_results(
+                tool_loop_state,
+                round_content=round_content,
+                round_tool_calls=round_tool_calls,
+                tool_results=tool_results,
+            )
+
+            # Reset for next round
+            round_content = ""
+            round_tool_calls = []
+
+        if tool_loop_runner.should_inject_fallback_answer(tool_loop_state, full_response):
+            injected = tool_loop_runner.build_fallback_answer(tool_loop_state)
+            if full_response.strip():
+                injected = f"\n\n{injected}"
+            full_response += injected
+            tool_loop_state.tool_finalize_reason = "fallback_empty_answer"
+            yield injected
+
+        yield tool_loop_runner.build_tool_diagnostics_event(tool_loop_state)
 
         # Yield usage data at the end
         if final_usage:
@@ -587,10 +757,17 @@ async def call_llm_stream(
         from langchain_core.messages import AIMessage as AIMsg
         response_msg = AIMsg(content=full_response)
 
-        log_extra_params = {"request_params": request_params}
-        if thinking_enabled:
+        log_extra_params = {
+            "request_params": request_params,
+            "call_mode": effective_call_mode.value,
+            "responses_fallback_enabled": allow_responses_fallback,
+        }
+        if explicit_disable_reasoning:
+            log_extra_params["thinking_enabled"] = False
+            log_extra_params["reasoning_mode"] = "none"
+        elif thinking_enabled:
             log_extra_params["thinking_enabled"] = True
-            log_extra_params["reasoning_effort"] = reasoning_effort
+            log_extra_params["reasoning_effort"] = effective_reasoning_effort
         if full_reasoning:
             log_extra_params["reasoning_content"] = full_reasoning
         if final_usage:

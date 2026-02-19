@@ -1,0 +1,357 @@
+{
+  "name": "rag-eval-foundation-1951-hard-v2",
+  "description": "Hard-v2: paraphrase + adversarial no-answer cases for Foundation (1951).",
+  "default_kb_ids": [
+    "b"
+  ],
+  "cases": [
+    {
+      "id": "h001_hyperspace_expectation",
+      "query": "一位年轻数学家首次经历超空间旅行后，发现过程远比想象平淡，这段发生在哪章？",
+      "expected": {
+        "filenames": [
+          "002_第一章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h002_glowing_ticket_route",
+      "query": "入境后通过会发光的路线票引导去搭计程飞船，这段细节出现在哪章？",
+      "expected": {
+        "filenames": [
+          "003_第二章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h003_open_sky_anxiety",
+      "query": "在高塔露天平台上解释“本地人会对开阔天空感到不适”的对话在哪章？",
+      "expected": {
+        "filenames": [
+          "004_第三章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h004_probability_925permille",
+      "query": "老数学家推演后给出三世纪内崩溃概率为千分之九二五，这一幕在哪章？",
+      "expected": {
+        "filenames": [
+          "005_第四章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h005_commission_after_assassination",
+      "query": "提到“皇帝遇刺后政治实权转入委员会”的百科式叙述在本书哪章？",
+      "expected": {
+        "filenames": [
+          "006_第五章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h006_trial_day_three",
+      "query": "审判进行到第三天并接近尾声，且焦点主要针对谢顿，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "007_第六章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h007_post_trial_taxi_discussion",
+      "query": "离开审判现场后乘飞船去大学，并讨论“处决会否加速衰亡”，对应哪章？",
+      "expected": {
+        "filenames": [
+          "009_第八章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h008_terminus_resource_poor",
+      "query": "被描述为资源贫乏、伴随孤独恒星的那个边缘行星，其百科介绍在哪章？",
+      "expected": {
+        "filenames": [
+          "010_第一章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h009_envoy_arrival_ceremony",
+      "query": "来自邻近王国的贵族特使抵达端点星并受到隆重迎接，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "011_第二章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h010_affected_court_style",
+      "query": "刻画某位大人嗜抽鼻烟、说话爱用拗口辞藻的章节是？",
+      "expected": {
+        "filenames": [
+          "013_第四章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h011_many_chairs_in_vault",
+      "query": "第一次进入穹窿时，主角注意到座椅数量远超预期，这个观察在哪章？",
+      "expected": {
+        "filenames": [
+          "016_第七章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h012_four_kingdoms_overview",
+      "query": "关于“四王国”形成及其中最强者的概述出现在哪章？",
+      "expected": {
+        "filenames": [
+          "017_第一章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h013_winter_street_tension",
+      "query": "雪后黎明、街道空无一人、车辆艰难前行的政治紧张段落在哪章？",
+      "expected": {
+        "filenames": [
+          "021_第五章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h014_flagship_chaplain",
+      "query": "旗舰上的首席随军教士因熟悉舰艇修复过程而被任命，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "023_第七章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h015_video_call_shock",
+      "query": "通过视讯看到王子憔悴与制服破烂，摄政者当场失态，情节在哪章？",
+      "expected": {
+        "filenames": [
+          "024_第八章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h016_vault_crowded_after_decades",
+      "query": "穹窿内外挤满旁听人群，并让人想起三十年前旧事，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "025_第九章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h017_trader_definition",
+      "query": "对“行商”群体的早期定义：长期外出、常用拼装旧船，在哪章？",
+      "expected": {
+        "filenames": [
+          "026_第一章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h018_border_intercept",
+      "query": "刚进入边界就被警戒战舰拦截，显示侦察体系有效，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "027_第二章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h019_prison_meeting",
+      "query": "厚重牢门开启后，被囚者立刻认出来访者并对话，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "028_第三章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h020_gold_and_show_trade",
+      "query": "“还有黄金要献给您”并提议做一场表演的交易场景在哪章？",
+      "expected": {
+        "filenames": [
+          "029_第四章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h021_ransom_day_30",
+      "query": "被扣押者在第三十天以五百磅赎金获释，这一段在哪章？",
+      "expected": {
+        "filenames": [
+          "031_第六章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h022_business_prince_intro",
+      "query": "后来被历史记住为“商业王侯”的人物首次百科介绍在哪章？",
+      "expected": {
+        "filenames": [
+          "032_第一章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h023_republic_name_dictatorship_fact",
+      "query": "一个国家名义为共和国、实则更像不受王室约束的独裁，这段在何章？",
+      "expected": {
+        "filenames": [
+          "035_第四章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h024_leader_wife_sarcasm",
+      "query": "领袖夫人刚出场就用讥讽口吻称呼丈夫“仁慈高贵”，对应哪章？",
+      "expected": {
+        "filenames": [
+          "037_第六章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h025_packet_before_leaving_ship",
+      "query": "离舰前把信封、微缩胶片和银色小球交给上尉，发生在哪章？",
+      "expected": {
+        "filenames": [
+          "040_第九章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h026_old_man_fears_nothing",
+      "query": "那位“老得无所畏惧”、与抢救书籍相伴独居的老人出现在第几章？",
+      "expected": {
+        "filenames": [
+          "041_第十章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h027_trial_day_four_crowded",
+      "query": "市议厅公审进行到第四天仍然爆满，这段描写在哪章？",
+      "expected": {
+        "filenames": [
+          "045_第十四章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h028_warn_against_mayor_bid",
+      "query": "有人劝主角别冲动参选市长，并强调群众热情反覆无常，这段在哪章？",
+      "expected": {
+        "filenames": [
+          "046_第十五章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h029_dark_nebula_panic",
+      "query": "某战舰官兵看到体量悬殊的巨舰后惊呼“那是什么东西”，发生在哪章？",
+      "expected": {
+        "filenames": [
+          "048_第十七章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h030_mayor_two_years_reports",
+      "query": "主角担任市长两年后厌烦公文并追问舰船损失，这一幕在哪章？",
+      "expected": {
+        "filenames": [
+          "049_第十八章.md"
+        ]
+      },
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_001_mule_appears",
+      "query": "骡第一次出场并控制基地的关键事件发生在哪章？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_002_second_foundation_location",
+      "query": "第二基地在星图上的精确位置与坐标在本书哪一章揭晓？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_003_demerzel_prime_minister",
+      "query": "丹莫茨尔担任克里昂一世首相并与谢顿合作的细节在本书何处？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_004_trevize_gaia",
+      "query": "崔维兹在盖娅星做出人类未来抉择的讨论在哪一章？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_005_robot_three_laws",
+      "query": "机器人学三大定律在本书中被完整列出的段落在哪里？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_006_earth_found",
+      "query": "主角团队最终找到地球并登陆后的见闻在本书哪一章？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_007_hari_childhood_on_trantor",
+      "query": "哈里谢顿在川陀大学少年时期的校园经历在哪章详细叙述？",
+      "expect_none": true,
+      "top_k": 5
+    },
+    {
+      "id": "h2_na_008_solarian_customs",
+      "query": "索拉利亚星社会习俗与家族制度在本书里有哪些章节介绍？",
+      "expect_none": true,
+      "top_k": 5
+    }
+  ]
+}

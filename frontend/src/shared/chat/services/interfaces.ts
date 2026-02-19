@@ -10,7 +10,8 @@ import type {
   SearchSource,
   UploadedFile,
   ParamOverrides,
-  ContextInfo
+  ContextInfo,
+  GroupChatMode,
 } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
@@ -23,7 +24,13 @@ import type { MutableRefObject } from 'react';
 export interface ChatAPI {
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
-  createSession(modelId?: string, assistantId?: string, temporary?: boolean): Promise<string>;
+  createSession(
+    modelId?: string,
+    assistantId?: string,
+    temporary?: boolean,
+    targetType?: 'assistant' | 'model'
+  ): Promise<string>;
+  createGroupSession(groupAssistants: string[], mode?: GroupChatMode): Promise<string>;
   listSessions(): Promise<Session[]>;
   deleteSession(sessionId: string): Promise<void>;
   saveTemporarySession(sessionId: string): Promise<void>;
@@ -33,6 +40,12 @@ export interface ChatAPI {
   copySession(sessionId: string, targetContextType: string, targetProjectId?: string): Promise<string>;
   branchSession(sessionId: string, messageId: string): Promise<string>;
   updateSessionAssistant(sessionId: string, assistantId: string): Promise<void>;
+  updateSessionTarget(
+    sessionId: string,
+    targetType: 'assistant' | 'model',
+    options?: { assistantId?: string; modelId?: string }
+  ): Promise<void>;
+  updateGroupAssistants(sessionId: string, groupAssistants: string[]): Promise<void>;
   updateSessionParamOverrides(sessionId: string, paramOverrides: ParamOverrides): Promise<void>;
 
   // Message operations
@@ -55,7 +68,34 @@ export interface ChatAPI {
     onFollowupQuestions?: (questions: string[]) => void,
     onContextInfo?: (info: ContextInfo) => void,
     onThinkingDuration?: (durationMs: number) => void,
-    fileReferences?: Array<{ path: string; project_id: string }>
+    fileReferences?: Array<{ path: string; project_id: string }>,
+    onToolCalls?: (calls: Array<{ name: string; args: Record<string, unknown> }>) => void,
+    onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
+    onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
+    onAssistantDone?: (assistantId: string) => void,
+    onGroupEvent?: (event: {
+      type: string;
+      assistant_id?: string;
+      assistant_turn_id?: string;
+      assistant_ids?: string[];
+      assistant_names?: string[];
+      name?: string;
+      icon?: string;
+      chunk?: string;
+      message_id?: string;
+      round?: number;
+      max_rounds?: number;
+      action?: string;
+      reason?: string;
+      supervisor_id?: string;
+      supervisor_name?: string;
+      rounds?: number;
+      usage?: TokenUsage;
+      cost?: CostInfo;
+      sources?: SearchSource[];
+      duration_ms?: number;
+      [key: string]: unknown;
+    }) => void
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;
@@ -155,7 +195,12 @@ export interface ChatServiceContextValue {
   sessionsError: string | null;
 
   // Built-in Sessions operations
-  createSession: (modelId?: string, assistantId?: string) => Promise<string>;
+  createSession: (
+    modelId?: string,
+    assistantId?: string,
+    temporary?: boolean,
+    targetType?: 'assistant' | 'model'
+  ) => Promise<string>;
   createTemporarySession: () => Promise<string>;
   saveTemporarySession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;

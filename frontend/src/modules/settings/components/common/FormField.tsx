@@ -4,7 +4,7 @@
  * Generic form field renderer supporting all field types defined in config.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FieldConfig, ConfigContext } from '../../config/types';
 import type {
@@ -16,6 +16,8 @@ import {
   ASSISTANT_ICON_KEYS,
   getAssistantIcon,
 } from '../../../../shared/constants/assistantIcons';
+import { fetchProviderModels } from '../../../../services/api';
+import type { ModelInfo } from '../../../../types/model';
 
 const TEMPLATE_VARIABLE_TYPE_OPTIONS: PromptTemplateVariableType[] = ['text', 'number', 'boolean', 'select'];
 
@@ -284,6 +286,46 @@ export const FormField: React.FC<FormFieldProps> = ({
           </div>
         );
       }
+
+      case 'preset':
+        return (
+          <div className="flex flex-wrap gap-2" data-name={`preset-${config.name}`}>
+            {config.options.map((opt) => {
+              const isActive = Object.entries(opt.effects).every(
+                ([k, v]) => formData[k] === v
+              );
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={config.disabled}
+                  onClick={() => onChange(opt.effects)}
+                  className={`px-4 py-2 rounded-lg border text-left transition-colors ${
+                    isActive
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500'
+                      : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-900/10'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  {opt.description && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.description}</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        );
+
+      case 'model-id':
+        return (
+          <ModelIdField
+            config={config}
+            value={value}
+            onChange={onChange}
+            formData={formData}
+            inputClasses={inputClasses}
+          />
+        );
 
       default:
         return <div className="text-red-500">{t('formField.unknownType')}</div>;
@@ -665,6 +707,201 @@ const TemplateVariablesField: React.FC<{
 
 /** Max icons shown per page in the grid to keep rendering fast */
 const PAGE_SIZE = 200;
+
+/** Model ID field with provider-based model discovery and search */
+const ModelIdField: React.FC<{
+  config: Extract<FieldConfig, { type: 'model-id' }>;
+  value: string;
+  onChange: (value: any) => void;
+  formData: any;
+  inputClasses: string;
+}> = ({ config, value, onChange, formData, inputClasses }) => {
+  const { t } = useTranslation('settings');
+  const providerField = config.providerField || 'provider_id';
+  const nameField = config.nameField || 'name';
+  const providerId = formData[providerField] || '';
+
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter models based on search query (matches id, name, and tags)
+  const filteredModels = useMemo(() => {
+    if (!searchQuery.trim()) return availableModels;
+    const query = searchQuery.toLowerCase();
+    return availableModels.filter(
+      (model) =>
+        model.id.toLowerCase().includes(query) ||
+        model.name.toLowerCase().includes(query) ||
+        (model.tags && model.tags.some((tag) => tag.toLowerCase().includes(query)))
+    );
+  }, [availableModels, searchQuery]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (showDropdown && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showDropdown]);
+
+  // Reset models when provider changes
+  useEffect(() => {
+    setAvailableModels([]);
+    setFetchError(false);
+    setSearchQuery('');
+  }, [providerId]);
+
+  const handleFetch = useCallback(async () => {
+    if (!providerId || isFetching) return;
+    setIsFetching(true);
+    setFetchError(false);
+    setSearchQuery('');
+    try {
+      const models = await fetchProviderModels(providerId);
+      setAvailableModels(models);
+      setShowDropdown(models.length > 0);
+    } catch {
+      setFetchError(true);
+      setAvailableModels([]);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [providerId, isFetching]);
+
+  const handleSelectModel = (model: ModelInfo) => {
+    // Batch update: set id, name, and auto-populate capabilities/tags if available
+    const updates: Record<string, any> = {
+      __batchUpdate: true,
+      [config.name]: model.id,
+      [nameField]: model.name,
+    };
+    if (model.capabilities) {
+      updates.capabilities = model.capabilities;
+    }
+    if (model.tags && model.tags.length > 0) {
+      updates.tags = model.tags.join(', ');
+    }
+    onChange(updates);
+    setShowDropdown(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef} data-name="model-id-field">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={config.placeholder}
+          required={config.required}
+          disabled={config.disabled}
+          className={`${inputClasses} flex-1`}
+        />
+        <button
+          type="button"
+          onClick={handleFetch}
+          disabled={!providerId || isFetching || config.disabled}
+          title={t('models.field.id.fetchTitle')}
+          className="px-3 py-2 text-sm font-medium border rounded-md transition-colors
+            border-gray-300 dark:border-gray-600
+            bg-white dark:bg-gray-700
+            text-gray-700 dark:text-gray-300
+            hover:bg-gray-50 dark:hover:bg-gray-600
+            disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isFetching ? (
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {fetchError && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+          {t('models.field.id.fetchError')}
+        </p>
+      )}
+
+      {showDropdown && availableModels.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
+          {/* Search input */}
+          <div className="sticky top-0 p-2 border-b border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('models.field.id.searchPlaceholder')}
+              className="w-full px-2 py-1.5 text-sm border rounded
+                border-gray-300 dark:border-gray-600
+                bg-gray-50 dark:bg-gray-700
+                text-gray-900 dark:text-white
+                placeholder-gray-400 dark:placeholder-gray-500
+                focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400"
+            />
+            <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {filteredModels.length} / {availableModels.length}
+            </div>
+          </div>
+          {/* Model list */}
+          <div className="max-h-60 overflow-y-auto">
+            {filteredModels.length > 0 ? (
+              filteredModels.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => handleSelectModel(model)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                >
+                  <div className="font-medium text-gray-900 dark:text-white">{model.id}</div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {model.name !== model.id && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">{model.name}</span>
+                    )}
+                    {model.tags && model.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded px-1 py-0 text-[10px] leading-4 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-4 text-sm text-center text-gray-400 dark:text-gray-500">
+                {t('models.field.id.noSearchResults')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 /** Collapsible icon picker with search */
 const IconPickerField: React.FC<{

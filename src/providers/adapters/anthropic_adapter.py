@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
+from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ class AnthropicAdapter(BaseLLMAdapter):
     Uses langchain-anthropic package for proper Claude API integration.
     Supports extended thinking for Claude models.
     """
+
+    _DEFAULT_TEST_MODEL = "claude-haiku-4-5-20250630"
 
     def create_llm(
         self,
@@ -125,6 +128,7 @@ class AnthropicAdapter(BaseLLMAdapter):
             yield StreamChunk(
                 content=content,
                 thinking=thinking,
+                tool_calls=extract_tool_calls(chunk),
                 usage=usage_data,
                 raw=chunk,
             )

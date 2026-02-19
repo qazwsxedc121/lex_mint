@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 cls
 echo.
 echo     ======================================
@@ -25,8 +26,18 @@ if "%choice%"=="3" call stop.bat
 if "%choice%"=="4" call status.bat
 if "%choice%"=="5" explorer conversations
 if "%choice%"=="6" (
-    start http://localhost:5173
-    echo Browser opened
+    set "FRONTEND_PORT="
+    if exist .env (
+        for /f "tokens=1,* delims==" %%a in ('findstr /r "^FRONTEND_PORT=" .env 2^>nul') do (
+            if /I "%%a"=="FRONTEND_PORT" set "FRONTEND_PORT=%%b"
+        )
+    )
+    if not defined FRONTEND_PORT (
+        echo [ERROR] FRONTEND_PORT not set in .env
+    ) else (
+        start http://localhost:!FRONTEND_PORT!
+        echo Browser opened
+    )
     pause
 )
 if "%choice%"=="0" exit

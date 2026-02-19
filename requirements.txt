@@ -2,6 +2,8 @@ langgraph>=0.2.0
 langchain-openai>=0.2.0
 langchain-deepseek>=1.0.0
 langchain-anthropic>=0.3.0
+langchain-google-genai>=2.0.0
+langchain-ollama>=0.2.0
 python-dotenv>=1.0.0
 
 # FastAPI backend dependencies
@@ -22,7 +24,11 @@ edge-tts>=6.1.0
 # RAG / Knowledge Base dependencies
 chromadb>=0.5.0
 langchain-chroma>=0.2.0
+sqlite-vec>=0.1.6
 langchain-text-splitters>=0.3.0
+# CPU-compatible baseline. For NVIDIA CUDA build, see requirements.gpu_nvidia.txt.
 llama-cpp-python>=0.3.0
 pypdf>=4.0.0
+pymupdf>=1.27.0
 python-docx>=1.0.0
+jieba>=0.42.1

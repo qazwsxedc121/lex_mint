@@ -35,7 +35,8 @@ import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore'
 
 // Reasoning effort options for supported models
 const REASONING_EFFORT_OPTIONS = [
-  { value: '', labelKey: 'input.reasoning.off', descKey: 'input.reasoning.offDesc' },
+  { value: 'default', labelKey: 'input.reasoning.default', descKey: 'input.reasoning.defaultDesc' },
+  { value: 'none', labelKey: 'input.reasoning.none', descKey: 'input.reasoning.noneDesc' },
   { value: 'low', labelKey: 'input.reasoning.low', descKey: 'input.reasoning.lowDesc' },
   { value: 'medium', labelKey: 'input.reasoning.medium', descKey: 'input.reasoning.mediumDesc' },
   { value: 'high', labelKey: 'input.reasoning.high', descKey: 'input.reasoning.highDesc' },
@@ -59,6 +60,7 @@ const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
 // Brain icon color by reasoning level
 const getReasoningIconColor = (effort: string): string => {
   switch (effort) {
+    case 'none':   return 'text-red-500 dark:text-red-400';
     case 'low':    return 'text-amber-400 dark:text-amber-500';
     case 'medium': return 'text-amber-600 dark:text-amber-400';
     case 'high':   return 'text-orange-500 dark:text-orange-400';
@@ -365,7 +367,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const { t } = useTranslation('chat');
   const { registerComposer } = useChatComposer();
   const [input, setInput] = useState('');
-  const [reasoningEffort, setReasoningEffort] = useState('');
+  const [reasoningEffort, setReasoningEffort] = useState('default');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
@@ -1043,7 +1045,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         : [];
 
       const sendOptions = {
-        reasoningEffort: reasoningEffort || undefined,
+        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
         attachments: attachments.length > 0 ? attachments : undefined,
         useWebSearch,
         fileReferences: fileReferences.length > 0 ? fileReferences : undefined,
@@ -1285,9 +1287,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
             <button
               onClick={() => setShowReasoningMenu(!showReasoningMenu)}
               className={`${TOOLBAR_BTN} ${
-                reasoningEffort
-                  ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                  : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                reasoningEffort === 'none'
+                  ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+                  : reasoningEffort !== 'default'
+                    ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                    : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
               title={`${t('input.reasoning.prefix', { defaultValue: 'Reasoning' })}: ${t(currentOption.labelKey)}`}
             >

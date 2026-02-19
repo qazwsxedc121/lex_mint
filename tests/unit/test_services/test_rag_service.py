@@ -18,14 +18,39 @@ class _FakeKnowledgeBaseService:
         )
 
 
-def _build_service(*, top_k: int, score_threshold: float, recall_k: int, max_per_doc: int, reorder_strategy: str) -> RagService:
+def _build_service(
+    *,
+    top_k: int,
+    score_threshold: float,
+    recall_k: int,
+    max_per_doc: int,
+    reorder_strategy: str,
+    retrieval_mode: str = "vector",
+    vector_recall_k: int | None = None,
+    bm25_recall_k: int | None = None,
+    fusion_top_k: int = 30,
+    fusion_strategy: str = "rrf",
+    rrf_k: int = 60,
+    vector_weight: float = 1.0,
+    bm25_weight: float = 1.0,
+    bm25_min_term_coverage: float = 0.35,
+) -> RagService:
     service = RagService.__new__(RagService)
     service.rag_config_service = SimpleNamespace(
         config=SimpleNamespace(
             retrieval=SimpleNamespace(
+                retrieval_mode=retrieval_mode,
                 top_k=top_k,
                 score_threshold=score_threshold,
                 recall_k=recall_k,
+                vector_recall_k=vector_recall_k if vector_recall_k is not None else recall_k,
+                bm25_recall_k=bm25_recall_k if bm25_recall_k is not None else recall_k,
+                bm25_min_term_coverage=bm25_min_term_coverage,
+                fusion_top_k=fusion_top_k,
+                fusion_strategy=fusion_strategy,
+                rrf_k=rrf_k,
+                vector_weight=vector_weight,
+                bm25_weight=bm25_weight,
                 max_per_doc=max_per_doc,
                 reorder_strategy=reorder_strategy,
                 rerank_enabled=False,
@@ -45,6 +70,7 @@ def _build_service(*, top_k: int, score_threshold: float, recall_k: int, max_per
     )
     service.embedding_service = None
     service.rerank_service = None
+    service.bm25_service = None
     return service
 
 
@@ -147,6 +173,8 @@ def test_build_rag_diagnostics_source_contains_expected_fields():
             "max_per_doc": 2,
             "reorder_strategy": "long_context",
             "searched_kb_count": 2,
+            "requested_kb_count": 3,
+            "best_score": 0.91,
         }
     )
 
@@ -154,6 +182,13 @@ def test_build_rag_diagnostics_source_contains_expected_fields():
     assert source["raw_count"] == 8
     assert source["selected_count"] == 3
     assert source["reorder_strategy"] == "long_context"
+    assert source["requested_kb_count"] == 3
+    assert source["best_score"] == pytest.approx(0.91)
+    assert source["tool_search_count"] == 0
+    assert source["tool_search_unique_count"] == 0
+    assert source["tool_search_duplicate_count"] == 0
+    assert source["tool_read_count"] == 0
+    assert source["tool_finalize_reason"] == "normal_no_tools"
 
 
 def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):
@@ -191,3 +226,427 @@ def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):
     assert [item.doc_id for item in results] == ["doc_2", "doc_3", "doc_1"]
     assert diagnostics["rerank_enabled"] is True
     assert diagnostics["rerank_applied"] is True
+
+
+def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+        retrieval_mode="hybrid",
+        vector_recall_k=10,
+        bm25_recall_k=10,
+        fusion_top_k=10,
+        vector_weight=1.0,
+        bm25_weight=1.0,
+        rrf_k=60,
+    )
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, query, top_k, score_threshold, override_model
+        return [
+            RagResult("vec-a", 0.95, "kb_a", "doc_a", "a.md", 0),
+            RagResult("vec-b", 0.90, "kb_a", "doc_b", "b.md", 0),
+        ]
+
+    def fake_search_bm25_collection(*, kb_id, query, top_k, min_term_coverage):
+        _ = kb_id, query, top_k
+        assert min_term_coverage == pytest.approx(0.35)
+        return [
+            RagResult("bm25-b", 0.96, "kb_a", "doc_b", "b.md", 0),
+            RagResult("bm25-c", 0.92, "kb_a", "doc_c", "c.md", 0),
+        ]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+    monkeypatch.setattr(service, "_search_bm25_collection", fake_search_bm25_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("query", ["kb_a"]))
+
+    assert [item.doc_id for item in results] == ["doc_b", "doc_a", "doc_c"]
+    assert diagnostics["retrieval_mode"] == "hybrid"
+    assert diagnostics["vector_raw_count"] == 2
+    assert diagnostics["bm25_raw_count"] == 2
+    assert diagnostics["bm25_min_term_coverage"] == pytest.approx(0.35)
+
+
+def test_search_collection_dispatches_to_sqlite_vec(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.storage.vector_store_backend = "sqlite_vec"
+
+    def fake_sqlite_search(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = query, top_k, score_threshold, override_model
+        return [RagResult("sqlite", 0.9, kb_id, "doc_sqlite", "sqlite.md", 0)]
+
+    def fail_chroma_search(*args, **kwargs):
+        _ = args, kwargs
+        raise AssertionError("chroma backend should not be used when sqlite_vec is selected")
+
+    monkeypatch.setattr(service, "_search_collection_sqlite_vec", fake_sqlite_search)
+    monkeypatch.setattr(service, "_search_collection_chroma", fail_chroma_search)
+
+    result = service._search_collection("kb1", "hello", 5, 0.1, None)
+    assert len(result) == 1
+    assert result[0].doc_id == "doc_sqlite"
+
+
+def test_retrieve_with_diagnostics_caches_sqlite_query_embedding(monkeypatch):
+    service = _build_service(
+        top_k=2,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=2,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.storage.vector_store_backend = "sqlite_vec"
+
+    class _KbLookup:
+        async def get_knowledge_base(self, kb_id: str):
+            return SimpleNamespace(
+                id=kb_id,
+                enabled=True,
+                embedding_model="shared-model",
+                document_count=1,
+            )
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _KbLookup,
+    )
+
+    class _FakeEmbeddingFn:
+        def embed_query(self, _query: str):
+            return [1.0, 0.0]
+
+    class _FakeEmbeddingService:
+        def __init__(self):
+            self.calls = 0
+
+        def get_embedding_function(self, override_model=None):
+            _ = override_model
+            self.calls += 1
+            return _FakeEmbeddingFn()
+
+    fake_embedding_service = _FakeEmbeddingService()
+    service.embedding_service = fake_embedding_service
+
+    seen_embeddings = []
+
+    def fake_search_collection(
+        kb_id,
+        query,
+        top_k,
+        score_threshold,
+        override_model=None,
+        query_embedding=None,
+    ):
+        _ = query, top_k, score_threshold, override_model
+        seen_embeddings.append(tuple(query_embedding or []))
+        return [RagResult(f"chunk-{kb_id}", 0.9, kb_id, f"doc-{kb_id}", f"{kb_id}.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("query", ["kb_a", "kb_b"]))
+
+    assert len(results) == 2
+    assert diagnostics["vector_raw_count"] == 2
+    assert fake_embedding_service.calls == 1
+    assert seen_embeddings == [(1.0, 0.0), (1.0, 0.0)]
+
+
+def test_retrieve_applies_query_transform_with_runtime_model(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_mode = "rewrite"
+    service.rag_config_service.config.retrieval.query_transform_model_id = "auto"
+    service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
+    service.rag_config_service.config.retrieval.query_transform_crag_enabled = False
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def fake_transform_query(
+        *,
+        query,
+        enabled,
+        mode,
+        configured_model_id,
+        runtime_model_id,
+        timeout_seconds,
+        guard_enabled,
+        guard_max_new_terms,
+    ):
+        assert query == "original question"
+        assert enabled is True
+        assert mode == "rewrite"
+        assert configured_model_id == "auto"
+        assert runtime_model_id == "openrouter:openai/gpt-4o-mini"
+        assert timeout_seconds == 4
+        assert guard_enabled is True
+        assert guard_max_new_terms == 2
+        return SimpleNamespace(
+            effective_query="rewritten question",
+            applied=True,
+            mode="rewrite",
+            resolved_model_id=runtime_model_id,
+            guard_blocked=False,
+            guard_reason="",
+        )
+
+    service.query_transform_service = SimpleNamespace(transform_query=fake_transform_query)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        return [RagResult("chunk", 0.9, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="openrouter:openai/gpt-4o-mini",
+        )
+    )
+
+    assert len(results) == 1
+    assert seen_queries == ["rewritten question"]
+    assert diagnostics["query_transform_enabled"] is True
+    assert diagnostics["query_transform_mode"] == "rewrite"
+    assert diagnostics["query_transform_applied"] is True
+    assert diagnostics["query_effective"] == "rewritten question"
+    assert diagnostics["query_transform_model_id"] == "openrouter:openai/gpt-4o-mini"
+
+
+def test_retrieve_query_transform_failure_falls_back_to_original(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_mode = "rewrite"
+    service.rag_config_service.config.retrieval.query_transform_model_id = "auto"
+    service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def failing_transform_query(**kwargs):
+        _ = kwargs
+        raise RuntimeError("transform boom")
+
+    service.query_transform_service = SimpleNamespace(transform_query=failing_transform_query)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        return [RagResult("chunk", 0.9, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="openrouter:openai/gpt-4o-mini",
+        )
+    )
+
+    assert len(results) == 1
+    assert seen_queries == ["original question"]
+    assert diagnostics["query_transform_applied"] is False
+    assert diagnostics["query_effective"] == "original question"
+
+
+def test_retrieve_with_query_planner_runs_multi_query_retrieval(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.retrieval_query_planner_enabled = True
+    service.rag_config_service.config.retrieval.retrieval_query_planner_model_id = "auto"
+    service.rag_config_service.config.retrieval.retrieval_query_planner_max_queries = 3
+    service.rag_config_service.config.retrieval.retrieval_query_planner_timeout_seconds = 4
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def fake_plan_queries(**kwargs):
+        assert kwargs["query"] == "original question"
+        return SimpleNamespace(
+            planned_queries=["original question", "expanded variant"],
+            planner_applied=True,
+            fallback_used=False,
+            planner_model_id="openrouter:openai/gpt-4o-mini",
+            reason="ok",
+        )
+
+    service.retrieval_query_planner_service = SimpleNamespace(plan_queries=fake_plan_queries)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        if query == "expanded variant":
+            return [RagResult("chunk-b", 0.92, "kb_a", "doc_b", "b.md", 0)]
+        return [RagResult("chunk-a", 0.95, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="openrouter:openai/gpt-4o-mini",
+        )
+    )
+
+    assert [item.doc_id for item in results] == ["doc_a", "doc_b"]
+    assert seen_queries == ["original question", "expanded variant"]
+    assert diagnostics["retrieval_query_count"] == 2
+    assert diagnostics["retrieval_queries"] == ["original question", "expanded variant"]
+    assert diagnostics["retrieval_query_planner_enabled"] is True
+    assert diagnostics["retrieval_query_planner_applied"] is True
+    assert diagnostics["retrieval_query_planner_fallback"] is False
+    assert diagnostics["retrieval_query_planner_model_id"] == "openrouter:openai/gpt-4o-mini"
+    assert diagnostics["retrieval_query_planner_reason"] == "ok"
+
+
+def test_retrieve_query_planner_failure_falls_back_to_effective_query(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.retrieval_query_planner_enabled = True
+    service.rag_config_service.config.retrieval.retrieval_query_planner_model_id = "auto"
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def failing_plan_queries(**kwargs):
+        _ = kwargs
+        raise RuntimeError("planner boom")
+
+    service.retrieval_query_planner_service = SimpleNamespace(plan_queries=failing_plan_queries)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        return [RagResult("chunk-a", 0.95, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("original question", ["kb_a"]))
+
+    assert len(results) == 1
+    assert seen_queries == ["original question"]
+    assert diagnostics["retrieval_query_count"] == 1
+    assert diagnostics["retrieval_queries"] == ["original question"]
+    assert diagnostics["retrieval_query_planner_applied"] is False
+    assert diagnostics["retrieval_query_planner_fallback"] is True
+    assert diagnostics["retrieval_query_planner_reason"] == "error"
+
+
+def test_retrieve_crag_gate_falls_back_to_original_when_rewrite_low_quality(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_mode = "rewrite"
+    service.rag_config_service.config.retrieval.query_transform_model_id = "auto"
+    service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
+    service.rag_config_service.config.retrieval.query_transform_crag_enabled = True
+    service.rag_config_service.config.retrieval.query_transform_crag_lower_threshold = 0.35
+    service.rag_config_service.config.retrieval.query_transform_crag_upper_threshold = 0.75
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def fake_transform_query(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(
+            effective_query="rewritten question",
+            applied=True,
+            mode="rewrite",
+            resolved_model_id="deepseek:deepseek-chat",
+            guard_blocked=False,
+            guard_reason="",
+        )
+
+    service.query_transform_service = SimpleNamespace(transform_query=fake_transform_query)
+
+    seen_queries = []
+
+    def fake_search_collection(kb_id, query, top_k, score_threshold, override_model=None):
+        _ = kb_id, top_k, score_threshold, override_model
+        seen_queries.append(query)
+        if query == "rewritten question":
+            return []
+        return [RagResult("chunk", 0.9, "kb_a", "doc_a", "a.md", 0)]
+
+    monkeypatch.setattr(service, "_search_collection", fake_search_collection)
+
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics(
+            "original question",
+            ["kb_a"],
+            runtime_model_id="deepseek:deepseek-chat",
+        )
+    )
+
+    assert len(results) == 1
+    assert [item.doc_id for item in results] == ["doc_a"]
+    assert seen_queries == ["rewritten question", "original question"]
+    assert diagnostics["query_effective"] == "original question"
+    assert diagnostics["query_transform_applied"] is True
+    assert diagnostics["query_transform_crag_enabled"] is True
+    assert diagnostics["query_transform_crag_quality_label"] == "incorrect"
+    assert diagnostics["query_transform_crag_decision"] == "fallback_original"

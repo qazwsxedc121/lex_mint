@@ -5,7 +5,7 @@ Defines enums and Pydantic models for the LLM provider abstraction layer.
 """
 from enum import Enum
 from typing import List, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ApiProtocol(str, Enum):
@@ -14,6 +14,14 @@ class ApiProtocol(str, Enum):
     ANTHROPIC = "anthropic"     # Anthropic Claude API
     GEMINI = "gemini"           # Google Gemini API
     OLLAMA = "ollama"           # Ollama local models
+
+
+class CallMode(str, Enum):
+    """Provider call mode within an adapter family."""
+    AUTO = "auto"                           # Resolve mode automatically
+    NATIVE = "native"                       # Use provider-native request shape
+    CHAT_COMPLETIONS = "chat_completions"   # OpenAI Chat Completions shape
+    RESPONSES = "responses"                 # OpenAI Responses shape
 
 
 class ProviderType(str, Enum):
@@ -120,16 +128,6 @@ class ModelCapabilities(BaseModel):
         return ModelCapabilities(**base_dict)
 
 
-class ModelDefinition(BaseModel):
-    """Built-in model definition (minimal info for builtin providers)"""
-    id: str = Field(..., description="Model ID (e.g., deepseek-chat)")
-    name: str = Field(..., description="Display name")
-    capabilities: Optional[ModelCapabilities] = Field(
-        default=None,
-        description="Model-specific capabilities (overrides provider defaults)"
-    )
-
-
 class ProviderDefinition(BaseModel):
     """
     Built-in provider definition.
@@ -140,15 +138,10 @@ class ProviderDefinition(BaseModel):
     name: str = Field(..., description="Display name")
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API protocol type")
     base_url: str = Field(..., description="Default API base URL")
-    api_key_env: str = Field(..., description="Environment variable name for API key")
     sdk_class: str = Field(default="openai", description="SDK adapter class to use")
     default_capabilities: ModelCapabilities = Field(
         default_factory=ModelCapabilities,
         description="Default capabilities for models under this provider"
-    )
-    builtin_models: List[ModelDefinition] = Field(
-        default_factory=list,
-        description="Pre-defined models for this provider"
     )
     url_suffix: str = Field(default="/v1", description="URL suffix for API calls")
     auto_append_path: bool = Field(default=True, description="Auto-append path to base URL")
@@ -169,8 +162,8 @@ class ProviderConfig(BaseModel):
 
     # === API configuration ===
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API protocol type")
+    call_mode: CallMode = Field(default=CallMode.AUTO, description="Provider call mode")
     base_url: str = Field(..., description="API base URL")
-    api_key_env: str = Field(default="", description="Environment variable name for API key")
     api_keys: List[str] = Field(default_factory=list, description="Multiple API keys for rotation")
 
     # === State ===
@@ -202,7 +195,7 @@ class ModelConfig(BaseModel):
     id: str = Field(..., description="Model ID (e.g., gpt-4-turbo)")
     name: str = Field(..., description="Display name")
     provider_id: str = Field(..., description="Parent provider ID")
-    group: str = Field(default="General", description="Model group/category")
+    tags: List[str] = Field(default_factory=list, description="Model tags")
     enabled: bool = Field(default=True, description="Whether the model is enabled")
 
     # === Model capabilities (overrides provider defaults) ===
@@ -210,6 +203,39 @@ class ModelConfig(BaseModel):
         default=None,
         description="Model-specific capabilities (overrides provider defaults)"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_tags(cls, data):
+        """Backwards-compatible parser for legacy group and string tags."""
+        if not isinstance(data, dict):
+            return data
+
+        raw_tags = data.get("tags")
+        if raw_tags is None:
+            raw_tags = data.get("group")
+
+        if isinstance(raw_tags, str):
+            candidates = [part.strip() for part in raw_tags.split(",")]
+        elif isinstance(raw_tags, list):
+            candidates = [str(part).strip() for part in raw_tags]
+        elif raw_tags is None:
+            candidates = []
+        else:
+            candidates = [str(raw_tags).strip()]
+
+        normalized: List[str] = []
+        seen = set()
+        for tag in candidates:
+            clean_tag = tag.lower()
+            if not clean_tag or clean_tag in seen:
+                continue
+            normalized.append(clean_tag)
+            seen.add(clean_tag)
+
+        data["tags"] = normalized
+        data.pop("group", None)
+        return data
 
 
 class StreamChunk(BaseModel):

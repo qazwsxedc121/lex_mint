@@ -43,8 +43,13 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({
 }) => {
   const { t } = useTranslation('settings');
   const resolvedSubmitLabel = submitLabel ?? t('config.saveSettings');
-  const handleFieldChange = (fieldName: string, value: any) => {
-    onChange({ ...formData, [fieldName]: value });
+  const handleFieldChange = (field: FieldConfig, value: any) => {
+    if (field.type === 'preset') {
+      // Preset fields emit an effects object -- spread all effects into formData
+      onChange({ ...formData, ...value });
+    } else {
+      onChange({ ...formData, [field.name]: value });
+    }
   };
 
   return (
@@ -55,7 +60,7 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({
           key={field.name}
           config={field}
           value={formData[field.name]}
-          onChange={(value) => handleFieldChange(field.name, value)}
+          onChange={(value) => handleFieldChange(field, value)}
           formData={formData}
           context={context}
           showErrors={showErrors}

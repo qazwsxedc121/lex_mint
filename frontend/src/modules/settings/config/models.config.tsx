@@ -4,9 +4,26 @@
  * Defines the structure and behavior of the Models settings page.
  */
 
+import { SignalIcon } from '@heroicons/react/24/outline';
 import type { CrudSettingsConfig } from './types';
 import type { Model } from '../../../types/model';
+import { testModelConnection } from '../../../services/api';
 import i18n from '../../../i18n';
+
+const normalizeTags = (rawValue: unknown): string[] => {
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .map((tag) => String(tag).trim().toLowerCase())
+      .filter(Boolean);
+  }
+  if (typeof rawValue === 'string') {
+    return rawValue
+      .split(',')
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+};
 
 export const modelsConfig: CrudSettingsConfig<Model> = {
   type: 'crud',
@@ -43,10 +60,29 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       hideOnMobile: true
     },
     {
-      key: 'group',
-      get label() { return i18n.t('settings:models.col.group'); },
+      key: 'tags',
+      get label() { return i18n.t('settings:models.col.tags'); },
       sortable: true,
-      hideOnMobile: true
+      hideOnMobile: true,
+      sortFn: (a, b) => normalizeTags(a.tags).join(',').localeCompare(normalizeTags(b.tags).join(',')),
+      render: (value) => {
+        const tags = normalizeTags(value);
+        if (tags.length === 0) {
+          return <span className="text-gray-400 dark:text-gray-500">-</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        );
+      }
     }
   ],
 
@@ -57,14 +93,6 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
 
   // Form fields
   createFields: [
-    {
-      type: 'text',
-      name: 'id',
-      get label() { return i18n.t('settings:models.field.id'); },
-      get placeholder() { return i18n.t('settings:models.field.id.placeholder'); },
-      required: true,
-      get helpText() { return i18n.t('settings:models.field.id.help'); }
-    },
     {
       type: 'select',
       name: 'provider_id',
@@ -82,26 +110,107 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
       get helpText() { return i18n.t('settings:models.field.providerId.help'); }
     },
     {
+      type: 'model-id',
+      name: 'id',
+      get label() { return i18n.t('settings:models.field.id'); },
+      get placeholder() { return i18n.t('settings:models.field.id.placeholder'); },
+      required: true,
+      get helpText() { return i18n.t('settings:models.field.id.help'); },
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
       type: 'text',
       name: 'name',
       get label() { return i18n.t('settings:models.field.name'); },
       get placeholder() { return i18n.t('settings:models.field.name.placeholder'); },
       required: true,
-      get helpText() { return i18n.t('settings:models.field.name.help'); }
+      get helpText() { return i18n.t('settings:models.field.name.help'); },
+      condition: (formData) => !!formData.provider_id,
     },
     {
       type: 'text',
-      name: 'group',
-      get label() { return i18n.t('settings:models.field.group'); },
-      get placeholder() { return i18n.t('settings:models.field.group.placeholder'); },
-      required: true,
-      get helpText() { return i18n.t('settings:models.field.group.help'); }
+      name: 'tags',
+      get label() { return i18n.t('settings:models.field.tags'); },
+      get placeholder() { return i18n.t('settings:models.field.tags.placeholder'); },
+      get helpText() { return i18n.t('settings:models.field.tags.help'); },
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_temperature',
+      label: 'Chat Template: Temperature',
+      min: 0,
+      max: 2,
+      step: 0.1,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(1),
+      helpText: 'Applied when this model is used as a direct chat target.',
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
+      type: 'number',
+      name: 'chat_template_max_tokens',
+      label: 'Chat Template: Max Tokens',
+      placeholder: 'Default',
+      min: 1,
+      helpText: 'Optional per-model default max output tokens.',
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_top_p',
+      label: 'Chat Template: Top P',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(2),
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
+      type: 'number',
+      name: 'chat_template_top_k',
+      label: 'Chat Template: Top K',
+      placeholder: 'Default',
+      min: 1,
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_frequency_penalty',
+      label: 'Chat Template: Frequency Penalty',
+      min: -2,
+      max: 2,
+      step: 0.1,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(1),
+      condition: (formData) => !!formData.provider_id,
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_presence_penalty',
+      label: 'Chat Template: Presence Penalty',
+      min: -2,
+      max: 2,
+      step: 0.1,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(1),
+      condition: (formData) => !!formData.provider_id,
     },
     {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:models.field.enabled'); },
-      defaultValue: true
+      defaultValue: true,
+      condition: (formData) => !!formData.provider_id,
     }
   ],
 
@@ -139,17 +248,102 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     },
     {
       type: 'text',
-      name: 'group',
-      get label() { return i18n.t('settings:models.field.group'); },
-      get placeholder() { return i18n.t('settings:models.field.group.placeholder'); },
-      required: true,
-      get helpText() { return i18n.t('settings:models.field.group.help'); }
+      name: 'tags',
+      get label() { return i18n.t('settings:models.field.tags'); },
+      get placeholder() { return i18n.t('settings:models.field.tags.placeholder'); },
+      get helpText() { return i18n.t('settings:models.field.tags.help'); }
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_temperature',
+      label: 'Chat Template: Temperature',
+      min: 0,
+      max: 2,
+      step: 0.1,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(1),
+      helpText: 'Applied when this model is used as a direct chat target.',
+    },
+    {
+      type: 'number',
+      name: 'chat_template_max_tokens',
+      label: 'Chat Template: Max Tokens',
+      placeholder: 'Default',
+      min: 1,
+      helpText: 'Optional per-model default max output tokens.',
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_top_p',
+      label: 'Chat Template: Top P',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(2),
+    },
+    {
+      type: 'number',
+      name: 'chat_template_top_k',
+      label: 'Chat Template: Top K',
+      placeholder: 'Default',
+      min: 1,
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_frequency_penalty',
+      label: 'Chat Template: Frequency Penalty',
+      min: -2,
+      max: 2,
+      step: 0.1,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(1),
+    },
+    {
+      type: 'slider',
+      name: 'chat_template_presence_penalty',
+      label: 'Chat Template: Presence Penalty',
+      min: -2,
+      max: 2,
+      step: 0.1,
+      allowEmpty: true,
+      emptyLabel: 'Default',
+      showValue: true,
+      formatValue: (v: number) => v.toFixed(1),
     },
     {
       type: 'checkbox',
       name: 'enabled',
       get label() { return i18n.t('settings:models.field.enabled'); },
       defaultValue: true
+    }
+  ],
+
+  // Row actions
+  rowActions: [
+    {
+      id: 'test-connection',
+      label: '',
+      icon: SignalIcon,
+      get tooltip() { return i18n.t('settings:models.action.testConnection'); },
+      onClick: async (item: Model) => {
+        try {
+          const result = await testModelConnection(`${item.provider_id}:${item.id}`);
+          if (result.success) {
+            alert(i18n.t('settings:testConnection.success') + '\n' + result.message);
+          } else {
+            alert(i18n.t('settings:testConnection.failed') + '\n' + result.message);
+          }
+        } catch (err: any) {
+          alert(i18n.t('settings:testConnection.failed') + '\n' + (err.message || String(err)));
+        }
+      }
     }
   ],
 

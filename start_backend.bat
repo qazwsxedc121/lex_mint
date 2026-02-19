@@ -11,8 +11,11 @@ echo ===========================================================================
 echo.
 
 REM 读取 .env 中的端口配置
+set "API_PORT="
 if exist .env (
-    for /f "tokens=1,2 delims==" %%a in ('findstr /r "^API_PORT=" .env 2^>nul') do set API_PORT=%%b
+    for /f "tokens=1,* delims==" %%a in ('findstr /r "^API_PORT=" .env 2^>nul') do (
+        if /I "%%a"=="API_PORT" set "API_PORT=%%b"
+    )
 )
 if not defined API_PORT (
     echo [ERROR] API_PORT not set in .env
@@ -34,12 +37,17 @@ echo [2/2] 启动服务器...
 echo.
 echo ================================================================================
 echo 服务器地址: http://0.0.0.0:%API_PORT%
-echo 前端连接: http://localhost:%API_PORT%
+echo 后端地址: http://localhost:%API_PORT%
 echo API 文档: http://localhost:%API_PORT%/docs
 echo.
 echo 提示: 可在 .env 文件中修改 API_PORT 更改端口
 echo ================================================================================
 echo.
 
-call venv\Scripts\activate.bat
-python run_server_debug.py
+if not exist "venv\Scripts\python.exe" (
+    echo [ERROR] Virtual environment not found. Please run install.bat first
+    pause
+    exit /b 1
+)
+
+.\venv\Scripts\python.exe run_server_debug.py

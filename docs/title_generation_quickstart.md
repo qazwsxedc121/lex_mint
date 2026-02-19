@@ -7,7 +7,7 @@ This guide will help you quickly test the new title generation feature.
 1. Backend dependencies installed (`./venv/Scripts/pip install -r requirements.txt`)
 2. Frontend dependencies installed (`cd frontend && npm install`)
 3. At least one model configured in `config/models_config.yaml`
-4. API keys configured in `.env` file
+4. API keys configured in `config/local/keys_config.yaml`
 
 ## Quick Test (5 Minutes)
 
@@ -57,12 +57,12 @@ npm run dev
 
 Wait for:
 ```
-  Local:   http://localhost:5173/
+  Local:   http://localhost:<FRONTEND_PORT>/
 ```
 
 ### Step 5: Configure Feature (1 minute)
 
-1. Open browser: http://localhost:5173
+1. Open browser: http://localhost:<FRONTEND_PORT>
 2. Navigate to **Settings** (gear icon in sidebar)
 3. Click **Title Generation** in settings sidebar
 4. Verify settings:
@@ -102,7 +102,7 @@ Look for lines with `[TitleGen]`:
 
 **Common issues:**
 1. **Model not configured**: Add the model to `config/models_config.yaml`
-2. **API key missing**: Add API key to `.env` file
+2. **API key missing**: Add API key to `config/local/keys_config.yaml`
 3. **Feature disabled**: Check Settings > Title Generation > Enable checkbox
 4. **Threshold not met**: Default is 1 round (2 messages total)
 

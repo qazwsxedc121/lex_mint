@@ -240,7 +240,7 @@ cd frontend && npm run dev
 ### Verification
 1. Run test script: `./venv/Scripts/python test_title_generation.py`
 2. Check backend logs: `tail -f logs/server.log`
-3. Test in browser: http://localhost:5173
+3. Test in browser: http://localhost:<FRONTEND_PORT>
 
 ## Known Limitations
 

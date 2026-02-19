@@ -32,11 +32,11 @@ Usage:
 """
 from .types import (
     ApiProtocol,
+    CallMode,
     ProviderType,
     TokenUsage,
     CostInfo,
     ModelCapabilities,
-    ModelDefinition,
     ProviderDefinition,
     ProviderConfig,
     ModelConfig,
@@ -58,11 +58,11 @@ from .base import BaseLLMAdapter
 __all__ = [
     # Types
     "ApiProtocol",
+    "CallMode",
     "ProviderType",
     "TokenUsage",
     "CostInfo",
     "ModelCapabilities",
-    "ModelDefinition",
     "ProviderDefinition",
     "ProviderConfig",
     "ModelConfig",
