@@ -217,6 +217,9 @@ Access the web interface at http://localhost:<FRONTEND_PORT>
 
 # Run with coverage
 ./venv/Scripts/pytest --cov=src --cov-report=html
+
+# Run frontend e2e smoke test
+cd frontend && npx playwright test tests/e2e/specs/chat-llm-smoke.spec.ts --project=chromium --workers=1
 ```
 
 ### Logging
@@ -230,6 +233,7 @@ For detailed documentation, see `docs/`:
 - `docs/api_endpoints.md` - API endpoint specifications and usage
 - `docs/llm_logging.md` - LLM logging system documentation
 - `docs/port_configuration.md` - Backend port configuration guide
+- `docs/e2e_testing.md` - Playwright e2e setup, runbook, and port handling
 
 ### Key Concepts
 - **Backend**: FastAPI REST API (`src/api/`)

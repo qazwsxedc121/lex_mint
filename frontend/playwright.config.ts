@@ -55,7 +55,9 @@ process.env.API_PORT = String(backendPort);
 const backendCommand = isWindows
   ? `.\\venv\\Scripts\\python -m uvicorn src.api.main:app --host 127.0.0.1 --port ${backendPort}`
   : `./venv/bin/python -m uvicorn src.api.main:app --host 127.0.0.1 --port ${backendPort}`;
-const frontendCommand = `npm run dev -- --host 127.0.0.1 --port ${frontendPort}`;
+const frontendCommand = isWindows
+  ? `cmd /c npm run dev -- --host 127.0.0.1 --port ${frontendPort}`
+  : `npm run dev -- --host 127.0.0.1 --port ${frontendPort}`;
 
 export default defineConfig({
   testDir: './tests/e2e/specs',
@@ -68,7 +70,7 @@ export default defineConfig({
     ['list'],
   ],
   use: {
-    baseURL: `http://localhost:${frontendPort}`,
+    baseURL: `http://127.0.0.1:${frontendPort}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -85,13 +87,13 @@ export default defineConfig({
     {
       command: backendCommand,
       cwd: '..',
-      url: `http://localhost:${backendPort}/api/health`,
+      url: `http://127.0.0.1:${backendPort}/api/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
     {
       command: frontendCommand,
-      url: `http://localhost:${frontendPort}`,
+      url: `http://127.0.0.1:${frontendPort}`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },

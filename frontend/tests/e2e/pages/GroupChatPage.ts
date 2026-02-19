@@ -3,7 +3,7 @@ import { Page, Locator, expect, APIRequestContext, request as pwRequest } from '
 if (!process.env.API_PORT) {
   throw new Error('API_PORT is required for e2e tests.');
 }
-const API_BASE = `http://localhost:${process.env.API_PORT}`;
+const API_BASE = `http://127.0.0.1:${process.env.API_PORT}`;
 
 /**
  * Page Object for Group Chat interactions.

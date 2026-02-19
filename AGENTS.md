@@ -39,7 +39,8 @@ npm run lint
 - Framework: pytest. Naming: `tests/**/test_*.py` and `test_*` functions.
 - Run all tests: `./venv/Scripts/pytest`
 - Run one test: `./venv/Scripts/pytest tests/unit/test_file.py::test_case`
-- Frontend tests are not configured yet; rely on `npm run lint` and manual UI checks.
+- Frontend e2e tests use Playwright in `frontend/tests/e2e/specs/`.
+- E2E runbook (including port reuse/auto-start behavior): `docs/e2e_testing.md`.
 
 ## Commit and Pull Request Guidelines
 - Commit history uses short, lowercase summaries, often imperative and sometimes comma-separated (example: "fix switch project bug, change some ui bug").

@@ -4,7 +4,7 @@ import { GroupChatPage } from '../pages/GroupChatPage';
 if (!process.env.API_PORT) {
   throw new Error('API_PORT is required for e2e tests.');
 }
-const API_BASE = `http://localhost:${process.env.API_PORT}`;
+const API_BASE = `http://127.0.0.1:${process.env.API_PORT}`;
 
 test.describe('Group Chat', () => {
   let groupChat: GroupChatPage;
