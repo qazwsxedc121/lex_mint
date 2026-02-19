@@ -71,3 +71,7 @@ models/**/*.gguf
 
 # Learn Projects
 learn_proj/
+
+# Local temp workdirs
+.tmp/
+frontend/.tmp_e2e/

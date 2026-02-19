@@ -49,7 +49,6 @@ class BuiltinProviderInfo(BaseModel):
     sdk_class: str
     supports_model_list: bool
     default_capabilities: ModelCapabilities
-    builtin_models: List[dict] = []
 
 
 class ModelInfo(BaseModel):
@@ -69,10 +68,6 @@ async def get_builtin_providers():
     """
     result = []
     for provider_id, definition in BUILTIN_PROVIDERS.items():
-        builtin_models = [
-            {"id": m.id, "name": m.name}
-            for m in definition.builtin_models
-        ]
         result.append(BuiltinProviderInfo(
             id=definition.id,
             name=definition.name,
@@ -81,7 +76,6 @@ async def get_builtin_providers():
             sdk_class=definition.sdk_class,
             supports_model_list=definition.supports_model_list,
             default_capabilities=definition.default_capabilities,
-            builtin_models=builtin_models,
         ))
     return result
 
@@ -101,11 +95,6 @@ async def get_builtin_provider_info(provider_id: str):
             detail=f"Builtin provider '{provider_id}' not found"
         )
 
-    builtin_models = [
-        {"id": m.id, "name": m.name}
-        for m in definition.builtin_models
-    ]
-
     return BuiltinProviderInfo(
         id=definition.id,
         name=definition.name,
@@ -114,7 +103,6 @@ async def get_builtin_provider_info(provider_id: str):
         sdk_class=definition.sdk_class,
         supports_model_list=definition.supports_model_list,
         default_capabilities=definition.default_capabilities,
-        builtin_models=builtin_models,
     )
 
 
@@ -162,6 +150,7 @@ async def create_provider(
             name=provider_data.name,
             type=provider_data.type,
             protocol=provider_data.protocol,
+            call_mode=provider_data.call_mode,
             base_url=provider_data.base_url,
             enabled=provider_data.enabled,
             default_capabilities=provider_data.default_capabilities,
@@ -199,6 +188,8 @@ async def update_provider(
             updated_data['name'] = provider_update.name
         if provider_update.protocol is not None:
             updated_data['protocol'] = provider_update.protocol
+        if provider_update.call_mode is not None:
+            updated_data['call_mode'] = provider_update.call_mode
         if provider_update.base_url is not None:
             updated_data['base_url'] = provider_update.base_url
         if provider_update.enabled is not None:
@@ -211,6 +202,7 @@ async def update_provider(
         # 创建更新后的 Provider 对象（不包含api_key，因为它不在Provider的配置中）
         updated_data.pop('api_key', None)
         updated_data.pop('has_api_key', None)
+        updated_data.pop('requires_api_key', None)
         updated_provider = Provider(**updated_data)
         await service.update_provider(provider_id, updated_provider)
 
@@ -273,7 +265,7 @@ async def test_provider_stored_connection(
 
     # 获取已存储的API Key
     api_key = await service.get_api_key(test_request.provider_id)
-    if not api_key:
+    if not api_key and service.provider_requires_api_key(provider):
         return ProviderTestResponse(
             success=False,
             message="No API key found for this provider"
@@ -281,7 +273,7 @@ async def test_provider_stored_connection(
 
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
-        api_key=api_key,
+        api_key=api_key or "",
         model_id=test_request.model_id,
         provider=provider
     )

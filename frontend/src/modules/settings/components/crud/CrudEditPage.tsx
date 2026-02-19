@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
+import { PageHeader, LoadingSpinner, ErrorMessage } from '../common';
 import { CrudForm } from './CrudForm';
 import type { CrudSettingsConfig, CrudHook, ConfigContext } from '../../config/types';
 
@@ -38,7 +38,6 @@ export function CrudEditPage<T = any>({
   const [formData, setFormData] = useState<any>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const pageMeta = config.editPage;
   const { t } = useTranslation('settings');
@@ -69,7 +68,6 @@ export function CrudEditPage<T = any>({
     if (item) {
       setFormData(initializeFormData(item));
       setShowErrors(false);
-      setSuccessMessage(null);
     }
   }, [item, initializeFormData]);
 
@@ -109,13 +107,7 @@ export function CrudEditPage<T = any>({
     try {
       setIsSubmitting(true);
       await hook.updateItem(itemId, formData);
-      const successText = pageMeta?.successMessage;
-      setSuccessMessage(
-        typeof successText === 'function'
-          ? successText(item)
-          : (successText || t('crud.updatedSuccess', { item: config.itemName }))
-      );
-      setTimeout(() => setSuccessMessage(null), 3000);
+      navigate(backPath, { replace: true });
     } catch (err) {
       console.error('Submit error:', err);
     } finally {
@@ -172,13 +164,6 @@ export function CrudEditPage<T = any>({
           </button>
         )}
       />
-
-      {successMessage && (
-        <SuccessMessage
-          message={successMessage}
-          onDismiss={() => setSuccessMessage(null)}
-        />
-      )}
 
       {config.customFormRenderer ? (
         config.customFormRenderer(formData, setFormData, context, true)

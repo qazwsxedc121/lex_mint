@@ -8,12 +8,14 @@ import aiofiles
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple, Any
+from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 
 from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
 from src.providers import (
     AdapterRegistry,
     ModelCapabilities,
+    CallMode,
     ProviderType,
     ApiProtocol,
     get_builtin_provider,
@@ -37,6 +39,14 @@ class ModelConfigService:
     """模型配置管理服务"""
 
     _DEFAULT_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
+    _BOOTSTRAP_PROVIDER_ID = "deepseek"
+    _BOOTSTRAP_MODEL_ID = "deepseek-chat"
+    _BOOTSTRAP_MODEL_NAME = "DeepSeek Chat"
+    _BUILTIN_BASE_URL_MIGRATIONS = {
+        "siliconflow": {
+            "https://api.siliconflow.com/v1": "https://api.siliconflow.cn/v1",
+        },
+    }
 
     def __init__(self, config_path: Path = None, keys_path: Path = None):
         """
@@ -99,30 +109,31 @@ class ModelConfigService:
                     enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
                 )
             )
-            for model_definition in definition.builtin_models:
-                is_default_deepseek = (
-                    definition.id == "deepseek"
-                    and model_definition.id in {"deepseek-chat", "deepseek-reasoner"}
-                )
-                models.append(
-                    self._model_from_definition(
-                        provider_id=definition.id,
-                        model_id=model_definition.id,
-                        model_name=model_definition.name,
-                        capabilities=model_definition.capabilities,
-                        enabled=is_default_deepseek,
-                    )
-                )
+
+        # Keep default config minimal; runtime model discovery should come from provider APIs.
+        models.append(self._build_bootstrap_model())
 
         return {
             "default": {
-                "provider": "deepseek",
-                "model": "deepseek-chat"
+                "provider": self._BOOTSTRAP_PROVIDER_ID,
+                "model": self._BOOTSTRAP_MODEL_ID,
             },
             "providers": providers,
             "models": models,
             "reasoning_supported_patterns": ["deepseek-chat", "glm-"],
         }
+
+    def _build_bootstrap_model(self) -> dict[str, Any]:
+        """Build a single default model so a fresh install is immediately usable."""
+        deepseek = get_builtin_provider(self._BOOTSTRAP_PROVIDER_ID)
+        capabilities = deepseek.default_capabilities if deepseek else None
+        return self._model_from_definition(
+            provider_id=self._BOOTSTRAP_PROVIDER_ID,
+            model_id=self._BOOTSTRAP_MODEL_ID,
+            model_name=self._BOOTSTRAP_MODEL_NAME,
+            capabilities=capabilities,
+            enabled=True,
+        )
 
     def _provider_from_definition(self, definition, enabled: bool) -> dict[str, Any]:
         return {
@@ -130,6 +141,7 @@ class ModelConfigService:
             "name": definition.name,
             "type": "builtin",
             "protocol": definition.protocol.value,
+            "call_mode": "auto",
             "base_url": definition.base_url,
             "api_keys": [],
             "enabled": enabled,
@@ -216,7 +228,7 @@ class ModelConfigService:
         """
         Ensure built-in providers/models always exist in local config.
 
-        Only adds missing entries; never overwrites existing user edits.
+        Adds missing entries and refreshes non-user-editable builtin flags.
         """
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
@@ -239,6 +251,9 @@ class ModelConfigService:
             data["models"] = models
 
         changed = False
+
+        def _normalize_url(value: Any) -> str:
+            return str(value or "").strip().rstrip("/")
 
         for model in models:
             if not isinstance(model, dict):
@@ -267,11 +282,12 @@ class ModelConfigService:
         default_provider = default_config.get("provider")
         default_model = default_config.get("model")
 
-        existing_provider_ids = {
-            p.get("id")
+        existing_providers = {
+            p.get("id"): p
             for p in providers
             if isinstance(p, dict) and p.get("id")
         }
+        existing_provider_ids = set(existing_providers.keys())
         existing_model_keys = {
             (m.get("provider_id"), m.get("id"))
             for m in models
@@ -288,26 +304,41 @@ class ModelConfigService:
                 )
                 existing_provider_ids.add(definition.id)
                 changed = True
+            else:
+                # Keep non-user-editable builtin metadata flags in sync.
+                provider_entry = existing_providers.get(definition.id)
+                if (
+                    isinstance(provider_entry, dict)
+                    and provider_entry.get("type") == "builtin"
+                ):
+                    current_base_url = _normalize_url(provider_entry.get("base_url"))
+                    for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
+                        if (
+                            current_base_url == _normalize_url(legacy_url)
+                            and _normalize_url(definition.base_url) == _normalize_url(target_url)
+                        ):
+                            provider_entry["base_url"] = target_url
+                            current_base_url = _normalize_url(target_url)
+                            changed = True
 
-            for model_definition in definition.builtin_models:
-                key = (definition.id, model_definition.id)
-                if key in existing_model_keys:
-                    continue
+                    if provider_entry.get("supports_model_list") != definition.supports_model_list:
+                        provider_entry["supports_model_list"] = definition.supports_model_list
+                        changed = True
+                    if provider_entry.get("sdk_class") != definition.sdk_class:
+                        provider_entry["sdk_class"] = definition.sdk_class
+                        changed = True
 
-                is_default_model = (
-                    default_provider == definition.id and default_model == model_definition.id
-                )
-                models.append(
-                    self._model_from_definition(
-                        provider_id=definition.id,
-                        model_id=model_definition.id,
-                        model_name=model_definition.name,
-                        capabilities=model_definition.capabilities,
-                        enabled=is_default_model,
-                    )
-                )
-                existing_model_keys.add(key)
-                changed = True
+        default_key = (default_provider, default_model)
+        bootstrap_key = (self._BOOTSTRAP_PROVIDER_ID, self._BOOTSTRAP_MODEL_ID)
+        if default_key not in existing_model_keys:
+            if bootstrap_key not in existing_model_keys:
+                models.append(self._build_bootstrap_model())
+                existing_model_keys.add(bootstrap_key)
+            data["default"] = {
+                "provider": self._BOOTSTRAP_PROVIDER_ID,
+                "model": self._BOOTSTRAP_MODEL_ID,
+            }
+            changed = True
 
         reasoning_patterns = data.get("reasoning_supported_patterns")
         if not isinstance(reasoning_patterns, list):
@@ -488,9 +519,11 @@ class ModelConfigService:
         for provider in config.providers:
             # 检查是否有 API 密钥
             has_key = await self.has_api_key(provider.id)
+            requires_key = self.provider_requires_api_key(provider)
             # 创建新的 Provider 对象，添加 has_api_key 字段
             provider_dict = provider.model_dump()
             provider_dict['has_api_key'] = has_key
+            provider_dict['requires_api_key'] = requires_key
             providers_with_keys.append(Provider(**provider_dict))
         return providers_with_keys
 
@@ -509,7 +542,9 @@ class ModelConfigService:
 
                 # 添加 has_api_key 标记
                 has_key = await self.has_api_key(provider_id)
+                requires_key = self.provider_requires_api_key(provider)
                 provider_dict['has_api_key'] = has_key
+                provider_dict['requires_api_key'] = requires_key
 
                 # 如果需要，添加遮罩后的API密钥
                 if include_masked_key and has_key:
@@ -544,7 +579,7 @@ class ModelConfigService:
             raise ValueError(f"Provider with id '{provider.id}' already exists")
 
         # 移除临时字段，避免保存到配置文件
-        provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key'})
+        provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
         config.providers.append(Provider(**provider_dict))
         await self.save_config(config)
 
@@ -560,7 +595,7 @@ class ModelConfigService:
         for i, provider in enumerate(config.providers):
             if provider.id == provider_id:
                 # 移除临时字段，避免保存到配置文件
-                updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key'})
+                updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
                 config.providers[i] = Provider(**updated_dict)
                 await self.save_config(config)
                 return
@@ -823,6 +858,7 @@ class ModelConfigService:
                 name=provider.name,
                 type=provider.type,
                 protocol=provider.protocol,
+                call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
                 base_url=base_url,
                 sdk_class=provider.sdk_class,
             )
@@ -942,9 +978,83 @@ class ModelConfigService:
             pass
         return None
 
-    def provider_requires_api_key(self, provider: Provider) -> bool:
-        """Return whether this provider requires a non-empty API key."""
-        return provider.protocol != ApiProtocol.OLLAMA
+    def provider_requires_api_key(self, provider: Provider | ProviderConfig) -> bool:
+        """
+        Return whether this provider requires a non-empty API key.
+
+        Uses resolved adapter family instead of protocol-only checks so custom
+        sdk overrides (for example sdk_class=ollama) behave correctly.
+        """
+        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
+        return sdk_type != "ollama"
+
+    @staticmethod
+    def _normalize_base_host(base_url: str) -> str:
+        """Extract normalized host from base URL (supports URLs without scheme)."""
+        if not base_url:
+            return ""
+
+        candidate = base_url.strip()
+        if not candidate:
+            return ""
+
+        if "://" not in candidate:
+            candidate = f"https://{candidate}"
+
+        try:
+            parsed = urlparse(candidate)
+            return (parsed.hostname or "").strip().lower().rstrip(".")
+        except Exception:
+            return ""
+
+    def is_openai_official_provider(self, provider: Provider | ProviderConfig) -> bool:
+        """
+        Determine whether a provider should be treated as OpenAI official.
+
+        Primary rule:
+        - provider id is "openai"
+
+        Fallback rule:
+        - base_url host is api.openai.com
+        """
+        provider_id = (getattr(provider, "id", "") or "").strip().lower()
+        if provider_id == "openai":
+            return True
+
+        base_url = getattr(provider, "base_url", "") or ""
+        host = self._normalize_base_host(base_url)
+        return host == "api.openai.com"
+
+    def resolve_effective_call_mode(self, provider: Provider | ProviderConfig) -> CallMode:
+        """
+        Resolve effective call mode with auto policy.
+
+        Auto policy:
+        - Anthropic/Gemini/Ollama adapter families -> native
+        - OpenAI official -> responses
+        - Others -> chat_completions
+        """
+        raw_mode = getattr(provider, "call_mode", CallMode.AUTO)
+        if isinstance(raw_mode, CallMode):
+            configured_mode = raw_mode
+        else:
+            try:
+                configured_mode = CallMode(raw_mode)
+            except Exception:
+                configured_mode = CallMode.AUTO
+
+        if configured_mode != CallMode.AUTO:
+            return configured_mode
+
+        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
+
+        if sdk_type in {"anthropic", "gemini", "ollama"}:
+            return CallMode.NATIVE
+        if self.is_openai_official_provider(provider_cfg):
+            return CallMode.RESPONSES
+        return CallMode.CHAT_COMPLETIONS
 
     def resolve_provider_api_key_sync(self, provider: Provider) -> str:
         """
@@ -981,6 +1091,7 @@ class ModelConfigService:
             name=provider.name,
             type=provider.type if hasattr(provider, 'type') and provider.type else ProviderType.BUILTIN,
             protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
+            call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
             base_url=provider.base_url,
             enabled=provider.enabled,
             default_capabilities=provider.default_capabilities,

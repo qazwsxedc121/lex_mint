@@ -1,7 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { GroupChatPage } from '../pages/GroupChatPage';
 
-const API_BASE = 'http://localhost:8988';
+const API_BASE = `http://localhost:${process.env.API_PORT || '8901'}`;
 
 test.describe('Group Chat', () => {
   let groupChat: GroupChatPage;

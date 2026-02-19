@@ -5,6 +5,9 @@
 // API Protocol types
 export type ApiProtocol = 'openai' | 'anthropic' | 'gemini' | 'ollama';
 
+// Provider call mode
+export type CallMode = 'auto' | 'native' | 'chat_completions' | 'responses';
+
 // Provider type (builtin vs custom)
 export type ProviderType = 'builtin' | 'custom';
 
@@ -35,10 +38,12 @@ export interface Provider {
   name: string;
   type?: ProviderType;           // builtin or custom
   protocol?: ApiProtocol;        // API protocol type
+  call_mode?: CallMode;          // Call mode within adapter family
   base_url: string;
   api_keys?: string[];           // Multiple keys for rotation
   enabled: boolean;
   has_api_key?: boolean;         // Flag indicating if API key is configured
+  requires_api_key?: boolean;    // Whether API key is required
   api_key?: string;              // Only used in create/update requests
 
   // Capability declaration (provider-level defaults)
@@ -82,7 +87,6 @@ export interface BuiltinProviderInfo {
   sdk_class: string;
   supports_model_list: boolean;
   default_capabilities: ModelCapabilities;
-  builtin_models: { id: string; name: string }[];
 }
 
 // Model info (from fetch models API)

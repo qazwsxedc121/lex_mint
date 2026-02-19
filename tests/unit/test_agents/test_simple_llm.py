@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage
+from types import SimpleNamespace
 
 from src.agents.simple_llm import call_llm, call_llm_stream
 from src.providers.types import TokenUsage
@@ -24,8 +25,12 @@ class TestCallLLM:
 
         # Mock ModelConfigService
         mock_model = Mock()
+        mock_model.id = "deepseek-chat"
         mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
         mock_capabilities = Mock()
+        mock_capabilities.context_length = None
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
@@ -58,8 +63,12 @@ class TestCallLLM:
         mock_llm.model_name = "deepseek-chat"
 
         mock_model = Mock()
+        mock_model.id = "deepseek-chat"
         mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
         mock_capabilities = Mock()
+        mock_capabilities.context_length = None
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
@@ -93,8 +102,12 @@ class TestCallLLM:
         mock_llm.model_name = "deepseek-chat"
 
         mock_model = Mock()
+        mock_model.id = "deepseek-chat"
         mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
         mock_capabilities = Mock()
+        mock_capabilities.context_length = None
         mock_service = Mock()
         mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
         mock_service.get_merged_capabilities.return_value = mock_capabilities
@@ -166,10 +179,13 @@ class TestCallLLMStream:
             final_chunk = Mock()
             final_chunk.content = ""
             final_chunk.thinking = None
-            final_chunk.usage = TokenUsage(
-                prompt_tokens=10,
-                completion_tokens=20,
-                total_tokens=30
+            final_chunk.usage = None
+            final_chunk.raw = SimpleNamespace(
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                    "total_tokens": 30,
+                }
             )
             final_chunk.raw = usage_raw
             yield final_chunk

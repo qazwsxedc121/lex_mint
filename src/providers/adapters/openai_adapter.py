@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import CallMode, StreamChunk, LLMResponse, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,83 @@ class OpenAIAdapter(BaseLLMAdapter):
 
     Supports OpenAI API and compatible providers like OpenRouter, Groq, Together AI.
     """
+
+    @staticmethod
+    def _normalize_call_mode(raw_mode: Any) -> str:
+        """Normalize call mode from enum/string into a lowercase adapter hint."""
+        if isinstance(raw_mode, CallMode):
+            return raw_mode.value
+        if raw_mode is None:
+            return ""
+        return str(raw_mode).strip().lower()
+
+    @staticmethod
+    def _mode_uses_responses(call_mode: str) -> bool:
+        """Return whether the given normalized mode should use Responses API."""
+        return call_mode == CallMode.RESPONSES.value
+
+    @staticmethod
+    def _secret_to_plain(value: Any) -> Any:
+        """Unwrap pydantic SecretStr-like values to plain strings."""
+        return value.get_secret_value() if hasattr(value, "get_secret_value") else value
+
+    @staticmethod
+    def _unwrap_chat_openai(llm: Any) -> tuple[ChatOpenAI, Dict[str, Any], Dict[str, Any]]:
+        """
+        Unwrap a ChatOpenAI or ChatOpenAI-bound runnable to its base model.
+
+        Returns:
+            (base_chat_openai, bind_kwargs, bind_config)
+        """
+        if isinstance(llm, ChatOpenAI):
+            return llm, {}, {}
+
+        bound = getattr(llm, "bound", None)
+        if isinstance(bound, ChatOpenAI):
+            bind_kwargs = getattr(llm, "kwargs", {}) or {}
+            bind_config = getattr(llm, "config", {}) or {}
+            return bound, bind_kwargs, bind_config
+
+        raise TypeError(f"Unsupported LLM type for fallback cloning: {type(llm)!r}")
+
+    def _clone_with_mode(self, llm: Any, *, use_responses_api: bool) -> Any:
+        """Clone ChatOpenAI (or its binding) with a different Responses API toggle."""
+        source_llm, bind_kwargs, bind_config = self._unwrap_chat_openai(llm)
+        data = source_llm.model_dump()
+        model_name = data.get("model_name") or getattr(source_llm, "model_name", None)
+        llm_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "base_url": data.get("openai_api_base") or getattr(source_llm, "openai_api_base", None),
+            "api_key": self._secret_to_plain(
+                data.get("openai_api_key") or getattr(source_llm, "openai_api_key", None)
+            ),
+            "streaming": data.get("streaming", True),
+            "stream_usage": data.get("stream_usage", True),
+            "use_responses_api": use_responses_api,
+        }
+
+        optional_map = {
+            "temperature": data.get("temperature"),
+            "timeout": data.get("request_timeout"),
+            "max_retries": data.get("max_retries"),
+            "max_tokens": data.get("max_tokens"),
+            "top_p": data.get("top_p"),
+            "frequency_penalty": data.get("frequency_penalty"),
+            "presence_penalty": data.get("presence_penalty"),
+            "reasoning": data.get("reasoning"),
+            "model_kwargs": data.get("model_kwargs"),
+        }
+        for key, value in optional_map.items():
+            if value is not None:
+                llm_kwargs[key] = value
+
+        fallback_llm: Any = ChatOpenAI(**llm_kwargs)
+        if bind_kwargs:
+            fallback_llm = fallback_llm.bind(**bind_kwargs)
+        if bind_config:
+            fallback_llm = fallback_llm.with_config(**bind_config)
+
+        return fallback_llm
 
     def create_llm(
         self,
@@ -47,6 +124,9 @@ class OpenAIAdapter(BaseLLMAdapter):
         Returns:
             ChatOpenAI instance
         """
+        call_mode = self._normalize_call_mode(kwargs.get("call_mode"))
+        use_responses_api = self._mode_uses_responses(call_mode)
+
         llm_kwargs = {
             "model": model,
             "temperature": temperature,
@@ -54,6 +134,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             "api_key": api_key,
             "streaming": streaming,
             "stream_usage": True,
+            "use_responses_api": use_responses_api,
         }
 
         # For OpenAI o1/o3 models, enable reasoning via responses API
@@ -78,6 +159,9 @@ class OpenAIAdapter(BaseLLMAdapter):
         if model_kwargs:
             llm_kwargs["model_kwargs"] = model_kwargs
 
+        if use_responses_api:
+            logger.info(f"OpenAI Responses API enabled for {model}")
+
         return ChatOpenAI(**llm_kwargs)
 
     async def stream(
@@ -100,27 +184,49 @@ class OpenAIAdapter(BaseLLMAdapter):
             StreamChunk objects with content
         """
         usage_data = None
+        yielded_payload = False
+        allow_responses_fallback = bool(kwargs.get("allow_responses_fallback", False))
 
-        async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, 'content') else ""
-            thinking = ""
+        try:
+            async for chunk in llm.astream(messages):
+                content = chunk.content if hasattr(chunk, 'content') else ""
+                thinking = ""
 
-            # Check for reasoning content in additional_kwargs (OpenAI responses API)
-            if hasattr(chunk, 'additional_kwargs'):
-                thinking = chunk.additional_kwargs.get('reasoning_content', '')
+                # Check for reasoning content in additional_kwargs (OpenAI responses API)
+                if hasattr(chunk, 'additional_kwargs'):
+                    thinking = chunk.additional_kwargs.get('reasoning_content', '')
 
-            # Extract usage from chunk (usually only in final chunk)
-            extracted = TokenUsage.extract_from_chunk(chunk)
-            if extracted:
-                usage_data = extracted
+                # Extract usage from chunk (usually only in final chunk)
+                extracted = TokenUsage.extract_from_chunk(chunk)
+                if extracted:
+                    usage_data = extracted
 
-            yield StreamChunk(
-                content=content,
-                thinking=thinking,
-                tool_calls=extract_tool_calls(chunk),
-                usage=usage_data,
-                raw=chunk,
-            )
+                if content or thinking:
+                    yielded_payload = True
+
+                yield StreamChunk(
+                    content=content,
+                    thinking=thinking,
+                    tool_calls=extract_tool_calls(chunk),
+                    usage=usage_data,
+                    raw=chunk,
+                )
+        except Exception as e:
+            in_responses_mode = bool(getattr(llm, "use_responses_api", False))
+            if allow_responses_fallback and in_responses_mode and not yielded_payload:
+                logger.warning(
+                    "Responses stream failed, retrying with chat/completions: %s",
+                    e,
+                )
+                fallback_llm = self._clone_with_mode(llm, use_responses_api=False)
+                async for fallback_chunk in self.stream(
+                    fallback_llm,
+                    messages,
+                    allow_responses_fallback=False,
+                ):
+                    yield fallback_chunk
+                return
+            raise
 
     async def invoke(
         self,
@@ -139,7 +245,20 @@ class OpenAIAdapter(BaseLLMAdapter):
         Returns:
             LLMResponse with content
         """
-        response = await llm.ainvoke(messages)
+        allow_responses_fallback = bool(kwargs.get("allow_responses_fallback", False))
+        try:
+            response = await llm.ainvoke(messages)
+        except Exception as e:
+            in_responses_mode = bool(getattr(llm, "use_responses_api", False))
+            if allow_responses_fallback and in_responses_mode:
+                logger.warning(
+                    "Responses invoke failed, retrying with chat/completions: %s",
+                    e,
+                )
+                fallback_llm = self._clone_with_mode(llm, use_responses_api=False)
+                response = await fallback_llm.ainvoke(messages)
+            else:
+                raise
 
         thinking = ""
         if hasattr(response, 'additional_kwargs'):
