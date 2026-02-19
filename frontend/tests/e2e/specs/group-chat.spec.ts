@@ -72,9 +72,12 @@ test.describe('Group Chat', () => {
     const enabledAssistants = allAssistants.filter(a => a.enabled);
 
     await groupChat.openGroupChatModal();
-    const checkboxCount = await groupChat.getAssistantCheckboxes().count();
-
-    expect(checkboxCount).toBe(enabledAssistants.length);
+    await expect
+      .poll(async () => groupChat.getAssistantCheckboxes().count(), {
+        timeout: 8000,
+        message: 'Group chat modal did not finish loading enabled assistants in time.',
+      })
+      .toBe(enabledAssistants.length);
   });
 
   // ──────────────────────────────────────────────
