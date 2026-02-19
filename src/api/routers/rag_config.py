@@ -53,6 +53,7 @@ class RagConfigResponse(BaseModel):
     retrieval_query_planner_model_id: str
     retrieval_query_planner_max_queries: int
     retrieval_query_planner_timeout_seconds: int
+    structured_source_context_enabled: bool
     query_transform_enabled: bool
     query_transform_mode: str
     query_transform_model_id: str
@@ -113,6 +114,7 @@ class RagConfigUpdate(BaseModel):
     retrieval_query_planner_model_id: Optional[str] = None
     retrieval_query_planner_max_queries: Optional[int] = Field(None, ge=1, le=8)
     retrieval_query_planner_timeout_seconds: Optional[int] = Field(None, ge=1, le=30)
+    structured_source_context_enabled: Optional[bool] = None
     query_transform_enabled: Optional[bool] = None
     query_transform_mode: Optional[Literal["none", "rewrite"]] = None
     query_transform_model_id: Optional[str] = None

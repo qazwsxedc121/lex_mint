@@ -557,6 +557,13 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     },
     {
       type: 'checkbox',
+      name: 'structured_source_context_enabled',
+      label: 'Enable Structured Source Context',
+      defaultValue: false,
+      helpText: 'Inject sources as structured <source> tags in system prompt to improve grounding and citations.'
+    },
+    {
+      type: 'checkbox',
       name: 'rerank_enabled',
       get label() { return i18n.t('settings:rag.field.rerankEnabled'); },
       defaultValue: false,

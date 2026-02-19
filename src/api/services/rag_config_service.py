@@ -62,6 +62,7 @@ class RetrievalConfig:
     retrieval_query_planner_model_id: str = "auto"
     retrieval_query_planner_max_queries: int = 3
     retrieval_query_planner_timeout_seconds: int = 4
+    structured_source_context_enabled: bool = False
     query_transform_enabled: bool = False
     query_transform_mode: str = "rewrite"
     query_transform_model_id: str = "auto"
@@ -154,6 +155,7 @@ class RagConfigService:
                     'retrieval_query_planner_model_id': 'auto',
                     'retrieval_query_planner_max_queries': 3,
                     'retrieval_query_planner_timeout_seconds': 4,
+                    'structured_source_context_enabled': False,
                     'query_transform_enabled': False,
                     'query_transform_mode': 'rewrite',
                     'query_transform_model_id': 'auto',
@@ -260,6 +262,10 @@ class RagConfigService:
                     retrieval_query_planner_timeout_seconds=retrieval_data.get(
                         'retrieval_query_planner_timeout_seconds',
                         4,
+                    ),
+                    structured_source_context_enabled=retrieval_data.get(
+                        'structured_source_context_enabled',
+                        False,
                     ),
                     query_transform_enabled=retrieval_data.get('query_transform_enabled', False),
                     query_transform_mode=retrieval_data.get('query_transform_mode', 'rewrite'),
@@ -374,6 +380,7 @@ class RagConfigService:
             'retrieval_query_planner_model_id': self.config.retrieval.retrieval_query_planner_model_id,
             'retrieval_query_planner_max_queries': self.config.retrieval.retrieval_query_planner_max_queries,
             'retrieval_query_planner_timeout_seconds': self.config.retrieval.retrieval_query_planner_timeout_seconds,
+            'structured_source_context_enabled': self.config.retrieval.structured_source_context_enabled,
             'query_transform_enabled': self.config.retrieval.query_transform_enabled,
             'query_transform_mode': self.config.retrieval.query_transform_mode,
             'query_transform_model_id': self.config.retrieval.query_transform_model_id,
@@ -436,6 +443,7 @@ class RagConfigService:
             'retrieval_query_planner_model_id': ('retrieval', 'retrieval_query_planner_model_id'),
             'retrieval_query_planner_max_queries': ('retrieval', 'retrieval_query_planner_max_queries'),
             'retrieval_query_planner_timeout_seconds': ('retrieval', 'retrieval_query_planner_timeout_seconds'),
+            'structured_source_context_enabled': ('retrieval', 'structured_source_context_enabled'),
             'query_transform_enabled': ('retrieval', 'query_transform_enabled'),
             'query_transform_mode': ('retrieval', 'query_transform_mode'),
             'query_transform_model_id': ('retrieval', 'query_transform_model_id'),
