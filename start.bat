@@ -9,8 +9,16 @@ if exist .env (
         if /I "%%a"=="FRONTEND_PORT" set "FRONTEND_PORT=%%b"
     )
 )
-if not defined FRONTEND_PORT set "FRONTEND_PORT=5173"
-if not defined API_PORT set "API_PORT=?"
+if not defined FRONTEND_PORT (
+    echo [ERROR] FRONTEND_PORT not set in .env
+    endlocal
+    exit /b 1
+)
+if not defined API_PORT (
+    echo [ERROR] API_PORT not set in .env
+    endlocal
+    exit /b 1
+)
 for %%I in ("%CD%") do set "PROJECT_NAME=%%~nxI"
 title %PROJECT_NAME% FE:%FRONTEND_PORT% ^| BE:%API_PORT%
 

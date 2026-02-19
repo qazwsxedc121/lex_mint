@@ -14,7 +14,6 @@ if exist .env (
         if /I "%%a"=="FRONTEND_PORT" set "FRONTEND_PORT=%%b"
     )
 )
-if not defined FRONTEND_PORT set "FRONTEND_PORT=5173"
 
 echo [1/3] Stopping backend by port...
 if defined API_PORT (
@@ -25,7 +24,11 @@ if defined API_PORT (
 
 echo.
 echo [2/3] Stopping frontend by port...
-call :kill_by_port %FRONTEND_PORT% frontend
+if defined FRONTEND_PORT (
+    call :kill_by_port %FRONTEND_PORT% frontend
+) else (
+    echo     FRONTEND_PORT not set in .env, skip frontend port stop
+)
 
 echo.
 echo [3/3] Stopping legacy titled windows...

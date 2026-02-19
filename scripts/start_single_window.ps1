@@ -51,8 +51,8 @@ if (-not $apiPort) {
 
 $frontendPort = Get-EnvValue -Name "FRONTEND_PORT"
 if (-not $frontendPort) {
-  Write-Host "[WARNING] FRONTEND_PORT not set in .env, fallback to 5173"
-  $frontendPort = "5173"
+  Write-Host "[ERROR] FRONTEND_PORT not set in .env"
+  exit 1
 }
 
 $windowTitle = "$projectName FE:$frontendPort | BE:$apiPort"
@@ -86,6 +86,75 @@ function Get-ProcessExitCodeOrNull {
   catch {
     return $null
   }
+}
+
+function Get-FileLengthOrZero {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  if (-not (Test-Path $Path)) {
+    return 0L
+  }
+
+  try {
+    return (Get-Item $Path).Length
+  }
+  catch {
+    return 0L
+  }
+}
+
+function Read-NewFileLines {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [long]$Offset
+  )
+
+  if (-not (Test-Path $Path)) {
+    return @{ Lines = @(); Offset = $Offset }
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $newOffset = $Offset
+
+  try {
+    $fileLength = (Get-Item $Path).Length
+    if ($fileLength -lt $Offset) {
+      $Offset = 0L
+    }
+
+    $fs = [System.IO.File]::Open(
+      $Path,
+      [System.IO.FileMode]::Open,
+      [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::ReadWrite
+    )
+    try {
+      $null = $fs.Seek($Offset, [System.IO.SeekOrigin]::Begin)
+      $sr = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8, $true, 1024, $true)
+      try {
+        while (($line = $sr.ReadLine()) -ne $null) {
+          $lines.Add($line)
+        }
+      }
+      finally {
+        $sr.Dispose()
+      }
+      $newOffset = $fs.Position
+    }
+    finally {
+      $fs.Dispose()
+    }
+  }
+  catch {
+    return @{ Lines = @(); Offset = $Offset }
+  }
+
+  return @{ Lines = $lines; Offset = $newOffset }
 }
 
 $srcDir = Join-Path $projectRoot "src"
@@ -123,6 +192,18 @@ $frontendProcess = $null
 $exitCode = 0
 $stopRequested = $false
 $cancelHandler = $null
+$isolateBackendConsole = $true
+$mergeBackendLogs = $true
+$backendLogPath = Join-Path $projectRoot "logs\server.log"
+$backendLogOffset = 0L
+$isolateBackendConsoleEnv = Get-EnvValue -Name "ONE_WINDOW_ISOLATE_BACKEND_CONSOLE"
+if ($isolateBackendConsoleEnv) {
+  $isolateBackendConsole = $isolateBackendConsoleEnv.Trim().ToLower() -notin @("0", "false", "no", "off")
+}
+$mergeBackendLogsEnv = Get-EnvValue -Name "ONE_WINDOW_MERGE_BACKEND_LOG"
+if ($mergeBackendLogsEnv) {
+  $mergeBackendLogs = $mergeBackendLogsEnv.Trim().ToLower() -notin @("0", "false", "no", "off")
+}
 
 try {
   $cancelHandler = [ConsoleCancelEventHandler]{
@@ -135,9 +216,22 @@ try {
   Set-WindowTitle -Title $windowTitle
 
   Write-Host "[1/3] Starting backend service..."
-  $backendProcess = Start-Process -FilePath ".\venv\Scripts\python.exe" -ArgumentList $backendArgs -NoNewWindow -PassThru
+  if ($isolateBackendConsole) {
+    # On Windows, uvicorn --reload uses CTRL_C_EVENT during reload.
+    # Running backend in the same console may broadcast that signal to Vite and kill frontend.
+    # Isolate backend in its own hidden console to avoid cross-process signal bleed.
+    $backendProcess = Start-Process -FilePath ".\venv\Scripts\python.exe" -ArgumentList $backendArgs -WindowStyle Hidden -PassThru
+    Write-Host "      Backend console: isolated (hidden) to prevent frontend crash on reload"
+  }
+  else {
+    $backendProcess = Start-Process -FilePath ".\venv\Scripts\python.exe" -ArgumentList $backendArgs -NoNewWindow -PassThru
+  }
   Write-Host "      Backend:  http://localhost:$apiPort (PID $($backendProcess.Id))"
   Start-Sleep -Seconds 2
+  if ($mergeBackendLogs) {
+    $backendLogOffset = Get-FileLengthOrZero -Path $backendLogPath
+    Write-Host "      Backend log merge: ON ($backendLogPath)"
+  }
 
   Write-Host "[2/3] Starting frontend service..."
   $frontendProcess = Start-Process -FilePath "node.exe" -ArgumentList $frontendArgs -WorkingDirectory (Join-Path $projectRoot "frontend") -NoNewWindow -PassThru
@@ -162,6 +256,16 @@ try {
       Write-Host ""
       Write-Host "[INFO] Ctrl+C detected, stopping services..."
       break
+    }
+
+    if ($mergeBackendLogs) {
+      $tailResult = Read-NewFileLines -Path $backendLogPath -Offset $backendLogOffset
+      $backendLogOffset = $tailResult.Offset
+      foreach ($line in $tailResult.Lines) {
+        if ($line -ne "") {
+          Write-Host "[BE] $line"
+        }
+      }
     }
 
     $backendProcess.Refresh()

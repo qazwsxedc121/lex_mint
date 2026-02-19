@@ -1,7 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { GroupChatPage } from '../pages/GroupChatPage';
 
-const API_BASE = `http://localhost:${process.env.API_PORT || '8901'}`;
+if (!process.env.API_PORT) {
+  throw new Error('API_PORT is required for e2e tests.');
+}
+const API_BASE = `http://localhost:${process.env.API_PORT}`;
 
 test.describe('Group Chat', () => {
   let groupChat: GroupChatPage;

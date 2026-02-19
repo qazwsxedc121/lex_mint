@@ -18,7 +18,7 @@ Backend (always use venv scripts, do not use system python):
 ./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ./venv/Scripts/python -m src.main
 ```
-UI runs at `http://localhost:5173` after `npm run dev`.
+UI runs at `http://localhost:<FRONTEND_PORT>` after `npm run dev`.
 Frontend:
 ```
 cd frontend

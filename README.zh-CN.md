@@ -38,7 +38,7 @@
 
 ```powershell
 ./venv/Scripts/pip install -r requirements.txt
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8988
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ```
 
 可选：NVIDIA GPU 机器可将 `llama-cpp-python` 切到 CUDA 构建（按机器安装）：
@@ -59,8 +59,8 @@ npm run dev
 
 访问地址：
 
-- 前端：`http://localhost:5173`
-- API 文档：`http://localhost:8988/docs`
+- 前端：`http://localhost:<FRONTEND_PORT>`
+- API 文档：`http://localhost:<API_PORT>/docs`
 
 ### Docker Compose 启动
 

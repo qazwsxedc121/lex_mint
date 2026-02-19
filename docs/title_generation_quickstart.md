@@ -57,12 +57,12 @@ npm run dev
 
 Wait for:
 ```
-  Local:   http://localhost:5173/
+  Local:   http://localhost:<FRONTEND_PORT>/
 ```
 
 ### Step 5: Configure Feature (1 minute)
 
-1. Open browser: http://localhost:5173
+1. Open browser: http://localhost:<FRONTEND_PORT>
 2. Navigate to **Settings** (gear icon in sidebar)
 3. Click **Title Generation** in settings sidebar
 4. Verify settings:

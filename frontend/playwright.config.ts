@@ -36,14 +36,17 @@ function loadRootEnv(): Record<string, string> {
   return parsed;
 }
 
-function parsePort(value: string | undefined, fallback: number): number {
+function parsePort(value: string | undefined, envName: string): number {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  throw new Error(`${envName} is required (set in .env or process env).`);
 }
 
 const rootEnv = loadRootEnv();
-const frontendPort = parsePort(process.env.FRONTEND_PORT ?? rootEnv.FRONTEND_PORT, 5181);
-const backendPort = parsePort(process.env.API_PORT ?? rootEnv.API_PORT, 8901);
+const frontendPort = parsePort(process.env.FRONTEND_PORT ?? rootEnv.FRONTEND_PORT, 'FRONTEND_PORT');
+const backendPort = parsePort(process.env.API_PORT ?? rootEnv.API_PORT, 'API_PORT');
 
 // Keep test process and child processes aligned with root .env defaults.
 process.env.FRONTEND_PORT = String(frontendPort);

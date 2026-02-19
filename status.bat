@@ -19,8 +19,9 @@ if not defined API_PORT (
     exit /b 1
 )
 if not defined FRONTEND_PORT (
-    echo [WARNING] FRONTEND_PORT not set in .env, fallback to 5173
-    set "FRONTEND_PORT=5173"
+    echo [ERROR] FRONTEND_PORT not set in .env
+    pause
+    exit /b 1
 )
 
 echo [Backend Service]

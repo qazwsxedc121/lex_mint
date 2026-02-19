@@ -6,8 +6,8 @@ if [[ -f ".env" ]]; then
   FRONTEND_PORT=$(grep -E "^FRONTEND_PORT=" .env | head -n1 | cut -d= -f2- | tr -d '\r' || true)
 fi
 if [[ -z "${FRONTEND_PORT}" ]]; then
-  echo "[WARN] FRONTEND_PORT is not set in .env, fallback to 5173"
-  FRONTEND_PORT="5173"
+  echo "[ERROR] FRONTEND_PORT is not set in .env"
+  exit 1
 fi
 
 echo

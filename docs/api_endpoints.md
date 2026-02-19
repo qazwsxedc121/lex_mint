@@ -422,7 +422,7 @@ All endpoints may return error responses in the following format:
 ## CORS Configuration
 
 The API supports CORS with the following origins by default:
-- `http://localhost:5173` (Vite dev server)
+- `http://localhost:<FRONTEND_PORT>` (from `FRONTEND_PORT`)
 - `http://localhost:3000`
 - Configurable via `CORS_ORIGINS` environment variable
 

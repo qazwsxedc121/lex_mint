@@ -21,7 +21,7 @@ def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
     # Get session_id from state metadata if available, otherwise use "unknown"
     session_id = state.get("session_id", "unknown")
 
-    print(f"🔧 chat_node: 准备调用 DeepSeek")
+    print(f" chat_node: 准备调用 DeepSeek")
     print(f"   会话历史消息数: {len(messages)}")
     logger.info(f"🔧 chat_node: 准备调用 DeepSeek")
     logger.info(f"   会话历史消息数: {len(messages)}")

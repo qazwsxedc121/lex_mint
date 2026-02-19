@@ -1,6 +1,9 @@
 import { Page, Locator, expect, APIRequestContext, request as pwRequest } from '@playwright/test';
 
-const API_BASE = `http://localhost:${process.env.API_PORT || '8901'}`;
+if (!process.env.API_PORT) {
+  throw new Error('API_PORT is required for e2e tests.');
+}
+const API_BASE = `http://localhost:${process.env.API_PORT}`;
 
 /**
  * Page Object for Group Chat interactions.

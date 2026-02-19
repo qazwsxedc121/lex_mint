@@ -2,7 +2,7 @@
 setlocal
 REM ============================================================================
 REM Start frontend dev server only
-REM Port source: FRONTEND_PORT in .env (fallback to 5173)
+REM Port source: FRONTEND_PORT in .env
 REM ============================================================================
 
 echo.
@@ -19,8 +19,9 @@ if exist ".env" (
 )
 
 if not defined FRONTEND_PORT (
-    echo [WARNING] FRONTEND_PORT not set in .env, fallback to 5173
-    set "FRONTEND_PORT=5173"
+    echo [ERROR] FRONTEND_PORT not set in .env
+    endlocal
+    exit /b 1
 )
 
 if not exist "frontend\package.json" (

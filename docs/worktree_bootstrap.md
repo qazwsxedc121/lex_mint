@@ -44,24 +44,24 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <A
 ```
 
 > 注意：`-ApiPort` 和 `-FrontendPort` 要按 **当前 worktree** 单独设置，避免和其他 worktree 冲突。  
-> 不建议省略参数直接用脚本默认值（默认是 `8901/5181`，容易撞端口）。
+> 脚本要求显式传参，不提供默认端口。
 
 推荐做法（示例）：
 
 | worktree | API_PORT | FRONTEND_PORT |
 |---|---:|---:|
-| main | 8901 | 5181 |
-| feature/a | 8902 | 5182 |
-| feature/b | 8903 | 5183 |
+| main | `<MAIN_API_PORT>` | `<MAIN_FRONTEND_PORT>` |
+| feature/a | `<FEATURE_A_API_PORT>` | `<FEATURE_A_FRONTEND_PORT>` |
+| feature/b | `<FEATURE_B_API_PORT>` | `<FEATURE_B_FRONTEND_PORT>` |
 
 对应执行示例：
 
 ```powershell
 # feature/a
-powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 8902 -FrontendPort 5182
+powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <FEATURE_A_API_PORT> -FrontendPort <FEATURE_A_FRONTEND_PORT>
 
 # feature/b
-powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 8903 -FrontendPort 5183
+powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <FEATURE_B_API_PORT> -FrontendPort <FEATURE_B_FRONTEND_PORT>
 ```
 
 脚本会做这些事：
@@ -78,10 +78,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 89
 
 ```powershell
 # 仅更新 .env，不安装依赖
-powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 8903 -FrontendPort 5183 -SkipInstall
+powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <API_PORT> -FrontendPort <FRONTEND_PORT> -SkipInstall
 
 # 指定自定义共享 key 文件路径
-powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 8903 -FrontendPort 5183 -SharedKeysPath "D:\secrets\keys_config.yaml"
+powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <API_PORT> -FrontendPort <FRONTEND_PORT> -SharedKeysPath "D:\secrets\keys_config.yaml"
 ```
 
 ## 启动命令模板
@@ -110,7 +110,7 @@ Invoke-WebRequest http://127.0.0.1:<FRONTEND_PORT> -UseBasicParsing
 
 1) 后端启动报 `cors_origins` 解析错误  
 `CORS_ORIGINS` 必须是 JSON 数组格式，例如：
-`["http://localhost:5181","http://localhost:5173","http://localhost:3000","http://127.0.0.1:5181"]`
+`["http://localhost:<FRONTEND_PORT>","http://localhost:3000","http://127.0.0.1:<FRONTEND_PORT>"]`
 
 2) 新 worktree 里没有 `config/local` 或 `data/state`  
 这是正常的，首次启动后端会自动创建。

@@ -23,7 +23,7 @@ FIRST TIME SETUP
 3. Start Services
    - Double-click start.bat
    - Two command windows will open (backend and frontend)
-   - Browser will automatically open http://localhost:5173
+   - Browser will automatically open http://localhost:<FRONTEND_PORT>
 
 ====================================
 DAILY USAGE
@@ -39,7 +39,7 @@ FEATURES
 ====================================
 
 * Web Chat Interface
-  - Access: http://localhost:5173
+  - Access: http://localhost:<FRONTEND_PORT>
   - Multi-turn conversations
   - Auto-save chat history
 
@@ -82,11 +82,11 @@ A: Copy the entire conversations folder
 ACCESS URLs
 ====================================
 
-Web Interface:  http://localhost:5173
+Web Interface:  http://localhost:<FRONTEND_PORT>
 API Backend:    http://localhost:<API_PORT>  (configurable in .env)
 API Docs:       http://localhost:<API_PORT>/docs
 
-Note: To change backend port, edit API_PORT in .env file
+Note: To change ports, edit API_PORT and FRONTEND_PORT in .env file
 
 ====================================
 TECHNICAL SUPPORT

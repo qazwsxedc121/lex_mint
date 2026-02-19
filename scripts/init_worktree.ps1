@@ -1,6 +1,6 @@
 param(
-    [int]$ApiPort = 8901,
-    [int]$FrontendPort = 5181,
+    [int]$ApiPort,
+    [int]$FrontendPort,
     [string]$SharedKeysPath = "$HOME\.lex_mint\keys_config.yaml",
     [switch]$SkipInstall
 )
@@ -124,6 +124,13 @@ if (-not (Test-Path -Path ".\frontend\package.json")) {
     throw "Run this script in repository root (missing frontend/package.json)."
 }
 
+if (-not $ApiPort) {
+    throw "ApiPort is required. Example: -ApiPort 9001"
+}
+if (-not $FrontendPort) {
+    throw "FrontendPort is required. Example: -FrontendPort 5201"
+}
+
 if (-not (Test-Path -Path ".\venv\Scripts\python.exe")) {
     Write-Host "[1/5] Creating virtual environment..."
     python -m venv .\venv --upgrade-deps
@@ -147,7 +154,6 @@ $envContent = Set-OrAddEnvVar -Content $envContent -Key "FRONTEND_PORT" -Value "
 
 $origins = @(
     "http://localhost:$FrontendPort",
-    "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:$FrontendPort"
 ) | Select-Object -Unique

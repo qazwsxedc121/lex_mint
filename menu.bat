@@ -32,9 +32,12 @@ if "%choice%"=="6" (
             if /I "%%a"=="FRONTEND_PORT" set "FRONTEND_PORT=%%b"
         )
     )
-    if not defined FRONTEND_PORT set "FRONTEND_PORT=5173"
-    start http://localhost:!FRONTEND_PORT!
-    echo Browser opened
+    if not defined FRONTEND_PORT (
+        echo [ERROR] FRONTEND_PORT not set in .env
+    ) else (
+        start http://localhost:!FRONTEND_PORT!
+        echo Browser opened
+    )
     pause
 )
 if "%choice%"=="0" exit

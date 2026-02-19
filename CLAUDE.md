@@ -196,7 +196,7 @@ cd frontend
 npm run dev
 ```
 
-Access the web interface at http://localhost:5173
+Access the web interface at http://localhost:<FRONTEND_PORT>
 
 **CLI Mode** (original):
 ```bash
@@ -250,7 +250,7 @@ Optional for API configuration:
 ```
 API_HOST=0.0.0.0
 API_PORT=<API_PORT>    # Backend port (see .env.example for suggested value)
-CORS_ORIGINS=http://localhost:5173
+CORS_ORIGINS=http://localhost:<FRONTEND_PORT>
 CONVERSATIONS_DIR=conversations
 LOG_LEVEL=INFO
 ```

@@ -71,7 +71,7 @@ Backend (Windows, use venv executables directly):
 
 ```powershell
 ./venv/Scripts/pip install -r requirements.txt
-./venv/Scripts/uvicorn src.api.main:app --reload --port 8988
+./venv/Scripts/uvicorn src.api.main:app --reload --port <API_PORT>
 ```
 
 Optional NVIDIA GPU build for `llama-cpp-python` (keep this machine-specific):
@@ -92,8 +92,8 @@ npm run dev
 
 Open:
 
-- App: `http://localhost:5173`
-- API docs: `http://localhost:8988/docs`
+- App: `http://localhost:<FRONTEND_PORT>`
+- API docs: `http://localhost:<API_PORT>/docs`
 
 ### Option C: Docker Compose
 
