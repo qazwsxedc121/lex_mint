@@ -12,6 +12,11 @@ from src.api.models.model_config import Provider, Model, ModelsConfig
 class TestModelConfigService:
     """Test cases for ModelConfigService class."""
 
+    @pytest.fixture(autouse=True)
+    def _disable_builtin_sync(self, monkeypatch):
+        """Keep unit tests focused on local file behavior, not builtin auto-sync."""
+        monkeypatch.setattr(ModelConfigService, "_sync_builtin_entries", lambda self: None)
+
     @pytest.mark.asyncio
     async def test_ensure_config_exists(self, temp_config_dir):
         """Test that default config is created if it doesn't exist."""
@@ -131,9 +136,9 @@ class TestModelConfigService:
         """Test deleting a provider."""
         # Add second provider to config
         sample_model_config["providers"].append({
-            "id": "openai",
-            "name": "OpenAI",
-            "type": "builtin",
+            "id": "custom-openai",
+            "name": "Custom OpenAI",
+            "type": "custom",
             "protocol": "openai",
             "base_url": "https://api.openai.com/v1",
             "enabled": True
@@ -148,7 +153,7 @@ class TestModelConfigService:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
-        await service.delete_provider("openai")
+        await service.delete_provider("custom-openai")
 
         # Verify
         providers = await service.get_providers()
@@ -350,10 +355,11 @@ class TestModelConfigService:
         with open(shared_keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {"deepseek": {"api_key": "old_value"}}}, f)
 
-        service = ModelConfigService(config_path, shared_keys_path)
+        with patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+            service = ModelConfigService(config_path, shared_keys_path)
 
-        with pytest.raises(PermissionError, match="bootstrap-only"):
-            await service.set_api_key("deepseek", "new_value")
+            with pytest.raises(PermissionError, match="bootstrap-only"):
+                await service.set_api_key("deepseek", "new_value")
 
         with open(shared_keys_path, 'r', encoding='utf-8') as f:
             shared_data = yaml.safe_load(f)
@@ -377,6 +383,7 @@ class TestModelConfigService:
         with patch("src.api.services.model_config_service.config_local_dir", return_value=config_local_path), \
                 patch("src.api.services.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
                 patch("src.api.services.model_config_service.legacy_config_dir", return_value=legacy_config_path), \
+                patch("src.api.services.model_config_service.local_keys_config_path", return_value=config_local_path / "keys_config.yaml"), \
                 patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
             service = ModelConfigService()
 

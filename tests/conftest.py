@@ -1,28 +1,44 @@
 """Shared pytest fixtures for all tests."""
 
 import pytest
-import tempfile
 import shutil
+import uuid
 from pathlib import Path
 from typing import Dict, Any
 from unittest.mock import Mock, AsyncMock
 
 
+def _create_workspace_temp_dir(kind: str) -> Path:
+    """Create a temporary directory under repository-local .pytest_work."""
+    repo_root = Path(__file__).resolve().parents[1]
+    root_dir = repo_root / ".pytest_work" / kind
+    root_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir = root_dir / f"{kind}_{uuid.uuid4().hex[:8]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
+
+@pytest.fixture
+def tmp_path():
+    """Workspace-local replacement for pytest's tmp_path fixture."""
+    temp_dir = _create_workspace_temp_dir("tmp_path")
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 @pytest.fixture
 def temp_conversation_dir():
     """Create temporary directory for conversation files."""
-    temp_dir = Path(tempfile.mkdtemp())
+    temp_dir = _create_workspace_temp_dir("conversations")
     yield temp_dir
-    # Cleanup after test
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
 def temp_config_dir():
     """Create temporary directory for config files."""
-    temp_dir = Path(tempfile.mkdtemp())
+    temp_dir = _create_workspace_temp_dir("config")
     yield temp_dir
-    # Cleanup after test
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 

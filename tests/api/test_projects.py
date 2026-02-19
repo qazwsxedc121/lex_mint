@@ -496,8 +496,8 @@ class TestProjectServiceFileReading:
 
     @pytest.mark.asyncio
     async def test_read_unsupported_file_type(self, project_service, test_project_path):
-        """Test reading file with unsupported extension."""
-        # Create unsupported file type
+        """Test reading unknown extension falls back to text/plain."""
+        # Create unknown file type
         bin_file = test_project_path / "file.exe"
         bin_file.write_bytes(b"\x00\x01\x02\x03")
 
@@ -509,9 +509,10 @@ class TestProjectServiceFileReading:
         )
         await project_service.add_project(project)
 
-        # Try to read unsupported file
-        with pytest.raises(ValueError, match="not allowed|unsupported|extension"):
-            await project_service.read_file("test_proj", "file.exe")
+        file_content = await project_service.read_file("test_proj", "file.exe")
+        assert file_content.path == "file.exe"
+        assert file_content.size == 4
+        assert file_content.mime_type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_read_file_project_not_found(self, project_service):

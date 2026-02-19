@@ -26,7 +26,7 @@ class TestConversationStorage:
             assert len(session_id) == 36  # UUID format
 
             # Verify file was created
-            files = list(temp_conversation_dir.glob("*.md"))
+            files = list((temp_conversation_dir / "chat").glob("*.md"))
             assert len(files) == 1
 
             # Load and verify session
@@ -236,14 +236,14 @@ class TestConversationStorage:
             session_id = await storage.create_session(assistant_id="default")
 
             # Verify file exists
-            files_before = list(temp_conversation_dir.glob("*.md"))
+            files_before = list((temp_conversation_dir / "chat").glob("*.md"))
             assert len(files_before) == 1
 
             # Delete session
             await storage.delete_session(session_id)
 
             # Verify file is gone
-            files_after = list(temp_conversation_dir.glob("*.md"))
+            files_after = list((temp_conversation_dir / "chat").glob("*.md"))
             assert len(files_after) == 0
 
     @pytest.mark.asyncio
@@ -258,7 +258,12 @@ class TestConversationStorage:
     async def test_move_session_moves_compare_sidecar(self, temp_conversation_dir, mock_assistant_service):
         """Test moving a session also moves its compare sidecar file."""
         with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
-            storage = ConversationStorage(temp_conversation_dir)
+            project_root = temp_conversation_dir / "project_roots" / "proj-1"
+            project_root.mkdir(parents=True, exist_ok=True)
+            storage = ConversationStorage(
+                temp_conversation_dir,
+                project_root_resolver=lambda project_id: str(project_root) if project_id == "proj-1" else None,
+            )
             session_id = await storage.create_session(assistant_id="default")
 
             source_path = await storage._find_session_file(session_id)
@@ -287,7 +292,12 @@ class TestConversationStorage:
     async def test_copy_session_copies_compare_sidecar(self, temp_conversation_dir, mock_assistant_service):
         """Test copying a session also copies its compare sidecar file."""
         with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
-            storage = ConversationStorage(temp_conversation_dir)
+            project_root = temp_conversation_dir / "project_roots" / "proj-2"
+            project_root.mkdir(parents=True, exist_ok=True)
+            storage = ConversationStorage(
+                temp_conversation_dir,
+                project_root_resolver=lambda project_id: str(project_root) if project_id == "proj-2" else None,
+            )
             session_id = await storage.create_session(assistant_id="default")
 
             source_path = await storage._find_session_file(session_id)
@@ -397,7 +407,7 @@ Python is a programming language.
 <!-- cost: {"total_cost": 0.0015, "currency": "USD"} -->
 """
 
-        messages = storage._parse_messages(markdown_content)
+        messages = storage._parse_messages(markdown_content, session_id="test-session")
 
         assert len(messages) == 2
         assert messages[0]["role"] == "user"

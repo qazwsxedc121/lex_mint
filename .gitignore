@@ -31,6 +31,9 @@ config/*.tmp
 
 # Testing
 .pytest_cache/
+.pytest_tmp/
+.pytest_work/
+.tmp/
 .coverage
 htmlcov/
 *.cover

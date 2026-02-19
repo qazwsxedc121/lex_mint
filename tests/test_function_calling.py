@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-async def test_provider(model_id: str) -> dict:
+async def run_provider_check(model_id: str) -> dict:
     """Test function calling with a specific model.
 
     Returns dict with keys: model_id, passed, error, details
@@ -127,7 +127,7 @@ async def main():
     results = []
     for mid in candidates:
         print(f"Testing: {mid}")
-        result = await test_provider(mid)
+        result = await run_provider_check(mid)
         results.append(result)
         status = "PASS" if result["passed"] else "FAIL"
         detail = result.get("error") or result.get("details", "")

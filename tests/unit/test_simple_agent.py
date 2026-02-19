@@ -10,6 +10,7 @@ from src.state.agent_state import SimpleAgentState
 def mock_llm_response():
     """Mock LLM response."""
     mock = Mock()
+    mock.role = "assistant"
     mock.content = "Hello! This is a test response."
     return mock
 

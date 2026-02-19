@@ -16,38 +16,29 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 
-def test_config_requires_api_port():
+def test_config_requires_api_port(monkeypatch):
     """Test API_PORT is required."""
     print("[TEST 1] Testing API_PORT requirement from config.py...")
 
-    # Clean environment
-    if 'API_PORT' in os.environ:
-        del os.environ['API_PORT']
+    monkeypatch.delenv("API_PORT", raising=False)
 
     from src.api.config import Settings
     with pytest.raises(ValidationError):
-        Settings()
+        Settings(_env_file=None)
     print("[OK] API_PORT is required")
 
 
-def test_config_env_override():
+def test_config_env_override(monkeypatch):
     """Test that API_PORT env var overrides default."""
     print("\n[TEST 2] Testing API_PORT environment variable override...")
 
     test_port = 9999
-    os.environ['API_PORT'] = str(test_port)
-
-    # Force reload
-    import importlib
-    import src.api.config as config_module
-    importlib.reload(config_module)
-
-    settings = config_module.Settings()
+    monkeypatch.setenv("API_PORT", str(test_port))
+    from src.api.config import Settings
+    settings = Settings(_env_file=None)
 
     assert settings.api_port == test_port, f"Expected {test_port}, got {settings.api_port}"
     print(f"[OK] API_PORT={test_port} correctly overrides default")
-
-    del os.environ['API_PORT']
 
 
 def test_dotenv_loading():
