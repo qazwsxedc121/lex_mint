@@ -4,6 +4,9 @@ from typing import Dict, AsyncIterator, Optional, Any, List, Tuple
 import logging
 import asyncio
 import uuid
+import re
+import os
+import json
 
 from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
 from src.providers.types import TokenUsage, CostInfo
@@ -15,6 +18,13 @@ from .search_service import SearchService
 from .webpage_service import WebpageService
 from .memory_service import MemoryService
 from .file_reference_config_service import FileReferenceConfigService, FileReferenceConfig
+from .group_orchestration import (
+    CommitteeRuntime,
+    CommitteeRuntimeConfig,
+    CommitteeRuntimeState,
+    CommitteeSupervisor,
+    CommitteeTurnRecord,
+)
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -52,6 +62,53 @@ class AgentService:
     _FILE_CONTEXT_PREVIEW_CHARS = 600
     _FILE_CONTEXT_PREVIEW_LINES = 40
     _FILE_CONTEXT_TOTAL_BUDGET_CHARS = 18000
+    _GROUP_TRACE_PREVIEW_CHARS = 1600
+
+    @staticmethod
+    def _truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
+        """Trim text for debug logs while preserving head and tail context."""
+        content = (text or "").replace("\r", "")
+        if len(content) <= max_chars:
+            return content
+        head = int(max_chars * 0.7)
+        tail = max_chars - head
+        return f"{content[:head]}\n...[truncated]...\n{content[-tail:]}"
+
+    @staticmethod
+    def _build_messages_preview_for_log(
+        messages: List[Dict[str, Any]],
+        *,
+        max_messages: int = 10,
+        max_chars: int = 220,
+    ) -> List[Dict[str, Any]]:
+        """Build a compact recent message view for group context debugging."""
+        preview: List[Dict[str, Any]] = []
+        for msg in messages[-max_messages:]:
+            preview.append(
+                {
+                    "role": msg.get("role"),
+                    "assistant_id": msg.get("assistant_id"),
+                    "message_id": msg.get("message_id"),
+                    "content": AgentService._truncate_log_text(msg.get("content") or "", max_chars),
+                }
+            )
+        return preview
+
+    @staticmethod
+    def _is_group_trace_enabled() -> bool:
+        """Enable verbose group trace logging via env variable."""
+        value = os.getenv("LEX_MINT_GROUP_TRACE", "").strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    def _log_group_trace(self, trace_id: str, stage: str, payload: Dict[str, Any]) -> None:
+        """Emit structured group-trace logs when tracing is enabled."""
+        if not self._is_group_trace_enabled():
+            return
+        try:
+            serialized = json.dumps(payload, ensure_ascii=True, default=str)
+        except Exception:
+            serialized = str(payload)
+        logger.info("[GroupTrace][%s][%s] %s", trace_id, stage, serialized)
 
     def _get_file_reference_config(self) -> FileReferenceConfig:
         """Load latest runtime limits; fall back to hardcoded defaults on error."""
@@ -1101,11 +1158,970 @@ class AgentService:
             "These labels are internal guidance only; do not output them verbatim."
         )
 
+    @staticmethod
+    def _assistant_params_from_config(assistant_obj: Any) -> Dict[str, Any]:
+        """Extract generation params from assistant config object."""
+        return {
+            "temperature": assistant_obj.temperature,
+            "max_tokens": assistant_obj.max_tokens,
+            "top_p": assistant_obj.top_p,
+            "top_k": assistant_obj.top_k,
+            "frequency_penalty": assistant_obj.frequency_penalty,
+            "presence_penalty": assistant_obj.presence_penalty,
+        }
+
+    @staticmethod
+    def _resolve_group_round_limit(raw_limit: Optional[int], *, fallback: int = 3, hard_cap: int = 6) -> int:
+        """Normalize assistant max_rounds for committee orchestration loops."""
+        if raw_limit is None:
+            return fallback
+        if raw_limit == -1:
+            return fallback
+        try:
+            value = int(raw_limit)
+        except Exception:
+            return fallback
+        if value <= 0:
+            return fallback
+        return min(value, hard_cap)
+
+    @staticmethod
+    def _resolve_committee_round_policy(
+        raw_limit: Optional[int],
+        *,
+        participant_count: int,
+    ) -> Dict[str, int]:
+        """Derive round/depth policy for committee mode to avoid premature convergence."""
+        member_count = max(participant_count - 1, 0)
+        min_member_turns_before_finish = 2 if member_count >= 2 else 1
+        min_total_rounds_before_finish = member_count * min_member_turns_before_finish
+        fallback_rounds = max(6, min_total_rounds_before_finish)
+        max_rounds = AgentService._resolve_group_round_limit(
+            raw_limit,
+            fallback=fallback_rounds,
+            hard_cap=18,
+        )
+        if member_count > 0:
+            max_rounds = max(max_rounds, min_total_rounds_before_finish)
+        return {
+            "max_rounds": max_rounds,
+            "min_member_turns_before_finish": min_member_turns_before_finish,
+            "min_total_rounds_before_finish": min_total_rounds_before_finish,
+        }
+
+    @staticmethod
+    def _build_group_instruction_prompt(
+        instruction: Optional[str],
+        structured_packet: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Wrap internal directives; optionally attach structured committee turn packet."""
+        if not instruction and not structured_packet:
+            return None
+
+        sections: List[str] = []
+        if instruction:
+            cleaned = instruction.strip()
+            if cleaned:
+                sections.append(
+                    "Committee instruction:\n"
+                    f"{cleaned}\n\n"
+                    "Follow this instruction while keeping role consistency and factual grounding."
+                )
+        if structured_packet:
+            try:
+                payload = json.dumps(structured_packet, ensure_ascii=True, default=str)
+            except Exception:
+                payload = str(structured_packet)
+            sections.append(
+                "Committee turn packet (JSON):\n"
+                f"```json\n{payload}\n```\n\n"
+                "Use this packet for planning and role consistency. "
+                "Do not output JSON unless the user explicitly asks for it."
+            )
+
+        if not sections:
+            return None
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _extract_bullet_items(text: str, *, limit: int = 5) -> List[str]:
+        """Extract concise bullet-like items from free-form text."""
+        items: List[str] = []
+        seen = set()
+        for raw_line in (text or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line[:1] in {"-", "*", "•"}:
+                candidate = line[1:].strip()
+            elif re.match(r"^\d+[).]\s+", line):
+                candidate = re.sub(r"^\d+[).]\s+", "", line)
+            else:
+                continue
+            candidate = re.sub(r"\s+", " ", candidate).strip(" -")
+            if len(candidate) < 8:
+                continue
+            key = candidate.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(candidate[:220])
+            if len(items) >= limit:
+                break
+        return items
+
+    @staticmethod
+    def _extract_keyword_sentences(
+        text: str,
+        *,
+        keywords: List[str],
+        limit: int = 4,
+    ) -> List[str]:
+        """Extract short sentences containing any keyword."""
+        if not text:
+            return []
+        normalized = re.sub(r"\s+", " ", text)
+        sentences = re.split(r"(?<=[.!?。！？])\s+", normalized)
+        results: List[str] = []
+        seen = set()
+        for sentence in sentences:
+            s = sentence.strip()
+            if len(s) < 12:
+                continue
+            lower = s.lower()
+            if not any(keyword in lower for keyword in keywords):
+                continue
+            key = lower[:180]
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(s[:240])
+            if len(results) >= limit:
+                break
+        return results
+
+    def _build_structured_turn_summary(self, content: str) -> Dict[str, Any]:
+        """Build lightweight structured summary from assistant natural-language output."""
+        key_points = self._extract_bullet_items(content, limit=5)
+        if not key_points:
+            # Fallback to first few sentences if no explicit bullets
+            key_points = self._extract_keyword_sentences(
+                content,
+                keywords=["should", "need", "must", "plan", "建议", "需要", "应该", "步骤"],
+                limit=3,
+            )
+
+        risks = self._extract_keyword_sentences(
+            content,
+            keywords=[
+                "risk",
+                "trade-off",
+                "tradeoff",
+                "security",
+                "compliance",
+                "latency",
+                "成本",
+                "风险",
+                "安全",
+                "合规",
+            ],
+            limit=4,
+        )
+        actions = self._extract_keyword_sentences(
+            content,
+            keywords=[
+                "next",
+                "action",
+                "implement",
+                "step",
+                "recommend",
+                "建议",
+                "实施",
+                "下一步",
+            ],
+            limit=4,
+        )
+
+        if key_points:
+            self_summary = key_points[0]
+        else:
+            self_summary = self._truncate_log_text(content, 180).replace("\n", " ").strip()
+
+        return {
+            "key_points": key_points,
+            "risks": risks,
+            "actions": actions,
+            "self_summary": self_summary[:240],
+            "content_preview": self._truncate_log_text(content, 240).replace("\n", " ").strip(),
+        }
+
+    def _build_committee_turn_packet(
+        self,
+        *,
+        state: CommitteeRuntimeState,
+        target_assistant_id: str,
+        assistant_name_map: Dict[str, str],
+        instruction: Optional[str],
+    ) -> Dict[str, Any]:
+        """Build structured per-turn packet used as internal context for committee members."""
+        recent_turns = state.turns[-6:]
+        shared_turns: List[Dict[str, Any]] = []
+        for turn in recent_turns:
+            shared_turns.append(
+                {
+                    "assistant_id": turn.assistant_id,
+                    "assistant_name": turn.assistant_name,
+                    "self_summary": turn.self_summary or turn.content_preview,
+                    "key_points": turn.key_points[:3],
+                    "risks": turn.risks[:2],
+                    "actions": turn.actions[:2],
+                }
+            )
+
+        self_turns = [turn for turn in state.turns if turn.assistant_id == target_assistant_id]
+        self_summaries = [turn.self_summary or turn.content_preview for turn in self_turns[-3:]]
+        latest_other_turn = next(
+            (
+                turn
+                for turn in reversed(state.turns)
+                if turn.assistant_id != target_assistant_id
+            ),
+            None,
+        )
+        avoid_repeat = (latest_other_turn.key_points[:3] if latest_other_turn else [])
+
+        target_name = assistant_name_map.get(target_assistant_id, target_assistant_id)
+        return {
+            "identity": {
+                "assistant_id": target_assistant_id,
+                "assistant_name": target_name,
+            },
+            "user_goal": state.user_message,
+            "shared_state": {
+                "round_index": state.round_index,
+                "participants": state.participants,
+                "recent_turns": shared_turns,
+            },
+            "self_state": {
+                "latest_note": state.member_notes.get(target_assistant_id, ""),
+                "recent_self_summaries": self_summaries,
+            },
+            "task": {
+                "instruction": instruction or "Provide your best contribution for the user request.",
+            },
+            "constraints": {
+                "output_mode": "natural_language",
+                "avoid_role_drift": True,
+                "avoid_repeating_recent_points": avoid_repeat,
+            },
+        }
+
+    @staticmethod
+    def _normalize_identity_token(value: str) -> str:
+        """Normalize identity labels for lightweight role-drift checks."""
+        return "".join(ch.lower() for ch in (value or "") if ch.isalnum())
+
+    def _detect_group_role_drift(
+        self,
+        *,
+        content: str,
+        expected_assistant_id: str,
+        expected_assistant_name: str,
+        participant_name_map: Dict[str, str],
+    ) -> Optional[str]:
+        """Detect obvious cases where a speaker claims another participant identity."""
+        head = (content or "")[:200]
+        if not head:
+            return None
+
+        participant_tokens: Dict[str, set] = {}
+        for participant_id, participant_name in participant_name_map.items():
+            participant_tokens[participant_id] = {
+                self._normalize_identity_token(participant_id),
+                self._normalize_identity_token(participant_name),
+            }
+
+        expected_tokens = {
+            self._normalize_identity_token(expected_assistant_id),
+            self._normalize_identity_token(expected_assistant_name),
+        }
+
+        patterns = [
+            r"^\s*(?:\*\*)?\[\s*([^\]\n:]{2,80})\s*\](?:\*\*)?",
+            r"^\s*\[\s*as\s+([^\]\n:]{2,80})\s*\]",
+            r"^\s*as\s+([^\n:,.]{2,80})",
+            r"^\s*i\s+am\s+([^\n:,.]{2,80})",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, head, re.IGNORECASE)
+            if match:
+                candidate_token = self._normalize_identity_token(match.group(1).strip())
+                if not candidate_token:
+                    continue
+                if candidate_token in expected_tokens:
+                    return None
+                for participant_id, tokens in participant_tokens.items():
+                    if candidate_token in tokens and participant_id != expected_assistant_id:
+                        return f"role_drift_claimed_{participant_id}"
+
+        return None
+
+    @staticmethod
+    def _build_role_retry_instruction(
+        *,
+        base_instruction: Optional[str],
+        expected_assistant_name: str,
+    ) -> str:
+        correction = (
+            "Role correction required:\n"
+            f"- You must answer strictly as {expected_assistant_name}.\n"
+            "- Do not claim to be any other participant.\n"
+            "- If your previous turn used another role label, restate from your own role."
+        )
+        if base_instruction and base_instruction.strip():
+            return f"{base_instruction.strip()}\n\n{correction}"
+        return correction
+
+    async def _get_message_content_by_id(
+        self,
+        *,
+        session_id: str,
+        message_id: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+    ) -> str:
+        """Read one message content from session state by message_id."""
+        if not message_id:
+            return ""
+        try:
+            session = await self.storage.get_session(
+                session_id, context_type=context_type, project_id=project_id
+            )
+            for message in reversed(session["state"]["messages"]):
+                if message.get("message_id") == message_id:
+                    return (message.get("content") or "").strip()
+        except Exception as e:
+            logger.warning(f"[GroupChat] Failed to read message content for {message_id}: {e}")
+        return ""
+
+    async def _stream_group_assistant_turn(
+        self,
+        *,
+        session_id: str,
+        assistant_id: str,
+        assistant_obj: Any,
+        group_assistants: List[str],
+        assistant_name_map: Dict[str, str],
+        raw_user_message: str,
+        reasoning_effort: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+        search_context: Optional[str],
+        search_sources: List[Dict[str, Any]],
+        instruction: Optional[str] = None,
+        committee_turn_packet: Optional[Dict[str, Any]] = None,
+        trace_id: Optional[str] = None,
+        trace_round: Optional[int] = None,
+        trace_mode: Optional[str] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Execute one assistant turn in group mode and stream structured events."""
+        assistant_turn_id = str(uuid.uuid4())
+        assistant_name = assistant_obj.name
+        yield {
+            "type": "assistant_start",
+            "assistant_id": assistant_id,
+            "assistant_turn_id": assistant_turn_id,
+            "name": assistant_name,
+            "icon": assistant_obj.icon,
+        }
+
+        session = await self.storage.get_session(
+            session_id, context_type=context_type, project_id=project_id
+        )
+        messages = session["state"]["messages"]
+        model_id = assistant_obj.model_id
+
+        history_hint = self._build_group_history_hint(
+            messages=messages,
+            current_assistant_id=assistant_id,
+            assistant_name_map=assistant_name_map,
+        )
+        identity_prompt = self._build_group_identity_prompt(
+            current_assistant_id=assistant_id,
+            current_assistant_name=assistant_name,
+            group_assistants=group_assistants,
+            assistant_name_map=assistant_name_map,
+        )
+        instruction_prompt = self._build_group_instruction_prompt(
+            instruction, committee_turn_packet
+        )
+        system_prompt = assistant_obj.system_prompt
+        prompt_parts = [identity_prompt]
+        if history_hint:
+            prompt_parts.append(history_hint)
+        if instruction_prompt:
+            prompt_parts.append(instruction_prompt)
+        if system_prompt:
+            prompt_parts.append(system_prompt)
+        system_prompt = "\n\n".join(prompt_parts)
+
+        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
+        try:
+            memory_context, _ = self.memory_service.build_memory_context(
+                query=raw_user_message,
+                assistant_id=assistant_id,
+                include_global=True,
+                include_assistant=assistant_memory_enabled,
+            )
+            if memory_context:
+                system_prompt = (
+                    f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
+                )
+        except Exception as e:
+            logger.warning(f"[GroupChat] Memory retrieval failed for {assistant_id}: {e}")
+
+        rag_context, _ = await self._build_rag_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            runtime_model_id=model_id,
+        )
+        if rag_context:
+            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
+        if search_context:
+            system_prompt = (
+                f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
+            )
+
+        if trace_id:
+            self._log_group_trace(
+                trace_id,
+                "assistant_turn_request",
+                {
+                    "mode": trace_mode or "group",
+                    "round": trace_round,
+                    "assistant_id": assistant_id,
+                    "assistant_name": assistant_name,
+                    "assistant_turn_id": assistant_turn_id,
+                    "model_id": model_id,
+                    "instruction": self._truncate_log_text(instruction, self._GROUP_TRACE_PREVIEW_CHARS),
+                    "identity_prompt": self._truncate_log_text(identity_prompt, self._GROUP_TRACE_PREVIEW_CHARS),
+                    "history_hint": self._truncate_log_text(history_hint, self._GROUP_TRACE_PREVIEW_CHARS),
+                    "instruction_prompt": self._truncate_log_text(
+                        instruction_prompt, self._GROUP_TRACE_PREVIEW_CHARS
+                    ),
+                    "committee_turn_packet": committee_turn_packet,
+                    "final_system_prompt": self._truncate_log_text(
+                        system_prompt, self._GROUP_TRACE_PREVIEW_CHARS
+                    ),
+                    "messages_preview": self._build_messages_preview_for_log(messages),
+                },
+            )
+
+        full_response = ""
+        usage_data = None
+        cost_data = None
+        assistant_params = self._assistant_params_from_config(assistant_obj)
+        max_rounds = assistant_obj.max_rounds
+
+        try:
+            async for chunk in call_llm_stream(
+                messages,
+                session_id=session_id,
+                model_id=model_id,
+                system_prompt=system_prompt,
+                max_rounds=max_rounds,
+                reasoning_effort=reasoning_effort,
+                file_service=self.file_service,
+                **assistant_params,
+            ):
+                if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                    usage_data = chunk["usage"]
+                    parts = model_id.split(":", 1)
+                    provider_id = parts[0] if len(parts) > 1 else ""
+                    simple_model_id = parts[1] if len(parts) > 1 else model_id
+                    cost_data = self.pricing_service.calculate_cost(
+                        provider_id, simple_model_id, usage_data
+                    )
+                    continue
+
+                if isinstance(chunk, dict):
+                    event = dict(chunk)
+                    event["assistant_id"] = assistant_id
+                    event["assistant_turn_id"] = assistant_turn_id
+                    yield event
+                    continue
+
+                full_response += chunk
+                yield {
+                    "type": "assistant_chunk",
+                    "assistant_id": assistant_id,
+                    "assistant_turn_id": assistant_turn_id,
+                    "chunk": chunk,
+                }
+        except asyncio.CancelledError:
+            if full_response:
+                await self.storage.append_message(
+                    session_id,
+                    "assistant",
+                    full_response,
+                    assistant_id=assistant_id,
+                    context_type=context_type,
+                    project_id=project_id,
+                )
+            raise
+
+        assistant_message_id = await self.storage.append_message(
+            session_id,
+            "assistant",
+            full_response,
+            usage=usage_data,
+            cost=cost_data,
+            sources=search_sources if search_sources else None,
+            assistant_id=assistant_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+        if trace_id:
+            self._log_group_trace(
+                trace_id,
+                "assistant_turn_result",
+                {
+                    "mode": trace_mode or "group",
+                    "round": trace_round,
+                    "assistant_id": assistant_id,
+                    "assistant_name": assistant_name,
+                    "assistant_turn_id": assistant_turn_id,
+                    "assistant_message_id": assistant_message_id,
+                    "response_preview": self._truncate_log_text(
+                        full_response, self._GROUP_TRACE_PREVIEW_CHARS
+                    ),
+                    "usage": usage_data.model_dump() if usage_data else None,
+                    "cost": cost_data.model_dump() if cost_data else None,
+                },
+            )
+
+        if usage_data:
+            usage_event = {
+                "type": "usage",
+                "assistant_id": assistant_id,
+                "assistant_turn_id": assistant_turn_id,
+                "usage": usage_data.model_dump(),
+            }
+            if cost_data:
+                usage_event["cost"] = cost_data.model_dump()
+            yield usage_event
+
+        if search_sources:
+            yield {
+                "type": "sources",
+                "assistant_id": assistant_id,
+                "assistant_turn_id": assistant_turn_id,
+                "sources": search_sources,
+            }
+
+        yield {
+            "type": "assistant_message_id",
+            "assistant_id": assistant_id,
+            "assistant_turn_id": assistant_turn_id,
+            "message_id": assistant_message_id,
+        }
+        yield {
+            "type": "assistant_done",
+            "assistant_id": assistant_id,
+            "assistant_turn_id": assistant_turn_id,
+        }
+
+    async def _process_committee_group_message_stream(
+        self,
+        *,
+        session_id: str,
+        raw_user_message: str,
+        group_assistants: List[str],
+        assistant_name_map: Dict[str, str],
+        assistant_config_map: Dict[str, Any],
+        reasoning_effort: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+        search_context: Optional[str],
+        search_sources: List[Dict[str, Any]],
+        trace_id: Optional[str] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Committee mode orchestration: supervisor decides who speaks each round."""
+        if trace_id is None and self._is_group_trace_enabled():
+            trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
+
+        participant_order = [
+            assistant_id
+            for assistant_id in group_assistants
+            if assistant_id in assistant_config_map
+        ]
+        if not participant_order:
+            yield {
+                "type": "group_done",
+                "mode": "committee",
+                "reason": "no_valid_participants",
+                "rounds": 0,
+            }
+            return
+
+        supervisor_id = participant_order[0]
+        supervisor_obj = assistant_config_map[supervisor_id]
+        supervisor_name = assistant_name_map.get(supervisor_id, supervisor_id)
+        round_policy = self._resolve_committee_round_policy(
+            getattr(supervisor_obj, "max_rounds", None),
+            participant_count=len(participant_order),
+        )
+        max_rounds = round_policy["max_rounds"]
+        if trace_id:
+            self._log_group_trace(
+                trace_id,
+                "committee_start",
+                {
+                    "session_id": session_id,
+                    "supervisor_id": supervisor_id,
+                    "supervisor_name": supervisor_name,
+                    "participant_order": participant_order,
+                    "max_rounds": max_rounds,
+                    "min_member_turns_before_finish": round_policy["min_member_turns_before_finish"],
+                    "min_total_rounds_before_finish": round_policy["min_total_rounds_before_finish"],
+                    "user_message": self._truncate_log_text(
+                        raw_user_message, self._GROUP_TRACE_PREVIEW_CHARS
+                    ),
+                },
+            )
+
+        runtime = CommitteeRuntime(
+            CommitteeRuntimeConfig(supervisor_id=supervisor_id, max_rounds=max_rounds)
+        )
+        state = CommitteeRuntimeState(
+            user_message=raw_user_message,
+            participants={
+                assistant_id: assistant_name_map.get(assistant_id, assistant_id)
+                for assistant_id in participant_order
+            },
+        )
+        supervisor = CommitteeSupervisor(
+            supervisor_id=supervisor_id,
+            supervisor_name=supervisor_name,
+            participant_order=participant_order,
+            participant_names=state.participants,
+            max_rounds=max_rounds,
+            min_member_turns_before_finish=round_policy["min_member_turns_before_finish"],
+            min_total_rounds_before_finish=round_policy["min_total_rounds_before_finish"],
+        )
+
+        supervisor_call_context: Dict[str, Any] = {"round": None}
+
+        async def _call_supervisor(system_prompt: str, user_prompt: str) -> str:
+            assistant_params = self._assistant_params_from_config(supervisor_obj)
+            if trace_id:
+                self._log_group_trace(
+                    trace_id,
+                    "supervisor_request",
+                    {
+                        "round": supervisor_call_context.get("round"),
+                        "supervisor_id": supervisor_id,
+                        "model_id": supervisor_obj.model_id,
+                        "system_prompt": self._truncate_log_text(
+                            system_prompt, self._GROUP_TRACE_PREVIEW_CHARS
+                        ),
+                        "user_prompt": self._truncate_log_text(
+                            user_prompt, self._GROUP_TRACE_PREVIEW_CHARS
+                        ),
+                    },
+                )
+            raw_output = await asyncio.to_thread(
+                call_llm,
+                [{"role": "user", "content": user_prompt}],
+                session_id=session_id,
+                model_id=supervisor_obj.model_id,
+                system_prompt=system_prompt,
+                **assistant_params,
+            )
+            if trace_id:
+                self._log_group_trace(
+                    trace_id,
+                    "supervisor_raw_output",
+                    {
+                        "round": supervisor_call_context.get("round"),
+                        "raw_output": self._truncate_log_text(
+                            raw_output, self._GROUP_TRACE_PREVIEW_CHARS
+                        ),
+                    },
+                )
+            return raw_output
+
+        while runtime.has_remaining_rounds(state):
+            current_round = runtime.current_round(state)
+            supervisor_call_context["round"] = current_round
+            if trace_id:
+                self._log_group_trace(
+                    trace_id,
+                    "round_state",
+                    {
+                        "round": current_round,
+                        "turns_so_far": [
+                            {
+                                "assistant_id": turn.assistant_id,
+                                "assistant_name": turn.assistant_name,
+                                "message_id": turn.message_id,
+                                "content_preview": self._truncate_log_text(turn.content_preview, 260),
+                                "key_points": turn.key_points[:3],
+                                "risks": turn.risks[:2],
+                                "actions": turn.actions[:2],
+                                "self_summary": turn.self_summary,
+                            }
+                            for turn in state.turns
+                        ],
+                    },
+                )
+            yield {
+                "type": "group_round_start",
+                "mode": "committee",
+                "round": current_round,
+                "max_rounds": max_rounds,
+                "supervisor_id": supervisor_id,
+                "supervisor_name": supervisor_name,
+            }
+            decision = await supervisor.decide(state, _call_supervisor)
+
+            action_event: Dict[str, Any] = {
+                "type": "group_action",
+                "mode": "committee",
+                "round": current_round,
+                "action": decision.action,
+                "reason": decision.reason,
+                "supervisor_id": supervisor_id,
+                "supervisor_name": supervisor_name,
+            }
+            if decision.assistant_id:
+                action_event["assistant_id"] = decision.assistant_id
+                action_event["assistant_name"] = assistant_name_map.get(
+                    decision.assistant_id, decision.assistant_id
+                )
+            if decision.instruction:
+                action_event["instruction"] = decision.instruction
+            yield action_event
+            if trace_id:
+                self._log_group_trace(
+                    trace_id,
+                    "supervisor_decision",
+                    {
+                        "round": current_round,
+                        "action_event": action_event,
+                    },
+                )
+
+            if decision.action == "finish":
+                finish_reason = decision.reason or "supervisor_finish"
+                summary_instruction = supervisor.build_summary_instruction(
+                    state,
+                    reason=finish_reason,
+                    draft_summary=decision.final_response,
+                )
+                summary_packet = self._build_committee_turn_packet(
+                    state=state,
+                    target_assistant_id=supervisor_id,
+                    assistant_name_map=assistant_name_map,
+                    instruction=summary_instruction,
+                )
+                async for event in self._stream_group_assistant_turn(
+                    session_id=session_id,
+                    assistant_id=supervisor_id,
+                    assistant_obj=supervisor_obj,
+                    group_assistants=group_assistants,
+                    assistant_name_map=assistant_name_map,
+                    raw_user_message=raw_user_message,
+                    reasoning_effort=reasoning_effort,
+                    context_type=context_type,
+                    project_id=project_id,
+                    search_context=search_context,
+                    search_sources=search_sources,
+                    instruction=summary_instruction,
+                    committee_turn_packet=summary_packet,
+                    trace_id=trace_id,
+                    trace_round=current_round,
+                    trace_mode="committee",
+                ):
+                    yield event
+                if trace_id:
+                    self._log_group_trace(
+                        trace_id,
+                        "committee_done",
+                        {
+                            "reason": finish_reason,
+                            "rounds": state.round_index,
+                        },
+                    )
+                yield {
+                    "type": "group_done",
+                    "mode": "committee",
+                    "reason": finish_reason,
+                    "rounds": state.round_index,
+                }
+                return
+
+            target_id = decision.assistant_id
+            target_obj = assistant_config_map.get(target_id)
+            if not target_id or not target_obj:
+                yield {
+                    "type": "group_done",
+                    "mode": "committee",
+                    "reason": "invalid_speak_target",
+                    "rounds": state.round_index,
+                }
+                return
+
+            target_message_id: Optional[str] = None
+            content = ""
+            role_retry_limit = 1
+            turn_instruction = decision.instruction
+            for attempt in range(role_retry_limit + 1):
+                target_message_id = None
+                turn_packet = self._build_committee_turn_packet(
+                    state=state,
+                    target_assistant_id=target_id,
+                    assistant_name_map=assistant_name_map,
+                    instruction=turn_instruction,
+                )
+                async for event in self._stream_group_assistant_turn(
+                    session_id=session_id,
+                    assistant_id=target_id,
+                    assistant_obj=target_obj,
+                    group_assistants=group_assistants,
+                    assistant_name_map=assistant_name_map,
+                    raw_user_message=raw_user_message,
+                    reasoning_effort=reasoning_effort,
+                    context_type=context_type,
+                    project_id=project_id,
+                    search_context=search_context,
+                    search_sources=search_sources,
+                    instruction=turn_instruction,
+                    committee_turn_packet=turn_packet,
+                    trace_id=trace_id,
+                    trace_round=current_round,
+                    trace_mode="committee",
+                ):
+                    if event.get("type") == "assistant_message_id":
+                        target_message_id = event.get("message_id")
+                    yield event
+
+                content = await self._get_message_content_by_id(
+                    session_id=session_id,
+                    message_id=target_message_id,
+                    context_type=context_type,
+                    project_id=project_id,
+                )
+                drift_reason = self._detect_group_role_drift(
+                    content=content,
+                    expected_assistant_id=target_id,
+                    expected_assistant_name=assistant_name_map.get(target_id, target_id),
+                    participant_name_map=assistant_name_map,
+                )
+                if drift_reason and attempt < role_retry_limit:
+                    turn_instruction = self._build_role_retry_instruction(
+                        base_instruction=decision.instruction,
+                        expected_assistant_name=assistant_name_map.get(target_id, target_id),
+                    )
+                    yield {
+                        "type": "group_action",
+                        "mode": "committee",
+                        "round": current_round,
+                        "action": "role_retry",
+                        "assistant_id": target_id,
+                        "assistant_name": assistant_name_map.get(target_id, target_id),
+                        "reason": drift_reason,
+                        "supervisor_id": supervisor_id,
+                        "supervisor_name": supervisor_name,
+                    }
+                    if trace_id:
+                        self._log_group_trace(
+                            trace_id,
+                            "role_retry",
+                            {
+                                "round": current_round,
+                                "assistant_id": target_id,
+                                "assistant_name": assistant_name_map.get(target_id, target_id),
+                                "reason": drift_reason,
+                                "previous_response_preview": self._truncate_log_text(
+                                    content, self._GROUP_TRACE_PREVIEW_CHARS
+                                ),
+                                "retry_instruction": self._truncate_log_text(
+                                    turn_instruction, self._GROUP_TRACE_PREVIEW_CHARS
+                                ),
+                                "turn_packet": turn_packet,
+                            },
+                        )
+                    continue
+                break
+
+            structured_turn = self._build_structured_turn_summary(content)
+            runtime.record_turn(
+                state,
+                CommitteeTurnRecord(
+                    assistant_id=target_id,
+                    assistant_name=assistant_name_map.get(target_id, target_id),
+                    message_id=target_message_id,
+                    content_preview=(structured_turn.get("content_preview") or "")[:240],
+                    key_points=structured_turn.get("key_points", []),
+                    risks=structured_turn.get("risks", []),
+                    actions=structured_turn.get("actions", []),
+                    self_summary=structured_turn.get("self_summary", ""),
+                ),
+            )
+
+        # Forced finish when max rounds reached.
+        forced_reason = "max_rounds_reached"
+        summary_instruction = supervisor.build_summary_instruction(state, reason=forced_reason)
+        summary_packet = self._build_committee_turn_packet(
+            state=state,
+            target_assistant_id=supervisor_id,
+            assistant_name_map=assistant_name_map,
+            instruction=summary_instruction,
+        )
+        async for event in self._stream_group_assistant_turn(
+            session_id=session_id,
+            assistant_id=supervisor_id,
+            assistant_obj=supervisor_obj,
+            group_assistants=group_assistants,
+            assistant_name_map=assistant_name_map,
+            raw_user_message=raw_user_message,
+            reasoning_effort=reasoning_effort,
+            context_type=context_type,
+            project_id=project_id,
+            search_context=search_context,
+            search_sources=search_sources,
+            instruction=summary_instruction,
+            committee_turn_packet=summary_packet,
+            trace_id=trace_id,
+            trace_round=runtime.current_round(state),
+            trace_mode="committee",
+        ):
+            yield event
+        if trace_id:
+            self._log_group_trace(
+                trace_id,
+                "committee_done",
+                {
+                    "reason": forced_reason,
+                    "rounds": state.round_index,
+                },
+            )
+        yield {
+            "type": "group_done",
+            "mode": "committee",
+            "reason": forced_reason,
+            "rounds": state.round_index,
+        }
+
     async def process_group_message_stream(
         self,
         session_id: str,
         user_message: str,
         group_assistants: List[str],
+        group_mode: str = "round_robin",
         skip_user_append: bool = False,
         reasoning_effort: str = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
@@ -1117,8 +2133,9 @@ class AgentService:
     ) -> AsyncIterator[Any]:
         """Stream process user message with multiple assistants (group chat).
 
-        Each assistant responds in turn (round-robin), seeing all previous
-        responses in the conversation including earlier assistants' replies.
+        Supports:
+        - round_robin: fixed order speaking
+        - committee: supervisor chooses member turns and final synthesis
 
         Yields:
             - {"type": "user_message_id", "message_id": ...}
@@ -1200,185 +2217,70 @@ class AgentService:
                 except Exception as e:
                     logger.warning(f"[GroupChat] Web search failed: {e}")
 
-        # Process each assistant sequentially
-        for assistant_id in group_assistants:
-            assistant_obj = assistant_config_map.get(assistant_id)
-            if not assistant_obj:
-                logger.warning(f"[GroupChat] Assistant '{assistant_id}' not found, skipping")
-                continue
-            assistant_turn_id = str(uuid.uuid4())
-
-            # Signal assistant start
-            yield {
-                "type": "assistant_start",
-                "assistant_id": assistant_id,
-                "assistant_turn_id": assistant_turn_id,
-                "name": assistant_obj.name,
-                "icon": assistant_obj.icon,
-            }
-
-            # Reload session to include previous assistants' responses
-            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-            messages = session["state"]["messages"]
-            model_id = assistant_obj.model_id
-            history_hint = self._build_group_history_hint(
-                messages=messages,
-                current_assistant_id=assistant_id,
-                assistant_name_map=assistant_name_map,
-            )
-
-            # Build per-assistant context
-            system_prompt = assistant_obj.system_prompt
-            max_rounds = assistant_obj.max_rounds
-            assistant_params = {
-                "temperature": assistant_obj.temperature,
-                "max_tokens": assistant_obj.max_tokens,
-                "top_p": assistant_obj.top_p,
-                "top_k": assistant_obj.top_k,
-                "frequency_penalty": assistant_obj.frequency_penalty,
-                "presence_penalty": assistant_obj.presence_penalty,
-            }
-            identity_prompt = self._build_group_identity_prompt(
-                current_assistant_id=assistant_id,
-                current_assistant_name=assistant_obj.name,
+        normalized_group_mode = (group_mode or "round_robin").strip().lower()
+        if normalized_group_mode == "committee":
+            trace_id: Optional[str] = None
+            if self._is_group_trace_enabled():
+                trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
+                self._log_group_trace(
+                    trace_id,
+                    "request",
+                    {
+                        "session_id": session_id,
+                        "group_mode": normalized_group_mode,
+                        "group_assistants": group_assistants,
+                        "raw_user_message": self._truncate_log_text(
+                            raw_user_message, self._GROUP_TRACE_PREVIEW_CHARS
+                        ),
+                    },
+                )
+            async for event in self._process_committee_group_message_stream(
+                session_id=session_id,
+                raw_user_message=raw_user_message,
                 group_assistants=group_assistants,
                 assistant_name_map=assistant_name_map,
-            )
-            prompt_parts = [identity_prompt]
-            if history_hint:
-                prompt_parts.append(history_hint)
-            if system_prompt:
-                prompt_parts.append(system_prompt)
-            system_prompt = "\n\n".join(prompt_parts)
-
-            # Memory context (per-assistant)
-            assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
-            try:
-                memory_context, _ = self.memory_service.build_memory_context(
-                    query=raw_user_message,
-                    assistant_id=assistant_id,
-                    include_global=True,
-                    include_assistant=assistant_memory_enabled,
-                )
-                if memory_context:
-                    system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
-            except Exception as e:
-                logger.warning(f"[GroupChat] Memory retrieval failed for {assistant_id}: {e}")
-
-            # RAG context (per-assistant)
-            rag_context, _ = await self._build_rag_context_and_sources(
-                raw_user_message=raw_user_message,
-                assistant_id=assistant_id,
-                assistant_obj=assistant_obj,
-                runtime_model_id=model_id,
-            )
-            if rag_context:
-                system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-            if search_context:
-                system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-
-            # Stream LLM response
-            full_response = ""
-            usage_data = None
-            cost_data = None
-
-            try:
-                async for chunk in call_llm_stream(
-                    messages,
-                    session_id=session_id,
-                    model_id=model_id,
-                    system_prompt=system_prompt,
-                    max_rounds=max_rounds,
-                    reasoning_effort=reasoning_effort,
-                    file_service=self.file_service,
-                    **assistant_params
-                ):
-                    if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                        usage_data = chunk["usage"]
-                        parts = model_id.split(":", 1)
-                        provider_id = parts[0] if len(parts) > 1 else ""
-                        simple_model_id = parts[1] if len(parts) > 1 else model_id
-                        cost_data = self.pricing_service.calculate_cost(
-                            provider_id, simple_model_id, usage_data
-                        )
-                        continue
-
-                    if isinstance(chunk, dict):
-                        # Forward context_info, thinking_duration events
-                        event = dict(chunk)
-                        event["assistant_id"] = assistant_id
-                        event["assistant_turn_id"] = assistant_turn_id
-                        yield event
-                        continue
-
-                    full_response += chunk
-                    yield {
-                        "type": "assistant_chunk",
-                        "assistant_id": assistant_id,
-                        "assistant_turn_id": assistant_turn_id,
-                        "chunk": chunk,
-                    }
-
-            except asyncio.CancelledError:
-                if full_response:
-                    await self.storage.append_message(
-                        session_id, "assistant", full_response,
-                        assistant_id=assistant_id,
-                        context_type=context_type,
-                        project_id=project_id
-                    )
-                raise
-
-            # Save assistant message with assistant_id metadata
-            assistant_message_id = await self.storage.append_message(
-                session_id, "assistant", full_response,
-                usage=usage_data, cost=cost_data,
-                sources=search_sources if search_sources else None,
-                assistant_id=assistant_id,
+                assistant_config_map=assistant_config_map,
+                reasoning_effort=reasoning_effort,
                 context_type=context_type,
-                project_id=project_id
-            )
-
-            # Yield usage/cost
-            if usage_data:
-                usage_event = {
-                    "type": "usage",
-                    "assistant_id": assistant_id,
-                    "assistant_turn_id": assistant_turn_id,
-                    "usage": usage_data.model_dump(),
-                }
-                if cost_data:
-                    usage_event["cost"] = cost_data.model_dump()
-                yield usage_event
-
-            if search_sources:
-                yield {
-                    "type": "sources",
-                    "assistant_id": assistant_id,
-                    "assistant_turn_id": assistant_turn_id,
-                    "sources": search_sources,
-                }
-
-            yield {
-                "type": "assistant_message_id",
-                "assistant_id": assistant_id,
-                "assistant_turn_id": assistant_turn_id,
-                "message_id": assistant_message_id,
-            }
-            yield {
-                "type": "assistant_done",
-                "assistant_id": assistant_id,
-                "assistant_turn_id": assistant_turn_id,
-            }
+                project_id=project_id,
+                search_context=search_context,
+                search_sources=search_sources,
+                trace_id=trace_id,
+            ):
+                yield event
+        else:
+            for assistant_id in group_assistants:
+                assistant_obj = assistant_config_map.get(assistant_id)
+                if not assistant_obj:
+                    logger.warning(f"[GroupChat] Assistant '{assistant_id}' not found, skipping")
+                    continue
+                async for event in self._stream_group_assistant_turn(
+                    session_id=session_id,
+                    assistant_id=assistant_id,
+                    assistant_obj=assistant_obj,
+                    group_assistants=group_assistants,
+                    assistant_name_map=assistant_name_map,
+                    raw_user_message=raw_user_message,
+                    reasoning_effort=reasoning_effort,
+                    context_type=context_type,
+                    project_id=project_id,
+                    search_context=search_context,
+                    search_sources=search_sources,
+                ):
+                    yield event
 
         # Title generation (once, after all assistants)
-        is_temporary = session.get("temporary", False) if session else False
         try:
             from .title_generation_service import TitleGenerationService
             title_service = TitleGenerationService(storage=self.storage)
-            updated_session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-            message_count = len(updated_session['state']['messages'])
-            current_title = updated_session['title']
+            updated_session = await self.storage.get_session(
+                session_id,
+                context_type=context_type,
+                project_id=project_id,
+            )
+            is_temporary = updated_session.get("temporary", False)
+            message_count = len(updated_session["state"]["messages"])
+            current_title = updated_session["title"]
             if not is_temporary and title_service.should_generate_title(message_count, current_title):
                 asyncio.create_task(title_service.generate_title_async(session_id))
         except Exception as e:

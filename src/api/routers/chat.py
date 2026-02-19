@@ -244,6 +244,7 @@ async def chat_stream(
                 project_id=request.project_id
             )
             group_assistants = session_data.get("group_assistants")
+            group_mode = session_data.get("group_mode", "round_robin")
 
             if group_assistants and len(group_assistants) >= 2:
                 # Group chat: process with multiple assistants
@@ -251,6 +252,7 @@ async def chat_stream(
                     request.session_id,
                     request.message,
                     group_assistants=group_assistants,
+                    group_mode=group_mode,
                     skip_user_append=request.skip_user_message,
                     reasoning_effort=request.reasoning_effort,
                     attachments=request.attachments,
