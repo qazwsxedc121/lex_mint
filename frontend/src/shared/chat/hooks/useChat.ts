@@ -12,6 +12,7 @@ import type {
   ContextInfo,
   GroupChatMode,
   GroupTimelineEvent,
+  ChatTargetType,
 } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
 
@@ -39,6 +40,7 @@ export function useChat(sessionId: string | null) {
   const [isComparing, setIsComparing] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [currentAssistantId, setCurrentAssistantId] = useState<string | null>(null);
+  const [currentTargetType, setCurrentTargetType] = useState<ChatTargetType>('model');
   const [totalUsage, setTotalUsage] = useState<TokenUsage | null>(null);
   const [totalCost, setTotalCost] = useState<CostInfo | null>(null);
   const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
@@ -103,6 +105,7 @@ export function useChat(sessionId: string | null) {
       setMessages([]);
       setCurrentModelId(null);
       setCurrentAssistantId(null);
+      setCurrentTargetType('model');
       setTotalUsage(null);
       setTotalCost(null);
       setFollowupQuestions([]);
@@ -139,6 +142,14 @@ export function useChat(sessionId: string | null) {
               if (msg.role !== 'assistant' || !msg.assistant_id) {
                 return msg;
               }
+              const modelParticipantMatch = msg.assistant_id.match(/^model::(.+)$/);
+              if (modelParticipantMatch) {
+                const modelCompositeId = modelParticipantMatch[1];
+                return {
+                  ...msg,
+                  assistant_name: msg.assistant_name || modelCompositeId,
+                };
+              }
               const assistant = assistantMap.get(msg.assistant_id);
               if (!assistant) {
                 return msg;
@@ -171,6 +182,10 @@ export function useChat(sessionId: string | null) {
       setMessages(loadedMessages);
       setCurrentModelId(session.model_id || null);
       setCurrentAssistantId(session.assistant_id || null);
+      const inferredTargetType: ChatTargetType =
+        session.target_type ||
+        (session.assistant_id && !session.assistant_id.startsWith('__legacy_model_') ? 'assistant' : 'model');
+      setCurrentTargetType(inferredTargetType);
       setTotalUsage(session.total_usage || null);
       setTotalCost(session.total_cost || null);
       setParamOverrides(session.param_overrides || {});
@@ -197,6 +212,7 @@ export function useChat(sessionId: string | null) {
       setMessages([]);
       setCurrentModelId(null);
       setCurrentAssistantId(null);
+      setCurrentTargetType('model');
       setTotalUsage(null);
       setTotalCost(null);
       setContextInfo(null);
@@ -1607,11 +1623,29 @@ export function useChat(sessionId: string | null) {
 
   const updateModelId = (modelId: string) => {
     setCurrentModelId(modelId);
+    setCurrentAssistantId(null);
+    setCurrentTargetType('model');
+    setParamOverrides({});
   };
 
-  const updateAssistantId = (assistantId: string) => {
+  const updateAssistantId = (assistantId: string, modelId?: string) => {
     setCurrentAssistantId(assistantId);
+    if (modelId) {
+      setCurrentModelId(modelId);
+    }
+    setCurrentTargetType('assistant');
     // Clear overrides when switching assistants
+    setParamOverrides({});
+  };
+
+  const updateTarget = (targetType: ChatTargetType, targetId: string, modelId?: string) => {
+    if (targetType === 'assistant') {
+      updateAssistantId(targetId, modelId);
+      return;
+    }
+    setCurrentModelId(targetId);
+    setCurrentAssistantId(null);
+    setCurrentTargetType('model');
     setParamOverrides({});
   };
 
@@ -1737,6 +1771,7 @@ export function useChat(sessionId: string | null) {
     isComparing,
     currentModelId,
     currentAssistantId,
+    currentTargetType,
     totalUsage,
     totalCost,
     followupQuestions,
@@ -1756,6 +1791,7 @@ export function useChat(sessionId: string | null) {
     stopGeneration,
     updateModelId,
     updateAssistantId,
+    updateTarget,
     updateGroupAssistantOrder,
     clearFollowupQuestions,
     generateFollowups,

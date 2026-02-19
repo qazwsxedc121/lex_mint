@@ -94,15 +94,20 @@ export async function createSession(
   projectId?: string,
   temporary: boolean = false,
   groupAssistants?: string[],
-  groupMode?: 'round_robin' | 'committee'
+  groupMode?: 'round_robin' | 'committee',
+  targetType?: 'assistant' | 'model'
 ): Promise<string> {
   const body: {
     model_id?: string;
     assistant_id?: string;
+    target_type?: 'assistant' | 'model';
     temporary?: boolean;
     group_assistants?: string[];
     group_mode?: 'round_robin' | 'committee';
   } = {};
+  if (targetType) {
+    body.target_type = targetType;
+  }
   if (assistantId) {
     body.assistant_id = assistantId;
   } else if (modelId) {
@@ -1259,6 +1264,29 @@ export async function updateSessionAssistant(sessionId: string, assistantId: str
   }
 
   await api.put(`/api/sessions/${sessionId}/assistant?${params.toString()}`, { assistant_id: assistantId });
+}
+
+/**
+ * Update session target (assistant or model).
+ */
+export async function updateSessionTarget(
+  sessionId: string,
+  targetType: 'assistant' | 'model',
+  contextType: string = 'chat',
+  projectId?: string,
+  options?: { assistantId?: string; modelId?: string }
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('context_type', contextType);
+  if (projectId) {
+    params.append('project_id', projectId);
+  }
+
+  await api.put(`/api/sessions/${sessionId}/target?${params.toString()}`, {
+    target_type: targetType,
+    assistant_id: options?.assistantId,
+    model_id: options?.modelId,
+  });
 }
 
 /**

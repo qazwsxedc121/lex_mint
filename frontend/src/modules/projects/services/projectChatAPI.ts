@@ -22,8 +22,8 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       return api.getSession(sessionId, contextType, projectId);
     },
 
-    createSession: async (modelId?: string, assistantId?: string, temporary?: boolean) => {
-      return api.createSession(modelId, assistantId, contextType, projectId, temporary || false);
+    createSession: async (modelId?: string, assistantId?: string, temporary?: boolean, targetType?: 'assistant' | 'model') => {
+      return api.createSession(modelId, assistantId, contextType, projectId, temporary || false, undefined, undefined, targetType);
     },
 
     createGroupSession: async (groupAssistants: string[], mode) => {
@@ -64,6 +64,14 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
 
     updateSessionAssistant: async (sessionId: string, assistantId: string) => {
       return api.updateSessionAssistant(sessionId, assistantId, contextType, projectId);
+    },
+
+    updateSessionTarget: async (
+      sessionId: string,
+      targetType: 'assistant' | 'model',
+      options?: { assistantId?: string; modelId?: string }
+    ) => {
+      return api.updateSessionTarget(sessionId, targetType, contextType, projectId, options);
     },
 
     updateGroupAssistants: async (sessionId: string, groupAssistants: string[]) => {

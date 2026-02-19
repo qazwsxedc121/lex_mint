@@ -53,7 +53,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       icon: <PlusIcon className="h-4 w-4" />,
       action: async () => {
         try {
-          const sessionId = await createSession();
+          const sessionId = await createSession(undefined, undefined, 'chat');
           navigate(`/chat/${sessionId}`);
         } catch (err) {
           console.error('Failed to create session:', err);

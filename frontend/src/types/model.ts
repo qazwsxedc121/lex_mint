@@ -22,6 +22,15 @@ export interface ModelCapabilities {
   image_output: boolean;
 }
 
+export interface ChatTemplate {
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+}
+
 // Default capabilities
 export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   context_length: 4096,
@@ -65,6 +74,7 @@ export interface Model {
 
   // Model capabilities (overrides provider defaults)
   capabilities?: ModelCapabilities;
+  chat_template?: ChatTemplate;
 }
 
 export interface DefaultConfig {

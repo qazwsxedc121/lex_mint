@@ -10,6 +10,16 @@ from typing import List, Optional
 from src.providers.types import ApiProtocol, CallMode, ProviderType, ModelCapabilities
 
 
+class ChatTemplate(BaseModel):
+    """Per-model default chat sampling parameters."""
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(default=None, ge=1)
+    top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    top_k: Optional[int] = Field(default=None, ge=1)
+    frequency_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0)
+    presence_penalty: Optional[float] = Field(default=None, ge=-2.0, le=2.0)
+
+
 class Provider(BaseModel):
     """LLM 提供商配置"""
     id: str = Field(..., description="提供商唯一标识")
@@ -51,6 +61,10 @@ class Model(BaseModel):
     capabilities: Optional[ModelCapabilities] = Field(
         default=None,
         description="模型能力（覆盖 provider 默认值）"
+    )
+    chat_template: Optional[ChatTemplate] = Field(
+        default=None,
+        description="模型直聊默认参数模板"
     )
 
     @model_validator(mode="before")

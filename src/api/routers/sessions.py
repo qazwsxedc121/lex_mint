@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Body, Query, UploadFile, File
 from fastapi.responses import Response
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Literal
 from pydantic import BaseModel
 import logging
 import re
@@ -16,6 +16,7 @@ from ..services.conversation_storage import ConversationStorage, create_storage_
 from ..services.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
+from ..services.group_participants import parse_group_participant
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class CreateSessionRequest(BaseModel):
     """创建会话请求"""
     model_id: Optional[str] = None  # 向后兼容
     assistant_id: Optional[str] = None  # 新方式：使用助手
+    target_type: Optional[Literal["assistant", "model"]] = None
     temporary: bool = False
     group_assistants: Optional[List[str]] = None  # Group chat: list of assistant IDs
     group_mode: Optional[str] = None  # Group chat mode: "round_robin" | "committee"
@@ -40,6 +42,13 @@ class UpdateModelRequest(BaseModel):
 class UpdateAssistantRequest(BaseModel):
     """更新助手请求"""
     assistant_id: str
+
+
+class UpdateTargetRequest(BaseModel):
+    """更新会话对话目标请求"""
+    target_type: Literal["assistant", "model"]
+    assistant_id: Optional[str] = None
+    model_id: Optional[str] = None
 
 
 class UpdateTitleRequest(BaseModel):
@@ -79,35 +88,71 @@ def get_storage() -> ConversationStorage:
 
 
 async def _normalize_and_validate_group_assistants(group_assistants: Optional[List[str]]) -> Optional[List[str]]:
-    """Normalize and validate group assistant IDs for create/update operations."""
+    """Normalize and validate mixed group participants for create/update operations."""
     if group_assistants is None:
         return None
 
     normalized: List[str] = []
     seen = set()
-    for assistant_id in group_assistants:
-        if not isinstance(assistant_id, str):
-            raise HTTPException(status_code=400, detail="assistant IDs must be strings")
-        cleaned = assistant_id.strip()
-        if not cleaned or cleaned in seen:
+    for participant_token in group_assistants:
+        if not isinstance(participant_token, str):
+            raise HTTPException(status_code=400, detail="group participant IDs must be strings")
+        try:
+            participant = parse_group_participant(participant_token)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        stable_token = participant.token
+        if stable_token in seen:
             continue
-        seen.add(cleaned)
-        normalized.append(cleaned)
+        seen.add(stable_token)
+        normalized.append(stable_token)
 
     if len(normalized) < 2:
-        raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique assistants")
+        raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique participants")
 
-    # Validate all assistant IDs exist and are enabled
+    # Validate all participant IDs exist and are enabled.
     from ..services.assistant_config_service import AssistantConfigService
+    from ..services.model_config_service import ModelConfigService
     assistant_service = AssistantConfigService()
-    for assistant_id in normalized:
-        assistant = await assistant_service.get_assistant(assistant_id)
-        if not assistant:
-            raise HTTPException(status_code=400, detail=f"Assistant '{assistant_id}' not found")
-        if not assistant.enabled:
-            raise HTTPException(status_code=400, detail=f"Assistant '{assistant_id}' is not enabled")
+    model_service = ModelConfigService()
+    for participant_token in normalized:
+        participant = parse_group_participant(participant_token)
+        if participant.kind == "assistant":
+            assistant = await assistant_service.get_assistant(participant.value)
+            if not assistant:
+                raise HTTPException(status_code=400, detail=f"Assistant '{participant.value}' not found")
+            if not assistant.enabled:
+                raise HTTPException(status_code=400, detail=f"Assistant '{participant.value}' is not enabled")
+            continue
+
+        model = await model_service.get_model(participant.value)
+        if not model:
+            raise HTTPException(status_code=400, detail=f"Model '{participant.value}' not found")
+        if not model.enabled:
+            raise HTTPException(status_code=400, detail=f"Model '{participant.value}' is not enabled")
 
     return normalized
+
+
+def _normalize_target_type(
+    target_type: Optional[str],
+    *,
+    assistant_id: Optional[str],
+    model_id: Optional[str],
+) -> Optional[str]:
+    """Infer target type for backward compatibility and explicit create requests."""
+    if target_type is not None:
+        normalized = target_type.strip().lower()
+        if normalized not in {"assistant", "model"}:
+            raise HTTPException(status_code=400, detail="target_type must be one of: assistant, model")
+        return normalized
+
+    if assistant_id:
+        return "assistant"
+    if model_id:
+        return "model"
+    return None
 
 
 def _normalize_and_validate_group_mode(
@@ -158,6 +203,11 @@ async def create_session(
 
     assistant_id = request.assistant_id if request else None
     model_id = request.model_id if request else None
+    target_type = _normalize_target_type(
+        request.target_type if request else None,
+        assistant_id=assistant_id,
+        model_id=model_id,
+    )
     temporary = request.temporary if request else False
     group_assistants = request.group_assistants if request else None
     group_assistants = await _normalize_and_validate_group_assistants(group_assistants)
@@ -166,7 +216,8 @@ async def create_session(
         group_assistants,
     )
     logger.info(
-        f"Creating new session (assistant: {assistant_id or 'default'}, model: {model_id or 'default'}, "
+        f"Creating new session (target_type: {target_type or 'default'}, assistant: {assistant_id or 'default'}, "
+        f"model: {model_id or 'default'}, "
         f"temporary: {temporary}, group: {len(group_assistants) if group_assistants else 0}, mode: {group_mode or 'n/a'})..."
     )
 
@@ -174,6 +225,7 @@ async def create_session(
         session_id = await storage.create_session(
             model_id=model_id,
             assistant_id=assistant_id,
+            target_type=target_type,
             context_type=context_type,
             project_id=project_id,
             temporary=temporary,
@@ -417,7 +469,13 @@ async def update_session_model(
 
     logger.info(f"🔄 更新会话模型: {session_id[:16]} -> {request.model_id}")
     try:
-        await storage.update_session_model(session_id, request.model_id, context_type=context_type, project_id=project_id)
+        await storage.update_session_target(
+            session_id,
+            target_type="model",
+            model_id=request.model_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
         logger.info(f"✅ 模型更新成功")
         return {"message": "Model updated successfully"}
     except FileNotFoundError:
@@ -457,7 +515,13 @@ async def update_session_assistant(
 
     logger.info(f"🔄 更新会话助手: {session_id[:16]} -> {request.assistant_id}")
     try:
-        await storage.update_session_assistant(session_id, request.assistant_id, context_type=context_type, project_id=project_id)
+        await storage.update_session_target(
+            session_id,
+            target_type="assistant",
+            assistant_id=request.assistant_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
         logger.info(f"✅ 助手更新成功")
         return {"message": "Assistant updated successfully"}
     except FileNotFoundError:
@@ -465,6 +529,41 @@ async def update_session_assistant(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         logger.error(f"❌ 助手错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/{session_id}/target", response_model=Dict[str, str])
+async def update_session_target(
+    session_id: str,
+    request: UpdateTargetRequest,
+    context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
+    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage)
+):
+    """Update session chat target (assistant or model)."""
+    if context_type == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    logger.info(
+        "🔄 更新会话目标: %s -> %s (assistant=%s model=%s)",
+        session_id[:16],
+        request.target_type,
+        request.assistant_id,
+        request.model_id,
+    )
+    try:
+        await storage.update_session_target(
+            session_id,
+            target_type=request.target_type,
+            assistant_id=request.assistant_id,
+            model_id=request.model_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+        return {"message": "Session target updated successfully"}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
