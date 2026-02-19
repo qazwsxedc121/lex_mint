@@ -75,6 +75,7 @@ class RagToolService:
 
         self._citation_to_ref: Dict[str, str] = {}
         self._ref_to_citation: Dict[str, str] = {}
+        self._search_cache: Dict[str, Dict[str, Any]] = {}
 
     @staticmethod
     def _json(data: Dict[str, Any]) -> str:
@@ -97,6 +98,28 @@ class RagToolService:
         if len(compact) <= max_chars:
             return compact
         return f"{compact[:max_chars]}..."
+
+    @staticmethod
+    def _normalize_query(query: str) -> str:
+        lowered = (query or "").strip().lower()
+        # Keep only word-ish tokens so tiny punctuation changes hit the same cache key.
+        lowered = re.sub(r"[^\w\s]", " ", lowered)
+        return " ".join(lowered.split())
+
+    @staticmethod
+    def _search_cache_key(normalized_query: str, top_k: int) -> str:
+        return f"{normalized_query}|k:{int(top_k)}"
+
+    def _restore_ref_maps_from_hits(self, hits: List[Dict[str, Any]]) -> None:
+        self._citation_to_ref.clear()
+        self._ref_to_citation.clear()
+        for hit in hits:
+            citation_id = str(hit.get("citation_id") or "").strip()
+            ref_id = str(hit.get("ref_id") or "").strip()
+            if not citation_id or not ref_id:
+                continue
+            self._citation_to_ref[citation_id] = ref_id
+            self._ref_to_citation[ref_id] = citation_id
 
     @staticmethod
     def build_ref_id(*, kb_id: str, doc_id: str, chunk_index: int) -> str:
@@ -126,6 +149,26 @@ class RagToolService:
             return self._error("NO_KB_ACCESS", "assistant has no bound knowledge bases")
 
         safe_top_k = max(1, min(int(top_k or 5), self._MAX_TOP_K))
+        normalized_query = self._normalize_query(query_text)
+        cache_key = self._search_cache_key(normalized_query, safe_top_k)
+        cached = self._search_cache.get(cache_key)
+        if cached:
+            cached_hits = list(cached.get("hits") or [])
+            self._restore_ref_maps_from_hits(cached_hits)
+            payload: Dict[str, Any] = {
+                "ok": True,
+                "query_original": query_text,
+                "query_effective": cached.get("query_effective", query_text),
+                "retrieval_queries": cached.get("retrieval_queries", [query_text]),
+                "planner_applied": bool(cached.get("planner_applied", False)),
+                "normalized_query": normalized_query,
+                "from_cache": True,
+                "duplicate_suppressed": True,
+                "hits": cached_hits,
+            }
+            if include_diagnostics:
+                payload["diagnostics"] = dict(cached.get("diagnostics") or {})
+            return self._json(payload)
 
         try:
             results, diagnostics = await self.rag_service.retrieve_with_diagnostics(
@@ -138,8 +181,6 @@ class RagToolService:
             logger.warning("search_knowledge failed: %s", e)
             return self._error("RETRIEVAL_FAILED", f"search failed: {e}")
 
-        self._citation_to_ref.clear()
-        self._ref_to_citation.clear()
         hits: List[Dict[str, Any]] = []
         for index, result in enumerate(results[:safe_top_k], start=1):
             ref_id = self.build_ref_id(
@@ -148,8 +189,6 @@ class RagToolService:
                 chunk_index=result.chunk_index,
             )
             citation_id = f"S{index}"
-            self._citation_to_ref[citation_id] = ref_id
-            self._ref_to_citation[ref_id] = citation_id
             score_value = result.final_score if result.final_score is not None else result.score
             hits.append(
                 {
@@ -163,24 +202,36 @@ class RagToolService:
                     "snippet": self._normalize_snippet(result.content),
                 }
             )
+        self._restore_ref_maps_from_hits(hits)
 
+        condensed_diagnostics = {
+            "retrieval_mode": diagnostics.get("retrieval_mode"),
+            "raw_count": diagnostics.get("raw_count"),
+            "selected_count": diagnostics.get("selected_count"),
+            "retrieval_query_count": diagnostics.get("retrieval_query_count"),
+            "query_transform_applied": diagnostics.get("query_transform_applied"),
+            "rerank_applied": diagnostics.get("rerank_applied"),
+        }
         payload: Dict[str, Any] = {
             "ok": True,
             "query_original": query_text,
             "query_effective": diagnostics.get("query_effective", query_text),
             "retrieval_queries": diagnostics.get("retrieval_queries", [query_text]),
             "planner_applied": bool(diagnostics.get("retrieval_query_planner_applied", False)),
+            "normalized_query": normalized_query,
+            "from_cache": False,
+            "duplicate_suppressed": False,
+            "hits": hits,
+        }
+        self._search_cache[cache_key] = {
+            "query_effective": payload["query_effective"],
+            "retrieval_queries": list(payload["retrieval_queries"] or [query_text]),
+            "planner_applied": payload["planner_applied"],
+            "diagnostics": condensed_diagnostics,
             "hits": hits,
         }
         if include_diagnostics:
-            payload["diagnostics"] = {
-                "retrieval_mode": diagnostics.get("retrieval_mode"),
-                "raw_count": diagnostics.get("raw_count"),
-                "selected_count": diagnostics.get("selected_count"),
-                "retrieval_query_count": diagnostics.get("retrieval_query_count"),
-                "query_transform_applied": diagnostics.get("query_transform_applied"),
-                "rerank_applied": diagnostics.get("rerank_applied"),
-            }
+            payload["diagnostics"] = condensed_diagnostics
 
         return self._json(payload)
 

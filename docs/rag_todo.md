@@ -5,6 +5,13 @@ Status legend:
 - `[-]` in progress
 - `[x]` done
 
+## Phase 0 - Active RAG Foundation (P0)
+
+- `[x]` Implement retrieval query planner service and wire it into RAG diagnostics
+- `[x]` Implement structured source-context injection with runtime toggle
+- `[x]` Implement tool-based RAG (`search_knowledge` / `read_knowledge`) with assistant-scoped KB access
+- `[x]` Add tool-loop finalization fallback after max tool rounds (avoid incomplete tail responses)
+
 ## Phase 1 - Evaluation and Optimization Loop
 
 - `[x]` Build a retrieval evaluation loop (dataset format + script + report output)

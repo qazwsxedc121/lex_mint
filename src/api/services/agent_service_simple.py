@@ -339,6 +339,64 @@ class AgentService:
                 merged.extend(group)
         return merged
 
+    @staticmethod
+    def _merge_tool_diagnostics_into_sources(
+        all_sources: List[Dict[str, Any]],
+        tool_diagnostics: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not tool_diagnostics:
+            return all_sources
+
+        payload = {
+            "tool_search_count": int(tool_diagnostics.get("tool_search_count", 0) or 0),
+            "tool_search_unique_count": int(
+                tool_diagnostics.get("tool_search_unique_count", 0) or 0
+            ),
+            "tool_search_duplicate_count": int(
+                tool_diagnostics.get("tool_search_duplicate_count", 0) or 0
+            ),
+            "tool_read_count": int(tool_diagnostics.get("tool_read_count", 0) or 0),
+            "tool_finalize_reason": str(
+                tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
+            ),
+        }
+
+        diagnostics_source: Optional[Dict[str, Any]] = None
+        for source in reversed(all_sources):
+            if str(source.get("type", "")) == "rag_diagnostics":
+                diagnostics_source = source
+                break
+
+        should_create_new = (
+            payload["tool_search_count"] > 0
+            or payload["tool_read_count"] > 0
+            or payload["tool_search_duplicate_count"] > 0
+            or payload["tool_finalize_reason"] != "normal_no_tools"
+        )
+        if diagnostics_source is None:
+            if not should_create_new:
+                return all_sources
+            diagnostics_source = {
+                "type": "rag_diagnostics",
+                "title": "RAG Diagnostics",
+                "snippet": "Tool diagnostics",
+            }
+            all_sources.append(diagnostics_source)
+
+        diagnostics_source.update(payload)
+        tool_snippet = (
+            f"tool s:{payload['tool_search_count']} "
+            f"u:{payload['tool_search_unique_count']} "
+            f"d:{payload['tool_search_duplicate_count']} "
+            f"r:{payload['tool_read_count']} "
+            f"f:{payload['tool_finalize_reason']}"
+        )
+        existing_snippet = str(diagnostics_source.get("snippet", "") or "").strip()
+        diagnostics_source["snippet"] = (
+            f"{existing_snippet} | {tool_snippet}" if existing_snippet else tool_snippet
+        )
+        return all_sources
+
     def _is_structured_source_context_enabled(self) -> bool:
         try:
             self.rag_config_service.reload_config()
@@ -918,6 +976,7 @@ class AgentService:
         full_response = ""
         usage_data: Optional[TokenUsage] = None
         cost_data: Optional[CostInfo] = None
+        tool_diagnostics: Optional[Dict[str, Any]] = None
 
         try:
             # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort, file_service, tools
@@ -961,6 +1020,10 @@ class AgentService:
                     yield chunk
                     continue
 
+                if isinstance(chunk, dict) and chunk.get("type") == "tool_diagnostics":
+                    tool_diagnostics = chunk
+                    continue
+
                 full_response += chunk
                 yield chunk
 
@@ -982,6 +1045,8 @@ class AgentService:
 
         print(f"[Step 4] Saving complete AI response to file...")
         logger.info(f"[Step 4] Saving complete AI response")
+        if tool_diagnostics:
+            all_sources = self._merge_tool_diagnostics_into_sources(all_sources, tool_diagnostics)
         assistant_message_id = await self.storage.append_message(
             session_id, "assistant", full_response,
             usage=usage_data, cost=cost_data,
@@ -1041,6 +1106,12 @@ class AgentService:
             if cost_data:
                 usage_event["cost"] = cost_data.model_dump()
             yield usage_event
+
+        if all_sources:
+            yield {
+                "type": "sources",
+                "sources": all_sources,
+            }
 
         # Yield assistant message ID so frontend can update UI
         assistant_message_id_event = {

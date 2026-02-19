@@ -990,6 +990,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                           {' | '}bm25_raw {latestRagDiagnostics.bm25_raw_count ?? '-'}
                           {' | '}bm25_cov {latestRagDiagnostics.bm25_min_term_coverage != null ? latestRagDiagnostics.bm25_min_term_coverage.toFixed(2) : '-'}
                         </div>
+                        <div>
+                          tool_search {latestRagDiagnostics.tool_search_count ?? 0}
+                          {' | '}tool_unique {latestRagDiagnostics.tool_search_unique_count ?? 0}
+                          {' | '}tool_dup {latestRagDiagnostics.tool_search_duplicate_count ?? 0}
+                          {' | '}tool_read {latestRagDiagnostics.tool_read_count ?? 0}
+                          {' | '}tool_finalize {latestRagDiagnostics.tool_finalize_reason || '-'}
+                        </div>
                       </div>
                     </div>
                   )}

@@ -184,6 +184,11 @@ def test_build_rag_diagnostics_source_contains_expected_fields():
     assert source["reorder_strategy"] == "long_context"
     assert source["requested_kb_count"] == 3
     assert source["best_score"] == pytest.approx(0.91)
+    assert source["tool_search_count"] == 0
+    assert source["tool_search_unique_count"] == 0
+    assert source["tool_search_duplicate_count"] == 0
+    assert source["tool_read_count"] == 0
+    assert source["tool_finalize_reason"] == "normal_no_tools"
 
 
 def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):

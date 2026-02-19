@@ -158,22 +158,22 @@ LobeHub 的“主动”不仅在工具调用，还在 **首轮用户消息前的
 
 ---
 
-## 9. 对 lex_mint_rag 的落地启发（建议优先级）
+## 9. 对 lex_mint_rag 的落地启发（按当前进展重排）
 
-### P0（先对齐“主动式 RAG”体验）
-- 增加内建工具：`searchKnowledgeBase` + `readKnowledge` 两阶段。
-- 在系统提示里明确“先搜后读”规则，避免盲读大文件。
-- 聊天前注入 KB 元信息（而非全文），让模型先知道“可搜什么”。
+### Sprint 1（质量门禁）
+- 固化真实问题回归集（不显式提示 function call）。
+- 明确基线阈值：Recall@K / MRR / citation hit rate，并接入 CI 阻断。
+- 新增工具链路指标：`read` 触发率、重复 `search` 比率、最终收敛轮次。
 
-### P1（工程化能力）
-- 统一异步任务链：`parse -> chunk -> embedding`，并记录任务状态与错误。
-- 文件与 KB 关系建模（`knowledge_base_files` 风格）+ agent 的 enabled 开关。
-- 删除链路保证 embeddings/chunks 及时回收。
+### Sprint 2（工具行为治理）
+- 强化“先搜后读”策略稳定性（证据型请求优先 `read_knowledge`）。
+- 加入重复 search 抑制（相似 query 限次）。
+- 保持聊天前知识感知注入，但避免过量全文注入。
 
-### P2（质量与安全）
-- 补齐 reranker/hybrid（把现有配置真正落到召回链路）。
-- 检索 SQL 全链路显式加 `userId` 约束，降低跨租户风险。
-- 统一 topK 默认值（目前 15/20 有分歧）：`learn_proj/lobehub/packages/builtin-tool-knowledge-base/src/manifest.ts:20`、`learn_proj/lobehub/packages/builtin-tool-knowledge-base/src/executor/index.ts:40`。
+### Sprint 3（治理与扩展）
+- 统一附件/网页/KB 的 source/citation 协议与渲染。
+- 设计并落地 KB ACL（owner/read/write 或 assistant scope）。
+- 在现有检索栈基础上引入轻量 intent routing（按 query 类型切策略）。
 
 ---
 

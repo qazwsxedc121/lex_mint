@@ -590,6 +590,12 @@ async def call_llm_stream(
 
         tool_loop_runner = ToolLoopRunner(max_tool_rounds=3)
         tool_loop_state = ToolLoopState(current_messages=list(langchain_messages))
+        latest_user_text = ""
+        for raw_msg in reversed(messages):
+            if str(raw_msg.get("role", "")).strip().lower() == "user":
+                latest_user_text = str(raw_msg.get("content") or "")
+                break
+        tool_loop_state.evidence_intent = tool_loop_runner.detect_evidence_intent(latest_user_text)
 
         while True:
             in_thinking_phase = False
@@ -658,6 +664,17 @@ async def call_llm_stream(
 
             full_response += round_content
 
+            if tool_loop_runner.should_request_read_compensation(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+            ):
+                if round_content and full_response.endswith(round_content):
+                    full_response = full_response[: -len(round_content)]
+                print("[TOOLS] Evidence request detected, asking model to call read_knowledge before final answer")
+                logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
+                tool_loop_runner.apply_read_compensation_prompt(tool_loop_state)
+                continue
+
             # Finalization pass intentionally disables tools; finish after this round.
             if tool_loop_runner.should_finish_round(
                 tool_loop_state,
@@ -692,6 +709,11 @@ async def call_llm_stream(
                 round_tool_calls,
                 tool_executor=tool_executor,
             )
+            tool_loop_runner.record_round_activity(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+                tool_results=tool_results,
+            )
             for tr in tool_results:
                 print(f"[TOOLS]   {tr['name']} -> {tr['result'][:100]}")
 
@@ -709,6 +731,16 @@ async def call_llm_stream(
             # Reset for next round
             round_content = ""
             round_tool_calls = []
+
+        if tool_loop_runner.should_inject_fallback_answer(tool_loop_state, full_response):
+            injected = tool_loop_runner.build_fallback_answer(tool_loop_state)
+            if full_response.strip():
+                injected = f"\n\n{injected}"
+            full_response += injected
+            tool_loop_state.tool_finalize_reason = "fallback_empty_answer"
+            yield injected
+
+        yield tool_loop_runner.build_tool_diagnostics_event(tool_loop_state)
 
         # Yield usage data at the end
         if final_usage:

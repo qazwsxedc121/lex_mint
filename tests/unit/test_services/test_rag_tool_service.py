@@ -8,17 +8,22 @@ from src.api.services.rag_tool_service import RagToolService
 
 
 class _FakeRagService:
+    def __init__(self):
+        self.calls = 0
+
     async def retrieve_with_diagnostics(self, *, query, kb_ids, top_k, runtime_model_id):
         _ = (query, kb_ids, top_k, runtime_model_id)
+        self.calls += 1
+        is_other = "other" in (query or "").lower()
         return (
             [
                 RagResult(
-                    content="Chunk content for testing.",
+                    content="Chunk content for testing." if not is_other else "Other chunk for testing.",
                     score=0.42,
                     kb_id="kb_test",
-                    doc_id="doc_1",
-                    filename="doc.md",
-                    chunk_index=3,
+                    doc_id="doc_1" if not is_other else "doc_2",
+                    filename="doc.md" if not is_other else "other.md",
+                    chunk_index=3 if not is_other else 1,
                 )
             ],
             {
@@ -34,15 +39,15 @@ class _FakeRagService:
 
 class _FakeBm25Service:
     def list_document_chunks_in_range(self, *, kb_id, doc_id, start_index, end_index, limit):
-        _ = (kb_id, doc_id, start_index, end_index, limit)
+        _ = (start_index, end_index, limit)
         return [
             {
                 "chunk_id": "c1",
-                "kb_id": "kb_test",
-                "doc_id": "doc_1",
-                "filename": "doc.md",
-                "chunk_index": 3,
-                "content": "Exact chunk payload",
+                "kb_id": kb_id,
+                "doc_id": doc_id,
+                "filename": "doc.md" if doc_id == "doc_1" else "other.md",
+                "chunk_index": 3 if doc_id == "doc_1" else 1,
+                "content": "Exact chunk payload" if doc_id == "doc_1" else "Other exact payload",
             }
         ]
 
@@ -53,12 +58,12 @@ class _FakeSqliteVecService:
         return []
 
 
-def _build_service(allowed_kb_ids=None):
+def _build_service(allowed_kb_ids=None, rag_service=None):
     return RagToolService(
         assistant_id="assistant_a",
         allowed_kb_ids=allowed_kb_ids if allowed_kb_ids is not None else ["kb_test"],
         runtime_model_id="deepseek:deepseek-chat",
-        rag_service=_FakeRagService(),
+        rag_service=rag_service or _FakeRagService(),
         bm25_service=_FakeBm25Service(),
         sqlite_vec_service=_FakeSqliteVecService(),
     )
@@ -130,3 +135,33 @@ def test_execute_tool_returns_none_for_unknown_name():
     service = _build_service()
     result = asyncio.run(service.execute_tool("unknown_tool", {}))
     assert result is None
+
+
+def test_search_knowledge_uses_request_cache_for_duplicate_query():
+    fake_rag = _FakeRagService()
+    service = _build_service(rag_service=fake_rag)
+
+    first = json.loads(asyncio.run(service.search_knowledge(query="What is Active RAG?", top_k=3)))
+    second = json.loads(asyncio.run(service.search_knowledge(query="what is active rag", top_k=3)))
+
+    assert first["ok"] is True and second["ok"] is True
+    assert first["from_cache"] is False
+    assert first["duplicate_suppressed"] is False
+    assert second["from_cache"] is True
+    assert second["duplicate_suppressed"] is True
+    assert fake_rag.calls == 1
+
+
+def test_cached_search_restores_citation_mapping_after_other_query():
+    fake_rag = _FakeRagService()
+    service = _build_service(rag_service=fake_rag)
+
+    _ = asyncio.run(service.search_knowledge(query="first query", top_k=3))
+    _ = asyncio.run(service.search_knowledge(query="other query", top_k=3))
+    third = json.loads(asyncio.run(service.search_knowledge(query="first query", top_k=3)))
+    read_payload = json.loads(asyncio.run(service.read_knowledge(refs=["S1"], max_chars=6000)))
+
+    assert third["from_cache"] is True
+    assert third["hits"][0]["doc_id"] == "doc_1"
+    assert read_payload["ok"] is True
+    assert read_payload["sources"][0]["doc_id"] == "doc_1"

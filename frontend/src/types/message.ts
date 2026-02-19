@@ -89,6 +89,11 @@ export interface SearchSource {
   rerank_applied?: boolean;
   rerank_weight?: number;
   rerank_model?: string;
+  tool_search_count?: number;
+  tool_search_unique_count?: number;
+  tool_search_duplicate_count?: number;
+  tool_read_count?: number;
+  tool_finalize_reason?: 'normal_no_tools' | 'max_round_force_finalize' | 'fallback_empty_answer';
 }
 
 export interface UploadedFile {
