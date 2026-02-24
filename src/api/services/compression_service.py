@@ -907,7 +907,7 @@ class CompressionService:
         self,
         session_id: str,
         context_type: str = "chat",
-        project_id: str = None,
+        project_id: Optional[str] = None,
     ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """Compress conversation context by summarizing messages via LLM.
 
@@ -1130,7 +1130,7 @@ class CompressionService:
         self,
         session_id: str,
         context_type: str = "chat",
-        project_id: str = None,
+        project_id: Optional[str] = None,
     ) -> Optional[Tuple[str, int]]:
         """Non-streaming compression for auto-trigger use.
 

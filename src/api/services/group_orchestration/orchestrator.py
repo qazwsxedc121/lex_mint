@@ -3,14 +3,22 @@
 import asyncio
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
+from .base import (
+    BaseOrchestrator,
+    OrchestrationCancelToken,
+    OrchestrationEvent,
+    OrchestrationRequest,
+)
 from .runtime import CommitteeRuntime
 from .settings import ResolvedCommitteeSettings
 from .supervisor import CommitteeSupervisor
 from .types import CommitteeDecision, CommitteeRuntimeConfig, CommitteeRuntimeState, CommitteeTurnRecord
 
 
-class CommitteeOrchestrator:
+class CommitteeOrchestrator(BaseOrchestrator):
     """Runs committee rounds and emits group events without owning business services."""
+
+    mode = "committee"
 
     def __init__(
         self,
@@ -39,6 +47,35 @@ class CommitteeOrchestrator:
         self.log_group_trace = log_group_trace
         self.group_trace_preview_chars = group_trace_preview_chars
 
+    async def stream(
+        self,
+        request: OrchestrationRequest,
+        *,
+        cancel_token: Optional[OrchestrationCancelToken] = None,
+    ) -> AsyncIterator[OrchestrationEvent]:
+        """Mode-agnostic interface used by orchestrator callers."""
+        if request.mode and request.mode != self.mode:
+            raise ValueError(f"CommitteeOrchestrator only supports mode={self.mode}")
+        if not isinstance(request.settings, ResolvedCommitteeSettings):
+            raise ValueError("CommitteeOrchestrator requires ResolvedCommitteeSettings")
+
+        async for event in self.process(
+            session_id=request.session_id,
+            raw_user_message=request.user_message,
+            group_assistants=request.participants,
+            committee_settings=request.settings,
+            assistant_name_map=request.assistant_name_map,
+            assistant_config_map=request.assistant_config_map,
+            reasoning_effort=request.reasoning_effort,
+            context_type=request.context_type,
+            project_id=request.project_id,
+            search_context=request.search_context,
+            search_sources=request.search_sources,
+            trace_id=request.trace_id,
+            cancel_token=cancel_token,
+        ):
+            yield self.normalize_event(event)
+
     async def process(
         self,
         *,
@@ -54,6 +91,7 @@ class CommitteeOrchestrator:
         search_context: Optional[str],
         search_sources: List[Dict[str, Any]],
         trace_id: Optional[str] = None,
+        cancel_token: Optional[OrchestrationCancelToken] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
         participant_order = [
@@ -64,7 +102,7 @@ class CommitteeOrchestrator:
         if not participant_order:
             yield {
                 "type": "group_done",
-                "mode": "committee",
+                "mode": self.mode,
                 "reason": "no_valid_participants",
                 "rounds": 0,
             }
@@ -177,6 +215,10 @@ class CommitteeOrchestrator:
         }
 
         while runtime.has_remaining_rounds(state):
+            if self.is_cancelled(cancel_token):
+                yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+                return
+
             current_round = runtime.current_round(state)
             supervisor_call_context["round"] = current_round
             if trace_id:
@@ -202,7 +244,7 @@ class CommitteeOrchestrator:
                 )
             yield {
                 "type": "group_round_start",
-                "mode": "committee",
+                "mode": self.mode,
                 "round": current_round,
                 "max_rounds": max_rounds,
                 "supervisor_id": supervisor_id,
@@ -212,7 +254,7 @@ class CommitteeOrchestrator:
 
             action_event: Dict[str, Any] = {
                 "type": "group_action",
-                "mode": "committee",
+                "mode": self.mode,
                 "round": current_round,
                 "action": decision.action,
                 "reason": decision.reason,
@@ -266,12 +308,17 @@ class CommitteeOrchestrator:
                 search_sources=search_sources,
                 committee_settings=committee_settings,
                 trace_id=trace_id,
+                cancel_token=cancel_token,
             ):
                 if event.get("type") == "group_done":
                     terminated = True
                 yield event
             if terminated:
                 return
+
+        if self.is_cancelled(cancel_token):
+            yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+            return
 
         async for event in self._stream_supervisor_summary(
             finish_reason="max_rounds_reached",
@@ -291,6 +338,7 @@ class CommitteeOrchestrator:
             search_context=search_context,
             search_sources=search_sources,
             trace_id=trace_id,
+            cancel_token=cancel_token,
         ):
             yield event
 
@@ -317,6 +365,7 @@ class CommitteeOrchestrator:
         search_sources: List[Dict[str, Any]],
         committee_settings: ResolvedCommitteeSettings,
         trace_id: Optional[str],
+        cancel_token: Optional[OrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         """Handle a finish decision by streaming supervisor summary and final done event."""
         finish_reason = decision.reason or "supervisor_finish"
@@ -339,6 +388,7 @@ class CommitteeOrchestrator:
             search_context=search_context,
             search_sources=search_sources,
             trace_id=trace_id,
+            cancel_token=cancel_token,
         ):
             yield event
 
@@ -365,8 +415,13 @@ class CommitteeOrchestrator:
         search_sources: List[Dict[str, Any]],
         committee_settings: ResolvedCommitteeSettings,
         trace_id: Optional[str],
+        cancel_token: Optional[OrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         """Handle parallel_speak by executing selected members concurrently."""
+        if self.is_cancelled(cancel_token):
+            yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+            return
+
         parallel_targets = [
             assistant_id
             for assistant_id in (decision.assistant_ids or [])
@@ -379,7 +434,7 @@ class CommitteeOrchestrator:
             if not fallback_target:
                 yield {
                     "type": "group_done",
-                    "mode": "committee",
+                    "mode": self.mode,
                     "reason": "invalid_parallel_targets",
                     "rounds": state.round_index,
                 }
@@ -408,6 +463,7 @@ class CommitteeOrchestrator:
                 search_sources=search_sources,
                 committee_settings=committee_settings,
                 trace_id=trace_id,
+                cancel_token=cancel_token,
             ):
                 yield event
             return
@@ -442,7 +498,7 @@ class CommitteeOrchestrator:
                     committee_turn_packet=turn_packet,
                     trace_id=trace_id,
                     trace_round=current_round,
-                    trace_mode="committee",
+                    trace_mode=self.mode,
                 ):
                     if event.get("type") == "assistant_message_id":
                         parallel_message_ids[target_id] = event.get("message_id")
@@ -472,6 +528,14 @@ class CommitteeOrchestrator:
         ]
         completed_targets = 0
         while completed_targets < len(tasks):
+            if self.is_cancelled(cancel_token):
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+                return
+
             item = await event_queue.get()
             kind = item.get("kind")
             if kind == "event":
@@ -479,7 +543,7 @@ class CommitteeOrchestrator:
             elif kind == "error":
                 yield {
                     "type": "group_action",
-                    "mode": "committee",
+                    "mode": self.mode,
                     "round": current_round,
                     "action": "parallel_error",
                     "assistant_id": item.get("assistant_id"),
@@ -499,7 +563,7 @@ class CommitteeOrchestrator:
         if not successful_targets:
             yield {
                 "type": "group_done",
-                "mode": "committee",
+                "mode": self.mode,
                 "reason": "parallel_speak_failed",
                 "rounds": state.round_index,
             }
@@ -552,14 +616,27 @@ class CommitteeOrchestrator:
         search_sources: List[Dict[str, Any]],
         committee_settings: ResolvedCommitteeSettings,
         trace_id: Optional[str],
+        cancel_token: Optional[OrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         """Handle standard speak action for a single target assistant."""
+        if self.is_cancelled(cancel_token):
+            yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+            return
+
         target_id = decision.assistant_id
-        target_obj = assistant_config_map.get(target_id)
-        if not target_id or not target_obj:
+        if not target_id:
             yield {
                 "type": "group_done",
-                "mode": "committee",
+                "mode": self.mode,
+                "reason": "invalid_speak_target",
+                "rounds": state.round_index,
+            }
+            return
+        target_obj = assistant_config_map.get(target_id)
+        if not target_obj:
+            yield {
+                "type": "group_done",
+                "mode": self.mode,
                 "reason": "invalid_speak_target",
                 "rounds": state.round_index,
             }
@@ -570,6 +647,10 @@ class CommitteeOrchestrator:
         role_retry_limit = committee_settings.role_retry_limit
         turn_instruction = decision.instruction
         for attempt in range(role_retry_limit + 1):
+            if self.is_cancelled(cancel_token):
+                yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+                return
+
             target_message_id = None
             turn_packet = self.build_committee_turn_packet(
                 state=state,
@@ -593,7 +674,7 @@ class CommitteeOrchestrator:
                 committee_turn_packet=turn_packet,
                 trace_id=trace_id,
                 trace_round=current_round,
-                trace_mode="committee",
+                trace_mode=self.mode,
             ):
                 if event.get("type") == "assistant_message_id":
                     target_message_id = event.get("message_id")
@@ -618,7 +699,7 @@ class CommitteeOrchestrator:
                 )
                 yield {
                     "type": "group_action",
-                    "mode": "committee",
+                    "mode": self.mode,
                     "round": current_round,
                     "action": "role_retry",
                     "assistant_id": target_id,
@@ -718,9 +799,14 @@ class CommitteeOrchestrator:
         search_context: Optional[str],
         search_sources: List[Dict[str, Any]],
         trace_id: Optional[str],
+        cancel_token: Optional[OrchestrationCancelToken],
         draft_summary: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream final supervisor synthesis and emit canonical group_done event."""
+        if self.is_cancelled(cancel_token):
+            yield self._build_cancelled_event(state=state, cancel_token=cancel_token)
+            return
+
         summary_instruction = supervisor.build_summary_instruction(
             state,
             reason=finish_reason,
@@ -748,7 +834,7 @@ class CommitteeOrchestrator:
             committee_turn_packet=summary_packet,
             trace_id=trace_id,
             trace_round=current_round,
-            trace_mode="committee",
+            trace_mode=self.mode,
         ):
             yield event
         if trace_id:
@@ -762,7 +848,25 @@ class CommitteeOrchestrator:
             )
         yield {
             "type": "group_done",
-            "mode": "committee",
+            "mode": self.mode,
             "reason": finish_reason,
+            "rounds": state.round_index,
+        }
+
+    def _build_cancelled_event(
+        self,
+        *,
+        state: CommitteeRuntimeState,
+        cancel_token: Optional[OrchestrationCancelToken],
+    ) -> Dict[str, Any]:
+        reason = "cancelled"
+        if cancel_token and isinstance(cancel_token.reason, str):
+            cleaned_reason = cancel_token.reason.strip()
+            if cleaned_reason:
+                reason = cleaned_reason
+        return {
+            "type": "group_done",
+            "mode": self.mode,
+            "reason": reason,
             "rounds": state.round_index,
         }

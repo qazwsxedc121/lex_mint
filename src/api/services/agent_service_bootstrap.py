@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .chat_input_service import ChatInputService
 from .comparison_storage import ComparisonStorage
 from .file_service import FileService
 from .file_reference_config_service import FileReferenceConfigService
@@ -37,5 +38,13 @@ def bootstrap_agent_service(service: "AgentService", storage: "ConversationStora
     service.rag_config_service = RagConfigService()
     service.source_context_service = SourceContextService()
     service.comparison_storage = ComparisonStorage(service.storage)
+    service.chat_input_service = ChatInputService(service.storage, service.file_service)
+    service.post_turn_service = service._create_post_turn_service()
+    service.context_assembly_service = service._create_context_assembly_service()
     service._committee_policy = CommitteePolicy()
     service._committee_turn_executor = service._create_committee_turn_executor()
+    service._single_turn_orchestrator = service._create_single_turn_orchestrator()
+    service._compare_models_orchestrator = service._create_compare_models_orchestrator()
+    service._group_chat_service = service._create_group_chat_service()
+    service._single_chat_flow_service = service._create_single_chat_flow_service()
+    service._compare_flow_service = service._create_compare_flow_service()

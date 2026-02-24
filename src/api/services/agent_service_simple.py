@@ -1,29 +1,35 @@
 """Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
-from typing import Dict, AsyncIterator, Optional, Any, List, Tuple
+from typing import Dict, AsyncIterator, Optional, Any, List, Tuple, cast
 import logging
-import asyncio
 import uuid
 import re
 import os
 import json
 from types import SimpleNamespace
 
-from src.agents.simple_llm import call_llm, call_llm_stream, _estimate_total_tokens
-from src.providers.types import TokenUsage, CostInfo
+from src.agents.simple_llm import call_llm, call_llm_stream
 from .agent_service_bootstrap import bootstrap_agent_service
+from .chat_input_service import ChatInputService
+from .compare_flow_service import CompareFlowDeps, CompareFlowService
+from .context_assembly_service import ContextAssemblyService
 from .conversation_storage import ConversationStorage
 from .file_reference_config_service import FileReferenceConfig
 from .group_participants import parse_group_participant
+from .group_chat_service import GroupChatDeps, GroupChatService
 from .group_orchestration import (
+    CompareModelsOrchestrator,
     CommitteeOrchestrator,
     CommitteePolicy,
     GroupSettingsResolver,
-    ResolvedCommitteeSettings,
+    RoundRobinOrchestrator,
+    SingleTurnOrchestrator,
     CommitteeRuntimeState,
     CommitteeTurnExecutor,
 )
-from .rag_tool_service import RagToolService
+from .post_turn_service import PostTurnService
+from .service_contracts import AssistantLike, ContextPayload
+from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
 from .group_orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
 logger = logging.getLogger(__name__)
@@ -55,6 +61,19 @@ class AgentService:
     _FILE_CONTEXT_PREVIEW_LINES = 40
     _FILE_CONTEXT_TOTAL_BUDGET_CHARS = 18000
     _GROUP_TRACE_PREVIEW_CHARS = 1600
+
+    # Runtime-initialized service dependencies (set by bootstrap).
+    storage: ConversationStorage
+    pricing_service: Any
+    file_service: Any
+    search_service: Any
+    webpage_service: Any
+    memory_service: Any
+    file_reference_config_service: Any
+    rag_config_service: Any
+    source_context_service: Any
+    comparison_storage: Any
+    _committee_policy: CommitteePolicy
 
     @staticmethod
     def _truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
@@ -132,6 +151,192 @@ class AgentService:
             log_group_trace=self._log_group_trace,
             group_trace_preview_chars=self._GROUP_TRACE_PREVIEW_CHARS,
         )
+
+    def _create_round_robin_orchestrator(self) -> RoundRobinOrchestrator:
+        """Build round-robin orchestrator from current service callbacks."""
+        return RoundRobinOrchestrator(
+            stream_group_assistant_turn=self._stream_group_assistant_turn,
+        )
+
+    def _create_single_turn_orchestrator(self) -> SingleTurnOrchestrator:
+        """Build single-turn orchestrator for standard chat streaming."""
+        return SingleTurnOrchestrator(
+            call_llm_stream=call_llm_stream,
+            pricing_service=self.pricing_service,
+            file_service=self.file_service,
+        )
+
+    def _create_compare_models_orchestrator(self) -> CompareModelsOrchestrator:
+        """Build compare-models orchestrator for multi-model streaming."""
+        return CompareModelsOrchestrator(
+            call_llm_stream=call_llm_stream,
+            pricing_service=self.pricing_service,
+            file_service=self.file_service,
+            resolve_model_name=self._resolve_compare_model_name,
+        )
+
+    def _get_single_turn_orchestrator(self) -> SingleTurnOrchestrator:
+        """Lazily initialize single-turn orchestrator for tests using __new__."""
+        orchestrator = getattr(self, "_single_turn_orchestrator", None)
+        if orchestrator is None:
+            orchestrator = self._create_single_turn_orchestrator()
+            self._single_turn_orchestrator = orchestrator
+        return orchestrator
+
+    def _get_compare_models_orchestrator(self) -> CompareModelsOrchestrator:
+        """Lazily initialize compare-models orchestrator for tests using __new__."""
+        orchestrator = getattr(self, "_compare_models_orchestrator", None)
+        if orchestrator is None:
+            orchestrator = self._create_compare_models_orchestrator()
+            self._compare_models_orchestrator = orchestrator
+        return orchestrator
+
+    def _create_group_chat_service(self) -> GroupChatService:
+        """Build group chat service facade for group-mode runtime flow."""
+        chat_input_service = getattr(self, "chat_input_service", None)
+        if chat_input_service is None and hasattr(self, "storage") and hasattr(self, "file_service"):
+            chat_input_service = self._get_chat_input_service()
+
+        post_turn_service = getattr(self, "post_turn_service", None)
+        if post_turn_service is None and hasattr(self, "storage") and hasattr(self, "memory_service"):
+            post_turn_service = self._get_post_turn_service()
+
+        if chat_input_service is None:
+            async def _missing_prepare_user_input(**_kwargs):
+                raise RuntimeError("chat_input_service is not initialized")
+
+            chat_input_service = SimpleNamespace(prepare_user_input=_missing_prepare_user_input)
+
+        if post_turn_service is None:
+            async def _noop_schedule_title_generation(**_kwargs):
+                return None
+
+            post_turn_service = SimpleNamespace(schedule_title_generation=_noop_schedule_title_generation)
+
+        search_service = getattr(self, "search_service", None)
+        if search_service is None:
+            async def _empty_search(_query):
+                return []
+
+            search_service = SimpleNamespace(
+                search=_empty_search,
+                build_search_context=lambda _query, _sources: None,
+            )
+
+        return GroupChatService(
+            GroupChatDeps(
+                chat_input_service=cast(ChatInputService, chat_input_service),
+                post_turn_service=cast(PostTurnService, post_turn_service),
+                search_service=cast(Any, search_service),
+                build_file_context_block=self._build_file_context_block,
+                build_group_runtime_assistant=self._build_group_runtime_assistant,
+                resolve_group_settings=self._resolve_group_settings,
+                create_committee_orchestrator=self._create_committee_orchestrator,
+                create_round_robin_orchestrator=self._create_round_robin_orchestrator,
+                is_group_trace_enabled=self._is_group_trace_enabled,
+                log_group_trace=self._log_group_trace,
+                truncate_log_text=self._truncate_log_text,
+                group_trace_preview_chars=self._GROUP_TRACE_PREVIEW_CHARS,
+            )
+        )
+
+    def _get_group_chat_service(self) -> GroupChatService:
+        """Lazily initialize group chat service for tests using __new__."""
+        service = getattr(self, "_group_chat_service", None)
+        if service is None:
+            service = self._create_group_chat_service()
+            self._group_chat_service = service
+        return service
+
+    def _create_single_chat_flow_service(self) -> SingleChatFlowService:
+        """Build single-chat flow service facade for standard chat stream."""
+        return SingleChatFlowService(
+            SingleChatFlowDeps(
+                storage=self.storage,
+                chat_input_service=self._get_chat_input_service(),
+                post_turn_service=self._get_post_turn_service(),
+                single_turn_orchestrator=self._get_single_turn_orchestrator(),
+                prepare_context=self._prepare_context,
+                build_file_context_block=self._build_file_context_block,
+                merge_tool_diagnostics_into_sources=self._merge_tool_diagnostics_into_sources,
+            )
+        )
+
+    def _get_single_chat_flow_service(self) -> SingleChatFlowService:
+        """Lazily initialize single-chat flow service for tests using __new__."""
+        service = getattr(self, "_single_chat_flow_service", None)
+        if service is None:
+            service = self._create_single_chat_flow_service()
+            self._single_chat_flow_service = service
+        return service
+
+    def _create_compare_flow_service(self) -> CompareFlowService:
+        """Build compare flow service facade for compare-model stream."""
+        return CompareFlowService(
+            CompareFlowDeps(
+                storage=self.storage,
+                comparison_storage=self.comparison_storage,
+                chat_input_service=self._get_chat_input_service(),
+                compare_models_orchestrator=self._get_compare_models_orchestrator(),
+                prepare_context=self._prepare_context,
+                build_file_context_block=self._build_file_context_block,
+            )
+        )
+
+    def _get_compare_flow_service(self) -> CompareFlowService:
+        """Lazily initialize compare flow service for tests using __new__."""
+        service = getattr(self, "_compare_flow_service", None)
+        if service is None:
+            service = self._create_compare_flow_service()
+            self._compare_flow_service = service
+        return service
+
+    def _create_chat_input_service(self) -> ChatInputService:
+        """Build shared chat-input service for attachments and user append."""
+        return ChatInputService(self.storage, self.file_service)
+
+    def _get_chat_input_service(self) -> ChatInputService:
+        """Lazily initialize chat-input service for tests using __new__."""
+        service = getattr(self, "chat_input_service", None)
+        if service is None:
+            service = self._create_chat_input_service()
+            self.chat_input_service = service
+        return service
+
+    def _create_post_turn_service(self) -> PostTurnService:
+        """Build post-turn service for persistence and background tasks."""
+        return PostTurnService(
+            storage=self.storage,
+            memory_service=self.memory_service,
+        )
+
+    def _get_post_turn_service(self) -> PostTurnService:
+        """Lazily initialize post-turn service for tests using __new__."""
+        service = getattr(self, "post_turn_service", None)
+        if service is None:
+            service = self._create_post_turn_service()
+            self.post_turn_service = service
+        return service
+
+    def _create_context_assembly_service(self) -> ContextAssemblyService:
+        """Build context assembly service for single/compare flows."""
+        return ContextAssemblyService(
+            storage=self.storage,
+            memory_service=self.memory_service,
+            webpage_service=self.webpage_service,
+            search_service=self.search_service,
+            source_context_service=self.source_context_service,
+            rag_config_service=self.rag_config_service,
+            rag_context_builder=self._build_rag_context_and_sources,
+        )
+
+    def _get_context_assembly_service(self) -> ContextAssemblyService:
+        """Lazily initialize context assembly service for tests using __new__."""
+        service = getattr(self, "context_assembly_service", None)
+        if service is None:
+            service = self._create_context_assembly_service()
+            self.context_assembly_service = service
+        return service
 
     def _get_file_reference_config(self) -> FileReferenceConfig:
         """Load latest runtime limits; fall back to hardcoded defaults on error."""
@@ -266,9 +471,13 @@ class AgentService:
         used_chars = 0
 
         for index, ref in enumerate(file_references):
+            ref_project_id = ref.get("project_id")
+            ref_path = ref.get("path")
+            if not ref_project_id or not ref_path:
+                continue
             file_context = await self._read_file_reference(
-                ref.get("project_id"),
-                ref.get("path"),
+                ref_project_id,
+                ref_path,
                 cfg,
             )
 
@@ -292,7 +501,7 @@ class AgentService:
         *,
         raw_user_message: str,
         assistant_id: Optional[str],
-        assistant_obj: Optional[Any] = None,
+        assistant_obj: Optional[AssistantLike] = None,
         runtime_model_id: Optional[str] = None,
     ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
         """Build RAG context and source metadata for the current assistant."""
@@ -330,14 +539,6 @@ class AgentService:
         except Exception as e:
             logger.warning(f"RAG retrieval failed: {e}")
             return None, rag_sources
-
-    @staticmethod
-    def _merge_all_sources(*source_groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        merged: List[Dict[str, Any]] = []
-        for group in source_groups:
-            if group:
-                merged.extend(group)
-        return merged
 
     @staticmethod
     def _merge_tool_diagnostics_into_sources(
@@ -397,51 +598,6 @@ class AgentService:
         )
         return all_sources
 
-    def _is_structured_source_context_enabled(self) -> bool:
-        try:
-            self.rag_config_service.reload_config()
-            return bool(
-                getattr(
-                    self.rag_config_service.config.retrieval,
-                    "structured_source_context_enabled",
-                    False,
-                )
-            )
-        except Exception as e:
-            logger.warning("Failed to read structured source context setting: %s", e)
-            return False
-
-    def _append_structured_source_context(
-        self,
-        *,
-        raw_user_message: str,
-        system_prompt: Optional[str],
-        all_sources: List[Dict[str, Any]],
-    ) -> Optional[str]:
-        if not all_sources or not self._is_structured_source_context_enabled():
-            return system_prompt
-        try:
-            source_tags = self.source_context_service.build_source_tags(
-                query=raw_user_message,
-                sources=all_sources,
-            )
-            if not source_tags:
-                return system_prompt
-            structured_context = self.source_context_service.apply_template(
-                query=raw_user_message,
-                source_context=source_tags,
-            )
-            if not structured_context:
-                return system_prompt
-            logger.info(
-                "[SOURCE_CONTEXT] structured source context injected: source_count=%d",
-                len(all_sources),
-            )
-            return f"{system_prompt}\n\n{structured_context}" if system_prompt else structured_context
-        except Exception as e:
-            logger.warning("Structured source context injection failed: %s", e)
-            return system_prompt
-
     async def process_message(
         self,
         session_id: str,
@@ -470,187 +626,34 @@ class AgentService:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
-        original_user_message = user_message
-        file_context_block = await self._build_file_context_block(file_references)
-        full_message = f"{file_context_block}\n\n{user_message}" if file_context_block else user_message
+        response_chunks: List[str] = []
+        latest_sources: List[Dict[str, Any]] = []
 
-        # Keep retrieval/search anchored to user intent instead of expanded file text.
-        raw_user_message = original_user_message
-        webpage_context = None
-        webpage_sources: List[Dict[str, Any]] = []
-        try:
-            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
-            if webpage_source_models:
-                webpage_sources = [s.model_dump() for s in webpage_source_models]
-        except Exception as e:
-            logger.warning(f"Webpage parsing failed: {e}")
-
-        print(f"📝 [步骤 1] 保存用户消息到文件...")
-        logger.info(f"📝 [步骤 1] 保存用户消息")
-        user_message_id = await self.storage.append_message(
-            session_id,
-            "user",
-            full_message,  # Use full_message with file context
+        async for event in self.process_message_stream(
+            session_id=session_id,
+            user_message=user_message,
             context_type=context_type,
             project_id=project_id,
-        )
-        print(f"✅ 用户消息已保存")
+            use_web_search=use_web_search,
+            search_query=search_query,
+            file_references=file_references,
+        ):
+            if isinstance(event, str):
+                response_chunks.append(event)
+                continue
+            if isinstance(event, dict) and event.get("type") == "sources":
+                sources = event.get("sources")
+                if isinstance(sources, list):
+                    latest_sources = sources
 
-        print(f"📂 [步骤 2] 加载会话状态...")
-        logger.info(f"📂 [步骤 2] 加载会话状态")
-        session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-        messages = session["state"]["messages"]
-        model_id = session.get("model_id")  # 获取会话的模型 ID
-        assistant_id = session.get("assistant_id")
-
-        # Get assistant config (system prompt)
-        system_prompt = None
-        assistant_params = {}
-        assistant_obj = None
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            from .assistant_config_service import AssistantConfigService
-            assistant_service = AssistantConfigService()
-            try:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if assistant:
-                    assistant_obj = assistant
-                    system_prompt = assistant.system_prompt
-                    assistant_params = {
-                        "temperature": assistant.temperature,
-                        "max_tokens": assistant.max_tokens,
-                        "top_p": assistant.top_p,
-                        "top_k": assistant.top_k,
-                        "frequency_penalty": assistant.frequency_penalty,
-                        "presence_penalty": assistant.presence_penalty,
-                    }
-            except Exception as e:
-                logger.warning(f"Failed to load assistant config: {e}, using defaults")
-
-        # Apply per-session parameter overrides
-        param_overrides = session.get("param_overrides", {})
-        if param_overrides:
-            if "model_id" in param_overrides:
-                model_id = param_overrides["model_id"]
-            for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
-                if key in param_overrides:
-                    assistant_params[key] = param_overrides[key]
-
-        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
-        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
-
-        memory_sources: List[Dict[str, Any]] = []
-        try:
-            include_assistant_memory = bool(
-                assistant_id and not is_legacy_assistant and assistant_memory_enabled
-            )
-            memory_context, memory_sources = self.memory_service.build_memory_context(
-                query=raw_user_message,
-                assistant_id=assistant_id if include_assistant_memory else None,
-                include_global=True,
-                include_assistant=include_assistant_memory,
-            )
-            if memory_context:
-                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
-        except Exception as e:
-            logger.warning(f"Memory retrieval failed: {e}")
-
-        # Optional web page parsing context
-        if webpage_context:
-            system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
-
-        # Optional web search
-        search_sources: List[Dict[str, Any]] = []
-        search_context = None
-        if use_web_search:
-            query = (search_query or raw_user_message).strip()
-            if len(query) > 200:
-                query = query[:200]
-            try:
-                sources = await self.search_service.search(query)
-                search_sources = [s.model_dump() for s in sources]
-                if sources:
-                    search_context = self.search_service.build_search_context(query, sources)
-            except Exception as e:
-                logger.warning(f"Web search failed: {e}")
-
-        if search_context:
-            system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-
-        # Optional RAG context from knowledge bases
-        rag_context, rag_sources = await self._build_rag_context_and_sources(
-            raw_user_message=raw_user_message,
-            assistant_id=assistant_id,
-            assistant_obj=assistant_obj,
-            runtime_model_id=model_id,
-        )
-        if rag_context:
-            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-
-        all_sources = self._merge_all_sources(
-            memory_sources,
-            webpage_sources,
-            search_sources,
-            rag_sources,
-        )
-        system_prompt = self._append_structured_source_context(
-            raw_user_message=raw_user_message,
-            system_prompt=system_prompt,
-            all_sources=all_sources,
-        )
-
-        print(f"[OK] Session loaded, {len(messages)} messages, model: {model_id}")
-
-        print(f"🧠 [步骤 3] 调用 LLM...")
-        logger.info(f"🧠 [步骤 3] 调用 LLM")
-
-        # 直接调用 LLM（只调用一次！），传递 model_id
-        assistant_message = call_llm(
-            messages,
-            session_id=session_id,
-            model_id=model_id,
-            system_prompt=system_prompt,
-            **assistant_params
-        )
-
-        print(f"✅ LLM 处理完成")
-        logger.info(f"✅ LLM 处理完成")
-        print(f"💬 AI 回复长度: {len(assistant_message)} 字符")
-
-        print(f"📝 [步骤 4] 保存 AI 回复到文件...")
-        logger.info(f"📝 [步骤 4] 保存 AI 回复")
-
-        await self.storage.append_message(
-            session_id,
-            "assistant",
-            assistant_message,
-            sources=all_sources if all_sources else None,
-            context_type=context_type,
-            project_id=project_id
-        )
-        print(f"✅ AI 回复已保存")
-
-        try:
-            asyncio.create_task(
-                self.memory_service.extract_and_persist_from_turn(
-                    user_message=raw_user_message,
-                    assistant_message=assistant_message,
-                    assistant_id=assistant_id if not is_legacy_assistant else None,
-                    source_session_id=session_id,
-                    source_message_id=user_message_id,
-                    assistant_memory_enabled=assistant_memory_enabled,
-                )
-            )
-        except Exception as e:
-            logger.warning(f"Failed to schedule memory extraction: {e}")
-
-        return assistant_message, all_sources
+        return "".join(response_chunks), latest_sources
 
     async def process_message_stream(
         self,
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
-        reasoning_effort: str = None,
+        reasoning_effort: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None,
@@ -680,459 +683,19 @@ class AgentService:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
-        original_user_message = user_message
-        file_context_block = await self._build_file_context_block(file_references)
-        if file_context_block:
-            user_message = f"{file_context_block}\n\n{user_message}"
-
-        # Keep retrieval/search anchored to user intent instead of expanded file text.
-        raw_user_message = original_user_message
-        webpage_context = None
-        webpage_sources: List[Dict[str, Any]] = []
-        try:
-            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
-            if webpage_source_models:
-                webpage_sources = [s.model_dump() for s in webpage_source_models]
-        except Exception as e:
-            logger.warning(f"Webpage parsing failed: {e}")
-
-        # Process attachments
-        attachment_metadata = []
-        full_message_content = user_message
-
-        if attachments:
-            print(f"[Attachments] Processing {len(attachments)} file(s)...")
-            logger.info(f"Processing {len(attachments)} file attachments")
-
-            # Get current message count for indexing
-            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-            message_index = len(session["state"]["messages"])
-
-            for idx, att in enumerate(attachments):
-                filename = att["filename"]
-                temp_path = att["temp_path"]
-                mime_type = att["mime_type"]
-
-                # Determine if this is an image file
-                is_image = mime_type.startswith("image/")
-
-                # Add metadata for storage
-                attachment_metadata.append({
-                    "filename": filename,
-                    "size": att["size"],
-                    "mime_type": mime_type
-                })
-
-                if is_image:
-                    # Image files: do not embed in text, only store metadata
-                    # Content will be read and Base64 encoded in simple_llm.py
-                    print(f"   File {idx + 1}: {filename} ({att['size']} bytes) [image]")
-                else:
-                    # Text files: read and embed content into message
-                    temp_file_path = self.file_service.attachments_dir / temp_path
-                    content = await self.file_service.get_file_content(temp_file_path)
-                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
-                    print(f"   File {idx + 1}: {filename} ({att['size']} bytes) [text]")
-
-                # Move to permanent location
-                await self.file_service.move_to_permanent(
-                    session_id, message_index, temp_path, filename
-                )
-                logger.info(f"Moved {filename} to permanent storage")
-
-        # Only append user message when skip_user_append=False
-        user_message_id = None
-        if not skip_user_append:
-            print(f"[Step 1] Saving user message to file...")
-            logger.info(f"[Step 1] Saving user message")
-            user_message_id = await self.storage.append_message(
-                session_id, "user", full_message_content,
-                attachments=attachment_metadata if attachment_metadata else None,
-                context_type=context_type,
-                project_id=project_id
-            )
-            print(f"[OK] User message saved with ID: {user_message_id}")
-
-            # Immediately yield user message ID so frontend can update UI
-            yield {
-                "type": "user_message_id",
-                "message_id": user_message_id
-            }
-        else:
-            print(f"[Step 1] Skipping user message save (regeneration mode)")
-            logger.info(f"[Step 1] Skipping user message save")
-
-        print(f"[Step 2] Loading session state...")
-        logger.info(f"[Step 2] Loading session state")
-        session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-        messages = session["state"]["messages"]
-        assistant_id = session.get("assistant_id")
-        model_id = session.get("model_id")
-        print(f"[OK] Session loaded, {len(messages)} messages")
-        print(f"   Assistant: {assistant_id}, Model: {model_id}")
-
-        # Get assistant config (system prompt and max rounds)
-        system_prompt = None
-        max_rounds = None
-        assistant_params = {}
-        assistant_obj = None
-
-        # Check for legacy session identifier
-        if assistant_id and assistant_id.startswith("__legacy_model_"):
-            print(f"   Using legacy session mode (model only)")
-        elif assistant_id:
-            from .assistant_config_service import AssistantConfigService
-            assistant_service = AssistantConfigService()
-            try:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if assistant:
-                    assistant_obj = assistant
-                    system_prompt = assistant.system_prompt
-                    max_rounds = assistant.max_rounds
-                    assistant_params = {
-                        "temperature": assistant.temperature,
-                        "max_tokens": assistant.max_tokens,
-                        "top_p": assistant.top_p,
-                        "top_k": assistant.top_k,
-                        "frequency_penalty": assistant.frequency_penalty,
-                        "presence_penalty": assistant.presence_penalty,
-                    }
-                    print(f"   Using assistant config:")
-                    if system_prompt:
-                        print(f"     - System prompt: {system_prompt[:50]}...")
-                    if max_rounds:
-                        if max_rounds == -1:
-                            print(f"     - Round limit: unlimited")
-                        else:
-                            print(f"     - Max rounds: {max_rounds}")
-            except Exception as e:
-                logger.warning(f"   Failed to load assistant config: {e}, using defaults")
-
-        # Apply per-session parameter overrides
-        param_overrides = session.get("param_overrides", {})
-        if param_overrides:
-            if "model_id" in param_overrides:
-                model_id = param_overrides["model_id"]
-            if "max_rounds" in param_overrides:
-                max_rounds = param_overrides["max_rounds"]
-            for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
-                if key in param_overrides:
-                    assistant_params[key] = param_overrides[key]
-            print(f"   Applied param overrides: {param_overrides}")
-
-        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
-        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
-
-        memory_sources: List[Dict[str, Any]] = []
-        try:
-            include_assistant_memory = bool(
-                assistant_id and not is_legacy_assistant and assistant_memory_enabled
-            )
-            memory_context, memory_sources = self.memory_service.build_memory_context(
-                query=raw_user_message,
-                assistant_id=assistant_id if include_assistant_memory else None,
-                include_global=True,
-                include_assistant=include_assistant_memory,
-            )
-            if memory_context:
-                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
-        except Exception as e:
-            logger.warning(f"Memory retrieval failed: {e}")
-
-        # Optional web page parsing context
-        if webpage_context:
-            system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
-
-        # Optional web search
-        search_sources: List[Dict[str, Any]] = []
-        search_context = None
-        if use_web_search:
-            query = (search_query or raw_user_message).strip()
-            if len(query) > 200:
-                query = query[:200]
-            try:
-                sources = await self.search_service.search(query)
-                search_sources = [s.model_dump() for s in sources]
-                if sources:
-                    search_context = self.search_service.build_search_context(query, sources)
-            except Exception as e:
-                logger.warning(f"Web search failed: {e}")
-
-        if search_context:
-            system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-
-        # Optional RAG context from knowledge bases
-        rag_context, rag_sources = await self._build_rag_context_and_sources(
-            raw_user_message=raw_user_message,
-            assistant_id=assistant_id,
-            assistant_obj=assistant_obj,
-            runtime_model_id=model_id,
-        )
-        if rag_context:
-            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-
-        all_sources = self._merge_all_sources(
-            memory_sources,
-            webpage_sources,
-            search_sources,
-            rag_sources,
-        )
-        system_prompt = self._append_structured_source_context(
-            raw_user_message=raw_user_message,
-            system_prompt=system_prompt,
-            all_sources=all_sources,
-        )
-        if all_sources:
-            yield {
-                "type": "sources",
-                "sources": all_sources
-            }
-
-        # === Auto-compression check ===
-        try:
-            from .compression_config_service import CompressionConfigService
-            compression_config_svc = CompressionConfigService()
-            comp_config = compression_config_svc.config
-
-            if comp_config.auto_compress_enabled:
-                from .model_config_service import ModelConfigService
-                model_service = ModelConfigService()
-                model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
-
-                context_length = (
-                    getattr(model_cfg.capabilities, 'context_length', None)
-                    or getattr(provider_cfg.default_capabilities, 'context_length', None)
-                    or 64000
-                )
-                threshold_tokens = int(context_length * comp_config.auto_compress_threshold)
-                estimated_tokens = _estimate_total_tokens(messages)
-
-                if estimated_tokens > threshold_tokens:
-                    print(f"[AUTO-COMPRESS] Token estimate {estimated_tokens} > threshold {threshold_tokens}, compressing...")
-                    logger.info(f"Auto-compression triggered: {estimated_tokens} tokens > {threshold_tokens} threshold")
-
-                    from .compression_service import CompressionService
-                    compression_service = CompressionService(self.storage)
-                    result = await compression_service.compress_context(
-                        session_id=session_id,
-                        context_type=context_type,
-                        project_id=project_id,
-                    )
-
-                    if result:
-                        compress_msg_id, compressed_count = result
-                        # Reload messages after compression
-                        session = await self.storage.get_session(
-                            session_id, context_type=context_type, project_id=project_id
-                        )
-                        messages = session["state"]["messages"]
-                        yield {
-                            "type": "auto_compressed",
-                            "compressed_count": compressed_count,
-                            "message_id": compress_msg_id,
-                        }
-                        print(f"[AUTO-COMPRESS] Done, compressed {compressed_count} messages")
-                    else:
-                        print(f"[AUTO-COMPRESS] Compression returned no result, continuing without compression")
-        except Exception as e:
-            # Auto-compression failure should not block the LLM call
-            print(f"[AUTO-COMPRESS] Error (non-fatal): {str(e)}")
-            logger.warning(f"Auto-compression failed (non-fatal): {str(e)}", exc_info=True)
-
-        print(f"[Step 3] Streaming LLM call...")
-        logger.info(f"[Step 3] Streaming LLM call")
-
-        # Resolve tools if model supports function calling
-        llm_tools = None
-        rag_tool_executor = None
-        try:
-            from .model_config_service import ModelConfigService
-            model_service = ModelConfigService()
-            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
-            merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
-            if merged_caps.function_calling:
-                from src.tools.registry import get_tool_registry
-                llm_tools = list(get_tool_registry().get_all_tools())
-                kb_ids_for_tools = list(getattr(assistant_obj, "knowledge_base_ids", None) or [])
-                if assistant_id and not is_legacy_assistant and kb_ids_for_tools:
-                    rag_tool_service = RagToolService(
-                        assistant_id=assistant_id,
-                        allowed_kb_ids=kb_ids_for_tools,
-                        runtime_model_id=model_id,
-                    )
-                    rag_tools = rag_tool_service.get_tools()
-                    if rag_tools:
-                        llm_tools.extend(rag_tools)
-                        rag_tool_executor = rag_tool_service.execute_tool
-                        print(
-                            f"[TOOLS] Added RAG tools for assistant {assistant_id}: "
-                            f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
-                        )
-                print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
-        except Exception as e:
-            logger.warning(f"Failed to resolve tools: {e}")
-
-        # Collect full response for saving
-        full_response = ""
-        usage_data: Optional[TokenUsage] = None
-        cost_data: Optional[CostInfo] = None
-        tool_diagnostics: Optional[Dict[str, Any]] = None
-
-        try:
-            # Stream LLM, pass model_id, system_prompt, max_rounds, reasoning_effort, file_service, tools
-            async for chunk in call_llm_stream(
-                messages,
-                session_id=session_id,
-                model_id=model_id,
-                system_prompt=system_prompt,
-                max_rounds=max_rounds,
-                reasoning_effort=reasoning_effort,
-                file_service=self.file_service,  # Pass file_service for image attachment support
-                tools=llm_tools,
-                tool_executor=rag_tool_executor,
-                **assistant_params
-            ):
-                # Check if this is a usage data dict
-                if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                    usage_data = chunk["usage"]
-                    # Calculate cost
-                    if model_id and usage_data:
-                        parts = model_id.split(":", 1)
-                        provider_id = parts[0] if len(parts) > 1 else ""
-                        simple_model_id = parts[1] if len(parts) > 1 else model_id
-                        cost_data = self.pricing_service.calculate_cost(
-                            provider_id, simple_model_id, usage_data
-                        )
-                    continue
-
-                # Forward context_info event to frontend
-                if isinstance(chunk, dict) and chunk.get("type") == "context_info":
-                    yield chunk
-                    continue
-
-                # Forward thinking_duration event to frontend
-                if isinstance(chunk, dict) and chunk.get("type") == "thinking_duration":
-                    yield chunk
-                    continue
-
-                # Forward tool_calls and tool_results events to frontend
-                if isinstance(chunk, dict) and chunk.get("type") in ("tool_calls", "tool_results"):
-                    yield chunk
-                    continue
-
-                if isinstance(chunk, dict) and chunk.get("type") == "tool_diagnostics":
-                    tool_diagnostics = chunk
-                    continue
-
-                full_response += chunk
-                yield chunk
-
-            print(f"[OK] LLM streaming complete")
-            logger.info(f"[OK] LLM streaming complete")
-            print(f"[MSG] AI response length: {len(full_response)} chars")
-
-        except asyncio.CancelledError:
-            print(f"[WARN] Stream generation cancelled, saving partial content...")
-            logger.warning(f"Stream generation cancelled, saving partial content ({len(full_response)} chars)")
-            if full_response:
-                await self.storage.append_message(
-                    session_id, "assistant", full_response,
-                    context_type=context_type,
-                    project_id=project_id
-                )
-                print(f"[OK] Partial AI response saved")
-            raise
-
-        print(f"[Step 4] Saving complete AI response to file...")
-        logger.info(f"[Step 4] Saving complete AI response")
-        if tool_diagnostics:
-            all_sources = self._merge_tool_diagnostics_into_sources(all_sources, tool_diagnostics)
-        assistant_message_id = await self.storage.append_message(
-            session_id, "assistant", full_response,
-            usage=usage_data, cost=cost_data,
-            sources=all_sources if all_sources else None,
+        async for event in self._get_single_chat_flow_service().process_message_stream(
+            session_id=session_id,
+            user_message=user_message,
+            skip_user_append=skip_user_append,
+            reasoning_effort=reasoning_effort,
+            attachments=attachments,
             context_type=context_type,
-            project_id=project_id
-        )
-        print(f"[OK] AI response saved with ID: {assistant_message_id}")
-
-        # Update memory in background. Keep this enabled for regeneration/edit flows
-        # (skip_user_append=True) so edited user messages can still refresh memory.
-        try:
-            if raw_user_message and full_response:
-                asyncio.create_task(
-                    self.memory_service.extract_and_persist_from_turn(
-                        user_message=raw_user_message,
-                        assistant_message=full_response,
-                        assistant_id=assistant_id if not is_legacy_assistant else None,
-                        source_session_id=session_id,
-                        source_message_id=user_message_id,
-                        assistant_memory_enabled=assistant_memory_enabled,
-                    )
-                )
-        except Exception as e:
-            logger.warning(f"Failed to schedule memory extraction: {e}")
-
-        # Trigger title generation in background (do not await)
-        # Skip for temporary sessions to save API cost
-        is_temporary = session.get("temporary", False)
-        try:
-            from .title_generation_service import TitleGenerationService
-            title_service = TitleGenerationService(storage=self.storage)
-
-            # Reload session to get latest state
-            updated_session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-            message_count = len(updated_session['state']['messages'])
-            current_title = updated_session['title']
-
-            print(f"[TitleGen] Check: messages={message_count}, title='{current_title}', enabled={title_service.config.enabled}, threshold={title_service.config.trigger_threshold}, temporary={is_temporary}")
-
-            if not is_temporary and title_service.should_generate_title(message_count, current_title):
-                # Create background task (do not await)
-                asyncio.create_task(title_service.generate_title_async(session_id))
-                print(f"[TitleGen] Background title generation task created")
-            else:
-                print(f"[TitleGen] Skipped: condition not met")
-        except Exception as e:
-            logger.error(f"[TitleGen] Failed to create title generation task: {e}")
-            # Don't raise - title generation failure should not affect main flow
-
-        # Yield usage and cost data as a special event at the end
-        if usage_data:
-            usage_event = {
-                "type": "usage",
-                "usage": usage_data.model_dump(),
-            }
-            if cost_data:
-                usage_event["cost"] = cost_data.model_dump()
-            yield usage_event
-
-        if all_sources:
-            yield {
-                "type": "sources",
-                "sources": all_sources,
-            }
-
-        # Yield assistant message ID so frontend can update UI
-        assistant_message_id_event = {
-            "type": "assistant_message_id",
-            "message_id": assistant_message_id
-        }
-        yield assistant_message_id_event
-
-        # Generate follow-up questions
-        try:
-            from .followup_service import FollowupService
-            followup_service = FollowupService()
-
-            if followup_service.config.enabled and followup_service.config.count > 0:
-                updated_session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-                messages_for_followup = updated_session['state']['messages']
-                questions = await followup_service.generate_followups_async(messages_for_followup)
-                if questions:
-                    yield {"type": "followup_questions", "questions": questions}
-        except Exception as e:
-            logger.warning(f"Failed to generate follow-up questions: {e}")
+            project_id=project_id,
+            use_web_search=use_web_search,
+            search_query=search_query,
+            file_references=file_references,
+        ):
+            yield event
 
     async def _prepare_context(
         self,
@@ -1142,131 +705,16 @@ class AgentService:
         project_id: Optional[str] = None,
         use_web_search: bool = False,
         search_query: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Prepare shared context for LLM calls.
-
-        Returns a dict with keys: messages, system_prompt, assistant_params,
-        all_sources, model_id, assistant_id, is_legacy_assistant, assistant_memory_enabled, max_rounds
-        """
-        session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-        messages = session["state"]["messages"]
-        assistant_id = session.get("assistant_id")
-        model_id = session.get("model_id")
-
-        system_prompt = None
-        max_rounds = None
-        assistant_params = {}
-        assistant_obj = None
-
-        if assistant_id and assistant_id.startswith("__legacy_model_"):
-            pass
-        elif assistant_id:
-            from .assistant_config_service import AssistantConfigService
-            assistant_service = AssistantConfigService()
-            try:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if assistant:
-                    assistant_obj = assistant
-                    system_prompt = assistant.system_prompt
-                    max_rounds = assistant.max_rounds
-                    assistant_params = {
-                        "temperature": assistant.temperature,
-                        "max_tokens": assistant.max_tokens,
-                        "top_p": assistant.top_p,
-                        "top_k": assistant.top_k,
-                        "frequency_penalty": assistant.frequency_penalty,
-                        "presence_penalty": assistant.presence_penalty,
-                    }
-            except Exception as e:
-                logger.warning(f"Failed to load assistant config: {e}, using defaults")
-
-        param_overrides = session.get("param_overrides", {})
-        if param_overrides:
-            if "model_id" in param_overrides:
-                model_id = param_overrides["model_id"]
-            if "max_rounds" in param_overrides:
-                max_rounds = param_overrides["max_rounds"]
-            for key in ["temperature", "max_tokens", "top_p", "top_k", "frequency_penalty", "presence_penalty"]:
-                if key in param_overrides:
-                    assistant_params[key] = param_overrides[key]
-
-        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
-        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
-
-        # Build context: memory, webpage, search, RAG
-        memory_sources: List[Dict[str, Any]] = []
-        try:
-            include_assistant_memory = bool(
-                assistant_id and not is_legacy_assistant and assistant_memory_enabled
-            )
-            memory_context, memory_sources = self.memory_service.build_memory_context(
-                query=raw_user_message,
-                assistant_id=assistant_id if include_assistant_memory else None,
-                include_global=True,
-                include_assistant=include_assistant_memory,
-            )
-            if memory_context:
-                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
-        except Exception as e:
-            logger.warning(f"Memory retrieval failed: {e}")
-
-        webpage_sources: List[Dict[str, Any]] = []
-        try:
-            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
-            if webpage_source_models:
-                webpage_sources = [s.model_dump() for s in webpage_source_models]
-            if webpage_context:
-                system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
-        except Exception as e:
-            logger.warning(f"Webpage parsing failed: {e}")
-
-        search_sources: List[Dict[str, Any]] = []
-        if use_web_search:
-            query = (search_query or raw_user_message).strip()
-            if len(query) > 200:
-                query = query[:200]
-            try:
-                sources = await self.search_service.search(query)
-                search_sources = [s.model_dump() for s in sources]
-                if sources:
-                    search_context = self.search_service.build_search_context(query, sources)
-                    if search_context:
-                        system_prompt = f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-            except Exception as e:
-                logger.warning(f"Web search failed: {e}")
-
-        rag_context, rag_sources = await self._build_rag_context_and_sources(
+    ) -> ContextPayload:
+        """Prepare shared context for LLM calls."""
+        return await self._get_context_assembly_service().prepare_context(
+            session_id=session_id,
             raw_user_message=raw_user_message,
-            assistant_id=assistant_id,
-            assistant_obj=assistant_obj,
-            runtime_model_id=model_id,
+            context_type=context_type,
+            project_id=project_id,
+            use_web_search=use_web_search,
+            search_query=search_query,
         )
-        if rag_context:
-            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-
-        all_sources = self._merge_all_sources(
-            memory_sources,
-            webpage_sources,
-            search_sources,
-            rag_sources,
-        )
-        system_prompt = self._append_structured_source_context(
-            raw_user_message=raw_user_message,
-            system_prompt=system_prompt,
-            all_sources=all_sources,
-        )
-
-        return {
-            "messages": messages,
-            "system_prompt": system_prompt,
-            "assistant_params": assistant_params,
-            "all_sources": all_sources,
-            "model_id": model_id,
-            "assistant_id": assistant_id,
-            "is_legacy_assistant": is_legacy_assistant,
-            "assistant_memory_enabled": assistant_memory_enabled,
-            "max_rounds": max_rounds,
-        }
 
     @staticmethod
     def _build_group_identity_prompt(
@@ -1330,7 +778,7 @@ class AgentService:
         )
 
     @staticmethod
-    def _assistant_params_from_config(assistant_obj: Any) -> Dict[str, Any]:
+    def _assistant_params_from_config(assistant_obj: AssistantLike) -> Dict[str, Any]:
         """Extract generation params from assistant config object."""
         return {
             "temperature": assistant_obj.temperature,
@@ -1340,6 +788,20 @@ class AgentService:
             "frequency_penalty": assistant_obj.frequency_penalty,
             "presence_penalty": assistant_obj.presence_penalty,
         }
+
+    @staticmethod
+    def _resolve_compare_model_name(model_id: str) -> str:
+        """Resolve best-effort display name for compare stream model events."""
+        try:
+            from .model_config_service import ModelConfigService
+
+            model_service = ModelConfigService()
+            parts = model_id.split(":", 1)
+            simple_id = parts[1] if len(parts) > 1 else model_id
+            model_cfg, _ = model_service.get_model_and_provider_sync(model_id)
+            return getattr(model_cfg, "name", simple_id) if model_cfg else simple_id
+        except Exception:
+            return model_id
 
     @staticmethod
     def _extract_model_template_params(model_obj: Any) -> Dict[str, Any]:
@@ -1365,7 +827,7 @@ class AgentService:
     async def _build_group_runtime_assistant(
         self,
         participant_token: str,
-    ) -> Optional[Tuple[str, Any, str]]:
+    ) -> Optional[Tuple[str, AssistantLike, str]]:
         """Resolve assistant/model participant token to runtime assistant object."""
         try:
             participant = parse_group_participant(participant_token)
@@ -1408,7 +870,7 @@ class AgentService:
             knowledge_base_ids=[],
             enabled=True,
         )
-        return participant.token, runtime_assistant, runtime_assistant.name
+        return participant.token, cast(AssistantLike, runtime_assistant), runtime_assistant.name
 
     @staticmethod
     def _resolve_group_round_limit(raw_limit: Optional[int], *, fallback: int = 3, hard_cap: int = 6) -> int:
@@ -1437,7 +899,7 @@ class AgentService:
         group_mode: Optional[str],
         group_assistants: List[str],
         group_settings: Optional[Dict[str, Any]],
-        assistant_config_map: Dict[str, Any],
+        assistant_config_map: Dict[str, AssistantLike],
     ):
         """Resolve runtime group settings with backward-compatible defaults."""
         return GroupSettingsResolver.resolve(
@@ -1574,7 +1036,7 @@ class AgentService:
         *,
         session_id: str,
         assistant_id: str,
-        assistant_obj: Any,
+        assistant_obj: AssistantLike,
         group_assistants: List[str],
         assistant_name_map: Dict[str, str],
         raw_user_message: str,
@@ -1617,7 +1079,7 @@ class AgentService:
         raw_user_message: str,
         group_assistants: List[str],
         assistant_name_map: Dict[str, str],
-        assistant_config_map: Dict[str, Any],
+        assistant_config_map: Dict[str, AssistantLike],
         group_settings: Optional[Dict[str, Any]],
         reasoning_effort: Optional[str],
         context_type: str,
@@ -1626,28 +1088,14 @@ class AgentService:
         search_sources: List[Dict[str, Any]],
         trace_id: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Committee mode orchestration: supervisor decides who speaks each round."""
-        if trace_id is None and self._is_group_trace_enabled():
-            trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
-
-        resolved_settings = self._resolve_group_settings(
-            group_mode="committee",
-            group_assistants=group_assistants,
-            group_settings=group_settings,
-            assistant_config_map=assistant_config_map,
-        )
-        committee_settings: Optional[ResolvedCommitteeSettings] = resolved_settings.committee
-        if committee_settings is None:
-            return
-
-        orchestrator = self._create_committee_orchestrator()
-        async for event in orchestrator.process(
+        """Committee mode orchestration delegate."""
+        async for event in self._get_group_chat_service().process_committee_group_message_stream(
             session_id=session_id,
             raw_user_message=raw_user_message,
             group_assistants=group_assistants,
-            committee_settings=committee_settings,
             assistant_name_map=assistant_name_map,
             assistant_config_map=assistant_config_map,
+            group_settings=group_settings,
             reasoning_effort=reasoning_effort,
             context_type=context_type,
             project_id=project_id,
@@ -1665,7 +1113,7 @@ class AgentService:
         group_mode: str = "round_robin",
         group_settings: Optional[Dict[str, Any]] = None,
         skip_user_append: bool = False,
-        reasoning_effort: str = None,
+        reasoning_effort: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None,
@@ -1673,184 +1121,30 @@ class AgentService:
         search_query: Optional[str] = None,
         file_references: Optional[List[Dict[str, str]]] = None
     ) -> AsyncIterator[Any]:
-        """Stream process user message with multiple assistants (group chat).
-
-        Supports:
-        - round_robin: fixed order speaking
-        - committee: supervisor chooses member turns and final synthesis
-
-        Yields:
-            - {"type": "user_message_id", "message_id": ...}
-            - {"type": "assistant_start", "assistant_id": ..., "name": ..., "icon": ...}
-            - String chunks (assistant response text)
-            - {"type": "usage", "usage": {...}, "cost": {...}}
-            - {"type": "assistant_message_id", "message_id": ...}
-            - {"type": "assistant_done", "assistant_id": ...}
-            - {"done": True}
-        """
-        original_user_message = user_message
-        file_context_block = await self._build_file_context_block(file_references)
-        if file_context_block:
-            user_message = f"{file_context_block}\n\n{user_message}"
-
-        raw_user_message = original_user_message
-
-        # Process attachments
-        attachment_metadata = []
-        full_message_content = user_message
-
-        if attachments:
-            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-            message_index = len(session["state"]["messages"])
-
-            for idx, att in enumerate(attachments):
-                filename = att["filename"]
-                temp_path = att["temp_path"]
-                mime_type = att["mime_type"]
-                is_image = mime_type.startswith("image/")
-
-                attachment_metadata.append({
-                    "filename": filename,
-                    "size": att["size"],
-                    "mime_type": mime_type,
-                })
-
-                if not is_image:
-                    temp_file_path = self.file_service.attachments_dir / temp_path
-                    content = await self.file_service.get_file_content(temp_file_path)
-                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
-
-                await self.file_service.move_to_permanent(
-                    session_id, message_index, temp_path, filename
-                )
-
-        # Append user message
-        user_message_id = None
-        if not skip_user_append:
-            user_message_id = await self.storage.append_message(
-                session_id, "user", full_message_content,
-                attachments=attachment_metadata if attachment_metadata else None,
-                context_type=context_type,
-                project_id=project_id
-            )
-            yield {"type": "user_message_id", "message_id": user_message_id}
-
-        assistant_name_map: Dict[str, str] = {}
-        assistant_config_map: Dict[str, Any] = {}
-        resolved_group_assistants: List[str] = []
-        seen_participants = set()
-        for participant_token in group_assistants:
-            resolved = await self._build_group_runtime_assistant(participant_token)
-            if not resolved:
-                logger.warning("[GroupChat] Participant '%s' not found or disabled, skipping", participant_token)
-                continue
-            participant_id, participant_obj, participant_name = resolved
-            if participant_id in seen_participants:
-                continue
-            seen_participants.add(participant_id)
-            resolved_group_assistants.append(participant_id)
-            assistant_config_map[participant_id] = participant_obj
-            assistant_name_map[participant_id] = participant_name
-
-        group_assistants = resolved_group_assistants
-        if not group_assistants:
-            yield {
-                "type": "group_done",
-                "mode": (group_mode or "round_robin").strip().lower(),
-                "reason": "no_valid_participants",
-                "rounds": 0,
-            }
-            return
-
-        search_sources: List[Dict[str, Any]] = []
-        search_context = None
-        if use_web_search:
-            query = (search_query or raw_user_message).strip()
-            if query:
-                try:
-                    sources = await self.search_service.search(query)
-                    search_sources = [s.model_dump() for s in sources]
-                    if sources:
-                        search_context = self.search_service.build_search_context(query, sources)
-                except Exception as e:
-                    logger.warning(f"[GroupChat] Web search failed: {e}")
-
-        normalized_group_mode = (group_mode or "round_robin").strip().lower()
-        if normalized_group_mode == "committee":
-            trace_id: Optional[str] = None
-            if self._is_group_trace_enabled():
-                trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
-                self._log_group_trace(
-                    trace_id,
-                    "request",
-                    {
-                        "session_id": session_id,
-                        "group_mode": normalized_group_mode,
-                        "group_assistants": group_assistants,
-                        "raw_user_message": self._truncate_log_text(
-                            raw_user_message, self._GROUP_TRACE_PREVIEW_CHARS
-                        ),
-                    },
-                )
-            async for event in self._process_committee_group_message_stream(
-                session_id=session_id,
-                raw_user_message=raw_user_message,
-                group_assistants=group_assistants,
-                assistant_name_map=assistant_name_map,
-                assistant_config_map=assistant_config_map,
-                group_settings=group_settings,
-                reasoning_effort=reasoning_effort,
-                context_type=context_type,
-                project_id=project_id,
-                search_context=search_context,
-                search_sources=search_sources,
-                trace_id=trace_id,
-            ):
-                yield event
-        else:
-            for assistant_id in group_assistants:
-                assistant_obj = assistant_config_map.get(assistant_id)
-                if not assistant_obj:
-                    logger.warning(f"[GroupChat] Assistant '{assistant_id}' not found, skipping")
-                    continue
-                async for event in self._stream_group_assistant_turn(
-                    session_id=session_id,
-                    assistant_id=assistant_id,
-                    assistant_obj=assistant_obj,
-                    group_assistants=group_assistants,
-                    assistant_name_map=assistant_name_map,
-                    raw_user_message=raw_user_message,
-                    reasoning_effort=reasoning_effort,
-                    context_type=context_type,
-                    project_id=project_id,
-                    search_context=search_context,
-                    search_sources=search_sources,
-                ):
-                    yield event
-
-        # Title generation (once, after all assistants)
-        try:
-            from .title_generation_service import TitleGenerationService
-            title_service = TitleGenerationService(storage=self.storage)
-            updated_session = await self.storage.get_session(
-                session_id,
-                context_type=context_type,
-                project_id=project_id,
-            )
-            is_temporary = updated_session.get("temporary", False)
-            message_count = len(updated_session["state"]["messages"])
-            current_title = updated_session["title"]
-            if not is_temporary and title_service.should_generate_title(message_count, current_title):
-                asyncio.create_task(title_service.generate_title_async(session_id))
-        except Exception as e:
-            logger.warning(f"[GroupChat] Title generation failed: {e}")
+        """Stream process user message with multiple assistants (group chat)."""
+        async for event in self._get_group_chat_service().process_group_message_stream(
+            session_id=session_id,
+            user_message=user_message,
+            group_assistants=group_assistants,
+            group_mode=group_mode,
+            group_settings=group_settings,
+            skip_user_append=skip_user_append,
+            reasoning_effort=reasoning_effort,
+            attachments=attachments,
+            context_type=context_type,
+            project_id=project_id,
+            use_web_search=use_web_search,
+            search_query=search_query,
+            file_references=file_references,
+        ):
+            yield event
 
     async def process_compare_stream(
         self,
         session_id: str,
         user_message: str,
         model_ids: List[str],
-        reasoning_effort: str = None,
+        reasoning_effort: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
         context_type: str = "chat",
         project_id: Optional[str] = None,
@@ -1862,193 +1156,16 @@ class AgentService:
 
         Yields SSE events tagged by model_id.
         """
-        original_user_message = user_message
-        file_context_block = await self._build_file_context_block(file_references)
-        if file_context_block:
-            user_message = f"{file_context_block}\n\n{user_message}"
-
-        # Keep retrieval/search anchored to user intent instead of expanded file text.
-        raw_user_message = original_user_message
-
-        # Process attachments (same as process_message_stream)
-        attachment_metadata = []
-        full_message_content = user_message
-
-        if attachments:
-            session = await self.storage.get_session(session_id, context_type=context_type, project_id=project_id)
-            message_index = len(session["state"]["messages"])
-
-            for idx, att in enumerate(attachments):
-                filename = att["filename"]
-                temp_path = att["temp_path"]
-                mime_type = att["mime_type"]
-                is_image = mime_type.startswith("image/")
-
-                attachment_metadata.append({
-                    "filename": filename,
-                    "size": att["size"],
-                    "mime_type": mime_type,
-                })
-
-                if not is_image:
-                    temp_file_path = self.file_service.attachments_dir / temp_path
-                    content = await self.file_service.get_file_content(temp_file_path)
-                    full_message_content += f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
-
-                await self.file_service.move_to_permanent(
-                    session_id, message_index, temp_path, filename
-                )
-
-        # Append user message
-        user_message_id = await self.storage.append_message(
-            session_id, "user", full_message_content,
-            attachments=attachment_metadata if attachment_metadata else None,
+        async for event in self._get_compare_flow_service().process_compare_stream(
+            session_id=session_id,
+            user_message=user_message,
+            model_ids=model_ids,
+            reasoning_effort=reasoning_effort,
+            attachments=attachments,
             context_type=context_type,
             project_id=project_id,
-        )
-        yield {"type": "user_message_id", "message_id": user_message_id}
-
-        # Prepare context
-        ctx = await self._prepare_context(
-            session_id, raw_user_message,
-            context_type=context_type, project_id=project_id,
-            use_web_search=use_web_search, search_query=search_query,
-        )
-
-        if ctx["all_sources"]:
-            yield {"type": "sources", "sources": ctx["all_sources"]}
-
-        # Multiplexed streaming from multiple models
-        queue: asyncio.Queue = asyncio.Queue()
-        model_count = len(model_ids)
-        done_count = 0
-
-        async def stream_model(mid: str):
-            """Stream a single model's response and put events into queue."""
-            full_response = ""
-            usage_data = None
-            cost_data = None
-            try:
-                # Get model display name
-                try:
-                    from .model_config_service import ModelConfigService
-                    model_service = ModelConfigService()
-                    parts = mid.split(":", 1)
-                    simple_id = parts[1] if len(parts) > 1 else mid
-                    model_cfg, _ = model_service.get_model_and_provider_sync(mid)
-                    model_name = getattr(model_cfg, 'name', simple_id) if model_cfg else simple_id
-                except Exception:
-                    model_name = mid
-
-                await queue.put({"type": "model_start", "model_id": mid, "model_name": model_name})
-
-                async for chunk in call_llm_stream(
-                    ctx["messages"],
-                    session_id=session_id,
-                    model_id=mid,
-                    system_prompt=ctx["system_prompt"],
-                    max_rounds=ctx["max_rounds"],
-                    reasoning_effort=reasoning_effort,
-                    file_service=self.file_service,
-                    **ctx["assistant_params"],
-                ):
-                    if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                        usage_data = chunk["usage"]
-                        parts = mid.split(":", 1)
-                        provider_id = parts[0] if len(parts) > 1 else ""
-                        simple_model_id = parts[1] if len(parts) > 1 else mid
-                        cost_data = self.pricing_service.calculate_cost(
-                            provider_id, simple_model_id, usage_data
-                        )
-                        continue
-
-                    if isinstance(chunk, dict):
-                        # Skip other dict events for comparison
-                        continue
-
-                    full_response += chunk
-                    await queue.put({"type": "model_chunk", "model_id": mid, "chunk": chunk})
-
-                await queue.put({
-                    "type": "model_done",
-                    "model_id": mid,
-                    "model_name": model_name,
-                    "content": full_response,
-                    "usage": usage_data.model_dump() if usage_data else None,
-                    "cost": cost_data.model_dump() if cost_data else None,
-                })
-            except Exception as e:
-                logger.error(f"Compare model {mid} error: {e}", exc_info=True)
-                await queue.put({
-                    "type": "model_error",
-                    "model_id": mid,
-                    "error": str(e),
-                })
-
-        # Spawn tasks for all models
-        tasks = [asyncio.create_task(stream_model(mid)) for mid in model_ids]
-
-        # Read from queue until all models are done
-        model_results = {}
-        try:
-            while done_count < model_count:
-                event = await queue.get()
-                yield event
-
-                if event["type"] in ("model_done", "model_error"):
-                    done_count += 1
-                    mid = event["model_id"]
-                    if event["type"] == "model_done":
-                        model_results[mid] = {
-                            "model_id": mid,
-                            "model_name": event.get("model_name", mid),
-                            "content": event["content"],
-                            "usage": event.get("usage"),
-                            "cost": event.get("cost"),
-                            "thinking_content": "",
-                            "error": None,
-                        }
-                    else:
-                        model_results[mid] = {
-                            "model_id": mid,
-                            "model_name": mid,
-                            "content": "",
-                            "usage": None,
-                            "cost": None,
-                            "thinking_content": "",
-                            "error": event.get("error", "Unknown error"),
-                        }
-        finally:
-            # Ensure all tasks complete
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Save the first model's response as the normal assistant message
-        first_model_id = model_ids[0]
-        first_result = model_results.get(first_model_id, {})
-        first_content = first_result.get("content", "")
-        first_usage = None
-        first_cost = None
-        if first_result.get("usage"):
-            first_usage = TokenUsage(**first_result["usage"])
-        if first_result.get("cost"):
-            first_cost = CostInfo(**first_result["cost"])
-
-        assistant_message_id = await self.storage.append_message(
-            session_id, "assistant", first_content,
-            usage=first_usage, cost=first_cost,
-            sources=ctx["all_sources"] if ctx["all_sources"] else None,
-            context_type=context_type,
-            project_id=project_id,
-        )
-
-        # Save ALL responses to comparison storage
-        responses_list = [model_results[mid] for mid in model_ids if mid in model_results]
-        await self.comparison_storage.save(
-            session_id, assistant_message_id, responses_list,
-            context_type=context_type, project_id=project_id,
-        )
-
-        yield {"type": "assistant_message_id", "message_id": assistant_message_id}
+            use_web_search=use_web_search,
+            search_query=search_query,
+            file_references=file_references,
+        ):
+            yield event

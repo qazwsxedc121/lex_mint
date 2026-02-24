@@ -171,7 +171,15 @@ async def chat(
         logger.info(f"   AI 回复: {response[:100]}{'...' if len(response) > 100 else ''}")
         logger.info("=" * 80)
 
-        return ChatResponse(session_id=request.session_id, response=response, sources=sources or None)
+        response_sources: Optional[List[SearchSource]] = None
+        if sources:
+            response_sources = []
+            for source in sources:
+                try:
+                    response_sources.append(SearchSource.model_validate(source))
+                except Exception:
+                    continue
+        return ChatResponse(session_id=request.session_id, response=response, sources=response_sources)
     except FileNotFoundError as e:
         print(f"❌ 会话未找到: {request.session_id}")
         logger.error(f"❌ 会话未找到: {request.session_id}")
