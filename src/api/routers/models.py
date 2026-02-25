@@ -25,6 +25,7 @@ from src.providers import (
     ModelCapabilities,
     get_builtin_provider,
 )
+from src.providers.model_capability_rules import apply_model_capability_hints
 from src.providers.types import ApiProtocol, ProviderType
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -494,6 +495,7 @@ async def fetch_provider_models(
         for m in models:
             raw_capabilities: Any = m.get("capabilities")
             capabilities = raw_capabilities if isinstance(raw_capabilities, dict) else None
+            capabilities = apply_model_capability_hints(m["id"], capabilities)
 
             raw_tags: Any = m.get("tags")
             tags: Optional[List[str]]

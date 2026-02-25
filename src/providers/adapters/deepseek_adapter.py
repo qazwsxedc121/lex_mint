@@ -6,12 +6,39 @@ Adapter for DeepSeek API with proper reasoning_content support.
 import logging
 from typing import AsyncIterator, List, Dict, Any
 from langchain_core.messages import BaseMessage
+from langchain_deepseek import ChatDeepSeek
 
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
+from .reasoning_openai import inject_tool_call_reasoning_content
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
+
+
+class ChatDeepSeekInterleaved(ChatDeepSeek):
+    """
+    DeepSeek wrapper to preserve interleaved reasoning for tool-call messages.
+
+    Some model/tool-call paths require `reasoning_content` to be present on
+    assistant tool-call messages in subsequent rounds.
+    """
+
+    def _get_request_payload(
+        self,
+        input_: Any,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+
+        source_messages = self._convert_input(input_).to_messages()
+        return inject_tool_call_reasoning_content(
+            payload,
+            source_messages=source_messages,
+            enabled=bool(getattr(self, "_requires_interleaved_thinking", False)),
+        )
 
 
 class DeepSeekAdapter(BaseLLMAdapter):
@@ -48,8 +75,6 @@ class DeepSeekAdapter(BaseLLMAdapter):
         Returns:
             ChatDeepSeek instance
         """
-        from langchain_deepseek import ChatDeepSeek
-
         llm_kwargs = {
             "model": model,
             "api_key": api_key,
@@ -84,7 +109,13 @@ class DeepSeekAdapter(BaseLLMAdapter):
         if extra_model_kwargs:
             llm_kwargs["model_kwargs"] = extra_model_kwargs
 
-        return ChatDeepSeek(**llm_kwargs)
+        llm = ChatDeepSeekInterleaved(**llm_kwargs)
+        object.__setattr__(
+            llm,
+            "_requires_interleaved_thinking",
+            bool(kwargs.get("requires_interleaved_thinking", False)),
+        )
+        return llm
 
     async def stream(
         self,

@@ -5,6 +5,8 @@
 providers:
   deepseek:
     api_key: "your-deepseek-api-key-here"
+  kimi:
+    api_key: "your-kimi-api-key-here"
   openai:
     api_key: "your-openai-api-key-here"
   openrouter:

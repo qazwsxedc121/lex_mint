@@ -20,6 +20,7 @@ from .adapters import (
     GeminiAdapter,
     BailianAdapter,
     SiliconFlowAdapter,
+    KimiAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class AdapterRegistry:
         "gemini": GeminiAdapter,
         "bailian": BailianAdapter,
         "siliconflow": SiliconFlowAdapter,
+        "kimi": KimiAdapter,
     }
 
     # Mapping of API protocols to default adapter classes

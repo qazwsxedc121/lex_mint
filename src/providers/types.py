@@ -100,6 +100,10 @@ class ModelCapabilities(BaseModel):
     vision: bool = Field(default=False, description="Supports image input")
     function_calling: bool = Field(default=False, description="Supports function/tool calling")
     reasoning: bool = Field(default=False, description="Supports thinking/reasoning mode")
+    requires_interleaved_thinking: bool = Field(
+        default=False,
+        description="Requires reasoning_content on assistant tool-call messages during thinking mode",
+    )
     streaming: bool = Field(default=True, description="Supports streaming output")
     file_upload: bool = Field(default=False, description="Supports file upload")
     image_output: bool = Field(default=False, description="Supports image generation")

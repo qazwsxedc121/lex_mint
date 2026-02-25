@@ -6,12 +6,34 @@ Adapter for OpenAI and OpenAI-compatible APIs (OpenRouter, Groq, Together, etc.)
 import logging
 from typing import AsyncIterator, List, Dict, Any
 from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.base import BaseChatOpenAI
 
 from ..base import BaseLLMAdapter
 from ..types import CallMode, StreamChunk, LLMResponse, TokenUsage
+from ..model_capability_rules import apply_model_capability_hints
+from .reasoning_openai import ChatReasoningOpenAI, inject_tool_call_reasoning_content
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
+
+
+class ChatOpenAIInterleaved(ChatReasoningOpenAI):
+    """ChatReasoningOpenAI wrapper with conditional interleaved payload patching."""
+
+    def _get_request_payload(
+        self,
+        input_: Any,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        source_messages = self._convert_input(input_).to_messages()
+        return inject_tool_call_reasoning_content(
+            payload,
+            source_messages=source_messages,
+            enabled=bool(getattr(self, "_requires_interleaved_thinking", False)),
+        )
 
 
 class OpenAIAdapter(BaseLLMAdapter):
@@ -41,18 +63,18 @@ class OpenAIAdapter(BaseLLMAdapter):
         return value.get_secret_value() if hasattr(value, "get_secret_value") else value
 
     @staticmethod
-    def _unwrap_chat_openai(llm: Any) -> tuple[ChatOpenAI, Dict[str, Any], Dict[str, Any]]:
+    def _unwrap_chat_openai(llm: Any) -> tuple[BaseChatOpenAI, Dict[str, Any], Dict[str, Any]]:
         """
         Unwrap a ChatOpenAI or ChatOpenAI-bound runnable to its base model.
 
         Returns:
             (base_chat_openai, bind_kwargs, bind_config)
         """
-        if isinstance(llm, ChatOpenAI):
+        if isinstance(llm, BaseChatOpenAI):
             return llm, {}, {}
 
         bound = getattr(llm, "bound", None)
-        if isinstance(bound, ChatOpenAI):
+        if isinstance(bound, BaseChatOpenAI):
             bind_kwargs = getattr(llm, "kwargs", {}) or {}
             bind_config = getattr(llm, "config", {}) or {}
             return bound, bind_kwargs, bind_config
@@ -90,7 +112,14 @@ class OpenAIAdapter(BaseLLMAdapter):
             if value is not None:
                 llm_kwargs[key] = value
 
-        fallback_llm: Any = ChatOpenAI(**llm_kwargs)
+        llm_cls = source_llm.__class__
+        fallback_llm: Any = llm_cls(**llm_kwargs)
+        if hasattr(source_llm, "_requires_interleaved_thinking"):
+            object.__setattr__(
+                fallback_llm,
+                "_requires_interleaved_thinking",
+                bool(getattr(source_llm, "_requires_interleaved_thinking", False)),
+            )
         if bind_kwargs:
             fallback_llm = fallback_llm.bind(**bind_kwargs)
         if bind_config:
@@ -107,7 +136,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         streaming: bool = True,
         thinking_enabled: bool = False,
         **kwargs
-    ) -> ChatOpenAI:
+    ) -> BaseChatOpenAI:
         """
         Create a ChatOpenAI instance.
 
@@ -126,7 +155,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         call_mode = self._normalize_call_mode(kwargs.get("call_mode"))
         use_responses_api = self._mode_uses_responses(call_mode)
 
-        llm_kwargs = {
+        llm_kwargs: Dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -161,7 +190,12 @@ class OpenAIAdapter(BaseLLMAdapter):
         if use_responses_api:
             logger.info(f"OpenAI Responses API enabled for {model}")
 
-        return ChatOpenAI(**llm_kwargs)
+        requires_interleaved = bool(kwargs.get("requires_interleaved_thinking", False))
+        llm_cls = ChatOpenAIInterleaved if requires_interleaved else ChatOpenAI
+        llm = llm_cls(**llm_kwargs)
+        if requires_interleaved:
+            object.__setattr__(llm, "_requires_interleaved_thinking", True)
+        return llm
 
     async def stream(
         self,
@@ -343,6 +377,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         if not tags:
             tags.append("chat")
 
+        capabilities = apply_model_capability_hints(model.get("id", ""), capabilities)
         return {"capabilities": capabilities, "tags": tags}
 
     async def fetch_models(
@@ -394,6 +429,10 @@ class OpenAIAdapter(BaseLLMAdapter):
                     if caps_and_tags:
                         entry["capabilities"] = caps_and_tags["capabilities"]
                         entry["tags"] = caps_and_tags["tags"]
+                    else:
+                        hinted_caps = apply_model_capability_hints(model_id, None)
+                        if hinted_caps:
+                            entry["capabilities"] = hinted_caps
 
                     models.append(entry)
 

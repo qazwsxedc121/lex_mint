@@ -1026,6 +1026,7 @@ class CompressionService:
         # Get model and adapter
         model_service = ModelConfigService()
         model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
+        capabilities = model_service.get_merged_capabilities(model_config, provider_config)
 
         adapter = model_service.get_adapter_for_provider(provider_config)
         resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
@@ -1072,6 +1073,7 @@ class CompressionService:
                     streaming=False,
                     max_tokens=max_tokens,
                     call_mode=effective_call_mode.value,
+                    requires_interleaved_thinking=capabilities.requires_interleaved_thinking,
                 )
 
             full_response, stream_meta = await self._compress_with_model_config(
@@ -1225,6 +1227,7 @@ class CompressionService:
 
         model_service = ModelConfigService()
         model_config, provider_config = model_service.get_model_and_provider_sync(model_id)
+        capabilities = model_service.get_merged_capabilities(model_config, provider_config)
         adapter = model_service.get_adapter_for_provider(provider_config)
         resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
         effective_call_mode = (
@@ -1269,6 +1272,7 @@ class CompressionService:
                     streaming=False,
                     max_tokens=max_tokens,
                     call_mode=effective_call_mode.value,
+                    requires_interleaved_thinking=capabilities.requires_interleaved_thinking,
                 )
 
             full_response, auto_meta = await self._compress_with_model_config(
