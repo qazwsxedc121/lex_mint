@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class Bm25Service:
     """Service for chunk-level BM25 indexing and retrieval."""
+    _punct_only_re = re.compile(r"[\W_]+")
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
@@ -91,7 +92,7 @@ class Bm25Service:
         for tok in tokens:
             if not tok:
                 continue
-            if re.fullmatch(r"[\W_]+", tok):
+            if cls._punct_only_re.fullmatch(tok):
                 continue
             cleaned.append(tok)
         return cleaned
@@ -164,7 +165,15 @@ class Bm25Service:
             cursor = conn.cursor()
             cursor.execute("BEGIN")
             try:
+                existing_rows = cursor.execute(
+                    "SELECT chunk_id FROM rag_bm25_chunks WHERE kb_id = ? AND doc_id = ?",
+                    (kb_id, doc_id),
+                ).fetchall()
+                existing_ids = [str(item["chunk_id"]) for item in existing_rows]
+
                 current_ids: List[str] = []
+                chunk_rows: List[tuple[object, ...]] = []
+                fts_rows: List[tuple[str, str]] = []
                 for row in chunks:
                     chunk_id = str(row.get("chunk_id") or "")
                     if not chunk_id:
@@ -173,51 +182,62 @@ class Bm25Service:
                     content = str(row.get("content") or "")
                     tokenized = self._to_tokenized_text(content)
                     current_ids.append(chunk_id)
-                    cursor.execute(
-                        """
-                        INSERT OR REPLACE INTO rag_bm25_chunks (
-                            chunk_id, kb_id, doc_id, filename, chunk_index, content, tokenized, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                        """,
-                        (chunk_id, kb_id, doc_id, filename, chunk_index, content, tokenized),
+                    chunk_rows.append(
+                        (chunk_id, kb_id, doc_id, filename, chunk_index, content, tokenized)
                     )
+                    fts_rows.append((chunk_id, tokenized))
 
-                if current_ids:
-                    placeholders = ",".join("?" for _ in current_ids)
-                    params: List[object] = [kb_id, doc_id, *current_ids]
-                    cursor.execute(
-                        f"""
-                        DELETE FROM rag_bm25_chunks
-                        WHERE kb_id = ? AND doc_id = ? AND chunk_id NOT IN ({placeholders})
-                        """,
-                        params,
-                    )
-                else:
+                if not current_ids:
                     cursor.execute(
                         "DELETE FROM rag_bm25_chunks WHERE kb_id = ? AND doc_id = ?",
                         (kb_id, doc_id),
                     )
+                    if existing_ids:
+                        placeholders = ",".join("?" for _ in existing_ids)
+                        cursor.execute(
+                            f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})",
+                            existing_ids,
+                        )
+                    conn.commit()
+                    return
 
-                doc_rows = cursor.execute(
+                cursor.executemany(
                     """
-                    SELECT chunk_id, tokenized
-                    FROM rag_bm25_chunks
-                    WHERE kb_id = ? AND doc_id = ?
+                    INSERT OR REPLACE INTO rag_bm25_chunks (
+                        chunk_id, kb_id, doc_id, filename, chunk_index, content, tokenized, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """,
-                    (kb_id, doc_id),
-                ).fetchall()
-                doc_chunk_ids = [str(item["chunk_id"]) for item in doc_rows]
-                if doc_chunk_ids:
-                    placeholders = ",".join("?" for _ in doc_chunk_ids)
-                    cursor.execute(
-                        f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})",
-                        doc_chunk_ids,
-                    )
-                for item in doc_rows:
-                    cursor.execute(
+                    chunk_rows,
+                )
+
+                # Fast path: common import flow is append-only new docs.
+                if not existing_ids:
+                    cursor.executemany(
                         "INSERT INTO rag_bm25_fts (chunk_id, tokenized) VALUES (?, ?)",
-                        (str(item["chunk_id"]), str(item["tokenized"] or "")),
+                        fts_rows,
                     )
+                    conn.commit()
+                    return
+
+                current_id_set = set(current_ids)
+                stale_ids = [chunk_id for chunk_id in existing_ids if chunk_id not in current_id_set]
+                if stale_ids:
+                    placeholders = ",".join("?" for _ in stale_ids)
+                    cursor.execute(
+                        f"DELETE FROM rag_bm25_chunks WHERE chunk_id IN ({placeholders})",
+                        stale_ids,
+                    )
+
+                # Refresh FTS rows for this document generation.
+                placeholders = ",".join("?" for _ in existing_ids)
+                cursor.execute(
+                    f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})",
+                    existing_ids,
+                )
+                cursor.executemany(
+                    "INSERT INTO rag_bm25_fts (chunk_id, tokenized) VALUES (?, ?)",
+                    fts_rows,
+                )
 
                 conn.commit()
             except Exception:

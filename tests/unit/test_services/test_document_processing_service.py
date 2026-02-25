@@ -178,13 +178,15 @@ def test_store_in_chromadb_cleans_stale_doc_generation(monkeypatch):
 
 
 class _FakeSqliteVecService:
-    def __init__(self):
+    def __init__(self, *, had_existing=False):
         self.upsert_calls = []
         self.delete_by_ids_calls = []
         self.delete_stale_calls = []
+        self.had_existing = had_existing
 
     def upsert_chunks(self, **kwargs):
         self.upsert_calls.append(kwargs)
+        return self.had_existing
 
     def delete_chunks_by_ids(self, **kwargs):
         self.delete_by_ids_calls.append(kwargs)
@@ -236,5 +238,65 @@ def test_store_in_sqlite_vec_rolls_back_on_bm25_failure(monkeypatch):
         assert len(fake_sqlite.upsert_calls) == 1
         assert len(fake_sqlite.delete_by_ids_calls) == 1
         assert len(fake_sqlite.delete_stale_calls) == 0
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_store_in_sqlite_vec_skips_stale_cleanup_for_new_doc(monkeypatch):
+    tmp_path = Path("data") / "tmp_test_runtime" / f"doc_proc_sqlite_{uuid.uuid4().hex[:8]}"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        service = _build_service(tmp_path, batch_max_retries=1)
+        fake_sqlite = _FakeSqliteVecService(had_existing=False)
+        monkeypatch.setattr(
+            "src.api.services.sqlite_vec_service.SqliteVecService",
+            lambda: fake_sqlite,
+        )
+        service.bm25_service = SimpleNamespace(upsert_document_chunks=lambda **kwargs: None)
+
+        asyncio.run(
+            service._store_in_sqlite_vec(
+                kb_id="kb1",
+                doc_id="doc1",
+                filename="doc.md",
+                file_type=".md",
+                chunks=["a", "bb"],
+                embedding_fn=_FakeEmbeddingFn(),
+            )
+        )
+
+        assert len(fake_sqlite.upsert_calls) == 1
+        assert len(fake_sqlite.delete_stale_calls) == 0
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_store_in_sqlite_vec_runs_stale_cleanup_for_existing_doc(monkeypatch):
+    tmp_path = Path("data") / "tmp_test_runtime" / f"doc_proc_sqlite_{uuid.uuid4().hex[:8]}"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        service = _build_service(tmp_path, batch_max_retries=1)
+        fake_sqlite = _FakeSqliteVecService(had_existing=True)
+        monkeypatch.setattr(
+            "src.api.services.sqlite_vec_service.SqliteVecService",
+            lambda: fake_sqlite,
+        )
+        service.bm25_service = SimpleNamespace(upsert_document_chunks=lambda **kwargs: None)
+
+        asyncio.run(
+            service._store_in_sqlite_vec(
+                kb_id="kb1",
+                doc_id="doc1",
+                filename="doc.md",
+                file_type=".md",
+                chunks=["a", "bb"],
+                embedding_fn=_FakeEmbeddingFn(),
+            )
+        )
+
+        assert len(fake_sqlite.upsert_calls) == 1
+        assert len(fake_sqlite.delete_stale_calls) == 1
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)

@@ -28,6 +28,16 @@ class DocumentProcessingService:
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
         self.bm25_service = Bm25Service()
+        self._sqlite_vec_service = None
+
+    def _get_sqlite_vec_service(self):
+        from .sqlite_vec_service import SqliteVecService
+
+        service = getattr(self, "_sqlite_vec_service", None)
+        if service is None:
+            service = SqliteVecService()
+            self._sqlite_vec_service = service
+        return service
 
     async def process_document(
         self,
@@ -38,6 +48,8 @@ class DocumentProcessingService:
         file_path: str,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
+        track_status: bool = True,
+        kb_snapshot=None,
     ):
         """
         Process a document: extract text, chunk, embed, store in vector backend.
@@ -56,10 +68,11 @@ class DocumentProcessingService:
 
         try:
             # Update status to processing
-            await kb_service.update_document_status(kb_id, doc_id, "processing")
+            if track_status:
+                await kb_service.update_document_status(kb_id, doc_id, "processing")
 
             # Get chunk settings from KB override or global config
-            kb = await kb_service.get_knowledge_base(kb_id)
+            kb = kb_snapshot if kb_snapshot is not None else await kb_service.get_knowledge_base(kb_id)
             effective_chunk_size = chunk_size or (kb.chunk_size if kb and kb.chunk_size else self.rag_config_service.config.chunking.chunk_size)
             effective_chunk_overlap = chunk_overlap or (kb.chunk_overlap if kb and kb.chunk_overlap else self.rag_config_service.config.chunking.chunk_overlap)
 
@@ -109,21 +122,24 @@ class DocumentProcessingService:
                 )
 
             # Step 5: Update document status to ready
-            await kb_service.update_document_status(
-                kb_id, doc_id, "ready",
-                chunk_count=len(chunks)
-            )
+            if track_status:
+                await kb_service.update_document_status(
+                    kb_id, doc_id, "ready",
+                    chunk_count=len(chunks)
+                )
             logger.info(f"Document {doc_id} ({filename}) processed successfully: {len(chunks)} chunks")
+            return len(chunks)
 
         except Exception as e:
             logger.error(f"Document processing failed for {doc_id} ({filename}): {e}")
-            try:
-                await kb_service.update_document_status(
-                    kb_id, doc_id, "error",
-                    error_message=str(e)
-                )
-            except Exception as e2:
-                logger.error(f"Failed to update document status to error: {e2}")
+            if track_status:
+                try:
+                    await kb_service.update_document_status(
+                        kb_id, doc_id, "error",
+                        error_message=str(e)
+                    )
+                except Exception as e2:
+                    logger.error(f"Failed to update document status to error: {e2}")
             raise
 
     def _extract_text(self, file_path: str, file_type: str) -> str:
@@ -465,12 +481,10 @@ class DocumentProcessingService:
         embedding_fn,
     ):
         """Store document chunks in SQLite vector store."""
-        from .sqlite_vec_service import SqliteVecService
-
         if not hasattr(embedding_fn, "embed_documents"):
             raise ValueError("Embedding function does not support embed_documents() for sqlite_vec backend")
 
-        sqlite_vec_service = SqliteVecService()
+        sqlite_vec_service = self._get_sqlite_vec_service()
         ingest_id = uuid.uuid4().hex[:8]
         ids = [f"{doc_id}_{ingest_id}_chunk_{i}" for i in range(len(chunks))]
 
@@ -532,7 +546,7 @@ class DocumentProcessingService:
             if batch_delay > 0 and end < total:
                 await asyncio.sleep(batch_delay)
 
-        sqlite_vec_service.upsert_chunks(
+        had_existing_chunks = sqlite_vec_service.upsert_chunks(
             kb_id=kb_id,
             doc_id=doc_id,
             filename=filename,
@@ -560,10 +574,11 @@ class DocumentProcessingService:
             sqlite_vec_service.delete_chunks_by_ids(kb_id=kb_id, chunk_ids=ids)
             raise
 
-        deleted = sqlite_vec_service.delete_stale_document_chunks(
-            kb_id=kb_id,
-            doc_id=doc_id,
-            keep_chunk_ids=ids,
-        )
-        if deleted:
-            logger.info(f"Removed {deleted} stale SQLite chunks for doc {doc_id} in kb_{kb_id}")
+        if had_existing_chunks:
+            deleted = sqlite_vec_service.delete_stale_document_chunks(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                keep_chunk_ids=ids,
+            )
+            if deleted:
+                logger.info(f"Removed {deleted} stale SQLite chunks for doc {doc_id} in kb_{kb_id}")

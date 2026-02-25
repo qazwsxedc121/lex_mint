@@ -17,7 +17,7 @@ def test_sqlite_vec_upsert_search_and_cleanup():
 
     try:
         service = SqliteVecService(db_path=str(tmp_path / "rag_vec.sqlite3"))
-        service.upsert_chunks(
+        had_existing = service.upsert_chunks(
             kb_id="kb1",
             doc_id="doc1",
             filename="doc.md",
@@ -38,6 +38,24 @@ def test_sqlite_vec_upsert_search_and_cleanup():
                 },
             ],
         )
+        assert had_existing is False
+
+        had_existing = service.upsert_chunks(
+            kb_id="kb1",
+            doc_id="doc1",
+            filename="doc.md",
+            file_type=".md",
+            ingest_id="ingest_b",
+            chunk_rows=[
+                {
+                    "chunk_id": "doc1_chunk_0",
+                    "chunk_index": 0,
+                    "content": "alpha",
+                    "embedding": [1.0, 0.0],
+                }
+            ],
+        )
+        assert had_existing is True
 
         search_results = service.search(kb_id="kb1", query_embedding=[1.0, 0.0], top_k=2)
         assert len(search_results) == 2
