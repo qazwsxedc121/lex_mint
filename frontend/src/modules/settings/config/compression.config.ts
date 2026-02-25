@@ -11,6 +11,31 @@ export const compressionConfig: SimpleConfigSettingsConfig = {
   type: 'config',
   get title() { return i18n.t('settings:compression.title'); },
   get description() { return i18n.t('settings:compression.description'); },
+  help: {
+    get openTitle() { return i18n.t('settings:compression.help.openTitle'); },
+    get title() { return i18n.t('settings:compression.help.title'); },
+    size: 'xl',
+    get sections() {
+      return [
+        {
+          title: i18n.t('settings:compression.help.quickStartTitle'),
+          items: [
+            i18n.t('settings:compression.help.quickStartItem1'),
+            i18n.t('settings:compression.help.quickStartItem2'),
+            i18n.t('settings:compression.help.quickStartItem3'),
+          ],
+        },
+        {
+          title: i18n.t('settings:compression.help.pitfallsTitle'),
+          items: [
+            i18n.t('settings:compression.help.pitfallsItem1'),
+            i18n.t('settings:compression.help.pitfallsItem2'),
+            i18n.t('settings:compression.help.pitfallsItem3'),
+          ],
+        },
+      ];
+    },
+  },
 
   apiEndpoint: {
     get: '/api/compression/config',

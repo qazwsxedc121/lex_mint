@@ -11,6 +11,31 @@ export const translationConfig: SimpleConfigSettingsConfig = {
   type: 'config',
   get title() { return i18n.t('settings:translationConfig.title'); },
   get description() { return i18n.t('settings:translationConfig.description'); },
+  help: {
+    get openTitle() { return i18n.t('settings:translationConfig.help.openTitle'); },
+    get title() { return i18n.t('settings:translationConfig.help.title'); },
+    size: 'xl',
+    get sections() {
+      return [
+        {
+          title: i18n.t('settings:translationConfig.help.quickStartTitle'),
+          items: [
+            i18n.t('settings:translationConfig.help.quickStartItem1'),
+            i18n.t('settings:translationConfig.help.quickStartItem2'),
+            i18n.t('settings:translationConfig.help.quickStartItem3'),
+          ],
+        },
+        {
+          title: i18n.t('settings:translationConfig.help.pitfallsTitle'),
+          items: [
+            i18n.t('settings:translationConfig.help.pitfallsItem1'),
+            i18n.t('settings:translationConfig.help.pitfallsItem2'),
+            i18n.t('settings:translationConfig.help.pitfallsItem3'),
+          ],
+        },
+      ];
+    },
+  },
 
   apiEndpoint: {
     get: '/api/translation/config',

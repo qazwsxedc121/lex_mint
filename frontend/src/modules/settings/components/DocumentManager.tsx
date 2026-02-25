@@ -11,6 +11,7 @@ import {
   TrashIcon,
   DocumentArrowUpIcon,
 } from '@heroicons/react/24/outline';
+import { SettingsHelp } from './common';
 import * as api from '../../../services/api';
 import type { KnowledgeBaseDocument } from '../../../types/knowledgeBase';
 
@@ -279,8 +280,35 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ kbId }) => {
   return (
     <div data-name="document-manager" className="mt-8">
       <div className="mb-4 flex items-center justify-between gap-3" data-name="document-manager-header">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-          {t('documents.title')}
+        <h3 className="inline-flex items-center gap-2 text-lg font-medium text-gray-900 dark:text-white">
+          <span>{t('documents.title')}</span>
+          <SettingsHelp
+            help={{
+              openTitle: t('documents.help.openTitle'),
+              title: t('documents.help.title'),
+              size: 'xl',
+              sections: [
+                {
+                  title: t('documents.help.quickStartTitle'),
+                  items: [
+                    t('documents.help.quickStartItem1'),
+                    t('documents.help.quickStartItem2'),
+                    t('documents.help.quickStartItem3'),
+                  ],
+                },
+                {
+                  title: t('documents.help.pitfallsTitle'),
+                  items: [
+                    t('documents.help.pitfallsItem1'),
+                    t('documents.help.pitfallsItem2'),
+                    t('documents.help.pitfallsItem3'),
+                  ],
+                },
+              ],
+            }}
+            triggerDataName="documents-help-trigger"
+            contentDataName="documents-help-content"
+          />
         </h3>
         <div className="flex items-center gap-2">
           <button

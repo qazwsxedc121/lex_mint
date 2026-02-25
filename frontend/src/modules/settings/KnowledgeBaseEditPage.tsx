@@ -11,6 +11,7 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useKnowledgeBases } from './hooks/useKnowledgeBases';
 import { knowledgeBasesConfig } from './config';
 import { DocumentManager } from './components/DocumentManager';
+import { SettingsHelp } from './components/common';
 import type { KnowledgeBase } from '../../types/knowledgeBase';
 
 // Import common components from the crud module
@@ -104,8 +105,35 @@ export const KnowledgeBaseEditPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {t('knowledgeBase.editTitle')}
+          <h2 className="inline-flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
+            <span>{t('knowledgeBase.editTitle')}</span>
+            <SettingsHelp
+              help={{
+                openTitle: t('knowledgeBase.help.openTitle'),
+                title: t('knowledgeBase.help.title'),
+                size: 'xl',
+                sections: [
+                  {
+                    title: t('knowledgeBase.help.quickStartTitle'),
+                    items: [
+                      t('knowledgeBase.help.quickStartItem1'),
+                      t('knowledgeBase.help.quickStartItem2'),
+                      t('knowledgeBase.help.quickStartItem3'),
+                    ],
+                  },
+                  {
+                    title: t('knowledgeBase.help.pitfallsTitle'),
+                    items: [
+                      t('knowledgeBase.help.pitfallsItem1'),
+                      t('knowledgeBase.help.pitfallsItem2'),
+                      t('knowledgeBase.help.pitfallsItem3'),
+                    ],
+                  },
+                ],
+              }}
+              triggerDataName="kb-edit-help-trigger"
+              contentDataName="kb-edit-help-content"
+            />
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {t('knowledgeBase.editingName', { name: item.name })}
