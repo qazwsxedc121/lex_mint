@@ -32,6 +32,8 @@ interface CrudModalProps {
   isSubmitting?: boolean;
   /** Show validation errors */
   showErrors?: boolean;
+  /** Modal width size */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export const CrudModal: React.FC<CrudModalProps> = ({
@@ -45,14 +47,15 @@ export const CrudModal: React.FC<CrudModalProps> = ({
   context,
   isEdit,
   isSubmitting = false,
-  showErrors = false
+  showErrors = false,
+  size = 'lg',
 }) => {
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={title}
-      size="lg"
+      size={size}
       preventBackdropClose={isSubmitting}
     >
       <CrudForm

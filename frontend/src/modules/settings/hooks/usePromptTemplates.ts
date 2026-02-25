@@ -10,6 +10,48 @@ import type {
 } from '../../../types/promptTemplate';
 import * as api from '../../../services/api';
 
+const parseAliases = (value: unknown): string[] => {
+  const rawItems = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[\n,]/)
+      : [];
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const item of rawItems) {
+    const alias = String(item).trim();
+    if (!alias) {
+      continue;
+    }
+    const lowered = alias.toLowerCase();
+    if (seen.has(lowered)) {
+      continue;
+    }
+    seen.add(lowered);
+    normalized.push(alias);
+  }
+  return normalized;
+};
+
+const normalizePromptTemplatePayload = <T extends PromptTemplateCreate | PromptTemplateUpdate>(payload: T): T => {
+  const nextPayload: Record<string, unknown> = { ...payload };
+  for (const key of Object.keys(nextPayload)) {
+    if (key.startsWith('__')) {
+      delete nextPayload[key];
+    }
+  }
+
+  if (typeof nextPayload.trigger === 'string') {
+    nextPayload.trigger = nextPayload.trigger.trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(nextPayload, 'aliases')) {
+    nextPayload.aliases = parseAliases(nextPayload.aliases);
+  }
+
+  return nextPayload as T;
+};
+
 export function usePromptTemplates() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,7 +78,7 @@ export function usePromptTemplates() {
 
   const createTemplate = useCallback(async (template: PromptTemplateCreate) => {
     try {
-      await api.createPromptTemplate(template);
+      await api.createPromptTemplate(normalizePromptTemplatePayload(template));
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create prompt template';
@@ -47,7 +89,7 @@ export function usePromptTemplates() {
 
   const updateTemplate = useCallback(async (templateId: string, template: PromptTemplateUpdate) => {
     try {
-      await api.updatePromptTemplate(templateId, template);
+      await api.updatePromptTemplate(templateId, normalizePromptTemplatePayload(template));
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update prompt template';

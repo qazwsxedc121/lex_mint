@@ -39,6 +39,41 @@ def test_prompt_template_rejects_invalid_select_default():
         )
 
 
+def test_prompt_template_rejects_invalid_trigger_format():
+    with pytest.raises(ValidationError, match=r"Trigger must match"):
+        PromptTemplate(
+            id="bad-trigger",
+            name="bad-trigger",
+            content="hello",
+            trigger="Review Prompt",
+            enabled=True,
+        )
+
+
+def test_prompt_template_rejects_alias_equal_to_trigger():
+    with pytest.raises(ValidationError, match="Alias must not duplicate trigger"):
+        PromptTemplate(
+            id="alias-conflict",
+            name="alias-conflict",
+            content="hello",
+            trigger="review",
+            aliases=["review", "quick-review"],
+            enabled=True,
+        )
+
+
+def test_prompt_template_normalizes_aliases_case_insensitive():
+    template = PromptTemplate(
+        id="alias-normalize",
+        name="alias-normalize",
+        content="hello",
+        trigger="review",
+        aliases=["quick", "quick", "quick_review", " "],
+        enabled=True,
+    )
+    assert template.aliases == ["quick", "quick_review"]
+
+
 @pytest.mark.asyncio
 async def test_prompt_template_service_loads_legacy_templates_without_variables(temp_config_dir):
     config_path = Path(temp_config_dir) / "prompt_templates_config.yaml"
@@ -61,6 +96,8 @@ async def test_prompt_template_service_loads_legacy_templates_without_variables(
     assert len(templates) == 1
     assert templates[0].id == "legacy-1"
     assert templates[0].variables == []
+    assert templates[0].trigger is None
+    assert templates[0].aliases == []
 
 
 @pytest.mark.asyncio

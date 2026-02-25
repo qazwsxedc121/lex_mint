@@ -7,6 +7,66 @@ import type { PromptTemplate, PromptTemplateVariable } from '../../../types/prom
 import i18n from '../../../i18n';
 
 const VARIABLE_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const TRIGGER_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+const normalizeTrigger = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
+const normalizeAliases = (value: unknown): string[] => {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[\n,]/)
+      : [];
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const item of source) {
+    const alias = String(item).trim();
+    if (!alias) {
+      continue;
+    }
+    const lowered = alias.toLowerCase();
+    if (seen.has(lowered)) {
+      continue;
+    }
+    seen.add(lowered);
+    normalized.push(alias);
+  }
+  return normalized;
+};
+
+const validateTrigger = (value: unknown): string | undefined => {
+  const trigger = normalizeTrigger(value);
+  if (!trigger) {
+    return undefined;
+  }
+  if (!TRIGGER_PATTERN.test(trigger)) {
+    return i18n.t('settings:promptTemplates.field.trigger.errorFormat');
+  }
+  return undefined;
+};
+
+const validateAliases = (value: unknown): string | undefined => {
+  const aliases = normalizeAliases(value);
+  for (const alias of aliases) {
+    if (!TRIGGER_PATTERN.test(alias)) {
+      return i18n.t('settings:promptTemplates.field.aliases.errorFormat');
+    }
+  }
+  return undefined;
+};
+
+const shouldShowAdvancedFields = (formData: Record<string, unknown>): boolean => {
+  if (formData.__showAdvanced === true) {
+    return true;
+  }
+  const trigger = normalizeTrigger(formData.trigger);
+  if (trigger) {
+    return true;
+  }
+  const aliases = normalizeAliases(formData.aliases);
+  return aliases.length > 0;
+};
 
 const validateVariables = (value: unknown): string | undefined => {
   if (value == null) {
@@ -97,6 +157,7 @@ const contentField = (isEdit: boolean) => ({
 
 export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
   type: 'crud',
+  modalSize: 'xl',
   get title() { return i18n.t('settings:promptTemplates.title'); },
   get description() { return i18n.t('settings:promptTemplates.description'); },
   get itemName() { return i18n.t('settings:promptTemplates.itemName'); },
@@ -132,6 +193,17 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
       )
     },
     {
+      key: 'trigger',
+      get label() { return i18n.t('settings:promptTemplates.col.trigger'); },
+      sortable: true,
+      hideOnMobile: true,
+      render: (value) => (
+        <div className="text-xs text-gray-600 dark:text-gray-300">
+          {value ? `/${String(value)}` : '-'}
+        </div>
+      )
+    },
+    {
       key: 'enabled',
       get label() { return i18n.t('settings:promptTemplates.col.enabled'); },
       sortable: true,
@@ -145,12 +217,28 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
   get searchPlaceholder() { return i18n.t('settings:promptTemplates.search'); },
   filterFn: (item, term) => {
     const query = term.toLowerCase();
+    const aliases = Array.isArray(item.aliases) ? item.aliases.join(' ') : '';
     return (
       item.id.toLowerCase().includes(query) ||
       item.name.toLowerCase().includes(query) ||
       (item.description || '').toLowerCase().includes(query) ||
+      (item.trigger || '').toLowerCase().includes(query) ||
+      aliases.toLowerCase().includes(query) ||
       item.content.toLowerCase().includes(query)
     );
+  },
+
+  validateForm: (formData) => {
+    const trigger = normalizeTrigger(formData.trigger);
+    const aliases = normalizeAliases(formData.aliases);
+    if (!trigger) {
+      return undefined;
+    }
+    const triggerLower = trigger.toLowerCase();
+    if (aliases.some((alias) => alias.toLowerCase() === triggerLower)) {
+      return i18n.t('settings:promptTemplates.field.aliases.errorConflict');
+    }
+    return undefined;
   },
 
   createFields: [
@@ -166,6 +254,31 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
       name: 'description',
       get label() { return i18n.t('settings:promptTemplates.field.description'); },
       get placeholder() { return i18n.t('settings:promptTemplates.field.description.placeholder'); }
+    },
+    {
+      type: 'checkbox',
+      name: '__showAdvanced',
+      get label() { return i18n.t('settings:promptTemplates.field.advanced.label'); },
+      defaultValue: false,
+    },
+    {
+      type: 'text',
+      name: 'trigger',
+      get label() { return i18n.t('settings:promptTemplates.field.trigger.label'); },
+      get placeholder() { return i18n.t('settings:promptTemplates.field.trigger.placeholder'); },
+      get helpText() { return i18n.t('settings:promptTemplates.field.trigger.help'); },
+      validate: validateTrigger,
+      condition: (formData) => shouldShowAdvancedFields(formData as Record<string, unknown>),
+    },
+    {
+      type: 'textarea',
+      name: 'aliases',
+      get label() { return i18n.t('settings:promptTemplates.field.aliases.label'); },
+      get placeholder() { return i18n.t('settings:promptTemplates.field.aliases.placeholder'); },
+      get helpText() { return i18n.t('settings:promptTemplates.field.aliases.help'); },
+      validate: validateAliases,
+      rows: 3,
+      condition: (formData) => shouldShowAdvancedFields(formData as Record<string, unknown>),
     },
     contentField(false),
     variablesField,
@@ -188,6 +301,29 @@ export const promptTemplatesConfig: CrudSettingsConfig<PromptTemplate> = {
       type: 'text',
       name: 'description',
       get label() { return i18n.t('settings:promptTemplates.field.description'); }
+    },
+    {
+      type: 'checkbox',
+      name: '__showAdvanced',
+      get label() { return i18n.t('settings:promptTemplates.field.advanced.label'); },
+      defaultValue: false,
+    },
+    {
+      type: 'text',
+      name: 'trigger',
+      get label() { return i18n.t('settings:promptTemplates.field.trigger.label'); },
+      get helpText() { return i18n.t('settings:promptTemplates.field.trigger.help'); },
+      validate: validateTrigger,
+      condition: (formData) => shouldShowAdvancedFields(formData as Record<string, unknown>),
+    },
+    {
+      type: 'textarea',
+      name: 'aliases',
+      get label() { return i18n.t('settings:promptTemplates.field.aliases.label'); },
+      get helpText() { return i18n.t('settings:promptTemplates.field.aliases.help'); },
+      validate: validateAliases,
+      rows: 3,
+      condition: (formData) => shouldShowAdvancedFields(formData as Record<string, unknown>),
     },
     contentField(true),
     variablesField,

@@ -74,6 +74,7 @@ const MAX_RECENT_TEMPLATE_COUNT = 12;
 const TEMPLATE_VARIABLE_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
 const TEMPLATE_CURSOR_VARIABLE = 'cursor';
 const TEMPLATE_VARIABLE_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const TEMPLATE_TRIGGER_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 interface SlashCommandMatch {
   query: string;
@@ -104,6 +105,77 @@ interface TemplateVariableDefinition {
   defaultValue?: string | number | boolean;
   options: string[];
 }
+
+const normalizeTemplateMatchValue = (value: string): string => value.trim().toLowerCase();
+
+const normalizeTemplateTrigger = (template: PromptTemplate): string | null => {
+  const trigger = (template.trigger || '').trim();
+  if (!trigger || !TEMPLATE_TRIGGER_PATTERN.test(trigger)) {
+    return null;
+  }
+  return trigger;
+};
+
+const normalizeTemplateAliases = (template: PromptTemplate): string[] => {
+  if (!Array.isArray(template.aliases)) {
+    return [];
+  }
+
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+  for (const item of template.aliases) {
+    const alias = item.trim();
+    if (!alias || !TEMPLATE_TRIGGER_PATTERN.test(alias)) {
+      continue;
+    }
+    const lowered = alias.toLowerCase();
+    if (seen.has(lowered)) {
+      continue;
+    }
+    seen.add(lowered);
+    aliases.push(alias);
+  }
+  return aliases;
+};
+
+const getTemplateMatchTier = (template: PromptTemplate, query: string): number | null => {
+  const normalizedQuery = normalizeTemplateMatchValue(query);
+  if (!normalizedQuery) {
+    return 5;
+  }
+
+  const trigger = normalizeTemplateTrigger(template);
+  const aliases = normalizeTemplateAliases(template);
+  const normalizedTrigger = trigger ? trigger.toLowerCase() : null;
+  const normalizedAliases = aliases.map((alias) => alias.toLowerCase());
+
+  if (normalizedTrigger === normalizedQuery) {
+    return 0;
+  }
+  if (normalizedAliases.includes(normalizedQuery)) {
+    return 1;
+  }
+  if (normalizedTrigger && normalizedTrigger.startsWith(normalizedQuery)) {
+    return 2;
+  }
+  if (normalizedAliases.some((alias) => alias.startsWith(normalizedQuery))) {
+    return 3;
+  }
+
+  const fuzzyValues = [
+    template.name,
+    template.description || '',
+    template.content,
+    trigger || '',
+    ...aliases,
+  ].map((value) => value.toLowerCase());
+
+  if (fuzzyValues.some((value) => value.includes(normalizedQuery))) {
+    return 4;
+  }
+
+  return null;
+};
 
 const extractTemplateVariables = (content: string): string[] => {
   const variables: string[] = [];
@@ -244,16 +316,6 @@ const writeStoredTemplateIds = (storageKey: string, templateIds: string[]) => {
   } catch {
     // Ignore localStorage write errors (private mode, quota, etc.)
   }
-};
-
-const matchesTemplateQuery = (template: PromptTemplate, query: string): boolean => {
-  const q = query.trim().toLowerCase();
-  if (!q) {
-    return true;
-  }
-
-  return [template.name, template.description || '', template.content]
-    .some((value) => value.toLowerCase().includes(q));
 };
 
 const findSlashCommand = (text: string, cursorPosition: number): SlashCommandMatch | null => {
@@ -492,10 +554,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     });
   }, []);
 
-  const orderedTemplates = useMemo(() => {
-    const recentIndexById = new Map(recentTemplateIds.map((id, index) => [id, index]));
-    const pinnedTemplateSet = new Set(pinnedTemplateIds);
+  const pinnedTemplateSet = useMemo(() => new Set(pinnedTemplateIds), [pinnedTemplateIds]);
+  const recentTemplateSet = useMemo(() => new Set(recentTemplateIds), [recentTemplateIds]);
+  const recentTemplateIndex = useMemo(() => new Map(recentTemplateIds.map((id, index) => [id, index])), [recentTemplateIds]);
 
+  const orderedTemplates = useMemo(() => {
     return [...promptTemplates].sort((a, b) => {
       const aPinned = pinnedTemplateSet.has(a.id);
       const bPinned = pinnedTemplateSet.has(b.id);
@@ -503,8 +566,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
         return aPinned ? -1 : 1;
       }
 
-      const aRecent = recentIndexById.get(a.id);
-      const bRecent = recentIndexById.get(b.id);
+      const aRecent = recentTemplateIndex.get(a.id);
+      const bRecent = recentTemplateIndex.get(b.id);
       const aHasRecent = aRecent !== undefined;
       const bHasRecent = bRecent !== undefined;
       if (aHasRecent !== bHasRecent) {
@@ -516,22 +579,32 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
       return a.name.localeCompare(b.name);
     });
-  }, [promptTemplates, recentTemplateIds, pinnedTemplateIds]);
+  }, [promptTemplates, pinnedTemplateSet, recentTemplateIndex]);
+
+  const rankTemplates = useCallback((query: string): PromptTemplate[] => {
+    const normalizedQuery = normalizeTemplateMatchValue(query);
+    if (!normalizedQuery) {
+      return orderedTemplates;
+    }
+
+    const ranked = orderedTemplates
+      .map((template) => ({ template, tier: getTemplateMatchTier(template, normalizedQuery) }))
+      .filter((item): item is { template: PromptTemplate; tier: number } => item.tier !== null);
+
+    ranked.sort((a, b) => a.tier - b.tier);
+    return ranked.map((item) => item.template);
+  }, [orderedTemplates]);
 
   const filteredTemplateMenu = useMemo(() => {
-    return orderedTemplates.filter((template) => matchesTemplateQuery(template, templateSearch));
-  }, [orderedTemplates, templateSearch]);
+    return rankTemplates(templateSearch);
+  }, [rankTemplates, templateSearch]);
 
   const slashMatchedTemplates = useMemo(() => {
     if (!slashCommand) {
       return [];
     }
-
-    const query = slashCommand.query.trim();
-    return orderedTemplates
-      .filter((template) => matchesTemplateQuery(template, query))
-      .slice(0, 8);
-  }, [orderedTemplates, slashCommand]);
+    return rankTemplates(slashCommand.query).slice(0, 8);
+  }, [rankTemplates, slashCommand]);
 
   const updateSlashCommandFromText = useCallback((text: string, cursorPosition?: number | null) => {
     const cursor = cursorPosition ?? text.length;
@@ -573,12 +646,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setTemplatesError(null);
       const data = await listPromptTemplates();
       setPromptTemplates(data.filter((template) => template.enabled !== false));
+      setTemplatesFetched(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load templates';
       setTemplatesError(message);
+      setTemplatesFetched(false);
     } finally {
       setTemplatesLoading(false);
-      setTemplatesFetched(true);
     }
   }, []);
 
@@ -597,10 +671,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   }, [showTemplateMenu, loadPromptTemplates]);
 
   useEffect(() => {
-    if (slashCommand && !templatesFetched && !templatesLoading) {
+    if (slashCommand && !templatesFetched && !templatesLoading && !templatesError) {
       loadPromptTemplates();
     }
-  }, [slashCommand, templatesFetched, templatesLoading, loadPromptTemplates]);
+  }, [slashCommand, templatesFetched, templatesLoading, templatesError, loadPromptTemplates]);
 
   useEffect(() => {
     if (filteredTemplateMenu.length === 0) {
@@ -1197,8 +1271,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     () => TRANSLATION_TARGET_OPTIONS.find((option) => option.value === selectedInputTranslateTarget)?.label || 'Auto',
     [selectedInputTranslateTarget]
   );
-  const pinnedTemplateSet = useMemo(() => new Set(pinnedTemplateIds), [pinnedTemplateIds]);
-  const recentTemplateSet = useMemo(() => new Set(recentTemplateIds), [recentTemplateIds]);
 
   return (
     <div data-name="input-box-root" className="border-t border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
@@ -1420,6 +1492,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                     const isPinned = pinnedTemplateSet.has(template.id);
                     const isRecent = recentTemplateSet.has(template.id);
                     const isActive = index === templateMenuIndex;
+                    const templateTrigger = normalizeTemplateTrigger(template);
 
                     return (
                       <div
@@ -1438,6 +1511,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
                           <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                             {template.name}
                           </div>
+                          {templateTrigger && (
+                            <div className="text-[11px] text-blue-600 dark:text-blue-300 truncate">
+                              /{templateTrigger}
+                            </div>
+                          )}
                           {template.description && (
                             <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                               {template.description}
@@ -1758,6 +1836,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                     const isActive = index === slashMenuIndex;
                     const isPinned = pinnedTemplateSet.has(template.id);
                     const isRecent = recentTemplateSet.has(template.id);
+                    const templateTrigger = normalizeTemplateTrigger(template);
 
                     return (
                       <button
@@ -1775,6 +1854,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
                         <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                           {template.name}
                         </div>
+                        {templateTrigger && (
+                          <div className="text-[11px] text-blue-600 dark:text-blue-300 truncate">
+                            /{templateTrigger}
+                          </div>
+                        )}
                         {template.description && (
                           <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                             {template.description}

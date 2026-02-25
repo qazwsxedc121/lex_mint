@@ -8,7 +8,7 @@ import React from 'react';
 
 interface PageHeaderProps {
   /** Page title */
-  title: string;
+  title: React.ReactNode;
   /** Optional description */
   description?: string;
   /** Action buttons */

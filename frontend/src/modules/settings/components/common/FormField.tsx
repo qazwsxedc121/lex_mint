@@ -212,19 +212,22 @@ export const FormField: React.FC<FormFieldProps> = ({
       }
 
       case 'textarea':
-        return (
-          <textarea
-            value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={config.placeholder}
-            required={config.required}
-            disabled={config.disabled}
-            rows={config.rows || 3}
-            minLength={config.minLength}
-            maxLength={config.maxLength}
-            className={`${inputClasses} ${config.monospace ? 'font-mono text-sm' : ''}`}
-          />
-        );
+        {
+          const textareaValue = Array.isArray(value) ? value.join('\n') : (value || '');
+          return (
+            <textarea
+              value={textareaValue}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={config.placeholder}
+              required={config.required}
+              disabled={config.disabled}
+              rows={config.rows || 3}
+              minLength={config.minLength}
+              maxLength={config.maxLength}
+              className={`${inputClasses} ${config.monospace ? 'font-mono text-sm' : ''}`}
+            />
+          );
+        }
 
       case 'template-variables':
         return (

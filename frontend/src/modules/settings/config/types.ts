@@ -279,7 +279,7 @@ export interface CrudSettingsConfig<T = any> {
   /** Config type identifier */
   type: 'crud';
   /** Page title */
-  title: string;
+  title: ReactNode;
   /** Page description */
   description?: string;
   /** Item name (singular, e.g., "assistant", "model") */
@@ -337,6 +337,8 @@ export interface CrudSettingsConfig<T = any> {
   editMode?: 'modal' | 'page';
   /** Edit page path builder (used when editMode = "page") */
   editPath?: (itemId: string, item: T) => string;
+  /** Modal width used by CRUD create/edit dialog */
+  modalSize?: 'sm' | 'md' | 'lg' | 'xl';
 
   // Actions
   /** Row actions */

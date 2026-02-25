@@ -288,6 +288,7 @@ export function CrudSettingsPage<T = any>({
         isOpen={showCreateModal}
         onClose={handleCloseModal}
         title={isEdit ? t('crud.editItem', { item: config.itemName }) : t('crud.addItem', { item: config.itemName })}
+        size={config.modalSize || 'lg'}
         fields={fields}
         formData={formData}
         onChange={setFormData}

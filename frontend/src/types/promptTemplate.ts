@@ -18,6 +18,8 @@ export interface PromptTemplate {
   id: string;
   name: string;
   description?: string;
+  trigger?: string;
+  aliases?: string[];
   content: string;
   enabled?: boolean;
   variables?: PromptTemplateVariable[];
@@ -26,6 +28,8 @@ export interface PromptTemplate {
 export interface PromptTemplateCreate {
   name: string;
   description?: string;
+  trigger?: string;
+  aliases?: string[];
   content: string;
   enabled?: boolean;
   variables?: PromptTemplateVariable[];
@@ -34,6 +38,8 @@ export interface PromptTemplateCreate {
 export interface PromptTemplateUpdate {
   name?: string;
   description?: string;
+  trigger?: string;
+  aliases?: string[];
   content?: string;
   enabled?: boolean;
   variables?: PromptTemplateVariable[];

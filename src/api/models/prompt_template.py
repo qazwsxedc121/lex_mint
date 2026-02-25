@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 _VARIABLE_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _RESERVED_VARIABLE_KEYS = {"cursor"}
+_TRIGGER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 class PromptTemplateVariable(BaseModel):
@@ -80,11 +81,43 @@ def _validate_unique_variable_keys(variables: List[PromptTemplateVariable]) -> L
     return variables
 
 
+def _normalize_trigger(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if not _TRIGGER_PATTERN.match(stripped):
+        raise ValueError("Trigger must match ^[a-z0-9][a-z0-9_-]*$")
+    return stripped
+
+
+def _normalize_aliases(aliases: List[str]) -> List[str]:
+    normalized: List[str] = []
+    seen = set()
+    for item in aliases:
+        if not isinstance(item, str):
+            raise ValueError("Alias must be a string")
+        stripped = item.strip()
+        if not stripped:
+            continue
+        if not _TRIGGER_PATTERN.match(stripped):
+            raise ValueError("Alias must match ^[a-z0-9][a-z0-9_-]*$")
+        lowered = stripped.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        normalized.append(stripped)
+    return normalized
+
+
 class PromptTemplate(BaseModel):
     """Reusable prompt template definition."""
     id: str = Field(..., description="Template unique identifier")
     name: str = Field(..., description="Template display name")
     description: Optional[str] = Field(default=None, description="Template description")
+    trigger: Optional[str] = Field(default=None, description="Slash trigger for exact matching")
+    aliases: List[str] = Field(default_factory=list, description="Optional trigger aliases")
     content: str = Field(..., description="Prompt template content")
     enabled: bool = Field(default=True, description="Whether template is enabled")
     variables: List[PromptTemplateVariable] = Field(
@@ -96,6 +129,26 @@ class PromptTemplate(BaseModel):
     @classmethod
     def validate_variables(cls, value: List[PromptTemplateVariable]) -> List[PromptTemplateVariable]:
         return _validate_unique_variable_keys(value)
+
+    @field_validator("trigger")
+    @classmethod
+    def validate_trigger(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_trigger(value)
+
+    @field_validator("aliases")
+    @classmethod
+    def validate_aliases(cls, value: List[str]) -> List[str]:
+        return _normalize_aliases(value)
+
+    @model_validator(mode="after")
+    def validate_trigger_alias_conflicts(self) -> "PromptTemplate":
+        if self.trigger is None:
+            return self
+        trigger_lower = self.trigger.lower()
+        for alias in self.aliases:
+            if alias.lower() == trigger_lower:
+                raise ValueError("Alias must not duplicate trigger")
+        return self
 
 
 class PromptTemplatesConfig(BaseModel):
@@ -108,6 +161,8 @@ class PromptTemplateCreate(BaseModel):
     id: Optional[str] = Field(default=None, description="Template unique identifier (optional, auto-generated)")
     name: str = Field(..., description="Template display name")
     description: Optional[str] = Field(default=None, description="Template description")
+    trigger: Optional[str] = Field(default=None, description="Slash trigger for exact matching")
+    aliases: List[str] = Field(default_factory=list, description="Optional trigger aliases")
     content: str = Field(..., description="Prompt template content")
     enabled: bool = Field(default=True, description="Whether template is enabled")
     variables: List[PromptTemplateVariable] = Field(
@@ -120,11 +175,33 @@ class PromptTemplateCreate(BaseModel):
     def validate_variables(cls, value: List[PromptTemplateVariable]) -> List[PromptTemplateVariable]:
         return _validate_unique_variable_keys(value)
 
+    @field_validator("trigger")
+    @classmethod
+    def validate_trigger(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_trigger(value)
+
+    @field_validator("aliases")
+    @classmethod
+    def validate_aliases(cls, value: List[str]) -> List[str]:
+        return _normalize_aliases(value)
+
+    @model_validator(mode="after")
+    def validate_trigger_alias_conflicts(self) -> "PromptTemplateCreate":
+        if self.trigger is None:
+            return self
+        trigger_lower = self.trigger.lower()
+        for alias in self.aliases:
+            if alias.lower() == trigger_lower:
+                raise ValueError("Alias must not duplicate trigger")
+        return self
+
 
 class PromptTemplateUpdate(BaseModel):
     """Update prompt template request."""
     name: Optional[str] = Field(default=None, description="Template display name")
     description: Optional[str] = Field(default=None, description="Template description")
+    trigger: Optional[str] = Field(default=None, description="Slash trigger for exact matching")
+    aliases: Optional[List[str]] = Field(default=None, description="Optional trigger aliases")
     content: Optional[str] = Field(default=None, description="Prompt template content")
     enabled: Optional[bool] = Field(default=None, description="Whether template is enabled")
     variables: Optional[List[PromptTemplateVariable]] = Field(
@@ -140,3 +217,35 @@ class PromptTemplateUpdate(BaseModel):
         if value is None:
             return value
         return _validate_unique_variable_keys(value)
+
+    @field_validator("trigger")
+    @classmethod
+    def validate_trigger(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        stripped = value.strip()
+        if not stripped:
+            return ""
+        if not _TRIGGER_PATTERN.match(stripped):
+            raise ValueError("Trigger must match ^[a-z0-9][a-z0-9_-]*$")
+        return stripped
+
+    @field_validator("aliases")
+    @classmethod
+    def validate_aliases(
+        cls, value: Optional[List[str]]
+    ) -> Optional[List[str]]:
+        if value is None:
+            return value
+        return _normalize_aliases(value)
+
+    @model_validator(mode="after")
+    def validate_trigger_alias_conflicts(self) -> "PromptTemplateUpdate":
+        trigger_value = self.trigger
+        if trigger_value is None or trigger_value == "" or self.aliases is None:
+            return self
+        trigger_lower = trigger_value.lower()
+        for alias in self.aliases:
+            if alias.lower() == trigger_lower:
+                raise ValueError("Alias must not duplicate trigger")
+        return self
