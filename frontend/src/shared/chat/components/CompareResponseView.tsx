@@ -11,7 +11,9 @@ import rehypeKatex from 'rehype-katex';
 import type { CompareModelResponse } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
+import { SvgBlock } from './SvgBlock';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
+import { extractSvgBlocks } from '../utils/svgMarkdown';
 
 interface CompareResponseViewProps {
   responses: CompareModelResponse[];
@@ -30,6 +32,8 @@ const markdownComponents = {
     return !isInline && language ? (
       language === 'mermaid'
         ? <MermaidBlock value={value} />
+        : language === 'svg'
+          ? <SvgBlock value={value} />
         : <CodeBlock language={language} value={value} />
     ) : (
       <code className={className} {...props}>
@@ -115,7 +119,7 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
                 rehypePlugins={[rehypeKatex]}
                 components={markdownComponents}
               >
-                {normalizeMathDelimiters(response.content)}
+                {normalizeMathDelimiters(extractSvgBlocks(response.content))}
               </ReactMarkdown>
             </div>
           )}

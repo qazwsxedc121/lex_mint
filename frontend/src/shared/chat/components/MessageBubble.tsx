@@ -11,6 +11,7 @@ import { PencilSquareIcon, ArrowPathIcon, ClipboardDocumentIcon, ClipboardDocume
 import type { ChatTargetType, Message } from '../../../types/message';
 import { CodeBlock } from './CodeBlock';
 import { MermaidBlock } from './MermaidBlock';
+import { SvgBlock } from './SvgBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { TranslationBlock } from './TranslationBlock';
@@ -18,6 +19,7 @@ import { CompareResponseView } from './CompareResponseView';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useTTS } from '../hooks/useTTS';
 import { normalizeMathDelimiters } from '../utils/markdownMath';
+import { extractSvgBlocks } from '../utils/svgMarkdown';
 import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
 import { getAssistantIcon } from '../../constants/assistantIcons';
 import { useTranslation } from 'react-i18next';
@@ -74,6 +76,7 @@ const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
 const MODEL_PARTICIPANT_PREFIX = 'model::';
 
 const normalizeNewlines = (text: string) => text.replace(/\r\n/g, '\n');
+const prepareMarkdownForRender = (text: string) => normalizeMathDelimiters(extractSvgBlocks(text));
 
 const parseUserBlocks = (rawContent: string): { blocks: ParsedUserBlock[]; message: string } => {
   const content = normalizeNewlines(rawContent);
@@ -696,8 +699,31 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           {showSummaryContent && message.content && (
             <div className="mt-2 px-4 py-3 bg-violet-50/50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg text-sm text-gray-700 dark:text-gray-300 max-h-96 overflow-y-auto">
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {normalizeMathDelimiters(message.content)}
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code({ className, children, ...props }: any) {
+                      const match = /language-(\w+)/.exec(className || '');
+                      const language = match ? match[1] : '';
+                      const value = String(children).replace(/\n$/, '');
+                      const isInline = !className;
+
+                      return !isInline && language ? (
+                        language === 'mermaid'
+                          ? <MermaidBlock value={value} />
+                          : language === 'svg'
+                            ? <SvgBlock value={value} />
+                            : <CodeBlock language={language} value={value} />
+                      ) : (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {prepareMarkdownForRender(message.content)}
                 </ReactMarkdown>
               </div>
             </div>
@@ -928,6 +954,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                             return !isInline && language ? (
                                               language === 'mermaid'
                                                 ? <MermaidBlock value={value} />
+                                                : language === 'svg'
+                                                  ? <SvgBlock value={value} />
                                                 : <CodeBlock language={language} value={value} />
                                             ) : (
                                               <code className={className} {...props}>
@@ -937,7 +965,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                           },
                                         }}
                                       >
-                                        {normalizeMathDelimiters(blockDisplayContent || '_Empty block_')}
+                                        {prepareMarkdownForRender(blockDisplayContent || '_Empty block_')}
                                       </ReactMarkdown>
                                     </div>
                                   )}
@@ -1115,6 +1143,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         return !isInline && language ? (
                           language === 'mermaid'
                             ? <MermaidBlock value={value} />
+                            : language === 'svg'
+                              ? <SvgBlock value={value} />
                             : <CodeBlock language={language} value={value} />
                         ) : (
                           <code className={className} {...props}>
@@ -1161,7 +1191,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       },
                     }}
                   >
-                    {normalizeMathDelimiters(mainContent || '*Generating...*')}
+                    {prepareMarkdownForRender(mainContent || '*Generating...*')}
                   </ReactMarkdown>
                   {/* Translation block */}
                   {showTranslation && (
