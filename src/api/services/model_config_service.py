@@ -22,7 +22,7 @@ from src.providers import (
     get_all_builtin_providers,
 )
 from src.providers.types import ProviderConfig
-from src.providers.model_capability_rules import infer_requires_interleaved_thinking
+from src.providers.model_capability_rules import infer_capability_overrides
 
 from ..paths import (
     config_defaults_dir,
@@ -363,6 +363,26 @@ class ModelConfigService:
         for pattern in ["deepseek-chat", "glm-"]:
             if pattern not in reasoning_patterns:
                 reasoning_patterns.append(pattern)
+                changed = True
+
+        # Backfill stale model-level interleaved flags from older provider-level defaults.
+        for model_entry in models:
+            if not isinstance(model_entry, dict):
+                continue
+            model_id_value = model_entry.get("id")
+            if not isinstance(model_id_value, str):
+                continue
+
+            inferred = infer_capability_overrides(model_id_value)
+            if inferred.get("requires_interleaved_thinking") is not True:
+                continue
+
+            model_caps = model_entry.get("capabilities")
+            if not isinstance(model_caps, dict):
+                continue
+
+            if model_caps.get("requires_interleaved_thinking") is False:
+                model_caps["requires_interleaved_thinking"] = True
                 changed = True
 
         if changed:
@@ -964,15 +984,22 @@ class ModelConfigService:
         if provider.default_capabilities:
             base_caps = base_caps.merge_with(provider.default_capabilities)
 
-        inferred_interleaved = infer_requires_interleaved_thinking(model.id)
-        if inferred_interleaved is not None:
-            base_caps = base_caps.model_copy(
-                update={"requires_interleaved_thinking": inferred_interleaved}
-            )
+        inferred_overrides = infer_capability_overrides(model.id)
+        hard_require_interleaved = (
+            inferred_overrides.get("requires_interleaved_thinking") is True
+            if inferred_overrides
+            else False
+        )
+        if inferred_overrides:
+            base_caps = base_caps.model_copy(update=inferred_overrides)
 
         # Override with model-specific capabilities
         if model.capabilities:
             base_caps = base_caps.merge_with(model.capabilities)
+
+        # Keep required interleaved passthrough as a hard safety rule.
+        if hard_require_interleaved and not base_caps.requires_interleaved_thinking:
+            base_caps = base_caps.model_copy(update={"requires_interleaved_thinking": True})
 
         return base_caps
 

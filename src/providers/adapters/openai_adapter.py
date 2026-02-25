@@ -10,7 +10,7 @@ from langchain_openai.chat_models.base import BaseChatOpenAI
 
 from ..base import BaseLLMAdapter
 from ..types import CallMode, StreamChunk, LLMResponse, TokenUsage
-from ..model_capability_rules import apply_interleaved_hint_to_capabilities
+from ..model_capability_rules import apply_model_capability_hints
 from .reasoning_openai import ChatReasoningOpenAI, inject_tool_call_reasoning_content
 from .utils import extract_tool_calls
 
@@ -377,7 +377,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         if not tags:
             tags.append("chat")
 
-        capabilities = apply_interleaved_hint_to_capabilities(model.get("id", ""), capabilities)
+        capabilities = apply_model_capability_hints(model.get("id", ""), capabilities)
         return {"capabilities": capabilities, "tags": tags}
 
     async def fetch_models(
@@ -430,7 +430,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                         entry["capabilities"] = caps_and_tags["capabilities"]
                         entry["tags"] = caps_and_tags["tags"]
                     else:
-                        hinted_caps = apply_interleaved_hint_to_capabilities(model_id, None)
+                        hinted_caps = apply_model_capability_hints(model_id, None)
                         if hinted_caps:
                             entry["capabilities"] = hinted_caps
 

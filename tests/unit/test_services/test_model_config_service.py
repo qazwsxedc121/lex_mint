@@ -584,8 +584,9 @@ class TestModelConfigService:
 
         merged = service.get_merged_capabilities(model, provider)
         assert merged.requires_interleaved_thinking is True
+        assert merged.reasoning is True
 
-    def test_get_merged_capabilities_model_override_wins_over_rules(self, temp_config_dir):
+    def test_get_merged_capabilities_hard_interleaved_rule_overrides_model_false(self, temp_config_dir):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -610,7 +611,34 @@ class TestModelConfigService:
         )
 
         merged = service.get_merged_capabilities(model, provider)
-        assert merged.requires_interleaved_thinking is False
+        assert merged.requires_interleaved_thinking is True
+
+    def test_get_merged_capabilities_model_reasoning_override_wins_over_rules(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        with open(keys_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"providers": {}}, f)
+
+        service = ModelConfigService(config_path, keys_path)
+        model = Model(
+            id="deepseek-chat",
+            name="DeepSeek Chat",
+            provider_id="openrouter",
+            enabled=True,
+            capabilities=ModelCapabilities(reasoning=False),
+        )
+        provider = Provider(
+            id="openrouter",
+            name="OpenRouter",
+            type=ProviderType.BUILTIN,
+            protocol=ApiProtocol.OPENAI,
+            base_url="https://openrouter.ai/api/v1",
+            enabled=True,
+            default_capabilities=ModelCapabilities(reasoning=False),
+        )
+
+        merged = service.get_merged_capabilities(model, provider)
+        assert merged.reasoning is False
 
     @pytest.mark.asyncio
     async def test_sync_builtin_sets_provider_interleaved_false_for_model_level_providers(self):
@@ -675,5 +703,56 @@ class TestModelConfigService:
             assert kimi_provider is not None
             assert deepseek_provider.default_capabilities.requires_interleaved_thinking is False
             assert kimi_provider.default_capabilities.requires_interleaved_thinking is False
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_backfills_stale_model_interleaved_false(self):
+        test_dir = Path(".tmp") / "test_sync_builtin_backfills_stale_model_interleaved_false"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        config_data = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "tags": ["chat"],
+                    "enabled": True,
+                    "capabilities": {
+                        "reasoning": True,
+                        "requires_interleaved_thinking": False,
+                    },
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(config_data, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            model = await service.get_model("deepseek-chat")
+            assert model is not None
+            assert model.capabilities is not None
+            assert model.capabilities.requires_interleaved_thinking is True
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
