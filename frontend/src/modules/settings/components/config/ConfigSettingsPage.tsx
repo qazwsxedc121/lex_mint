@@ -36,6 +36,16 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   const [showErrors, setShowErrors] = useState(false);
   const { t } = useTranslation('settings');
 
+  const isMissingRequiredValue = (value: unknown): boolean => {
+    if (value === null || value === undefined) {
+      return true;
+    }
+    if (typeof value === 'string') {
+      return value.trim() === '';
+    }
+    return false;
+  };
+
   // Default API client using fetch
   const API_BASE = import.meta.env.VITE_API_URL;
   if (!API_BASE) {
@@ -115,7 +125,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
 
     // Check required fields
     for (const field of config.fields) {
-      if (field.required && !formData[field.name]) {
+      if (field.required && isMissingRequiredValue(formData[field.name])) {
         alert(t('crud.requiredField', { field: field.label }));
         return;
       }
