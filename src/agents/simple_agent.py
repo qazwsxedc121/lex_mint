@@ -4,6 +4,7 @@ from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
+from pydantic import SecretStr
 
 from src.state.agent_state import SimpleAgentState
 from src.utils.llm_logger import get_llm_logger
@@ -15,11 +16,12 @@ def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
     import logging
     logger = logging.getLogger(__name__)
 
-    messages = state["messages"]
+    messages = state.get("messages", [])
     llm_logger = get_llm_logger()
 
     # Get session_id from state metadata if available, otherwise use "unknown"
     session_id = state.get("session_id", "unknown")
+    current_step = int(state.get("current_step", 0))
 
     print(f" chat_node: 准备调用 DeepSeek")
     print(f"   会话历史消息数: {len(messages)}")
@@ -34,7 +36,7 @@ def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
         model="deepseek-chat",
         temperature=0.7,
         base_url=provider.base_url,
-        api_key=api_key,
+        api_key=SecretStr(api_key or "local"),
     )
 
     langchain_messages = []
@@ -78,17 +80,17 @@ def chat_node(state: SimpleAgentState) -> Dict[str, Any]:
 
     new_message = {"role": "assistant", "content": response.content}
 
-    return {"messages": [new_message], "current_step": state["current_step"] + 1}
+    return {"messages": [new_message], "current_step": current_step + 1}
 
 
 def should_continue(state: SimpleAgentState) -> str:
     """Determine if the agent should continue processing."""
-    if state["current_step"] >= 10:
+    if int(state.get("current_step", 0)) >= 10:
         return "end"
     return "continue"
 
 
-def create_simple_agent() -> StateGraph:
+def create_simple_agent() -> Any:
     """Create and configure the simple agent graph."""
     workflow = StateGraph(SimpleAgentState)
     
@@ -106,3 +108,4 @@ def create_simple_agent() -> StateGraph:
     )
     
     return workflow.compile()
+    current_step = int(state.get("current_step", 0))

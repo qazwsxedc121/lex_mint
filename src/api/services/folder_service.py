@@ -32,7 +32,7 @@ class FoldersConfig(BaseModel):
 class FolderService:
     """Chat folder management service"""
 
-    def __init__(self, config_path: Path = None):
+    def __init__(self, config_path: Optional[Path] = None):
         """
         Initialize folder service
 

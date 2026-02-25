@@ -41,6 +41,39 @@ class ConversationStorage:
         # Per-file locks to prevent concurrent read-modify-write corruption
         self._file_locks: Dict[str, asyncio.Lock] = {}
 
+    @staticmethod
+    def _as_optional_str(value: Any) -> Optional[str]:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned if cleaned else None
+        return None
+
+    @staticmethod
+    def _as_str(value: Any, default: str = "") -> str:
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return default
+        return str(value)
+
+    @staticmethod
+    def _as_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _as_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _as_dict(value: Any) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
     async def create_session(
         self,
         model_id: Optional[str] = None,
@@ -206,14 +239,15 @@ class ConversationStorage:
             content = await f.read()
 
         post = frontmatter.loads(content)
+        metadata: Dict[str, Any] = dict(post.metadata or {})
 
         # Parse messages from markdown content
         messages = self._parse_messages(post.content, session_id)
 
         # Determine assistant/model target with backward compatibility.
-        assistant_id = post.metadata.get("assistant_id")
-        model_id = post.metadata.get("model_id")
-        explicit_target_type = post.metadata.get("target_type")
+        assistant_id = self._as_optional_str(metadata.get("assistant_id"))
+        model_id = self._as_optional_str(metadata.get("model_id"))
+        explicit_target_type = self._as_optional_str(metadata.get("target_type"))
         target_type: str
 
         if assistant_id:
@@ -250,30 +284,30 @@ class ConversationStorage:
             target_type = explicit_target_type
 
         result = {
-            "session_id": post.metadata["session_id"],
-            "title": post.metadata.get("title", "未命名对话"),
-            "created_at": post.metadata["created_at"],
+            "session_id": self._as_str(metadata.get("session_id"), session_id),
+            "title": self._as_str(metadata.get("title"), "未命名对话"),
+            "created_at": self._as_str(metadata.get("created_at")),
             "assistant_id": assistant_id,
             "model_id": model_id,
             "target_type": target_type,
             "target_id": assistant_id if target_type == "assistant" else model_id,
-            "param_overrides": post.metadata.get("param_overrides", {}),
-            "total_usage": post.metadata.get("total_usage"),
-            "total_cost": post.metadata.get("total_cost"),
-            "temporary": post.metadata.get("temporary", False),
+            "param_overrides": self._as_dict(metadata.get("param_overrides")),
+            "total_usage": metadata.get("total_usage"),
+            "total_cost": metadata.get("total_cost"),
+            "temporary": bool(metadata.get("temporary", False)),
             "state": {
                 "messages": messages,
-                "current_step": post.metadata.get("current_step", 0)
+                "current_step": self._as_int(metadata.get("current_step"), 0)
             }
         }
 
         # Include group_assistants if present
-        group_assistants = post.metadata.get("group_assistants")
+        group_assistants = metadata.get("group_assistants")
         if group_assistants:
             result["group_assistants"] = group_assistants
-            result["group_mode"] = post.metadata.get("group_mode", "round_robin")
-            if "group_settings" in post.metadata:
-                result["group_settings"] = post.metadata.get("group_settings")
+            result["group_mode"] = self._as_str(metadata.get("group_mode"), "round_robin")
+            if "group_settings" in metadata:
+                result["group_settings"] = metadata.get("group_settings")
 
         return result
 
@@ -321,6 +355,7 @@ class ConversationStorage:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
+        metadata: Dict[str, Any] = dict(post.metadata or {})
 
         # Append new message
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -360,35 +395,39 @@ class ConversationStorage:
 
         # Update current_step for assistant messages
         if role == "assistant":
-            post.metadata["current_step"] = post.metadata.get("current_step", 0) + 1
+            metadata["current_step"] = self._as_int(metadata.get("current_step"), 0) + 1
 
             # Update session-level usage totals in frontmatter
             if usage:
-                total_usage = post.metadata.get("total_usage", {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0,
-                })
-                total_usage["prompt_tokens"] = total_usage.get("prompt_tokens", 0) + usage.prompt_tokens
-                total_usage["completion_tokens"] = total_usage.get("completion_tokens", 0) + usage.completion_tokens
-                total_usage["total_tokens"] = total_usage.get("total_tokens", 0) + usage.total_tokens
-                post.metadata["total_usage"] = total_usage
+                total_usage = self._as_dict(metadata.get("total_usage"))
+                total_usage["prompt_tokens"] = (
+                    self._as_int(total_usage.get("prompt_tokens"), 0) + usage.prompt_tokens
+                )
+                total_usage["completion_tokens"] = (
+                    self._as_int(total_usage.get("completion_tokens"), 0) + usage.completion_tokens
+                )
+                total_usage["total_tokens"] = (
+                    self._as_int(total_usage.get("total_tokens"), 0) + usage.total_tokens
+                )
+                metadata["total_usage"] = total_usage
 
             if cost:
-                total_cost = post.metadata.get("total_cost", {
-                    "total_cost": 0.0,
-                    "currency": "USD",
-                })
+                total_cost = self._as_dict(metadata.get("total_cost"))
+                if "currency" not in total_cost:
+                    total_cost["currency"] = "USD"
                 total_cost["total_cost"] = round(
-                    total_cost.get("total_cost", 0.0) + cost.total_cost, 8
+                    self._as_float(total_cost.get("total_cost"), 0.0) + cost.total_cost,
+                    8,
                 )
-                post.metadata["total_cost"] = total_cost
+                metadata["total_cost"] = total_cost
 
         # Auto-generate title from first user message
-        if post.metadata.get("title") == "\u65B0\u5BF9\u8BDD" and role == "user":
+        if self._as_str(metadata.get("title")) == "\u65B0\u5BF9\u8BDD" and role == "user":
             # Clean title: remove special chars, limit length
             clean_title = content.strip().replace('\n', ' ')[:30]
-            post.metadata["title"] = clean_title + ("..." if len(content) > 30 else "")
+            metadata["title"] = clean_title + ("..." if len(content) > 30 else "")
+
+        post.metadata = metadata
 
         # Write back to file
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
@@ -579,14 +618,15 @@ class ConversationStorage:
                     content = await f.read()
 
                 post = frontmatter.loads(content)
+                metadata = self._as_dict(post.metadata)
 
                 # Skip temporary sessions
-                if post.metadata.get("temporary", False):
+                if bool(metadata.get("temporary", False)):
                     continue
 
-                title = post.metadata.get("title", "")
-                session_id = post.metadata.get("session_id", "")
-                created_at = post.metadata.get("created_at", "")
+                title = self._as_str(metadata.get("title"))
+                session_id = self._as_str(metadata.get("session_id"))
+                created_at = self._as_str(metadata.get("created_at"))
                 body = post.content
 
                 message_count = (
@@ -1490,6 +1530,7 @@ class ConversationStorage:
         if context_type == "chat":
             return self.conversations_dir / "chat"
         else:  # project
+            assert project_id is not None
             if self._project_root_resolver:
                 root_path = self._project_root_resolver(project_id)
                 if root_path:

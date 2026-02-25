@@ -96,7 +96,7 @@ async def main():
     model_service = ModelConfigService()
 
     # Find all enabled models with function_calling capability
-    all_models = model_service.get_all_models_sync()
+    all_models = await model_service.get_models()
     candidates = []
     for model_cfg in all_models:
         if not model_cfg.enabled:

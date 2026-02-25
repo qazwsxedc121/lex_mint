@@ -348,8 +348,14 @@ def call_llm(
         # Call LLM (only once!)
         response = llm.invoke(langchain_messages)
 
-        print(f"[OK] Received LLM response, length: {len(response.content)} chars")
-        logger.info(f"Received response: {len(response.content)} chars")
+        response_content_raw = response.content
+        response_content = (
+            response_content_raw
+            if isinstance(response_content_raw, str)
+            else str(response_content_raw or "")
+        )
+        print(f"[OK] Received LLM response, length: {len(response_content)} chars")
+        logger.info(f"Received response: {len(response_content)} chars")
 
         # Log interaction
         llm_logger.log_interaction(
@@ -361,7 +367,7 @@ def call_llm(
         )
         print(f"[LOG] LLM interaction logged")
 
-        return response.content
+        return response_content
 
     except Exception as e:
         print(f"[ERROR] LLM API call failed: {str(e)}")
@@ -778,7 +784,7 @@ async def call_llm_stream(
             messages_sent=langchain_messages,
             response_received=response_msg,
             model=actual_model_id,
-            extra_params=log_extra_params if log_extra_params else None
+            extra_params=log_extra_params
         )
         print(f"[LOG] Streaming LLM interaction logged")
 

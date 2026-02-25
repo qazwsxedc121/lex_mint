@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 from .embedding_service import EmbeddingService
 from .memory_config_service import MemoryConfigService
@@ -78,7 +78,7 @@ class MemoryService:
 
         cfg = self.memory_config_service.config
         persist_dir = self._resolve_persist_dir()
-        embedding_fn = self.embedding_service.get_embedding_function()
+        embedding_fn = cast(Any, self.embedding_service.get_embedding_function())
 
         return Chroma(
             collection_name=cfg.collection_name,
@@ -102,6 +102,32 @@ class MemoryService:
             return float(value)
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _safe_str(value: Any, default: str = "") -> str:
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return default
+        return str(value)
+
+    @staticmethod
+    def _safe_optional_str(value: Any) -> Optional[str]:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned if cleaned else None
+        return None
+
+    @staticmethod
+    def _safe_dict(value: Any) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}
 
     def _validate_scope_layer(self, scope: str, layer: str, assistant_id: Optional[str] = None) -> None:
         if scope not in self.VALID_SCOPES:
@@ -134,10 +160,10 @@ class MemoryService:
     def _metadata_to_result(
         memory_id: str,
         content: str,
-        metadata: Optional[Dict[str, Any]],
+        metadata: Optional[Any],
         score: Optional[float] = None,
     ) -> MemoryResult:
-        meta = metadata or {}
+        meta = metadata if isinstance(metadata, dict) else {}
         return MemoryResult(
             id=memory_id,
             content=content,
@@ -286,7 +312,7 @@ class MemoryService:
             current = collection.get(ids=[existing_id], include=["documents", "metadatas"])
             current_ids = current.get("ids") or []
             if current_ids:
-                current_meta = (current.get("metadatas") or [{}])[0] or {}
+                current_meta = self._safe_dict((current.get("metadatas") or [{}])[0])
                 metadata = {
                     **current_meta,
                     "id": existing_id,
@@ -301,7 +327,7 @@ class MemoryService:
                     "hash": content_hash,
                     "updated_at": now,
                     "last_hit_at": current_meta.get("last_hit_at"),
-                    "hit_count": int(current_meta.get("hit_count", 0) or 0),
+                    "hit_count": self._safe_int(current_meta.get("hit_count"), 0),
                     "is_active": bool(is_active),
                     "pinned": bool(pinned or current_meta.get("pinned", False)),
                     "created_at": current_meta.get("created_at", now),
@@ -352,19 +378,23 @@ class MemoryService:
         if not ids:
             raise FileNotFoundError(f"Memory {memory_id} not found")
 
-        current_doc = (current.get("documents") or [""])[0]
-        current_meta = (current.get("metadatas") or [{}])[0] or {}
+        current_doc = self._safe_str((current.get("documents") or [""])[0], "")
+        current_meta = self._safe_dict((current.get("metadatas") or [{}])[0])
 
-        next_scope = scope or current_meta.get("scope") or "global"
-        next_layer = layer or current_meta.get("layer") or "fact"
-        next_assistant_id = assistant_id if assistant_id is not None else current_meta.get("assistant_id")
+        next_scope = scope or self._safe_str(current_meta.get("scope"), "global")
+        next_layer = layer or self._safe_str(current_meta.get("layer"), "fact")
+        next_assistant_id = (
+            assistant_id
+            if assistant_id is not None
+            else self._safe_optional_str(current_meta.get("assistant_id"))
+        )
         next_content = self._clean_text(content) if content is not None else current_doc
         if not next_content:
             raise ValueError("content cannot be empty")
 
         self._validate_scope_layer(next_scope, next_layer, next_assistant_id)
 
-        profile_id = current_meta.get("profile_id") or self._resolve_profile_id(None)
+        profile_id = self._safe_str(current_meta.get("profile_id"), self._resolve_profile_id(None))
         next_hash = self._content_hash(
             profile_id=profile_id,
             scope=next_scope,

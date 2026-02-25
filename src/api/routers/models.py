@@ -5,7 +5,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from ..models.model_config import (
     Provider,
@@ -490,15 +490,29 @@ async def fetch_provider_models(
                 status_code=400,
                 detail=f"No models found. Try configuring an API key for provider '{provider_id}'"
             )
-        return [
-            ModelInfo(
-                id=m["id"],
-                name=m.get("name", m["id"]),
-                capabilities=m.get("capabilities"),
-                tags=m.get("tags"),
+        model_infos: List[ModelInfo] = []
+        for m in models:
+            raw_capabilities: Any = m.get("capabilities")
+            capabilities = raw_capabilities if isinstance(raw_capabilities, dict) else None
+
+            raw_tags: Any = m.get("tags")
+            tags: Optional[List[str]]
+            if isinstance(raw_tags, list):
+                tags = [str(tag) for tag in raw_tags]
+            elif isinstance(raw_tags, str):
+                tags = [part.strip() for part in raw_tags.split(",") if part.strip()]
+            else:
+                tags = None
+
+            model_infos.append(
+                ModelInfo(
+                    id=m["id"],
+                    name=m.get("name", m["id"]),
+                    capabilities=capabilities,
+                    tags=tags,
+                )
             )
-            for m in models
-        ]
+        return model_infos
     except HTTPException:
         raise
     except Exception as e:

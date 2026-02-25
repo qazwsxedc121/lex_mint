@@ -106,7 +106,8 @@ class ToolLoopRunner:
     ) -> None:
         for tool_call in round_tool_calls:
             name = str(tool_call.get("name") or "")
-            args = tool_call.get("args") if isinstance(tool_call.get("args"), dict) else {}
+            raw_args = tool_call.get("args")
+            args: Dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
             if name == "search_knowledge":
                 state.tool_search_count += 1
                 query_text = str(args.get("query") or "")
@@ -133,7 +134,8 @@ class ToolLoopRunner:
 
             if name == "search_knowledge":
                 refs: List[str] = []
-                hits = parsed.get("hits") if isinstance(parsed.get("hits"), list) else []
+                raw_hits = parsed.get("hits")
+                hits: List[Any] = list(raw_hits) if isinstance(raw_hits, list) else []
                 for hit in hits[:4]:
                     if not isinstance(hit, dict):
                         continue
@@ -150,7 +152,8 @@ class ToolLoopRunner:
                 continue
 
             if name == "read_knowledge":
-                sources = parsed.get("sources") if isinstance(parsed.get("sources"), list) else []
+                raw_sources = parsed.get("sources")
+                sources: List[Any] = list(raw_sources) if isinstance(raw_sources, list) else []
                 for source in sources[:4]:
                     if not isinstance(source, dict):
                         continue

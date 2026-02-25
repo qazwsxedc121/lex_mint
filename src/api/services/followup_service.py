@@ -22,6 +22,23 @@ from ..paths import (
 logger = logging.getLogger(__name__)
 
 
+def _response_content_to_text(content: object) -> str:
+    """Normalize LangChain response content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text")
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+        return "".join(parts)
+    return str(content or "")
+
+
 @dataclass
 class FollowupConfig:
     """Configuration for follow-up question generation"""
@@ -166,7 +183,7 @@ class FollowupService:
             )
 
             # Parse response into questions
-            raw_text = response.content.strip()
+            raw_text = _response_content_to_text(response.content).strip()
             questions = []
 
             for line in raw_text.split('\n'):

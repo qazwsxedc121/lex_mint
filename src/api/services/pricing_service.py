@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class PricingService:
     """Service for calculating LLM token costs."""
 
-    def __init__(self, config_path: Path = None):
+    def __init__(self, config_path: Optional[Path] = None):
         """
         Initialize pricing service.
 
@@ -41,7 +41,7 @@ class PricingService:
             logger.warning(f"Failed to load pricing config: {e}")
             self._pricing_cache = {}
 
-        return self._pricing_cache
+        return self._pricing_cache or {}
 
     def get_pricing(
         self,

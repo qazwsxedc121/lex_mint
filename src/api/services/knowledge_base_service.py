@@ -33,7 +33,7 @@ class KnowledgeBaseService:
     _io_retry_attempts = 8
     _io_retry_delay_seconds = 0.1
 
-    def __init__(self, config_path: Path = None, storage_dir: Path = None):
+    def __init__(self, config_path: Optional[Path] = None, storage_dir: Optional[Path] = None):
         if config_path is None:
             config_path = data_state_dir() / "knowledge_bases_config.yaml"
         if storage_dir is None:
@@ -234,8 +234,14 @@ class KnowledgeBaseService:
 
             await self.save_config(config)
 
-    async def update_document_status(self, kb_id: str, doc_id: str, status: str,
-                                      chunk_count: int = 0, error_message: str = None):
+    async def update_document_status(
+        self,
+        kb_id: str,
+        doc_id: str,
+        status: str,
+        chunk_count: int = 0,
+        error_message: Optional[str] = None,
+    ):
         """Update document processing status"""
         async with self._mutation_lock:
             config = await self.load_config()

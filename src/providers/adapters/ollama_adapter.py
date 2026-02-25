@@ -4,6 +4,7 @@ Ollama SDK Adapter
 Adapter for Ollama local models using langchain-ollama.
 """
 import logging
+import importlib
 from typing import AsyncIterator, List, Dict, Any
 
 from langchain_core.messages import BaseMessage
@@ -48,7 +49,8 @@ class OllamaAdapter(BaseLLMAdapter):
         Returns:
             ChatOllama instance
         """
-        from langchain_ollama import ChatOllama
+        module = importlib.import_module("langchain_ollama")
+        ChatOllama = getattr(module, "ChatOllama")
 
         llm_kwargs = {
             "model": model,
@@ -249,7 +251,7 @@ class OllamaAdapter(BaseLLMAdapter):
         self,
         base_url: str,
         api_key: str,
-        model_id: str = None
+        model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test connection to Ollama server.

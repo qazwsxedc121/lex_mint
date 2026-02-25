@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from .conversation_storage import ConversationStorage
 from .service_contracts import (
     AssistantLike,
     ContextPayload,
-    MemoryServiceLike,
+    MemoryContextServiceLike,
     RagConfigServiceLike,
     SearchServiceLike,
+    SessionStorageLike,
     SourceContextServiceLike,
     SourcePayload,
     WebpageServiceLike,
@@ -26,8 +26,8 @@ class ContextAssemblyService:
     def __init__(
         self,
         *,
-        storage: ConversationStorage,
-        memory_service: MemoryServiceLike,
+        storage: SessionStorageLike,
+        memory_service: MemoryContextServiceLike,
         webpage_service: WebpageServiceLike,
         search_service: SearchServiceLike,
         source_context_service: SourceContextServiceLike,

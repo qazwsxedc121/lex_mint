@@ -70,7 +70,7 @@ class _FakeChroma:
 
 def _install_fake_vector_modules(monkeypatch):
     fake_langchain_chroma = types.ModuleType("langchain_chroma")
-    fake_langchain_chroma.Chroma = _FakeChroma
+    setattr(fake_langchain_chroma, "Chroma", _FakeChroma)
     monkeypatch.setitem(sys.modules, "langchain_chroma", fake_langchain_chroma)
 
     fake_chromadb_errors = types.ModuleType("chromadb.errors")
@@ -78,7 +78,7 @@ def _install_fake_vector_modules(monkeypatch):
     class _InvalidArgumentError(Exception):
         pass
 
-    fake_chromadb_errors.InvalidArgumentError = _InvalidArgumentError
+    setattr(fake_chromadb_errors, "InvalidArgumentError", _InvalidArgumentError)
     monkeypatch.setitem(sys.modules, "chromadb.errors", fake_chromadb_errors)
 
 

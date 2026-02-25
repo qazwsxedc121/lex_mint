@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional
+from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol
 
 from src.providers.types import CostInfo, TokenUsage
 
-from .chat_input_service import ChatInputService
-from .comparison_storage import ComparisonStorage
-from .conversation_storage import ConversationStorage
-from .group_orchestration import CompareModelsOrchestrator, CompareModelsSettings, OrchestrationRequest
+from .chat_input_service import PreparedUserInput
+from .group_orchestration import CompareModelsSettings, OrchestrationRequest
 from .service_contracts import (
     ContextPayload,
     SourcePayload,
@@ -18,14 +16,59 @@ from .service_contracts import (
 )
 
 
+class _StorageLike(Protocol):
+    async def append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        attachments: Optional[List[SourcePayload]] = None,
+        usage: Optional[TokenUsage] = None,
+        cost: Optional[CostInfo] = None,
+        sources: Optional[List[SourcePayload]] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        assistant_id: Optional[str] = None,
+    ) -> str: ...
+
+
+class _ComparisonStorageLike(Protocol):
+    async def save(
+        self,
+        session_id: str,
+        assistant_message_id: str,
+        responses: List[SourcePayload],
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> None: ...
+
+
+class _ChatInputServiceLike(Protocol):
+    async def prepare_user_input(
+        self,
+        *,
+        session_id: str,
+        raw_user_message: str,
+        expanded_user_message: str,
+        attachments: Optional[List[SourcePayload]],
+        skip_user_append: bool,
+        context_type: str,
+        project_id: Optional[str],
+    ) -> PreparedUserInput: ...
+
+
+class _CompareModelsOrchestratorLike(Protocol):
+    def stream(self, request: OrchestrationRequest, /) -> AsyncIterator[StreamEvent]: ...
+
+
 @dataclass(frozen=True)
 class CompareFlowDeps:
     """Dependencies required by compare stream flow."""
 
-    storage: ConversationStorage
-    comparison_storage: ComparisonStorage
-    chat_input_service: ChatInputService
-    compare_models_orchestrator: CompareModelsOrchestrator
+    storage: _StorageLike
+    comparison_storage: _ComparisonStorageLike
+    chat_input_service: _ChatInputServiceLike
+    compare_models_orchestrator: _CompareModelsOrchestratorLike
     prepare_context: Callable[..., Awaitable[ContextPayload]]
     build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
 

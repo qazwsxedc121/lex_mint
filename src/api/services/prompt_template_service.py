@@ -13,7 +13,7 @@ from ..paths import data_state_dir, legacy_config_dir, ensure_local_file
 class PromptTemplateConfigService:
     """Prompt template configuration management service."""
 
-    def __init__(self, config_path: Path = None):
+    def __init__(self, config_path: Optional[Path] = None):
         if config_path is None:
             config_path = data_state_dir() / "prompt_templates_config.yaml"
         self.config_path = Path(config_path)

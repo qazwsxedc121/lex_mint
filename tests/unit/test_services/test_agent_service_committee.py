@@ -1,15 +1,37 @@
 """Unit tests for committee mode orchestration in AgentService."""
 
-from types import SimpleNamespace
+from dataclasses import dataclass
+from typing import List, Optional
 
 import pytest
 
 import src.api.services.agent_service_simple as agent_service_module
 from src.api.services.agent_service_simple import AgentService
+from src.api.services.service_contracts import AssistantLike
 
 
-def _build_assistant(name: str, model_id: str, max_rounds: int = 3):
-    return SimpleNamespace(
+@dataclass
+class _AssistantStub:
+    id: str
+    name: str
+    model_id: str
+    icon: str
+    system_prompt: Optional[str]
+    temperature: Optional[float]
+    max_tokens: Optional[int]
+    top_p: Optional[float]
+    top_k: Optional[int]
+    frequency_penalty: Optional[float]
+    presence_penalty: Optional[float]
+    max_rounds: Optional[int]
+    memory_enabled: bool = True
+    knowledge_base_ids: Optional[List[str]] = None
+    enabled: bool = True
+
+
+def _build_assistant(name: str, model_id: str, max_rounds: int = 3) -> AssistantLike:
+    return _AssistantStub(
+        id=name.lower(),
         name=name,
         icon=f"{name.lower()}.png",
         model_id=model_id,

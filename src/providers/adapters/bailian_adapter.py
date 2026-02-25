@@ -151,7 +151,8 @@ class BailianAdapter(BaseLLMAdapter):
         usage_data = None
 
         async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, "content") else ""
+            content_raw = chunk.content if hasattr(chunk, "content") else ""
+            content = content_raw if isinstance(content_raw, str) else str(content_raw or "")
             thinking = ""
             tool_calls = extract_tool_calls(chunk)
 
@@ -187,8 +188,11 @@ class BailianAdapter(BaseLLMAdapter):
         if hasattr(response, "response_metadata") and response.response_metadata:
             usage = TokenUsage.from_dict(response.response_metadata.get("usage"))
 
+        content_raw = response.content if hasattr(response, "content") else ""
+        content = content_raw if isinstance(content_raw, str) else str(content_raw or "")
+
         return LLMResponse(
-            content=response.content,
+            content=content,
             thinking=thinking,
             tool_calls=extract_tool_calls(response),
             usage=usage,

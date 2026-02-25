@@ -10,10 +10,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 from src.agents.simple_llm import _estimate_total_tokens
 from src.providers.types import CostInfo, TokenUsage
 
-from .chat_input_service import ChatInputService
-from .conversation_storage import ConversationStorage
 from .group_orchestration import OrchestrationRequest, SingleTurnOrchestrator, SingleTurnSettings
-from .post_turn_service import PostTurnService
 from .rag_tool_service import RagToolService
 from .service_contracts import (
     AssistantLike,
@@ -32,10 +29,10 @@ logger = logging.getLogger(__name__)
 class SingleChatFlowDeps:
     """Dependencies required by SingleChatFlowService."""
 
-    storage: ConversationStorage
-    chat_input_service: ChatInputService
-    post_turn_service: PostTurnService
-    single_turn_orchestrator: SingleTurnOrchestrator
+    storage: Any
+    chat_input_service: Any
+    post_turn_service: Any
+    single_turn_orchestrator: Any
     prepare_context: Callable[..., Awaitable[ContextPayload]]
     build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
     merge_tool_diagnostics_into_sources: Callable[

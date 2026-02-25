@@ -6,10 +6,12 @@ Uses LangChain Embeddings interface.
 """
 import logging
 import math
+import importlib
 from threading import Lock
 import yaml
 from pathlib import Path
 from typing import Any, Optional
+from pydantic import SecretStr
 
 from .rag_config_service import RagConfigService
 from .model_config_service import ModelConfigService
@@ -232,13 +234,15 @@ class EmbeddingService:
         if config_base_url:
             # model_id may contain provider: prefix, strip it
             model_name = model_id.split(":", 1)[-1] if ":" in model_id else model_id
-            return OpenAIEmbeddings(
-                model=model_name,
-                api_key=config_api_key or "local",
-                base_url=config_base_url,
-                check_embedding_ctx_length=False,
-                chunk_size=batch_size,
-            )
+            kwargs: dict[str, Any] = {
+                "model": model_name,
+                "api_key": SecretStr(config_api_key or "local"),
+                "base_url": config_base_url,
+                "check_embedding_ctx_length": False,
+            }
+            if batch_size is not None:
+                kwargs["chunk_size"] = int(batch_size)
+            return OpenAIEmbeddings(**kwargs)
 
         # Fall back: resolve from LLM provider config using provider:model format
         parts = model_id.split(":", 1)
@@ -259,16 +263,16 @@ class EmbeddingService:
         # Try RAG config base_url first, then fall back to provider base_url
         base_url = config_base_url if config_base_url else self._get_provider_base_url_sync(provider_id)
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "model": model_name,
-            "api_key": api_key,
+            "api_key": SecretStr(api_key),
+            "check_embedding_ctx_length": False,
         }
         if base_url:
             kwargs["base_url"] = base_url
 
-        kwargs["check_embedding_ctx_length"] = False
-        if batch_size:
-            kwargs["chunk_size"] = batch_size
+        if batch_size is not None:
+            kwargs["chunk_size"] = int(batch_size)
         return OpenAIEmbeddings(**kwargs)
 
     def _get_local_embeddings(self, model_name: str, device: str = "cpu"):
@@ -280,7 +284,8 @@ class EmbeddingService:
             device: Device to run on (cpu, cuda)
         """
         try:
-            from langchain_community.embeddings import HuggingFaceEmbeddings
+            module = importlib.import_module("langchain_community.embeddings")
+            HuggingFaceEmbeddings = getattr(module, "HuggingFaceEmbeddings")
         except ImportError:
             raise ImportError(
                 "sentence-transformers is required for local embeddings. "

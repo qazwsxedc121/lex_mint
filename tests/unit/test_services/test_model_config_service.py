@@ -8,14 +8,17 @@ from unittest.mock import patch, Mock
 
 from src.api.services.model_config_service import ModelConfigService
 from src.api.models.model_config import Provider, Model, ModelsConfig
+from src.providers.types import ApiProtocol, ProviderType
 
 
 class TestModelConfigService:
     """Test cases for ModelConfigService class."""
 
     @pytest.fixture(autouse=True)
-    def _disable_builtin_sync(self, monkeypatch):
+    def _disable_builtin_sync(self, monkeypatch, request):
         """Keep unit tests focused on local file behavior, not builtin auto-sync."""
+        if request.node.name.startswith("test_sync_builtin_"):
+            return
         monkeypatch.setattr(ModelConfigService, "_sync_builtin_entries", lambda self: None)
 
     @pytest.mark.asyncio
@@ -288,8 +291,8 @@ class TestModelConfigService:
         duplicate_provider = Provider(
             id="deepseek",  # Already exists
             name="Duplicate",
-            type="builtin",
-            protocol="openai",
+            type=ProviderType.BUILTIN,
+            protocol=ApiProtocol.OPENAI,
             base_url="https://test.com",
             enabled=True
         )

@@ -4,7 +4,7 @@ Knowledge Base API Router
 Provides CRUD endpoints for knowledge bases and document management.
 """
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
-from typing import List, Optional
+from typing import List, Optional, Protocol
 import logging
 import uuid
 import asyncio
@@ -36,7 +36,7 @@ def get_kb_service() -> KnowledgeBaseService:
 
 
 async def _persist_upload_file(
-    upload_file: UploadFile,
+    upload_file: "_UploadFileLike",
     storage_path: Path,
     *,
     chunk_size_bytes: int = UPLOAD_CHUNK_SIZE_BYTES,
@@ -70,6 +70,17 @@ async def _persist_upload_file(
             await upload_file.close()
         except Exception:
             pass
+
+
+class _UploadFileLike(Protocol):
+    """Minimal upload-file shape used by _persist_upload_file for easier testing."""
+
+    @property
+    def filename(self) -> Optional[str]: ...
+
+    async def read(self, size: int = -1) -> bytes: ...
+
+    async def close(self) -> None: ...
 
 
 # ==================== Knowledge Base CRUD ====================
@@ -213,6 +224,7 @@ async def upload_document(
         file_type=ext,
         file_size=file_size,
         status="pending",
+        error_message=None,
     )
     await service.add_document(doc)
 
@@ -316,23 +328,32 @@ async def list_chunks(
             client = chromadb.PersistentClient(path=str(persist_dir))
             collection_name = f"kb_{kb_id}"
             collection = client.get_collection(collection_name)
-            query = {"include": ["documents", "metadatas"]}
             if doc_id:
-                query["where"] = {"doc_id": doc_id}
-            data = collection.get(**query)
+                data = collection.get(where={"doc_id": doc_id}, include=["documents", "metadatas"])
+            else:
+                data = collection.get(include=["documents", "metadatas"])
 
             documents = data.get("documents", []) or []
             metadatas = data.get("metadatas", []) or []
             ids = data.get("ids", []) or []
             for index, content in enumerate(documents):
-                meta = metadatas[index] or {}
+                raw_meta = metadatas[index] if index < len(metadatas) else {}
+                meta = raw_meta if isinstance(raw_meta, dict) else {}
+                raw_chunk_index = meta.get("chunk_index", 0)
+                if isinstance(raw_chunk_index, (int, float, str)):
+                    try:
+                        chunk_index = int(raw_chunk_index)
+                    except (TypeError, ValueError):
+                        chunk_index = 0
+                else:
+                    chunk_index = 0
                 items.append(KnowledgeBaseChunk(
-                    id=ids[index],
-                    kb_id=meta.get("kb_id", kb_id),
-                    doc_id=meta.get("doc_id"),
-                    filename=meta.get("filename"),
-                    chunk_index=meta.get("chunk_index", 0),
-                    content=content or "",
+                    id=str(ids[index]) if index < len(ids) else "",
+                    kb_id=str(meta.get("kb_id") or kb_id),
+                    doc_id=(str(meta.get("doc_id")) if meta.get("doc_id") is not None else None),
+                    filename=(str(meta.get("filename")) if meta.get("filename") is not None else None),
+                    chunk_index=chunk_index,
+                    content=str(content or ""),
                 ))
 
         items.sort(key=lambda item: (item.doc_id or "", item.chunk_index, item.id))

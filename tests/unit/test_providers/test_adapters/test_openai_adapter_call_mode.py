@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from src.providers.adapters.openai_adapter import OpenAIAdapter
 from src.providers.types import CallMode
@@ -126,7 +127,7 @@ def test_clone_with_mode_preserves_bound_tools_binding():
     base_llm = ChatOpenAI(
         model="gpt-4o-mini",
         base_url="https://api.openai.com/v1",
-        api_key="k",
+        api_key=SecretStr("k"),
         use_responses_api=True,
     )
     bound_llm = base_llm.bind_tools([])

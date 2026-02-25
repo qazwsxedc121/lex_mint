@@ -51,7 +51,7 @@ class BaseLLMAdapter(ABC):
         pass
 
     @abstractmethod
-    async def stream(
+    def stream(
         self,
         llm: Any,
         messages: List[BaseMessage],
@@ -132,7 +132,7 @@ class BaseLLMAdapter(ABC):
         self,
         base_url: str,
         api_key: str,
-        model_id: str = None
+        model_id: Optional[str] = None
     ) -> tuple[bool, str]:
         """
         Test connection to the provider.

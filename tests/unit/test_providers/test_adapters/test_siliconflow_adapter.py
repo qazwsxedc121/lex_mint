@@ -93,6 +93,8 @@ async def test_fetch_models_uses_text_filter_and_filters_results(monkeypatch):
     adapter = SiliconFlowAdapter()
     models = await adapter.fetch_models("https://api.siliconflow.com/v1", "test-key")
 
+    assert seen["headers"] is not None
+    assert seen["params"] is not None
     assert seen["headers"]["Authorization"] == "Bearer test-key"
     assert seen["params"] == {"type": "text"}
     assert [m["id"] for m in models] == ["Qwen/Qwen2.5-7B-Instruct"]

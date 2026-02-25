@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 
 
 class LLMLogger:
@@ -50,7 +50,7 @@ class LLMLogger:
         messages_sent: List[Any],
         response_received: Any,
         model: str = "deepseek-chat",
-        extra_params: Dict[str, Any] = None
+        extra_params: Optional[Dict[str, Any]] = None
     ) -> None:
         """Log a complete LLM interaction.
 

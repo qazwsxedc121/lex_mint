@@ -647,6 +647,8 @@ async def update_group_assistants(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     group_assistants = await _normalize_and_validate_group_assistants(request.group_assistants)
+    if group_assistants is None:
+        raise HTTPException(status_code=400, detail="group_assistants is required")
 
     logger.info(f"Updating group assistants for session {session_id[:16]}: {group_assistants}")
     try:

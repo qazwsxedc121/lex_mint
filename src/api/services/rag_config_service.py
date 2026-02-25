@@ -99,13 +99,13 @@ class RagConfig:
 class RagConfigService:
     """Service for managing RAG configuration"""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str | Path] = None):
         if config_path is None:
-            config_path = data_state_dir() / "rag_config.yaml"
+            resolved_config_path = data_state_dir() / "rag_config.yaml"
         else:
-            config_path = Path(config_path)
+            resolved_config_path = Path(config_path)
 
-        self.config_path = config_path
+        self.config_path: Path = resolved_config_path
         self._ensure_config_exists()
         self.config = self._load_config()
 

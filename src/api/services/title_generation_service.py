@@ -24,6 +24,23 @@ from ..paths import (
 logger = logging.getLogger(__name__)
 
 
+def _response_content_to_text(content: object) -> str:
+    """Normalize LangChain response content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text")
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+        return "".join(parts)
+    return str(content or "")
+
+
 @dataclass
 class TitleGenerationConfig:
     """Configuration for title generation"""
@@ -200,7 +217,7 @@ class TitleGenerationService:
             )
 
             # Extract and clean title
-            title = response.content.strip()
+            title = _response_content_to_text(response.content).strip()
 
             # Remove quotes if present
             if title.startswith('"') and title.endswith('"'):

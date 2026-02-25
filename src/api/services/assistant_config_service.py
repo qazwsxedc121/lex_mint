@@ -23,7 +23,11 @@ from ..paths import (
 class AssistantConfigService:
     """Assistant configuration management service"""
 
-    def __init__(self, config_path: Path = None, model_service: ModelConfigService = None):
+    def __init__(
+        self,
+        config_path: Optional[Path] = None,
+        model_service: Optional[ModelConfigService] = None,
+    ):
         """
         Initialize assistant configuration service
 

@@ -8,7 +8,7 @@ import asyncio
 import logging
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,14 @@ class RagResult:
 
 class RagService:
     """Service for RAG retrieval operations"""
+
+    # Explicitly mark injected dependencies as overrideable for tests.
+    rag_config_service: Any
+    embedding_service: Any
+    rerank_service: Any
+    bm25_service: Any
+    query_transform_service: Any
+    retrieval_query_planner_service: Any
 
     def __init__(self):
         from .rag_config_service import RagConfigService
@@ -206,12 +214,15 @@ class RagService:
             start_index = max(0, int(seed.chunk_index) - neighbor_window)
             end_index = int(seed.chunk_index) + neighbor_window
             try:
-                rows = self.bm25_service.list_document_chunks_in_range(
+                rows = cast(
+                    List[Dict[str, Any]],
+                    self.bm25_service.list_document_chunks_in_range(
                     kb_id=seed.kb_id,
                     doc_id=seed.doc_id,
                     start_index=start_index,
                     end_index=end_index,
                     limit=max(8, (neighbor_window * 4) + 4),
+                    ),
                 )
             except Exception as e:
                 logger.warning(
@@ -858,7 +869,7 @@ class RagService:
 
         enabled_kbs: List[Tuple[str, Any]] = []
         for kb_id, kb_lookup in zip(kb_ids, kb_lookup_results):
-            if isinstance(kb_lookup, Exception):
+            if isinstance(kb_lookup, BaseException):
                 logger.warning(f"RAG lookup failed for KB {kb_id}: {kb_lookup}")
                 continue
             kb = kb_lookup
@@ -952,7 +963,7 @@ class RagService:
                     return_exceptions=True,
                 )
                 for (channel, _), payload in zip(channel_jobs, channel_results):
-                    if isinstance(payload, Exception):
+                    if isinstance(payload, BaseException):
                         logger.warning(
                             "RAG %s search failed for KB %s query[%d/%d]='%s': %s",
                             channel,
@@ -965,7 +976,7 @@ class RagService:
                         continue
 
                     if channel == "vector":
-                        query_vector_results = list(payload or [])
+                        query_vector_results = list(cast(Sequence[RagResult], payload or []))
                         local_vector_results.extend(query_vector_results)
                         if query_vector_results:
                             best_score = max(r.score for r in query_vector_results)
@@ -988,7 +999,7 @@ class RagService:
                             )
                         continue
 
-                    query_bm25_results = list(payload or [])
+                    query_bm25_results = list(cast(Sequence[RagResult], payload or []))
                     local_bm25_results.extend(query_bm25_results)
                     if query_bm25_results:
                         best_score = max(r.score for r in query_bm25_results)
@@ -1015,10 +1026,10 @@ class RagService:
         kb_retrieval_tasks = [_retrieve_single_kb(kb_id, kb) for kb_id, kb in enabled_kbs]
         kb_retrieval_results = await asyncio.gather(*kb_retrieval_tasks, return_exceptions=True)
         for (kb_id, _), result in zip(enabled_kbs, kb_retrieval_results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(f"RAG search failed for KB {kb_id}: {result}")
                 continue
-            kb_vector_results, kb_bm25_results = result
+            kb_vector_results, kb_bm25_results = cast(Tuple[List[RagResult], List[RagResult]], result)
             vector_results.extend(kb_vector_results)
             bm25_results.extend(kb_bm25_results)
 
@@ -1325,7 +1336,7 @@ class RagService:
 
         collection_name = f"kb_{kb_id}"
 
-        embedding_fn = self.embedding_service.get_embedding_function(override_model)
+        embedding_fn = cast(Any, self.embedding_service.get_embedding_function(override_model))
 
         try:
             vectorstore = Chroma(
@@ -1407,11 +1418,16 @@ class RagService:
                     logger.warning("sqlite_vec search failed for kb=%s: embedding function lacks embed_query()", kb_id)
                     return []
                 query_embedding = embedding_fn.embed_query(query)
+            if query_embedding is None:
+                return []
             sqlite_vec = SqliteVecService()
-            rows = sqlite_vec.search(
+            rows = cast(
+                List[Dict[str, Any]],
+                sqlite_vec.search(
                 kb_id=kb_id,
                 query_embedding=query_embedding,
                 top_k=top_k,
+                ),
             )
         except Exception as e:
             logger.warning(f"SQLite vector search failed for kb {kb_id}: {e}")
@@ -1455,11 +1471,14 @@ class RagService:
         min_term_coverage: float,
     ) -> List[RagResult]:
         try:
-            rows = self.bm25_service.search(
+            rows = cast(
+                List[Dict[str, Any]],
+                self.bm25_service.search(
                 kb_id=kb_id,
                 query=query,
                 top_k=top_k,
                 min_term_coverage=min_term_coverage,
+                ),
             )
         except Exception as e:
             logger.warning(f"BM25 search failed for kb {kb_id}: {e}")

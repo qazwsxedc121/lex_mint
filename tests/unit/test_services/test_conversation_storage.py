@@ -389,6 +389,7 @@ class TestConversationStorage:
             # Verify - read file directly since get_session may override model_id
             import frontmatter
             filepath = await storage._find_session_file(session_id)
+            assert filepath is not None
             with open(filepath, 'r', encoding='utf-8') as f:
                 post = frontmatter.load(f)
 

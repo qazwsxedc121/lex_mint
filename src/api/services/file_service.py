@@ -5,7 +5,7 @@ import mimetypes
 import shutil
 import base64
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from fastapi import UploadFile
 import aiofiles
 import logging
@@ -109,7 +109,7 @@ class FileService:
         self,
         session_id: str,
         file: UploadFile
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """Save uploaded file to temporary location.
 
         Args:
@@ -138,14 +138,15 @@ class FileService:
                 mime_type = guessed
 
         # Save to temp location
-        temp_path = temp_dir / file.filename
+        safe_filename = file.filename or "uploaded_file"
+        temp_path = temp_dir / safe_filename
         async with aiofiles.open(temp_path, 'wb') as f:
             await f.write(content)
 
         logger.info(f"Saved temp file: {temp_path}")
 
         return {
-            "filename": file.filename,
+            "filename": safe_filename,
             "size": len(content),
             "mime_type": mime_type,
             "temp_path": str(temp_path.relative_to(self.attachments_dir)),

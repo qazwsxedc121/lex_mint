@@ -3,9 +3,8 @@
 import logging
 import re
 import time
-from typing import AsyncIterator, Union, Dict, Any, Optional, Tuple, List, Sequence
+from typing import AsyncIterator, Union, Dict, Any, Optional, Tuple, List, Sequence, Protocol
 
-from src.api.services.conversation_storage import ConversationStorage
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.compression_config_service import CompressionConfigService
 from src.api.services.local_llama_cpp_service import LocalLlamaCppService
@@ -73,10 +72,14 @@ Required facts:
 Return only the revised summary."""
 
 
+class LocalPromptLLMLike(Protocol):
+    def complete_prompt(self, prompt: str, *, temperature: float, max_tokens: int) -> str: ...
+
+
 class CompressionService:
     """Service for compressing conversation context via LLM summarization."""
 
-    def __init__(self, storage: ConversationStorage):
+    def __init__(self, storage: Any):
         self.storage = storage
         self.config_service = CompressionConfigService()
 
@@ -466,7 +469,7 @@ class CompressionService:
     def _run_local_quality_guard(
         self,
         *,
-        local_llm: LocalLlamaCppService,
+        local_llm: LocalPromptLLMLike,
         config: Any,
         source_messages: Sequence[Dict[str, Any]],
         summary: str,
@@ -559,7 +562,7 @@ class CompressionService:
     def _summarize_message_chunk_with_local(
         self,
         *,
-        local_llm: LocalLlamaCppService,
+        local_llm: LocalPromptLLMLike,
         config: Any,
         messages: Sequence[Dict[str, Any]],
         max_tokens: int,
@@ -581,7 +584,7 @@ class CompressionService:
     def _summarize_text_group_with_local(
         self,
         *,
-        local_llm: LocalLlamaCppService,
+        local_llm: LocalPromptLLMLike,
         config: Any,
         summaries: Sequence[str],
         max_tokens: int,
@@ -602,7 +605,7 @@ class CompressionService:
     def _compress_with_local_gguf(
         self,
         *,
-        local_llm: LocalLlamaCppService,
+        local_llm: Any,
         config: Any,
         compressible: Sequence[Dict[str, Any]],
         output_language_code: Optional[str] = None,

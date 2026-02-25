@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Coroutine, List, Optional, cast
+from typing import Any, Awaitable, Callable, List, Optional
 
 from src.providers.types import CostInfo, TokenUsage
 
-from .conversation_storage import ConversationStorage
 from .service_contracts import (
     FollowupServiceLike,
-    MemoryServiceLike,
     MessagePayload,
     SourcePayload,
     TaskScheduler,
@@ -23,7 +21,10 @@ logger = logging.getLogger(__name__)
 
 def _default_task_scheduler(task: Awaitable[Any]) -> asyncio.Task[Any]:
     """Bridge generic awaitables to asyncio task scheduling."""
-    return asyncio.create_task(cast(Coroutine[Any, Any, Any], task))
+    async def _run() -> Any:
+        return await task
+
+    return asyncio.create_task(_run())
 
 
 class PostTurnService:
@@ -32,8 +33,8 @@ class PostTurnService:
     def __init__(
         self,
         *,
-        storage: ConversationStorage,
-        memory_service: MemoryServiceLike,
+        storage: Any,
+        memory_service: Any,
         task_scheduler: TaskScheduler = _default_task_scheduler,
         title_service_factory: Optional[Callable[..., TitleServiceLike]] = None,
         followup_service_factory: Optional[Callable[[], FollowupServiceLike]] = None,

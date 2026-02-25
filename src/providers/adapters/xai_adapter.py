@@ -3,6 +3,7 @@ xAI (Grok) SDK Adapter
 
 Adapter for xAI Grok API with Live Search and reasoning support.
 """
+import importlib
 import logging
 from typing import AsyncIterator, List, Dict, Any
 from langchain_core.messages import BaseMessage
@@ -12,6 +13,23 @@ from ..types import StreamChunk, LLMResponse, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
+
+
+def _response_content_to_text(content: object) -> str:
+    """Normalize LangChain response content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text")
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+        return "".join(parts)
+    return str(content or "")
 
 
 class XAIAdapter(BaseLLMAdapter):
@@ -48,7 +66,8 @@ class XAIAdapter(BaseLLMAdapter):
         Returns:
             ChatXAI instance
         """
-        from langchain_xai import ChatXAI
+        xai_module = importlib.import_module("langchain_xai")
+        chat_xai_cls = getattr(xai_module, "ChatXAI")
 
         llm_kwargs = {
             "model": model,
@@ -75,7 +94,7 @@ class XAIAdapter(BaseLLMAdapter):
         if model_kwargs:
             llm_kwargs["model_kwargs"] = model_kwargs
 
-        return ChatXAI(**llm_kwargs)
+        return chat_xai_cls(**llm_kwargs)
 
     async def stream(
         self,
@@ -100,7 +119,7 @@ class XAIAdapter(BaseLLMAdapter):
         usage_data = None
 
         async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, 'content') else ""
+            content = _response_content_to_text(chunk.content if hasattr(chunk, "content") else "")
             thinking = ""
 
             # Grok returns reasoning_content in additional_kwargs
@@ -149,7 +168,7 @@ class XAIAdapter(BaseLLMAdapter):
             usage = TokenUsage.from_dict(raw_usage)
 
         return LLMResponse(
-            content=response.content,
+            content=_response_content_to_text(response.content),
             thinking=thinking,
             usage=usage,
             raw=response,

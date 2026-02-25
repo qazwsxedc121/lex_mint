@@ -343,15 +343,15 @@ class CommitteeTurnExecutor:
         model_id = assistant_obj.model_id
 
         history_hint = self.build_group_history_hint(
-            messages=messages,
-            current_assistant_id=assistant_id,
-            assistant_name_map=assistant_name_map,
+            messages,
+            assistant_id,
+            assistant_name_map,
         )
         identity_prompt = self.build_group_identity_prompt(
-            current_assistant_id=assistant_id,
-            current_assistant_name=assistant_name,
-            group_assistants=group_assistants,
-            assistant_name_map=assistant_name_map,
+            assistant_id,
+            assistant_name,
+            group_assistants,
+            assistant_name_map,
         )
         instruction_prompt = self.build_group_instruction_prompt(
             instruction, committee_turn_packet
@@ -533,4 +533,3 @@ class CommitteeTurnExecutor:
             "assistant_id": assistant_id,
             "assistant_turn_id": assistant_turn_id,
         }
-

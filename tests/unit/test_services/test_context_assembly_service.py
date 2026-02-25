@@ -1,6 +1,7 @@
 """Unit tests for context assembly service."""
 
 from types import SimpleNamespace
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pytest
 
@@ -8,18 +9,25 @@ from src.api.services.context_assembly_service import ContextAssemblyService
 
 
 class _Source:
-    def __init__(self, payload):
+    def __init__(self, payload: Dict[str, Any]):
         self.payload = payload
 
-    def model_dump(self):
+    def model_dump(self) -> Dict[str, Any]:
         return self.payload
 
 
 class _FakeStorage:
-    def __init__(self, *, param_overrides=None):
+    def __init__(self, *, param_overrides: Optional[Dict[str, Any]] = None):
         self.param_overrides = param_overrides or {}
 
-    async def get_session(self, *_args, **_kwargs):
+    async def get_session(
+        self,
+        session_id: str,
+        *,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        _ = session_id, context_type, project_id
         return {
             "state": {"messages": [{"role": "user", "content": "hi"}]},
             "assistant_id": None,
@@ -29,21 +37,32 @@ class _FakeStorage:
 
 
 class _FakeMemoryService:
-    def build_memory_context(self, **_kwargs):
+    def build_memory_context(
+        self,
+        *,
+        query: str,
+        assistant_id: Optional[str],
+        include_global: bool,
+        include_assistant: bool,
+    ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+        _ = query, assistant_id, include_global, include_assistant
         return "MEM", [{"type": "memory"}]
 
 
 class _FakeWebpageService:
-    async def build_context(self, _raw_user_message):
+    async def build_context(self, query: str) -> Tuple[Optional[str], List[_Source]]:
+        _ = query
         return "WEB", [_Source({"type": "webpage"})]
 
 
 class _FakeSearchService:
-    async def search(self, _query):
+    async def search(self, query: str) -> List[_Source]:
+        _ = query
         return [_Source({"type": "search"})]
 
     @staticmethod
-    def build_search_context(_query, _sources):
+    def build_search_context(query: str, sources: Sequence[Any]) -> Optional[str]:
+        _ = query, sources
         return "SEARCH"
 
 

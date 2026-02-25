@@ -14,14 +14,14 @@ _RESERVED_VARIABLE_KEYS = {"cursor"}
 class PromptTemplateVariable(BaseModel):
     """Schema for one template variable."""
     key: str = Field(..., description="Variable key used in template placeholders")
-    label: Optional[str] = Field(None, description="Display label in fill form")
-    description: Optional[str] = Field(None, description="Variable help text")
+    label: Optional[str] = Field(default=None, description="Display label in fill form")
+    description: Optional[str] = Field(default=None, description="Variable help text")
     type: Literal["text", "number", "boolean", "select"] = Field(
         default="text",
         description="Input type used for this variable"
     )
     required: bool = Field(default=False, description="Whether variable value is required")
-    default: Optional[Any] = Field(None, description="Default value for this variable")
+    default: Optional[Any] = Field(default=None, description="Default value for this variable")
     options: List[str] = Field(default_factory=list, description="Allowed values when type=select")
 
     @field_validator("key")
@@ -84,7 +84,7 @@ class PromptTemplate(BaseModel):
     """Reusable prompt template definition."""
     id: str = Field(..., description="Template unique identifier")
     name: str = Field(..., description="Template display name")
-    description: Optional[str] = Field(None, description="Template description")
+    description: Optional[str] = Field(default=None, description="Template description")
     content: str = Field(..., description="Prompt template content")
     enabled: bool = Field(default=True, description="Whether template is enabled")
     variables: List[PromptTemplateVariable] = Field(
@@ -105,9 +105,9 @@ class PromptTemplatesConfig(BaseModel):
 
 class PromptTemplateCreate(BaseModel):
     """Create prompt template request."""
-    id: Optional[str] = Field(None, description="Template unique identifier (optional, auto-generated)")
+    id: Optional[str] = Field(default=None, description="Template unique identifier (optional, auto-generated)")
     name: str = Field(..., description="Template display name")
-    description: Optional[str] = Field(None, description="Template description")
+    description: Optional[str] = Field(default=None, description="Template description")
     content: str = Field(..., description="Prompt template content")
     enabled: bool = Field(default=True, description="Whether template is enabled")
     variables: List[PromptTemplateVariable] = Field(
@@ -123,12 +123,12 @@ class PromptTemplateCreate(BaseModel):
 
 class PromptTemplateUpdate(BaseModel):
     """Update prompt template request."""
-    name: Optional[str] = Field(None, description="Template display name")
-    description: Optional[str] = Field(None, description="Template description")
-    content: Optional[str] = Field(None, description="Prompt template content")
-    enabled: Optional[bool] = Field(None, description="Whether template is enabled")
+    name: Optional[str] = Field(default=None, description="Template display name")
+    description: Optional[str] = Field(default=None, description="Template description")
+    content: Optional[str] = Field(default=None, description="Prompt template content")
+    enabled: Optional[bool] = Field(default=None, description="Whether template is enabled")
     variables: Optional[List[PromptTemplateVariable]] = Field(
-        None,
+        default=None,
         description="Optional variable schema for template parameters"
     )
 

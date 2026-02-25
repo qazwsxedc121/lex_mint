@@ -9,11 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import math
+import importlib
 import sqlite3
 import struct
 from pathlib import Path
 from threading import Lock
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class SqliteVecService:
         if not self._sqlite_vec_available:
             return
         try:
-            import sqlite_vec
+            sqlite_vec = importlib.import_module("sqlite_vec")
 
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
@@ -145,7 +146,7 @@ class SqliteVecService:
         filename: str,
         file_type: str,
         ingest_id: str,
-        chunk_rows: List[Dict[str, object]],
+        chunk_rows: List[Dict[str, Any]],
     ) -> None:
         """Upsert chunk rows for one document generation."""
         if not chunk_rows:
@@ -161,7 +162,10 @@ class SqliteVecService:
                         continue
                     chunk_index = int(row.get("chunk_index", 0) or 0)
                     content = str(row.get("content") or "")
-                    embedding = self._normalize_vector(row.get("embedding", []) or [])
+                    raw_embedding = row.get("embedding", []) or []
+                    if not isinstance(raw_embedding, Sequence) or isinstance(raw_embedding, (str, bytes, bytearray)):
+                        raw_embedding = []
+                    embedding = self._normalize_vector(raw_embedding)
                     embedding_json = json.dumps(embedding, separators=(",", ":"))
                     embedding_blob = self._pack_vector_float32(embedding)
                     embedding_dim = len(embedding)
@@ -256,7 +260,7 @@ class SqliteVecService:
         kb_id: str,
         doc_id: Optional[str] = None,
         limit: int = 200,
-    ) -> List[Dict[str, object]]:
+    ) -> List[Dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 2000))
         with self._connect() as conn:
             if doc_id:
@@ -282,7 +286,7 @@ class SqliteVecService:
                     (kb_id, safe_limit),
                 ).fetchall()
 
-        items: List[Dict[str, object]] = []
+        items: List[Dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -304,7 +308,7 @@ class SqliteVecService:
         start_index: int,
         end_index: int,
         limit: int = 256,
-    ) -> List[Dict[str, object]]:
+    ) -> List[Dict[str, Any]]:
         """List chunks for one document within an inclusive chunk index range."""
         safe_start = max(0, int(start_index))
         safe_end = max(safe_start, int(end_index))
@@ -322,7 +326,7 @@ class SqliteVecService:
                 (kb_id, doc_id, safe_start, safe_end, safe_limit),
             ).fetchall()
 
-        items: List[Dict[str, object]] = []
+        items: List[Dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -386,7 +390,7 @@ class SqliteVecService:
         kb_id: str,
         query_vector: Sequence[float],
         top_k: int,
-    ) -> List[Dict[str, object]]:
+    ) -> List[Dict[str, Any]]:
         if not self._sqlite_vec_available:
             return []
 
@@ -418,7 +422,7 @@ class SqliteVecService:
                 self._sqlite_vec_available = False
                 return []
 
-        items: List[Dict[str, object]] = []
+        items: List[Dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -439,7 +443,7 @@ class SqliteVecService:
         kb_id: str,
         query_embedding: Sequence[float],
         top_k: int,
-    ) -> List[Dict[str, object]]:
+    ) -> List[Dict[str, Any]]:
         query_vector = self._normalize_vector(query_embedding)
         if not query_vector:
             return []
@@ -479,7 +483,7 @@ class SqliteVecService:
         if not rows:
             return []
 
-        ranked: List[Dict[str, object]] = []
+        ranked: List[Dict[str, Any]] = []
         for row in rows:
             candidate_vector: List[float] = []
             blob = row["embedding_blob"]

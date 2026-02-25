@@ -6,7 +6,6 @@ Adapter for OpenAI and OpenAI-compatible APIs (OpenRouter, Groq, Together, etc.)
 import logging
 from typing import AsyncIterator, List, Dict, Any
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
 from ..types import CallMode, StreamChunk, LLMResponse, TokenUsage
@@ -166,8 +165,8 @@ class OpenAIAdapter(BaseLLMAdapter):
 
     async def stream(
         self,
-        llm: ChatOpenAI,
-        messages: List[BaseMessage],
+        llm: Any,
+        messages: List[Any],
         **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """
@@ -230,8 +229,8 @@ class OpenAIAdapter(BaseLLMAdapter):
 
     async def invoke(
         self,
-        llm: ChatOpenAI,
-        messages: List[BaseMessage],
+        llm: Any,
+        messages: List[Any],
         **kwargs
     ) -> LLMResponse:
         """

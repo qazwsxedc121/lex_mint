@@ -5,6 +5,7 @@ Adapter for Google Gemini API using langchain-google-genai.
 Supports thinking mode (Gemini 2.5+), vision, and function calling.
 """
 import logging
+import importlib
 from typing import AsyncIterator, List, Dict, Any
 
 from langchain_core.messages import BaseMessage
@@ -89,7 +90,8 @@ class GeminiAdapter(BaseLLMAdapter):
         Returns:
             ChatGoogleGenerativeAI instance
         """
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        module = importlib.import_module("langchain_google_genai")
+        ChatGoogleGenerativeAI = getattr(module, "ChatGoogleGenerativeAI")
 
         llm_kwargs: Dict[str, Any] = {
             "model": model,
@@ -286,7 +288,7 @@ class GeminiAdapter(BaseLLMAdapter):
         self,
         base_url: str,
         api_key: str,
-        model_id: str = None
+        model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test connection to Google Gemini API.

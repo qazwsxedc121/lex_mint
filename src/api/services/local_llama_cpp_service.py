@@ -88,6 +88,8 @@ class LocalLlamaCppService:
             stream=True,
         )
         for chunk in stream:
+            if not isinstance(chunk, dict):
+                continue
             choices = chunk.get("choices") or []
             if not choices:
                 continue
@@ -111,6 +113,8 @@ class LocalLlamaCppService:
             stream=True,
         )
         for chunk in stream:
+            if not isinstance(chunk, dict):
+                continue
             choices = chunk.get("choices") or []
             if not choices:
                 continue

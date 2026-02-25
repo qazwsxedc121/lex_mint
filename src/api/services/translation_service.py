@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import AsyncIterator, Union, Dict, Any
+from typing import AsyncIterator, Union, Dict, Any, Optional, List
 
 from src.api.services.language_detection_service import LanguageDetectionService
 from src.api.services.model_config_service import ModelConfigService
@@ -58,8 +58,8 @@ class TranslationService:
     async def translate_stream(
         self,
         text: str,
-        target_language: str = None,
-        model_id: str = None,
+        target_language: Optional[str] = None,
+        model_id: Optional[str] = None,
         use_input_target_language: bool = False,
         auto_detect_language: bool = True,
     ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
@@ -231,9 +231,9 @@ class TranslationService:
             allow_responses_fallback,
         )
 
-        from langchain_core.messages import HumanMessage as HMsg
+        from langchain_core.messages import HumanMessage as HMsg, BaseMessage
 
-        langchain_messages = [HMsg(content=prompt)]
+        langchain_messages: List[BaseMessage] = [HMsg(content=prompt)]
 
         try:
             full_response = ""

@@ -6,11 +6,12 @@ Maintains a lightweight SQLite FTS5 index for lexical retrieval.
 from __future__ import annotations
 
 import logging
+import importlib
 import re
 import sqlite3
 from pathlib import Path
 from threading import Lock
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class Bm25Service:
         if not raw:
             return []
         try:
-            import jieba
+            jieba = importlib.import_module("jieba")
 
             tokens = [tok.strip().lower() for tok in jieba.lcut_for_search(raw) if tok and tok.strip()]
         except Exception:
@@ -153,7 +154,7 @@ class Bm25Service:
         kb_id: str,
         doc_id: str,
         filename: str,
-        chunks: List[Dict[str, object]],
+        chunks: List[Dict[str, Any]],
     ) -> None:
         """Upsert one document's chunk rows and refresh its FTS rows."""
         if not chunks:
@@ -258,7 +259,7 @@ class Bm25Service:
         query: str,
         top_k: int,
         min_term_coverage: float = 0.0,
-    ) -> List[Dict[str, object]]:
+    ) -> List[Dict[str, Any]]:
         match_expr = self._build_match_expression(query)
         if not match_expr:
             return []
@@ -320,7 +321,7 @@ class Bm25Service:
         else:
             normalized = [(max_score - val) / (max_score - min_score) for val in raw_scores]
 
-        items: List[Dict[str, object]] = []
+        items: List[Dict[str, Any]] = []
         for index, (row, coverage, matched_count) in enumerate(filtered_rows):
             items.append(
                 {
@@ -346,7 +347,7 @@ class Bm25Service:
         start_index: int,
         end_index: int,
         limit: int = 256,
-    ) -> List[Dict[str, object]]:
+    ) -> List[Dict[str, Any]]:
         """List chunks for one document within an inclusive chunk index range."""
         safe_start = max(0, int(start_index))
         safe_end = max(safe_start, int(end_index))
@@ -364,7 +365,7 @@ class Bm25Service:
                 (kb_id, doc_id, safe_start, safe_end, safe_limit),
             ).fetchall()
 
-        items: List[Dict[str, object]] = []
+        items: List[Dict[str, Any]] = []
         for row in rows:
             items.append(
                 {

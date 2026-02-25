@@ -7,14 +7,19 @@ import logging
 import random
 import asyncio
 import uuid
+import importlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentProcessingService:
     """Service for processing documents into vector embeddings"""
+
+    rag_config_service: Any
+    embedding_service: Any
+    bm25_service: Any
 
     def __init__(self):
         from .rag_config_service import RagConfigService
@@ -153,9 +158,8 @@ class DocumentProcessingService:
         """Extract text from PDF files."""
         # PyMuPDF handles many CJK PDFs better than pypdf when ToUnicode maps are missing.
         try:
-            import fitz
-
-            doc = fitz.open(file_path)
+            fitz_module = importlib.import_module("fitz")
+            doc = fitz_module.open(file_path)
             text_parts = []
             for page in doc:
                 page_text = page.get_text("text")

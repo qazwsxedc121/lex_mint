@@ -48,7 +48,10 @@ class SearchService:
             self.config_path = Path(config_path)
 
         self._ensure_config_exists()
-        self.model_config_service = ModelConfigService(keys_path=keys_path)
+        if keys_path is None:
+            self.model_config_service = ModelConfigService()
+        else:
+            self.model_config_service = ModelConfigService(keys_path=keys_path)
         self.config = self._load_config()
 
     def _ensure_config_exists(self) -> None:
@@ -153,7 +156,17 @@ class SearchService:
             score = result.get("score")
             if not url:
                 continue
-            sources.append(SearchSource(type="search", title=title, url=url, snippet=snippet, score=score))
+            sources.append(
+                SearchSource.model_validate(
+                    {
+                        "type": "search",
+                        "title": title,
+                        "url": url,
+                        "snippet": snippet,
+                        "score": score,
+                    }
+                )
+            )
 
         return sources
 
@@ -165,8 +178,11 @@ class SearchService:
         def run_search() -> List[SearchSource]:
             backends = ["lite", "html"]
             last_error: Optional[Exception] = None
+            ddgs_cls = DDGS_CLIENT
+            if ddgs_cls is None:
+                return []
 
-            with DDGS_CLIENT() as ddgs:
+            with ddgs_cls() as ddgs:
                 for backend in backends:
                     try:
                         try:
@@ -188,7 +204,16 @@ class SearchService:
                             snippet = result.get("body") or result.get("snippet")
                             if not url:
                                 continue
-                            results.append(SearchSource(type="search", title=title, url=url, snippet=snippet))
+                            results.append(
+                                SearchSource.model_validate(
+                                    {
+                                        "type": "search",
+                                        "title": title,
+                                        "url": url,
+                                        "snippet": snippet,
+                                    }
+                                )
+                            )
 
                         if results:
                             return results

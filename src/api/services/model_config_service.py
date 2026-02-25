@@ -48,7 +48,7 @@ class ModelConfigService:
         },
     }
 
-    def __init__(self, config_path: Path = None, keys_path: Path = None):
+    def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
         """
         初始化配置服务
 
@@ -836,7 +836,7 @@ class ModelConfigService:
         self,
         base_url: str,
         api_key: str,
-        model_id: str = None,
+        model_id: Optional[str] = None,
         provider: Optional[Provider] = None
     ) -> tuple[bool, str]:
         """

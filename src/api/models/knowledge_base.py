@@ -12,10 +12,10 @@ class KnowledgeBase(BaseModel):
     """Knowledge base configuration"""
     id: str = Field(..., description="Knowledge base unique identifier")
     name: str = Field(..., description="Knowledge base display name")
-    description: Optional[str] = Field(None, description="Knowledge base description")
-    embedding_model: Optional[str] = Field(None, description="Override embedding model (provider:model format)")
-    chunk_size: Optional[int] = Field(None, ge=100, le=10000, description="Override chunk size")
-    chunk_overlap: Optional[int] = Field(None, ge=0, le=5000, description="Override chunk overlap")
+    description: Optional[str] = Field(default=None, description="Knowledge base description")
+    embedding_model: Optional[str] = Field(default=None, description="Override embedding model (provider:model format)")
+    chunk_size: Optional[int] = Field(default=None, ge=100, le=10000, description="Override chunk size")
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=5000, description="Override chunk overlap")
     document_count: int = Field(default=0, description="Number of documents")
     enabled: bool = Field(default=True, description="Whether knowledge base is enabled")
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="Creation timestamp")
@@ -30,7 +30,7 @@ class KnowledgeBaseDocument(BaseModel):
     file_size: int = Field(default=0, description="File size in bytes")
     status: str = Field(default="pending", description="Processing status: pending, processing, ready, error")
     chunk_count: int = Field(default=0, description="Number of chunks created")
-    error_message: Optional[str] = Field(None, description="Error message if processing failed")
+    error_message: Optional[str] = Field(default=None, description="Error message if processing failed")
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="Creation timestamp")
 
 
@@ -44,28 +44,28 @@ class KnowledgeBaseCreate(BaseModel):
     """Create knowledge base request"""
     id: str = Field(..., description="Knowledge base unique identifier")
     name: str = Field(..., description="Knowledge base display name")
-    description: Optional[str] = Field(None, description="Knowledge base description")
-    embedding_model: Optional[str] = Field(None, description="Override embedding model")
-    chunk_size: Optional[int] = Field(None, ge=100, le=10000, description="Override chunk size")
-    chunk_overlap: Optional[int] = Field(None, ge=0, le=5000, description="Override chunk overlap")
+    description: Optional[str] = Field(default=None, description="Knowledge base description")
+    embedding_model: Optional[str] = Field(default=None, description="Override embedding model")
+    chunk_size: Optional[int] = Field(default=None, ge=100, le=10000, description="Override chunk size")
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=5000, description="Override chunk overlap")
     enabled: bool = Field(default=True, description="Whether knowledge base is enabled")
 
 
 class KnowledgeBaseUpdate(BaseModel):
     """Update knowledge base request"""
-    name: Optional[str] = Field(None, description="Knowledge base display name")
-    description: Optional[str] = Field(None, description="Knowledge base description")
-    embedding_model: Optional[str] = Field(None, description="Override embedding model")
-    chunk_size: Optional[int] = Field(None, ge=100, le=10000, description="Override chunk size")
-    chunk_overlap: Optional[int] = Field(None, ge=0, le=5000, description="Override chunk overlap")
-    enabled: Optional[bool] = Field(None, description="Whether knowledge base is enabled")
+    name: Optional[str] = Field(default=None, description="Knowledge base display name")
+    description: Optional[str] = Field(default=None, description="Knowledge base description")
+    embedding_model: Optional[str] = Field(default=None, description="Override embedding model")
+    chunk_size: Optional[int] = Field(default=None, ge=100, le=10000, description="Override chunk size")
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=5000, description="Override chunk overlap")
+    enabled: Optional[bool] = Field(default=None, description="Whether knowledge base is enabled")
 
 
 class KnowledgeBaseChunk(BaseModel):
     """Chunk entry from a knowledge base collection (developer inspection)"""
     id: str = Field(..., description="Chunk unique identifier")
     kb_id: str = Field(..., description="Knowledge base ID")
-    doc_id: Optional[str] = Field(None, description="Document ID")
-    filename: Optional[str] = Field(None, description="Source filename")
+    doc_id: Optional[str] = Field(default=None, description="Document ID")
+    filename: Optional[str] = Field(default=None, description="Source filename")
     chunk_index: int = Field(default=0, description="Chunk index within the document")
     content: str = Field(..., description="Chunk text content")

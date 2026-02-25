@@ -3,7 +3,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 from pathlib import Path
-from typing import List
+from typing import List, TYPE_CHECKING
 import os
 
 
@@ -71,4 +71,7 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-settings = Settings()
+if TYPE_CHECKING:
+    settings = Settings(api_port=8000)
+else:
+    settings = Settings()

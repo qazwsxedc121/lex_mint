@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from .conversation_storage import ConversationStorage
-from .file_service import FileService
 from .service_contracts import SourcePayload
 
 
@@ -23,7 +21,7 @@ class PreparedUserInput:
 class ChatInputService:
     """Handles attachment expansion and optional user-message persistence."""
 
-    def __init__(self, storage: ConversationStorage, file_service: FileService):
+    def __init__(self, storage: Any, file_service: Any):
         self.storage = storage
         self.file_service = file_service
 

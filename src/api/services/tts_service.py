@@ -5,6 +5,7 @@ Provides text-to-speech synthesis using Edge TTS.
 """
 import re
 import logging
+from typing import Optional
 
 import edge_tts
 
@@ -71,7 +72,12 @@ class TTSService:
             return False
         return chinese_count / total > 0.3
 
-    async def synthesize(self, text: str, voice: str = None, rate: str = None) -> bytes:
+    async def synthesize(
+        self,
+        text: str,
+        voice: Optional[str] = None,
+        rate: Optional[str] = None,
+    ) -> bytes:
         """Synthesize text to audio bytes using edge-tts.
 
         Collects all audio data before returning so errors are caught
@@ -100,10 +106,12 @@ class TTSService:
         logger.info(f"TTS synthesize: voice={effective_voice}, rate={effective_rate}, text_len={len(sanitized)}")
 
         communicate = edge_tts.Communicate(sanitized, effective_voice, rate=effective_rate, volume=config.volume)
-        audio_chunks = []
+        audio_chunks: list[bytes] = []
         async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_chunks.append(chunk["data"])
+            if chunk.get("type") == "audio":
+                data = chunk.get("data")
+                if isinstance(data, (bytes, bytearray)):
+                    audio_chunks.append(bytes(data))
 
         if not audio_chunks:
             raise RuntimeError("No audio data received from edge-tts")

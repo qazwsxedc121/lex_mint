@@ -1,7 +1,5 @@
 """Unit tests for compare flow service extraction."""
 
-from types import SimpleNamespace
-
 import pytest
 
 from src.api.services.chat_input_service import PreparedUserInput
@@ -27,7 +25,8 @@ class _FakeInputService:
 
 
 class _FakeCompareOrchestrator:
-    async def stream(self, _request):
+    async def stream(self, request):
+        _ = request
         yield {"type": "model_start", "model_id": "m1", "model_name": "M1"}
         yield {"type": "model_done", "model_id": "m1", "content": "A"}
         yield {
@@ -51,9 +50,17 @@ async def test_compare_flow_streams_and_persists():
     async def _save(*args, **kwargs):
         save_calls.append((args, kwargs))
 
+    class _FakeStorage:
+        async def append_message(self, *args, **kwargs):
+            return await _append_message(*args, **kwargs)
+
+    class _FakeComparisonStorage:
+        async def save(self, *args, **kwargs):
+            await _save(*args, **kwargs)
+
     deps = CompareFlowDeps(
-        storage=SimpleNamespace(append_message=_append_message),
-        comparison_storage=SimpleNamespace(save=_save),
+        storage=_FakeStorage(),
+        comparison_storage=_FakeComparisonStorage(),
         chat_input_service=_FakeInputService(),
         compare_models_orchestrator=_FakeCompareOrchestrator(),
         prepare_context=lambda **_kwargs: _return_async(

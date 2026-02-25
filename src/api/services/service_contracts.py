@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Sequence, Tuple, Union
 
 SourcePayload = Dict[str, Any]
 MessagePayload = Dict[str, Any]
@@ -63,6 +63,31 @@ class AssistantLike(Protocol):
     def enabled(self) -> bool: ...
 
 
+class SessionStorageLike(Protocol):
+    """Conversation storage APIs consumed by context assembly."""
+
+    async def get_session(
+        self,
+        session_id: str,
+        *,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> Dict[str, Any]: ...
+
+
+class MemoryContextServiceLike(Protocol):
+    """Memory context APIs consumed during context assembly."""
+
+    def build_memory_context(
+        self,
+        *,
+        query: str,
+        assistant_id: Optional[str],
+        include_global: bool,
+        include_assistant: bool,
+    ) -> Tuple[Optional[str], List[SourcePayload]]: ...
+
+
 class MemoryServiceLike(Protocol):
     """Memory service APIs consumed by context and post-turn services."""
 
@@ -94,18 +119,18 @@ class WebpageServiceLike(Protocol):
         self,
         query: str,
         /,
-    ) -> Tuple[Optional[str], List[SupportsModelDump]]: ...
+    ) -> Tuple[Optional[str], Sequence[SupportsModelDump]]: ...
 
 
 class SearchServiceLike(Protocol):
     """Web search APIs consumed by chat/group flows."""
 
-    async def search(self, query: str, /) -> List[SupportsModelDump]: ...
+    async def search(self, query: str, /) -> Sequence[SupportsModelDump]: ...
 
     def build_search_context(
         self,
         query: str,
-        sources: List[SupportsModelDump],
+        sources: Sequence[SupportsModelDump],
         /,
     ) -> Optional[str]: ...
 

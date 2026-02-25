@@ -62,8 +62,8 @@ def test_delete_document_uses_doc_id_where_filter(monkeypatch):
     async def _save_config(new_config):
         saved["config"] = new_config
 
-    service.load_config = _load_config
-    service.save_config = _save_config
+    monkeypatch.setattr(service, "load_config", _load_config)
+    monkeypatch.setattr(service, "save_config", _save_config)
 
     try:
         doc_dir = tmp_path / "kb1" / "documents"
@@ -87,7 +87,7 @@ def test_delete_document_uses_doc_id_where_filter(monkeypatch):
 
         fake_collection = _FakeCollection()
         fake_chromadb = types.ModuleType("chromadb")
-        fake_chromadb.PersistentClient = lambda path: _FakeClient(fake_collection)
+        setattr(fake_chromadb, "PersistentClient", lambda path: _FakeClient(fake_collection))
         monkeypatch.setitem(sys.modules, "chromadb", fake_chromadb)
 
         asyncio.run(service.delete_document("kb1", "doc1"))

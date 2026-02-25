@@ -17,6 +17,23 @@ from ..types import StreamChunk, LLMResponse, TokenUsage
 logger = logging.getLogger(__name__)
 
 
+def _response_content_to_text(content: object) -> str:
+    """Normalize LangChain response content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text")
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+        return "".join(parts)
+    return str(content or "")
+
+
 def _extract_tool_calls(payload: Any) -> List[Any]:
     """Extract tool call payload from LangChain chunks/responses."""
     tool_calls: List[Any] = []
@@ -145,7 +162,7 @@ class ZhipuAdapter(BaseLLMAdapter):
         usage_data = None
 
         async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, "content") else ""
+            content = _response_content_to_text(chunk.content if hasattr(chunk, "content") else "")
             thinking = ""
             tool_calls = _extract_tool_calls(chunk)
 
@@ -182,7 +199,7 @@ class ZhipuAdapter(BaseLLMAdapter):
             usage = TokenUsage.from_dict(response.response_metadata.get("usage"))
 
         return LLMResponse(
-            content=response.content,
+            content=_response_content_to_text(response.content),
             thinking=thinking,
             tool_calls=_extract_tool_calls(response),
             usage=usage,

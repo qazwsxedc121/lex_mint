@@ -478,6 +478,8 @@ class ProjectService:
             name=target_path.name,
             path=relative_path,
             type="directory",
+            size=None,
+            modified_at=None,
             children=[]
         )
 
@@ -495,18 +497,10 @@ class ProjectService:
         # Get basic info
         name = current_path.name if current_path != root_path else root_path.name
         is_dir = current_path.is_dir()
-        node_type = "directory" if is_dir else "file"
-
-        # Build node data
-        node_data = {
-            "name": name,
-            "path": relative_path,
-            "type": node_type
-        }
 
         if is_dir:
             # Get children, excluding hidden files
-            children = []
+            children: List[FileNode] = []
             try:
                 for child in sorted(current_path.iterdir()):
                     # Skip hidden files (starting with .)
@@ -520,22 +514,36 @@ class ProjectService:
                     # Recursively build child node
                     child_node = self._build_tree_node(root_path, child, child_relative)
                     children.append(child_node)
-
-                node_data["children"] = children
             except PermissionError:
                 # If we can't read the directory, return empty children
-                node_data["children"] = []
+                children = []
+            return FileNode(
+                name=name,
+                path=relative_path,
+                type="directory",
+                size=None,
+                modified_at=None,
+                children=children,
+            )
         else:
             # For files, add size and modified time
+            size: Optional[int] = None
+            modified_at: Optional[str] = None
             try:
                 stat = current_path.stat()
-                node_data["size"] = stat.st_size
-                node_data["modified_at"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                size = stat.st_size
+                modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
             except Exception:
                 # If we can't get stats, just skip them
                 pass
-
-        return FileNode(**node_data)
+            return FileNode(
+                name=name,
+                path=relative_path,
+                type="file",
+                size=size,
+                modified_at=modified_at,
+                children=None,
+            )
 
     async def read_file(
         self,
@@ -945,8 +953,11 @@ class ProjectService:
         if not relative_path or relative_path == ".":
             return root_path, root_path
 
+        # Normalize separators so Windows-style traversal payloads are rejected on all OSes.
+        normalized_relative_path = relative_path.replace("\\", "/")
+
         # Build target path
-        target_path = root_path / relative_path
+        target_path = root_path / normalized_relative_path
 
         # Security check: prevent path traversal
         if not self._is_safe_path(root_path, target_path):

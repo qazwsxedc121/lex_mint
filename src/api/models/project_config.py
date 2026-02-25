@@ -13,7 +13,7 @@ class Project(BaseModel):
     id: str = Field(..., description="Unique project ID")
     name: str = Field(..., description="Project display name")
     root_path: str = Field(..., description="Absolute path to project root directory")
-    description: Optional[str] = Field(None, description="Project description")
+    description: Optional[str] = Field(default=None, description="Project description")
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
