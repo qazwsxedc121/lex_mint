@@ -1,5 +1,6 @@
 """Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
+from dataclasses import dataclass
 from typing import Dict, AsyncIterator, Optional, Any, List, Tuple, cast
 import logging
 import uuid
@@ -33,6 +34,26 @@ from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
 from .group_orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _RuntimeAssistant:
+    id: str
+    name: str
+    model_id: str
+    icon: str
+    description: str
+    system_prompt: Optional[str]
+    temperature: Optional[float]
+    max_tokens: Optional[int]
+    top_p: Optional[float]
+    top_k: Optional[int]
+    frequency_penalty: Optional[float]
+    presence_penalty: Optional[float]
+    max_rounds: Optional[int]
+    memory_enabled: bool
+    knowledge_base_ids: Optional[List[str]]
+    enabled: bool
 
 
 class AgentService:
@@ -852,7 +873,7 @@ class AgentService:
 
         composite_model_id = f"{model_obj.provider_id}:{model_obj.id}"
         template_params = self._extract_model_template_params(model_obj)
-        runtime_assistant = SimpleNamespace(
+        runtime_assistant = _RuntimeAssistant(
             id=participant.token,
             name=model_obj.name or model_obj.id,
             icon="CpuChip",
@@ -870,7 +891,7 @@ class AgentService:
             knowledge_base_ids=[],
             enabled=True,
         )
-        return participant.token, cast(AssistantLike, runtime_assistant), runtime_assistant.name
+        return participant.token, runtime_assistant, runtime_assistant.name
 
     @staticmethod
     def _resolve_group_round_limit(raw_limit: Optional[int], *, fallback: int = 3, hard_cap: int = 6) -> int:

@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import uuid
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol, Tuple
 
-from .chat_input_service import ChatInputService
+from .chat_input_service import PreparedUserInput
 from .group_orchestration import (
     CommitteeOrchestrator,
     OrchestrationRequest,
@@ -16,7 +16,6 @@ from .group_orchestration import (
     RoundRobinOrchestrator,
     RoundRobinSettings,
 )
-from .post_turn_service import PostTurnService
 from .service_contracts import (
     AssistantLike,
     SearchServiceLike,
@@ -28,12 +27,36 @@ from .service_contracts import (
 logger = logging.getLogger(__name__)
 
 
+class _ChatInputServiceLike(Protocol):
+    async def prepare_user_input(
+        self,
+        *,
+        session_id: str,
+        raw_user_message: str,
+        expanded_user_message: str,
+        attachments: Optional[List[SourcePayload]],
+        skip_user_append: bool,
+        context_type: str,
+        project_id: Optional[str],
+    ) -> PreparedUserInput: ...
+
+
+class _PostTurnServiceLike(Protocol):
+    async def schedule_title_generation(
+        self,
+        *,
+        session_id: str,
+        context_type: str,
+        project_id: Optional[str],
+    ) -> None: ...
+
+
 @dataclass(frozen=True)
 class GroupChatDeps:
     """Dependencies required by GroupChatService."""
 
-    chat_input_service: ChatInputService
-    post_turn_service: PostTurnService
+    chat_input_service: _ChatInputServiceLike
+    post_turn_service: _PostTurnServiceLike
     search_service: SearchServiceLike
     build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
     build_group_runtime_assistant: Callable[[str], Awaitable[Optional[Tuple[str, AssistantLike, str]]]]
