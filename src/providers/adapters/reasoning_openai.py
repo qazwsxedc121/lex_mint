@@ -16,10 +16,10 @@ uses the identical technique for DeepSeek's reasoning_content.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 import openai
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai.chat_models.base import BaseChatOpenAI
 
@@ -98,3 +98,37 @@ class ChatReasoningOpenAI(BaseChatOpenAI):
                     ] = reasoning
 
         return generation_chunk
+
+
+def inject_tool_call_reasoning_content(
+    payload: dict,
+    *,
+    source_messages: Iterable[BaseMessage],
+    enabled: bool,
+) -> dict:
+    """
+    Preserve reasoning_content on assistant tool-call messages when required.
+
+    Some OpenAI-compatible providers require this field in follow-up rounds
+    during tool loops with thinking enabled.
+    """
+    if not enabled:
+        return payload
+
+    payload_messages = payload.get("messages")
+    if not isinstance(payload_messages, list):
+        return payload
+
+    for msg_obj, msg_dict in zip(source_messages, payload_messages):
+        if not isinstance(msg_obj, AIMessage):
+            continue
+        if not isinstance(msg_dict, dict) or msg_dict.get("role") != "assistant":
+            continue
+        if "tool_calls" not in msg_dict:
+            continue
+
+        reasoning_content = msg_obj.additional_kwargs.get("reasoning_content")
+        if reasoning_content:
+            msg_dict["reasoning_content"] = reasoning_content
+
+    return payload

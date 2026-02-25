@@ -83,8 +83,8 @@ async def test_builtin_provider_catalog_uses_dynamic_model_discovery():
     assert siliconflow.supports_model_list is True
     assert xai.supports_model_list is True
     assert kimi.supports_model_list is True
-    assert deepseek.default_capabilities.requires_interleaved_thinking is True
-    assert kimi.default_capabilities.requires_interleaved_thinking is True
+    assert deepseek.default_capabilities.requires_interleaved_thinking is False
+    assert kimi.default_capabilities.requires_interleaved_thinking is False
     assert "builtin_models" not in deepseek.model_dump()
     assert "builtin_models" not in anthropic.model_dump()
     assert "builtin_models" not in siliconflow.model_dump()
@@ -121,6 +121,8 @@ async def test_fetch_provider_models_for_kimi_returns_model_infos():
     result = await models_router.fetch_provider_models("kimi", service)
 
     assert [item.id for item in result] == ["kimi-k2.5", "kimi-k2-thinking"]
+    assert result[0].capabilities is not None
+    assert result[0].capabilities["requires_interleaved_thinking"] is True
     adapter.fetch_models.assert_awaited_once_with("https://api.moonshot.cn/v1", "test-key")
 
 

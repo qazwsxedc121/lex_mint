@@ -168,6 +168,7 @@ def test_chat_kimi_payload_keeps_reasoning_content_for_tool_call_messages():
         api_key="k",
         use_responses_api=False,
     )
+    object.__setattr__(llm, "_requires_interleaved_thinking", True)
 
     messages = [
         HumanMessage(content="What is 1+1?"),
@@ -185,3 +186,30 @@ def test_chat_kimi_payload_keeps_reasoning_content_for_tool_call_messages():
     assert assistant_payload["role"] == "assistant"
     assert "tool_calls" in assistant_payload
     assert assistant_payload["reasoning_content"] == "I should calculate first."
+
+
+def test_chat_kimi_payload_skips_reasoning_when_interleaved_not_required():
+    llm = ChatKimiOpenAI(
+        model="kimi-k2.5",
+        base_url="https://api.moonshot.cn/v1",
+        api_key="k",
+        use_responses_api=False,
+    )
+    object.__setattr__(llm, "_requires_interleaved_thinking", False)
+
+    messages = [
+        HumanMessage(content="What is 1+1?"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
+            additional_kwargs={"reasoning_content": "I should calculate first."},
+        ),
+        ToolMessage(content="2", tool_call_id="call_1"),
+    ]
+
+    payload = llm._get_request_payload(messages)
+    assistant_payload = payload["messages"][1]
+
+    assert assistant_payload["role"] == "assistant"
+    assert "tool_calls" in assistant_payload
+    assert "reasoning_content" not in assistant_payload

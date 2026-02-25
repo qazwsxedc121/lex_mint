@@ -194,6 +194,7 @@ class TranslationService:
         )
 
         adapter = model_service.get_adapter_for_provider(provider_config)
+        capabilities = model_service.get_merged_capabilities(model_config, provider_config)
         resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
         effective_call_mode = (
             resolved_call_mode
@@ -216,6 +217,7 @@ class TranslationService:
             temperature=config.temperature,
             streaming=True,
             call_mode=effective_call_mode.value,
+            requires_interleaved_thinking=capabilities.requires_interleaved_thinking,
         )
 
         actual_model_id = f"{provider_config.id}:{model_config.id}"

@@ -21,7 +21,7 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         default_capabilities=ModelCapabilities(
             context_length=64000,
             reasoning=True,
-            requires_interleaved_thinking=True,
+            requires_interleaved_thinking=False,
             function_calling=True,
             streaming=True,
         ),
@@ -38,7 +38,7 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
             context_length=262144,
             vision=True,
             reasoning=True,
-            requires_interleaved_thinking=True,
+            requires_interleaved_thinking=False,
             function_calling=True,
             streaming=True,
         ),

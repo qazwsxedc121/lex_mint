@@ -489,6 +489,7 @@ async def call_llm_stream(
         temperature=temperature_value,
         streaming=True,
         call_mode=effective_call_mode.value,
+        requires_interleaved_thinking=capabilities.requires_interleaved_thinking,
         thinking_enabled=thinking_enabled,
         reasoning_effort=effective_reasoning_effort,
         disable_thinking=explicit_disable_reasoning,

@@ -3,10 +3,11 @@
 from types import SimpleNamespace
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from src.providers.adapters.openai_adapter import OpenAIAdapter
+from src.providers.adapters.openai_adapter import ChatOpenAIInterleaved, OpenAIAdapter
 from src.providers.types import CallMode
 
 
@@ -48,6 +49,79 @@ def test_create_llm_defaults_to_chat_completions(monkeypatch):
     )
 
     assert captured["use_responses_api"] is False
+
+
+def test_create_llm_uses_interleaved_wrapper_when_required():
+    adapter = OpenAIAdapter()
+    llm = adapter.create_llm(
+        model="moonshotai/kimi-k2.5",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        requires_interleaved_thinking=True,
+    )
+
+    assert isinstance(llm, ChatOpenAIInterleaved)
+    assert getattr(llm, "_requires_interleaved_thinking") is True
+
+
+def test_interleaved_wrapper_injects_reasoning_content_for_tool_call_messages():
+    llm = ChatOpenAIInterleaved(
+        model="moonshotai/kimi-k2.5",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        use_responses_api=False,
+    )
+    object.__setattr__(llm, "_requires_interleaved_thinking", True)
+
+    messages = [
+        HumanMessage(content="What is 1+1?"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
+            additional_kwargs={"reasoning_content": "I should calculate first."},
+        ),
+        ToolMessage(content="2", tool_call_id="call_1"),
+    ]
+
+    payload = llm._get_request_payload(messages)
+    assistant_payload = payload["messages"][1]
+    assert assistant_payload["reasoning_content"] == "I should calculate first."
+
+
+def test_interleaved_wrapper_skips_reasoning_content_when_disabled():
+    llm = ChatOpenAIInterleaved(
+        model="moonshotai/kimi-k2.5",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        use_responses_api=False,
+    )
+    object.__setattr__(llm, "_requires_interleaved_thinking", False)
+
+    messages = [
+        HumanMessage(content="What is 1+1?"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
+            additional_kwargs={"reasoning_content": "I should calculate first."},
+        ),
+        ToolMessage(content="2", tool_call_id="call_1"),
+    ]
+
+    payload = llm._get_request_payload(messages)
+    assistant_payload = payload["messages"][1]
+    assert "reasoning_content" not in assistant_payload
+
+
+def test_parse_model_metadata_adds_interleaved_capability_hint():
+    model = {
+        "id": "moonshotai/kimi-k2.5",
+        "context_length": 200000,
+        "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+        "supported_parameters": ["tools", "reasoning"],
+    }
+    parsed = OpenAIAdapter._parse_model_metadata(model)
+    assert parsed is not None
+    assert parsed["capabilities"]["requires_interleaved_thinking"] is True
 
 
 @pytest.mark.asyncio

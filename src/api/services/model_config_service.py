@@ -22,6 +22,7 @@ from src.providers import (
     get_all_builtin_providers,
 )
 from src.providers.types import ProviderConfig
+from src.providers.model_capability_rules import infer_requires_interleaved_thinking
 
 from ..paths import (
     config_defaults_dir,
@@ -47,6 +48,7 @@ class ModelConfigService:
             "https://api.siliconflow.com/v1": "https://api.siliconflow.cn/v1",
         },
     }
+    _MODEL_LEVEL_INTERLEAVED_PROVIDERS = {"deepseek", "kimi"}
 
     def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
         """
@@ -330,7 +332,11 @@ class ModelConfigService:
 
                     provider_caps = provider_entry.get("default_capabilities")
                     if isinstance(provider_caps, dict):
-                        if "requires_interleaved_thinking" not in provider_caps:
+                        if definition.id in self._MODEL_LEVEL_INTERLEAVED_PROVIDERS:
+                            if provider_caps.get("requires_interleaved_thinking") is not False:
+                                provider_caps["requires_interleaved_thinking"] = False
+                                changed = True
+                        elif "requires_interleaved_thinking" not in provider_caps:
                             provider_caps["requires_interleaved_thinking"] = (
                                 definition.default_capabilities.requires_interleaved_thinking
                             )
@@ -957,6 +963,12 @@ class ModelConfigService:
         # Override with provider config defaults
         if provider.default_capabilities:
             base_caps = base_caps.merge_with(provider.default_capabilities)
+
+        inferred_interleaved = infer_requires_interleaved_thinking(model.id)
+        if inferred_interleaved is not None:
+            base_caps = base_caps.model_copy(
+                update={"requires_interleaved_thinking": inferred_interleaved}
+            )
 
         # Override with model-specific capabilities
         if model.capabilities:

@@ -7,9 +7,9 @@ Includes K2.5-specific thinking and parameter normalization rules.
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import BaseMessage
 
-from .reasoning_openai import ChatReasoningOpenAI
+from .reasoning_openai import ChatReasoningOpenAI, inject_tool_call_reasoning_content
 from .utils import extract_tool_calls
 from ..base import BaseLLMAdapter
 from ..types import LLMResponse, StreamChunk, TokenUsage
@@ -155,7 +155,13 @@ class KimiAdapter(BaseLLMAdapter):
         if model_kwargs:
             llm_kwargs["model_kwargs"] = model_kwargs
 
-        return ChatKimiOpenAI(**llm_kwargs)
+        llm = ChatKimiOpenAI(**llm_kwargs)
+        object.__setattr__(
+            llm,
+            "_requires_interleaved_thinking",
+            bool(kwargs.get("requires_interleaved_thinking", False)),
+        )
+        return llm
 
     async def stream(
         self,
@@ -324,21 +330,9 @@ class ChatKimiOpenAI(ChatReasoningOpenAI):
     ) -> dict:
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
 
-        payload_messages = payload.get("messages")
-        if not isinstance(payload_messages, list):
-            return payload
-
         source_messages = self._convert_input(input_).to_messages()
-        for msg_obj, msg_dict in zip(source_messages, payload_messages):
-            if not isinstance(msg_obj, AIMessage):
-                continue
-            if not isinstance(msg_dict, dict) or msg_dict.get("role") != "assistant":
-                continue
-            if "tool_calls" not in msg_dict:
-                continue
-
-            reasoning_content = msg_obj.additional_kwargs.get("reasoning_content")
-            if reasoning_content:
-                msg_dict["reasoning_content"] = reasoning_content
-
-        return payload
+        return inject_tool_call_reasoning_content(
+            payload,
+            source_messages=source_messages,
+            enabled=bool(getattr(self, "_requires_interleaved_thinking", False)),
+        )
