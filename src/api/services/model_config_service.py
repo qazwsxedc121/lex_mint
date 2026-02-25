@@ -328,6 +328,14 @@ class ModelConfigService:
                         provider_entry["sdk_class"] = definition.sdk_class
                         changed = True
 
+                    provider_caps = provider_entry.get("default_capabilities")
+                    if isinstance(provider_caps, dict):
+                        if "requires_interleaved_thinking" not in provider_caps:
+                            provider_caps["requires_interleaved_thinking"] = (
+                                definition.default_capabilities.requires_interleaved_thinking
+                            )
+                            changed = True
+
         default_key = (default_provider, default_model)
         bootstrap_key = (self._BOOTSTRAP_PROVIDER_ID, self._BOOTSTRAP_MODEL_ID)
         if default_key not in existing_model_keys:

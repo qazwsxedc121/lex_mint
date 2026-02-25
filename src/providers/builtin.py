@@ -21,6 +21,24 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         default_capabilities=ModelCapabilities(
             context_length=64000,
             reasoning=True,
+            requires_interleaved_thinking=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        supports_model_list=True,
+    ),
+
+    "kimi": ProviderDefinition(
+        id="kimi",
+        name="Moonshot (Kimi)",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.moonshot.cn/v1",
+        sdk_class="kimi",
+        default_capabilities=ModelCapabilities(
+            context_length=262144,
+            vision=True,
+            reasoning=True,
+            requires_interleaved_thinking=True,
             function_calling=True,
             streaming=True,
         ),

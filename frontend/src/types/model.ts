@@ -17,6 +17,7 @@ export interface ModelCapabilities {
   vision: boolean;
   function_calling: boolean;
   reasoning: boolean;
+  requires_interleaved_thinking: boolean;
   streaming: boolean;
   file_upload: boolean;
   image_output: boolean;
@@ -37,6 +38,7 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   vision: false,
   function_calling: false,
   reasoning: false,
+  requires_interleaved_thinking: false,
   streaming: true,
   file_upload: false,
   image_output: false,

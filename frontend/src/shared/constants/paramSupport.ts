@@ -3,9 +3,9 @@
  * Maps parameter names to the list of SDK classes that support them.
  */
 export const PARAM_SUPPORT: Record<string, string[]> = {
-  max_tokens: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai'],
-  top_p: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai'],
+  max_tokens: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai', 'kimi'],
+  top_p: ['openai', 'deepseek', 'anthropic', 'ollama', 'xai', 'kimi'],
   top_k: ['anthropic', 'ollama'],
-  frequency_penalty: ['openai', 'deepseek', 'xai'],
-  presence_penalty: ['openai', 'deepseek', 'xai'],
+  frequency_penalty: ['openai', 'deepseek', 'xai', 'kimi'],
+  presence_penalty: ['openai', 'deepseek', 'xai', 'kimi'],
 };

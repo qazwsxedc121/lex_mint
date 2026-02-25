@@ -13,6 +13,7 @@ from .volcengine_adapter import VolcEngineAdapter
 from .gemini_adapter import GeminiAdapter
 from .bailian_adapter import BailianAdapter
 from .siliconflow_adapter import SiliconFlowAdapter
+from .kimi_adapter import KimiAdapter
 
 __all__ = [
     "OpenAIAdapter",
@@ -25,4 +26,5 @@ __all__ = [
     "GeminiAdapter",
     "BailianAdapter",
     "SiliconFlowAdapter",
+    "KimiAdapter",
 ]

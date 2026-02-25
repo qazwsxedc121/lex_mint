@@ -274,6 +274,7 @@ class ToolLoopRunner:
         state: ToolLoopState,
         *,
         round_content: str,
+        round_reasoning: str = "",
     ) -> bool:
         """Advance tool round; force a final non-tool pass if limit is exceeded.
 
@@ -285,7 +286,10 @@ class ToolLoopRunner:
         if state.tool_round <= self.max_tool_rounds:
             return False
 
-        state.current_messages.append(AIMessage(content=round_content))
+        ai_kwargs: Dict[str, Any] = {}
+        if round_reasoning:
+            ai_kwargs["additional_kwargs"] = {"reasoning_content": round_reasoning}
+        state.current_messages.append(AIMessage(content=round_content, **ai_kwargs))
         state.current_messages.append(HumanMessage(content=_FINALIZE_WITHOUT_TOOLS_PROMPT))
         state.force_finalize_without_tools = True
         state.tool_finalize_reason = "max_round_force_finalize"
@@ -350,13 +354,17 @@ class ToolLoopRunner:
         round_content: str,
         round_tool_calls: List[Dict[str, Any]],
         tool_results: List[Dict[str, str]],
+        round_reasoning: str = "",
     ) -> None:
         """Append tool-call AI message + tool result messages for next pass."""
         ai_tool_calls = [
             {"name": tc["name"], "args": tc["args"], "id": tc["id"]}
             for tc in round_tool_calls
         ]
-        state.current_messages.append(AIMessage(content=round_content, tool_calls=ai_tool_calls))
+        ai_kwargs: Dict[str, Any] = {"tool_calls": ai_tool_calls}
+        if round_reasoning:
+            ai_kwargs["additional_kwargs"] = {"reasoning_content": round_reasoning}
+        state.current_messages.append(AIMessage(content=round_content, **ai_kwargs))
 
         for tr in tool_results:
             state.current_messages.append(

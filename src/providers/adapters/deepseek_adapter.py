@@ -5,13 +5,51 @@ Adapter for DeepSeek API with proper reasoning_content support.
 """
 import logging
 from typing import AsyncIterator, List, Dict, Any
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_deepseek import ChatDeepSeek
 
 from ..base import BaseLLMAdapter
 from ..types import StreamChunk, LLMResponse, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
+
+
+class ChatDeepSeekInterleaved(ChatDeepSeek):
+    """
+    DeepSeek wrapper to preserve interleaved reasoning for tool-call messages.
+
+    Some model/tool-call paths require `reasoning_content` to be present on
+    assistant tool-call messages in subsequent rounds.
+    """
+
+    def _get_request_payload(
+        self,
+        input_: Any,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+
+        payload_messages = payload.get("messages")
+        if not isinstance(payload_messages, list):
+            return payload
+
+        source_messages = self._convert_input(input_).to_messages()
+        for msg_obj, msg_dict in zip(source_messages, payload_messages):
+            if not isinstance(msg_obj, AIMessage):
+                continue
+            if not isinstance(msg_dict, dict) or msg_dict.get("role") != "assistant":
+                continue
+            if "tool_calls" not in msg_dict:
+                continue
+
+            reasoning_content = msg_obj.additional_kwargs.get("reasoning_content")
+            if reasoning_content:
+                msg_dict["reasoning_content"] = reasoning_content
+
+        return payload
 
 
 class DeepSeekAdapter(BaseLLMAdapter):
@@ -48,8 +86,6 @@ class DeepSeekAdapter(BaseLLMAdapter):
         Returns:
             ChatDeepSeek instance
         """
-        from langchain_deepseek import ChatDeepSeek
-
         llm_kwargs = {
             "model": model,
             "api_key": api_key,
@@ -84,7 +120,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
         if extra_model_kwargs:
             llm_kwargs["model_kwargs"] = extra_model_kwargs
 
-        return ChatDeepSeek(**llm_kwargs)
+        return ChatDeepSeekInterleaved(**llm_kwargs)
 
     async def stream(
         self,

@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException
 
 from src.api.models.model_config import Provider, ProviderTestStoredRequest
 from src.api.routers import models as models_router
@@ -75,18 +76,71 @@ async def test_builtin_provider_catalog_uses_dynamic_model_discovery():
     anthropic = next(p for p in providers if p.id == "anthropic")
     siliconflow = next(p for p in providers if p.id == "siliconflow")
     xai = next(p for p in providers if p.id == "xai")
+    kimi = next(p for p in providers if p.id == "kimi")
 
     assert deepseek.supports_model_list is True
     assert anthropic.supports_model_list is True
     assert siliconflow.supports_model_list is True
     assert xai.supports_model_list is True
+    assert kimi.supports_model_list is True
+    assert deepseek.default_capabilities.requires_interleaved_thinking is True
+    assert kimi.default_capabilities.requires_interleaved_thinking is True
     assert "builtin_models" not in deepseek.model_dump()
     assert "builtin_models" not in anthropic.model_dump()
     assert "builtin_models" not in siliconflow.model_dump()
     assert "builtin_models" not in xai.model_dump()
+    assert "builtin_models" not in kimi.model_dump()
 
 
 @pytest.mark.asyncio
 async def test_builtin_provider_info_hides_static_model_list():
     info = await models_router.get_builtin_provider_info("volcengine")
     assert "builtin_models" not in info.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_fetch_provider_models_for_kimi_returns_model_infos():
+    service = Mock()
+    provider = _provider(
+        provider_id="kimi",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.moonshot.cn/v1",
+    )
+    adapter = Mock()
+    adapter.fetch_models = AsyncMock(
+        return_value=[
+            {"id": "kimi-k2.5", "name": "Kimi K2.5"},
+            {"id": "kimi-k2-thinking", "name": "Kimi K2 Thinking"},
+        ]
+    )
+
+    service.get_provider = AsyncMock(return_value=provider)
+    service.get_api_key = AsyncMock(return_value="test-key")
+    service.get_adapter_for_provider = Mock(return_value=adapter)
+
+    result = await models_router.fetch_provider_models("kimi", service)
+
+    assert [item.id for item in result] == ["kimi-k2.5", "kimi-k2-thinking"]
+    adapter.fetch_models.assert_awaited_once_with("https://api.moonshot.cn/v1", "test-key")
+
+
+@pytest.mark.asyncio
+async def test_fetch_provider_models_returns_400_when_no_key_and_empty_result():
+    service = Mock()
+    provider = _provider(
+        provider_id="kimi",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.moonshot.cn/v1",
+    )
+    adapter = Mock()
+    adapter.fetch_models = AsyncMock(return_value=[])
+
+    service.get_provider = AsyncMock(return_value=provider)
+    service.get_api_key = AsyncMock(return_value=None)
+    service.get_adapter_for_provider = Mock(return_value=adapter)
+
+    with pytest.raises(HTTPException) as exc:
+        await models_router.fetch_provider_models("kimi", service)
+
+    assert exc.value.status_code == 400
+    assert "Try configuring an API key" in exc.value.detail

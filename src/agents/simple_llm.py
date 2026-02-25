@@ -608,6 +608,7 @@ async def call_llm_stream(
             thinking_ended = False
             thinking_start_time: Optional[float] = None
             round_content = ""
+            round_reasoning = ""
             round_tool_calls: List[Dict[str, Any]] = []
             # Merge raw LangChain chunks to get complete tool_calls after stream ends
             merged_chunk = None
@@ -626,6 +627,7 @@ async def call_llm_stream(
                 # Handle thinking/reasoning content
                 if chunk.thinking and not explicit_disable_reasoning:
                     full_reasoning += chunk.thinking
+                    round_reasoning += chunk.thinking
                     if not in_thinking_phase:
                         in_thinking_phase = True
                         thinking_start_time = time.time()
@@ -654,6 +656,13 @@ async def call_llm_stream(
                 extracted_usage = TokenUsage.extract_from_chunk(merged_chunk)
                 if extracted_usage:
                     final_usage = extracted_usage
+                if not explicit_disable_reasoning and not round_reasoning:
+                    merged_kwargs = getattr(merged_chunk, "additional_kwargs", None) or {}
+                    if isinstance(merged_kwargs, dict):
+                        merged_reasoning = merged_kwargs.get("reasoning_content")
+                        if isinstance(merged_reasoning, str) and merged_reasoning:
+                            round_reasoning = merged_reasoning
+                            full_reasoning += merged_reasoning
 
             # After stream ends: extract complete tool_calls from merged chunk
             round_tool_calls = tool_loop_runner.extract_tool_calls(
@@ -693,10 +702,12 @@ async def call_llm_stream(
             if tool_loop_runner.advance_round_or_force_finalize(
                 tool_loop_state,
                 round_content=round_content,
+                round_reasoning=round_reasoning,
             ):
                 print(f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping")
                 logger.warning("Max tool call rounds reached")
                 round_content = ""
+                round_reasoning = ""
                 round_tool_calls = []
                 continue
 
@@ -732,10 +743,12 @@ async def call_llm_stream(
                 round_content=round_content,
                 round_tool_calls=round_tool_calls,
                 tool_results=tool_results,
+                round_reasoning=round_reasoning,
             )
 
             # Reset for next round
             round_content = ""
+            round_reasoning = ""
             round_tool_calls = []
 
         if tool_loop_runner.should_inject_fallback_answer(tool_loop_state, full_response):
