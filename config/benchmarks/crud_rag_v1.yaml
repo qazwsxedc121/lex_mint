@@ -1,0 +1,20 @@
+benchmark:
+  name: crud_rag_v1
+  crud_dataset_path: learn_proj/CRUD_RAG/data/crud_split/split_merged.json
+  tasks:
+    - questanswer_1doc
+    - questanswer_2docs
+    - questanswer_3docs
+
+  # Set to the KB used for CRUD-RAG benchmark import.
+  kb_ids:
+    - kb_crud_rag_v1
+
+  # PR-fast baseline size: 200 per task (about 600 cases total).
+  per_task_max: 200
+  top_k: 5
+  modes:
+    - hybrid
+  score_threshold: 0.65
+  bm25_min_term_coverage: 0.35
+  runtime_model_id: null

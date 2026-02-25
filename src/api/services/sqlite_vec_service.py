@@ -146,47 +146,63 @@ class SqliteVecService:
         file_type: str,
         ingest_id: str,
         chunk_rows: List[Dict[str, object]],
-    ) -> None:
-        """Upsert chunk rows for one document generation."""
+    ) -> bool:
+        """Upsert chunk rows for one document generation.
+
+        Returns:
+            True if the document already had chunks before this upsert.
+        """
         if not chunk_rows:
-            return
+            return False
+
+        prepared_rows: List[tuple[object, ...]] = []
+        for row in chunk_rows:
+            chunk_id = str(row.get("chunk_id") or "")
+            if not chunk_id:
+                continue
+            chunk_index = int(row.get("chunk_index", 0) or 0)
+            content = str(row.get("content") or "")
+            embedding = self._normalize_vector(row.get("embedding", []) or [])
+            embedding_json = json.dumps(embedding, separators=(",", ":"))
+            embedding_blob = self._pack_vector_float32(embedding)
+            embedding_dim = len(embedding)
+            prepared_rows.append(
+                (
+                    chunk_id,
+                    kb_id,
+                    doc_id,
+                    filename,
+                    file_type,
+                    chunk_index,
+                    content,
+                    embedding_json,
+                    embedding_blob,
+                    embedding_dim,
+                    ingest_id,
+                )
+            )
+        if not prepared_rows:
+            return False
 
         with self._lock, self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("BEGIN")
             try:
-                for row in chunk_rows:
-                    chunk_id = str(row.get("chunk_id") or "")
-                    if not chunk_id:
-                        continue
-                    chunk_index = int(row.get("chunk_index", 0) or 0)
-                    content = str(row.get("content") or "")
-                    embedding = self._normalize_vector(row.get("embedding", []) or [])
-                    embedding_json = json.dumps(embedding, separators=(",", ":"))
-                    embedding_blob = self._pack_vector_float32(embedding)
-                    embedding_dim = len(embedding)
-                    cursor.execute(
-                        """
-                        INSERT OR REPLACE INTO rag_vec_chunks (
-                            chunk_id, kb_id, doc_id, filename, file_type, chunk_index,
-                            content, embedding_json, embedding_blob, embedding_dim, ingest_id, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                        """,
-                        (
-                            chunk_id,
-                            kb_id,
-                            doc_id,
-                            filename,
-                            file_type,
-                            chunk_index,
-                            content,
-                            embedding_json,
-                            embedding_blob,
-                            embedding_dim,
-                            ingest_id,
-                        ),
-                    )
+                had_existing = cursor.execute(
+                    "SELECT 1 FROM rag_vec_chunks WHERE kb_id = ? AND doc_id = ? LIMIT 1",
+                    (kb_id, doc_id),
+                ).fetchone() is not None
+                cursor.executemany(
+                    """
+                    INSERT OR REPLACE INTO rag_vec_chunks (
+                        chunk_id, kb_id, doc_id, filename, file_type, chunk_index,
+                        content, embedding_json, embedding_blob, embedding_dim, ingest_id, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    prepared_rows,
+                )
                 conn.commit()
+                return had_existing
             except Exception:
                 conn.rollback()
                 raise

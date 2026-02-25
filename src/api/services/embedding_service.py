@@ -142,9 +142,9 @@ class LlamaCppEmbeddings:
 
         try:
             if hasattr(model, "embed"):
-                raw = model.embed(payloads if len(payloads) > 1 else payloads[0])
+                raw = model.embed(payloads)
             else:
-                raw = model.create_embedding(payloads if len(payloads) > 1 else payloads[0])
+                raw = model.create_embedding(payloads)
             vectors = self._extract_vectors(raw)
             if len(vectors) != len(payloads):
                 raise ValueError("Embedding count mismatch.")
