@@ -1,10 +1,10 @@
-"""Supervisor logic for committee-style group orchestration."""
+"""Supervisor logic for committee orchestration."""
 
 import json
 import re
 from typing import Awaitable, Callable, Dict, List, Optional
 
-from .types import CommitteeDecision, CommitteeRuntimeState
+from .committee_types import CommitteeDecision, CommitteeRuntimeState
 
 
 DecisionLLMCaller = Callable[[str, str], Awaitable[str]]
@@ -498,3 +498,4 @@ class CommitteeSupervisor:
             if assistant_id != last_speaker:
                 return assistant_id
         return ranked[0] if ranked else None
+

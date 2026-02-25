@@ -204,6 +204,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
             {assistants.map((assistant) => (
               <label
                 key={assistant.id}
+                data-name="group-chat-modal-assistant-option"
                 className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <input
@@ -231,6 +232,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
               return (
                 <label
                   key={participantId}
+                  data-name="group-chat-modal-model-option"
                   className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <input

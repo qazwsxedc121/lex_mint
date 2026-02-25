@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Awaitable
 
 from src.agents.simple_llm import call_llm_stream
 
-from .types import CommitteeRuntimeState
+from .committee_types import CommitteeRuntimeState
 
 logger = logging.getLogger(__name__)
 
@@ -533,3 +533,4 @@ class CommitteeTurnExecutor:
             "assistant_id": assistant_id,
             "assistant_turn_id": assistant_turn_id,
         }
+

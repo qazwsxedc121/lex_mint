@@ -8,7 +8,7 @@ from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Pro
 from src.providers.types import CostInfo, TokenUsage
 
 from .chat_input_service import PreparedUserInput
-from .group_orchestration import CompareModelsSettings, OrchestrationRequest
+from .orchestration import CompareModelsSettings, OrchestrationRequest
 from .service_contracts import (
     ContextPayload,
     SourcePayload,
@@ -195,3 +195,4 @@ class CompareFlowService:
             project_id=project_id,
         )
         return assistant_message_id
+

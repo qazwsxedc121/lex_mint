@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from src.api.services.group_orchestration.settings import GroupSettingsResolver
+from src.api.services.orchestration.settings import GroupSettingsResolver
 
 
 def _assistant(max_rounds: int = 6):
@@ -109,3 +109,4 @@ def test_resolve_round_robin_mode_has_no_committee_payload():
 
     assert resolved.group_mode == "round_robin"
     assert resolved.committee is None
+

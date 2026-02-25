@@ -8,7 +8,7 @@ from .chat_input_service import ChatInputService
 from .comparison_storage import ComparisonStorage
 from .file_service import FileService
 from .file_reference_config_service import FileReferenceConfigService
-from .group_orchestration import CommitteePolicy
+from .orchestration import CommitteePolicy
 from .memory_service import MemoryService
 from .pricing_service import PricingService
 from .rag_config_service import RagConfigService
@@ -48,3 +48,4 @@ def bootstrap_agent_service(service: "AgentService", storage: "ConversationStora
     service._group_chat_service = service._create_group_chat_service()
     service._single_chat_flow_service = service._create_single_chat_flow_service()
     service._compare_flow_service = service._create_compare_flow_service()
+

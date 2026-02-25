@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.group_orchestration import (
+from src.api.services.orchestration import (
     OrchestrationCancelToken,
     OrchestrationRequest,
     RoundRobinSettings,
@@ -106,3 +106,4 @@ async def test_round_robin_rejects_mismatched_mode():
 
     with pytest.raises(ValueError, match="mode=round_robin"):
         await _collect_events(orchestrator.stream(request))
+

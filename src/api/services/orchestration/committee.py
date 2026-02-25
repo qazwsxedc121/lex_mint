@@ -12,7 +12,7 @@ from .base import (
 from .runtime import CommitteeRuntime
 from .settings import ResolvedCommitteeSettings
 from .supervisor import CommitteeSupervisor
-from .types import CommitteeDecision, CommitteeRuntimeConfig, CommitteeRuntimeState, CommitteeTurnRecord
+from .committee_types import CommitteeDecision, CommitteeRuntimeConfig, CommitteeRuntimeState, CommitteeTurnRecord
 
 
 class CommitteeOrchestrator(BaseOrchestrator):
@@ -870,3 +870,4 @@ class CommitteeOrchestrator(BaseOrchestrator):
             "reason": reason,
             "rounds": state.round_index,
         }
+

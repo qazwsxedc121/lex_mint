@@ -73,7 +73,7 @@ export class GroupChatPage {
 
   /** Get all assistant checkboxes in the modal */
   getAssistantCheckboxes(): Locator {
-    return this.modal.locator('input[type="checkbox"]');
+    return this.modal.locator('[data-name="group-chat-modal-assistant-option"] input[type="checkbox"]');
   }
 
   /** Get all assistant labels in the modal */

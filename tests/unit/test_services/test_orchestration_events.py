@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.services.group_orchestration.events import normalize_orchestration_event
+from src.api.services.orchestration.events import normalize_orchestration_event
 
 
 def test_normalize_event_accepts_known_event_type():
@@ -25,3 +25,4 @@ def test_normalize_event_rejects_unknown_type():
 def test_normalize_event_rejects_missing_required_fields():
     with pytest.raises(Exception):
         normalize_orchestration_event({"type": "model_done", "model_id": "m1"})
+

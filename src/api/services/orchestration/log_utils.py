@@ -1,4 +1,4 @@
-"""Shared log/text helpers for group orchestration."""
+"""Shared log/text helpers for orchestration."""
 
 from __future__ import annotations
 

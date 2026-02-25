@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 from src.agents.simple_llm import _estimate_total_tokens
 from src.providers.types import CostInfo, TokenUsage
 
-from .group_orchestration import OrchestrationRequest, SingleTurnOrchestrator, SingleTurnSettings
+from .orchestration import OrchestrationRequest, SingleTurnOrchestrator, SingleTurnSettings
 from .rag_tool_service import RagToolService
 from .service_contracts import (
     AssistantLike,
@@ -453,3 +453,4 @@ class SingleChatFlowService:
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
         return llm_tools, rag_tool_executor
+

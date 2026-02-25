@@ -106,6 +106,3 @@ class BaseOrchestrator(ABC):
         """Validate one event against the shared event schema."""
         return normalize_orchestration_event(event)
 
-
-class BaseGroupOrchestrator(BaseOrchestrator):
-    """Backward-compatible alias kept during orchestrator unification."""

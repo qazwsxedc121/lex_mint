@@ -18,7 +18,7 @@ from .conversation_storage import ConversationStorage
 from .file_reference_config_service import FileReferenceConfig
 from .group_participants import parse_group_participant
 from .group_chat_service import GroupChatDeps, GroupChatService
-from .group_orchestration import (
+from .orchestration import (
     CompareModelsOrchestrator,
     CommitteeOrchestrator,
     CommitteePolicy,
@@ -31,7 +31,7 @@ from .group_orchestration import (
 from .post_turn_service import PostTurnService
 from .service_contracts import AssistantLike, ContextPayload
 from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
-from .group_orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
+from .orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
 logger = logging.getLogger(__name__)
 
@@ -1190,3 +1190,4 @@ class AgentService:
             file_references=file_references,
         ):
             yield event
+

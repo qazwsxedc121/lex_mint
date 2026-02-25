@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.services.group_orchestration import (
+from src.api.services.orchestration import (
     CompareModelsOrchestrator,
     CompareModelsSettings,
     OrchestrationRequest,
@@ -99,3 +99,4 @@ async def test_compare_models_rejects_mismatched_mode():
 
     with pytest.raises(ValueError, match="mode=compare_models"):
         await _collect_events(orchestrator.stream(request))
+

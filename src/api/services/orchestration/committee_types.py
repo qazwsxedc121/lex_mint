@@ -1,4 +1,4 @@
-"""Data types for committee-style group orchestration."""
+"""Data types for committee orchestration."""
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional

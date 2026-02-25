@@ -8,7 +8,7 @@ import uuid
 from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol, Tuple
 
 from .chat_input_service import PreparedUserInput
-from .group_orchestration import (
+from .orchestration import (
     CommitteeOrchestrator,
     OrchestrationRequest,
     ResolvedCommitteeSettings,
@@ -329,3 +329,4 @@ class GroupChatService:
             },
         )
         return trace_id
+

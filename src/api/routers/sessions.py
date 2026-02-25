@@ -16,7 +16,7 @@ from ..services.conversation_storage import ConversationStorage, create_storage_
 from ..services.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
-from ..services.group_orchestration import GroupSettingsResolver
+from ..services.orchestration import GroupSettingsResolver
 from ..services.group_participants import parse_group_participant
 from ..config import settings
 
@@ -1368,3 +1368,4 @@ async def update_session_folder(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
