@@ -270,6 +270,28 @@ export interface ActionConfig<T = any> {
   };
 }
 
+export interface SettingsHelpSection {
+  /** Section title */
+  title: string;
+  /** Optional bullet list */
+  items?: string[];
+  /** Optional paragraph text */
+  body?: string;
+  /** Optional code/example block */
+  code?: string;
+}
+
+export interface SettingsHelpConfig {
+  /** Tooltip/title for help trigger button */
+  openTitle: string;
+  /** Help modal title */
+  title: string;
+  /** Help modal width */
+  size?: 'lg' | 'xl';
+  /** Grouped help sections */
+  sections: SettingsHelpSection[];
+}
+
 // ==================== CRUD Settings Configuration ====================
 
 /**
@@ -282,6 +304,8 @@ export interface CrudSettingsConfig<T = any> {
   title: ReactNode;
   /** Page description */
   description?: string;
+  /** Optional page-level help content */
+  help?: SettingsHelpConfig;
   /** Item name (singular, e.g., "assistant", "model") */
   itemName: string;
   /** Item name plural (defaults to itemName + "s") */
@@ -392,6 +416,8 @@ export interface SimpleConfigSettingsConfig {
   title: string;
   /** Page description */
   description?: string;
+  /** Optional page-level help content */
+  help?: SettingsHelpConfig;
 
   // API configuration
   /** API endpoints */

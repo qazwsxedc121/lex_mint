@@ -1,7 +1,7 @@
 ﻿
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PageHeader } from './components/common';
+import { PageHeader, SettingsHelp } from './components/common';
 import * as api from '../../services/api';
 import type {
   MemoryCreateRequest,
@@ -359,7 +359,38 @@ export const MemorySettings: React.FC = () => {
   return (
     <div className="space-y-6" data-name="memory-settings-page">
       <PageHeader
-        title={tr('memory.title', 'Memory')}
+        title={(
+          <span className="inline-flex items-center gap-2">
+            <span>{tr('memory.title', 'Memory')}</span>
+            <SettingsHelp
+              help={{
+                openTitle: tr('memory.help.openTitle', 'Open memory usage guide'),
+                title: tr('memory.help.title', 'Memory Usage Guide'),
+                size: 'xl',
+                sections: [
+                  {
+                    title: tr('memory.help.quickStartTitle', 'Quick start'),
+                    items: [
+                      tr('memory.help.quickStartItem1', 'Turn on memory switches first, then save settings before creating new items.'),
+                      tr('memory.help.quickStartItem2', 'Use global scope for long-term preferences, and assistant scope for role-specific instructions.'),
+                      tr('memory.help.quickStartItem3', 'After applying filters, click Apply to refresh the visualization list from API results.'),
+                    ],
+                  },
+                  {
+                    title: tr('memory.help.pitfallsTitle', 'Common pitfalls'),
+                    items: [
+                      tr('memory.help.pitfallsItem1', 'If scope is assistant, assistant id is required. Missing assistant selection will fail create requests.'),
+                      tr('memory.help.pitfallsItem2', 'Pinned only protects priority; inactive memories will still be excluded unless you reactivate them.'),
+                      tr('memory.help.pitfallsItem3', 'Top K and threshold directly affect injection results. Too strict values can make memory look empty in chat.'),
+                    ],
+                  },
+                ],
+              }}
+              triggerDataName="memory-help-trigger"
+              contentDataName="memory-help-content"
+            />
+          </span>
+        )}
         description={tr('memory.pageDescription', 'Settings toggles plus full memory visualization in one place.')}
         actions={(
           <button

@@ -29,6 +29,31 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
   type: 'crud',
   get title() { return i18n.t('settings:models.title'); },
   get description() { return i18n.t('settings:models.description'); },
+  help: {
+    get openTitle() { return i18n.t('settings:models.help.openTitle'); },
+    get title() { return i18n.t('settings:models.help.title'); },
+    size: 'xl',
+    get sections() {
+      return [
+        {
+          title: i18n.t('settings:models.help.quickStartTitle'),
+          items: [
+            i18n.t('settings:models.help.quickStartItem1'),
+            i18n.t('settings:models.help.quickStartItem2'),
+            i18n.t('settings:models.help.quickStartItem3'),
+          ],
+        },
+        {
+          title: i18n.t('settings:models.help.pitfallsTitle'),
+          items: [
+            i18n.t('settings:models.help.pitfallsItem1'),
+            i18n.t('settings:models.help.pitfallsItem2'),
+            i18n.t('settings:models.help.pitfallsItem3'),
+          ],
+        },
+      ];
+    },
+  },
   get itemName() { return i18n.t('settings:models.itemName'); },
   get itemNamePlural() { return i18n.t('settings:models.itemNamePlural'); },
   createMode: 'page',

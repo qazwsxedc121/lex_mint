@@ -71,6 +71,31 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
   type: 'crud',
   get title() { return i18n.t('settings:providers.title'); },
   get description() { return i18n.t('settings:providers.description'); },
+  help: {
+    get openTitle() { return i18n.t('settings:providers.help.openTitle'); },
+    get title() { return i18n.t('settings:providers.help.title'); },
+    size: 'xl',
+    get sections() {
+      return [
+        {
+          title: i18n.t('settings:providers.help.quickStartTitle'),
+          items: [
+            i18n.t('settings:providers.help.quickStartItem1'),
+            i18n.t('settings:providers.help.quickStartItem2'),
+            i18n.t('settings:providers.help.quickStartItem3'),
+          ],
+        },
+        {
+          title: i18n.t('settings:providers.help.pitfallsTitle'),
+          items: [
+            i18n.t('settings:providers.help.pitfallsItem1'),
+            i18n.t('settings:providers.help.pitfallsItem2'),
+            i18n.t('settings:providers.help.pitfallsItem3'),
+          ],
+        },
+      ];
+    },
+  },
   get itemName() { return i18n.t('settings:providers.itemName'); },
   get itemNamePlural() { return i18n.t('settings:providers.itemNamePlural'); },
   createMode: 'page',

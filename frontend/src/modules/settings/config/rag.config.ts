@@ -11,6 +11,31 @@ export const ragConfig: SimpleConfigSettingsConfig = {
   type: 'config',
   get title() { return i18n.t('settings:rag.title'); },
   get description() { return i18n.t('settings:rag.description'); },
+  help: {
+    get openTitle() { return i18n.t('settings:rag.help.openTitle'); },
+    get title() { return i18n.t('settings:rag.help.title'); },
+    size: 'xl',
+    get sections() {
+      return [
+        {
+          title: i18n.t('settings:rag.help.quickStartTitle'),
+          items: [
+            i18n.t('settings:rag.help.quickStartItem1'),
+            i18n.t('settings:rag.help.quickStartItem2'),
+            i18n.t('settings:rag.help.quickStartItem3'),
+          ],
+        },
+        {
+          title: i18n.t('settings:rag.help.pitfallsTitle'),
+          items: [
+            i18n.t('settings:rag.help.pitfallsItem1'),
+            i18n.t('settings:rag.help.pitfallsItem2'),
+            i18n.t('settings:rag.help.pitfallsItem3'),
+          ],
+        },
+      ];
+    },
+  },
 
   apiEndpoint: {
     get: '/api/rag/config',

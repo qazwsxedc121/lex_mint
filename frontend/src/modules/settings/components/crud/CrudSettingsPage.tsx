@@ -9,7 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon } from '@heroicons/react/24/outline';
-import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
+import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage, SettingsHelp } from '../common';
 import { CrudTable } from './CrudTable';
 import { CrudModal } from './CrudModal';
 import type { CrudSettingsConfig, CrudHook, ConfigContext } from '../../config/types';
@@ -43,6 +43,12 @@ export function CrudSettingsPage<T = any>({
 
   const isEdit = editingItem !== null;
   const fields = isEdit && config.editFields ? config.editFields : config.createFields;
+  const headerTitle = config.help ? (
+    <span className="inline-flex items-center gap-2">
+      <span>{config.title}</span>
+      <SettingsHelp help={config.help} />
+    </span>
+  ) : config.title;
 
   // Initialize form data with defaults
   const initializeFormData = (item?: T) => {
@@ -215,7 +221,7 @@ export function CrudSettingsPage<T = any>({
     <div className="space-y-4" data-name="crud-settings-page">
       {/* Page Header */}
       <PageHeader
-        title={config.title}
+        title={headerTitle}
         description={config.description}
         actions={
           <>

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage } from '../common';
+import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage, SettingsHelp } from '../common';
 import { ConfigForm } from './ConfigForm';
 import type { SimpleConfigSettingsConfig, ConfigContext } from '../../config/types';
 
@@ -74,6 +74,12 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   }), [API_BASE]);
 
   const api = useMemo(() => apiClient || defaultApiClient, [apiClient, defaultApiClient]);
+  const headerTitle = config.help ? (
+    <span className="inline-flex items-center gap-2">
+      <span>{config.title}</span>
+      <SettingsHelp help={config.help} />
+    </span>
+  ) : config.title;
 
   // Load configuration
   const loadConfig = useCallback(async () => {
@@ -176,7 +182,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
     <div className="space-y-6" data-name="config-settings-page">
       {/* Page Header */}
       <PageHeader
-        title={config.title}
+        title={headerTitle}
         description={config.description}
         actions={
           config.customActions?.map((action, index) => (
