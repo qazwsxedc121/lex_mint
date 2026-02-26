@@ -1,0 +1,27 @@
+reference:
+  name: crud_e2e_reference_v1
+  source:
+    paper: "CRUD-RAG: A Comprehensive Chinese Benchmark for Retrieval-Augmented Generation of Large Language Models"
+    table: "Table 8 (RAGQuestEval recall)"
+    url: "https://arxiv.org/html/2401.17043v3"
+    accessed_on: "2026-02-26"
+  metrics_unit: percent
+  models:
+    gpt4o:
+      label: GPT-4o
+      task_ragquesteval_recall:
+        continuing_writing: 26.11
+        event_summary: 50.93
+        questanswer_1doc: 66.59
+        questanswer_2docs: 67.44
+        questanswer_3docs: 63.90
+        hallu_modified: 73.75
+    qwen2_7b:
+      label: Qwen2-7B
+      task_ragquesteval_recall:
+        continuing_writing: 23.68
+        event_summary: 45.93
+        questanswer_1doc: 72.17
+        questanswer_2docs: 61.41
+        questanswer_3docs: 55.29
+        hallu_modified: 79.16

@@ -1,0 +1,65 @@
+protocol:
+  name: crud_e2e_v1
+  version: 1
+  frozen_on: "2026-02-26"
+  goal: "Match competitor-facing CRUD-RAG end-to-end evaluation protocol."
+
+dataset:
+  split_dataset_path: learn_proj/CRUD_RAG/data/crud_split/split_merged.json
+  corpus_dir: learn_proj/CRUD_RAG/data/80000_docs
+  tasks:
+    - event_summary
+    - continuing_writing
+    - hallu_modified
+    - questanswer_1doc
+    - questanswer_2docs
+    - questanswer_3docs
+  per_task_max: null
+  shuffle: false
+
+retrieval:
+  kb_ids:
+    - kb_crud_rag_v1
+  chunk_size: 128
+  chunk_overlap: 0
+  top_k: 8
+  score_threshold: 0.65
+  bm25_min_term_coverage: 0.35
+  modes:
+    - bm25
+    - vector
+    - hybrid
+
+generation:
+  temperature: 0.1
+  max_new_tokens: 1280
+  disable_thinking: true
+  query_transform_enabled: false
+  runtime_model_id: null
+
+metrics:
+  retrieval:
+    - hit_rate
+    - mrr
+    - recall_at_k
+  generation:
+    - bleu
+    - rouge
+    - bertscore
+    - ragquesteval
+  ragquesteval:
+    enabled: true
+    judge_provider: openai_compatible
+    judge_model: null
+
+reproducibility:
+  seed: 42
+  repeat_runs: 3
+  report_mean_and_ci95: true
+
+reporting:
+  primary_metric: ragquesteval
+  secondary_metrics:
+    - rouge_l
+    - bertscore_f1
+    - retrieval_hit_rate
