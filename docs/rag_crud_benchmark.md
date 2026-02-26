@@ -7,6 +7,11 @@ This project now includes a CRUD-RAG wrapper script:
 It converts CRUD-RAG `split_merged.json` into this repo's `run_rag_eval.py` schema,
 then runs the existing retrieval evaluation pipeline.
 
+For official competitor comparison protocol, see:
+
+- `docs/rag_crud_e2e_protocol_v1.md`
+- `config/benchmarks/crud_e2e_v1.yaml`
+
 ## 1) Dataset clone location and git tracking
 
 Use this clone target:
@@ -69,4 +74,3 @@ Each run writes:
 The CRUD wrapper currently uses keyword anchors from source texts as expected labels
 for retrieval matching. This keeps integration lightweight and reproducible with the
 existing `run_rag_eval.py` metric pipeline.
-
