@@ -4,6 +4,7 @@ LLM Adapters
 This package contains SDK adapters for different LLM providers.
 """
 from .openai_adapter import OpenAIAdapter
+from .openrouter_adapter import OpenRouterAdapter
 from .deepseek_adapter import DeepSeekAdapter
 from .anthropic_adapter import AnthropicAdapter
 from .ollama_adapter import OllamaAdapter
@@ -17,6 +18,7 @@ from .kimi_adapter import KimiAdapter
 
 __all__ = [
     "OpenAIAdapter",
+    "OpenRouterAdapter",
     "DeepSeekAdapter",
     "AnthropicAdapter",
     "OllamaAdapter",

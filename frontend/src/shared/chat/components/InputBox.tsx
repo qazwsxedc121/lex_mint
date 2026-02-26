@@ -32,15 +32,30 @@ import { CompareModelButton } from './CompareModelButton';
 import { FilePickerPopover } from './FilePickerPopover';
 import { useFileSearch } from '../../../modules/projects/hooks/useFileSearch';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
+import type { ReasoningControls } from '../../../types/model';
 
-// Reasoning effort options for supported models
-const REASONING_EFFORT_OPTIONS = [
+// Legacy fallback reasoning options.
+const LEGACY_REASONING_OPTIONS = [
   { value: 'default', labelKey: 'input.reasoning.default', descKey: 'input.reasoning.defaultDesc' },
   { value: 'none', labelKey: 'input.reasoning.none', descKey: 'input.reasoning.noneDesc' },
   { value: 'low', labelKey: 'input.reasoning.low', descKey: 'input.reasoning.lowDesc' },
   { value: 'medium', labelKey: 'input.reasoning.medium', descKey: 'input.reasoning.mediumDesc' },
   { value: 'high', labelKey: 'input.reasoning.high', descKey: 'input.reasoning.highDesc' },
 ];
+
+const LEGACY_REASONING_LABEL_KEY: Record<string, string> = LEGACY_REASONING_OPTIONS.reduce(
+  (acc, option) => {
+    acc[option.value] = option.labelKey;
+    return acc;
+  },
+  {} as Record<string, string>
+);
+
+interface ReasoningMenuOption {
+  value: string;
+  label: string;
+  description?: string;
+}
 
 // Shared toolbar button classes
 const TOOLBAR_BTN = 'flex items-center justify-center p-1.5 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
@@ -64,6 +79,8 @@ const getReasoningIconColor = (effort: string): string => {
     case 'low':    return 'text-amber-400 dark:text-amber-500';
     case 'medium': return 'text-amber-600 dark:text-amber-400';
     case 'high':   return 'text-orange-500 dark:text-orange-400';
+    case 'minimal': return 'text-amber-300 dark:text-amber-500';
+    case 'enabled': return 'text-amber-600 dark:text-amber-400';
     default:       return '';
   }
 };
@@ -398,6 +415,7 @@ interface InputBoxProps {
   // Toolbar props
   assistantSelector?: React.ReactNode;
   supportsReasoning?: boolean;
+  reasoningControls?: ReasoningControls | null;
   supportsVision?: boolean;
   sessionId?: string;
   currentAssistantId?: string;
@@ -418,6 +436,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   isStreaming = false,
   assistantSelector,
   supportsReasoning = false,
+  reasoningControls = null,
   supportsVision = false,
   sessionId,
   currentAssistantId: _currentAssistantId,
@@ -1264,7 +1283,59 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
   };
 
-  const currentOption = REASONING_EFFORT_OPTIONS.find(o => o.value === reasoningEffort) || REASONING_EFFORT_OPTIONS[0];
+  const reasoningOptions = useMemo<ReasoningMenuOption[]>(() => {
+    if (!supportsReasoning) {
+      return [];
+    }
+
+    if (!reasoningControls) {
+      return LEGACY_REASONING_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+        description: t(option.descKey),
+      }));
+    }
+
+    const items: ReasoningMenuOption[] = [
+      {
+        value: 'default',
+        label: t('input.reasoning.default'),
+        description: t('input.reasoning.defaultDesc'),
+      },
+    ];
+
+    if (reasoningControls.disable_supported) {
+      items.push({
+        value: 'none',
+        label: t('input.reasoning.none'),
+        description: t('input.reasoning.noneDesc'),
+      });
+    }
+
+    reasoningControls.options.forEach((optionValue) => {
+      const normalized = optionValue.toLowerCase();
+      const labelKey = LEGACY_REASONING_LABEL_KEY[normalized];
+      items.push({
+        value: optionValue,
+        label: labelKey ? t(labelKey) : optionValue,
+        description: reasoningControls.param,
+      });
+    });
+
+    return items;
+  }, [supportsReasoning, reasoningControls, t]);
+
+  useEffect(() => {
+    if (!reasoningOptions.length) {
+      return;
+    }
+    const exists = reasoningOptions.some((option) => option.value === reasoningEffort);
+    if (!exists) {
+      setReasoningEffort('default');
+    }
+  }, [reasoningEffort, reasoningOptions]);
+
+  const currentOption = reasoningOptions.find((o) => o.value === reasoningEffort) || reasoningOptions[0];
   const blocksMessage = buildBlocksMessage();
   const canSend = !!input.trim() || !!blocksMessage || attachments.length > 0;
   const selectedInputTranslateLabel = useMemo(
@@ -1365,7 +1436,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                     ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                     : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
-              title={`${t('input.reasoning.prefix', { defaultValue: 'Reasoning' })}: ${t(currentOption.labelKey)}`}
+              title={`${t('input.reasoning.prefix', { defaultValue: 'Reasoning' })}: ${currentOption?.label || t('input.reasoning.default')}`}
             >
               <Brain className={`h-4 w-4 ${getReasoningIconColor(reasoningEffort)}`} />
             </button>
@@ -1375,7 +1446,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                 <div className="fixed inset-0 z-10" onClick={() => setShowReasoningMenu(false)} />
                 <div className="absolute left-0 bottom-full mb-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20 border border-gray-200 dark:border-gray-700">
                   <div className="py-1">
-                    {REASONING_EFFORT_OPTIONS.map((option) => (
+                    {reasoningOptions.map((option) => (
                       <button
                         key={option.value}
                         onClick={() => {
@@ -1388,8 +1459,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
                             : 'text-gray-700 dark:text-gray-300'
                         }`}
                       >
-                        <div className="font-medium">{t(option.labelKey)}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{t(option.descKey)}</div>
+                        <div className="font-medium">{option.label}</div>
+                        {option.description && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{option.description}</div>
+                        )}
                       </button>
                     ))}
                   </div>

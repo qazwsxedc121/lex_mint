@@ -437,24 +437,92 @@ async def call_llm_stream(
     )
     allow_responses_fallback = should_allow_responses_fallback(effective_call_mode)
 
-    # Determine reasoning behavior from explicit mode selection
+    # Determine reasoning behavior from model-native option selection.
     reasoning_mode = (reasoning_effort or "").strip().lower()
     explicit_disable_reasoning = reasoning_mode == "none"
-    explicit_enable_reasoning = reasoning_mode in {"low", "medium", "high"}
     effective_reasoning_effort: Optional[str] = None
-
+    effective_reasoning_option: Optional[str] = None
     thinking_enabled = False
-    if explicit_disable_reasoning:
-        logger.info(f"Reasoning explicitly disabled for {model_config.id}")
-    elif explicit_enable_reasoning:
-        if capabilities.reasoning:
-            thinking_enabled = True
-            effective_reasoning_effort = reasoning_mode
-            logger.info(f"Thinking mode enabled for {model_config.id} (effort: {effective_reasoning_effort})")
+
+    reasoning_controls = getattr(capabilities, "reasoning_controls", None)
+    reasoning_controls_mode: Optional[str] = None
+    if reasoning_controls is not None:
+        raw_mode = getattr(reasoning_controls, "mode", None)
+        if isinstance(raw_mode, str):
+            reasoning_controls_mode = raw_mode.strip().lower()
         else:
-            logger.warning(f"Model {model_config.id} does not support reasoning mode, ignoring reasoning_effort={reasoning_mode}")
+            raw_mode_value = getattr(raw_mode, "value", None)
+            if isinstance(raw_mode_value, str):
+                reasoning_controls_mode = raw_mode_value.strip().lower()
+
+    disable_reasoning_supported = True
+    if reasoning_controls is not None:
+        raw_disable_supported = getattr(reasoning_controls, "disable_supported", True)
+        if isinstance(raw_disable_supported, bool):
+            disable_reasoning_supported = raw_disable_supported
+
+    disable_thinking = explicit_disable_reasoning and disable_reasoning_supported
+    raw_reasoning_options = getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    options_iterable = raw_reasoning_options if isinstance(raw_reasoning_options, list) else []
+    allowed_reasoning_options = [
+        str(option).strip().lower()
+        for option in options_iterable
+        if str(option).strip()
+    ]
+
+    if explicit_disable_reasoning:
+        if not disable_reasoning_supported:
+            logger.warning("Reasoning disable is not supported for %s; ignoring 'none'", model_config.id)
+        else:
+            logger.info(f"Reasoning explicitly disabled for {model_config.id}")
     elif reasoning_mode and reasoning_mode != "default":
-        logger.warning(f"Unknown reasoning_effort '{reasoning_mode}', falling back to model default behavior")
+        if not capabilities.reasoning:
+            logger.warning(
+                f"Model {model_config.id} does not support reasoning mode, ignoring reasoning_effort={reasoning_mode}"
+            )
+        elif allowed_reasoning_options:
+            if reasoning_mode in allowed_reasoning_options:
+                thinking_enabled = True
+                effective_reasoning_option = reasoning_mode
+                if reasoning_controls_mode == "enum":
+                    effective_reasoning_effort = reasoning_mode
+                logger.info(
+                    "Thinking mode enabled for %s (%s=%s)",
+                    model_config.id,
+                    reasoning_controls.param if reasoning_controls else "reasoning",
+                    effective_reasoning_option,
+                )
+            elif (
+                reasoning_controls_mode == "toggle"
+                and reasoning_mode in {"low", "medium", "high", "minimal"}
+            ):
+                thinking_enabled = True
+                effective_reasoning_option = allowed_reasoning_options[0]
+                logger.info(
+                    "Mapped legacy reasoning option '%s' to toggle value '%s' for %s",
+                    reasoning_mode,
+                    effective_reasoning_option,
+                    model_config.id,
+                )
+            else:
+                logger.warning(
+                    "Unsupported reasoning option '%s' for %s; allowed=%s",
+                    reasoning_mode,
+                    model_config.id,
+                    ",".join(allowed_reasoning_options),
+                )
+        elif reasoning_mode in {"low", "medium", "high", "minimal"}:
+            # Legacy fallback for models without structured controls.
+            thinking_enabled = True
+            effective_reasoning_option = reasoning_mode
+            effective_reasoning_effort = reasoning_mode
+            logger.info(
+                f"Thinking mode enabled for {model_config.id} (effort: {effective_reasoning_effort})"
+            )
+        else:
+            logger.warning(
+                f"Unknown reasoning_effort '{reasoning_mode}', falling back to model default behavior"
+            )
 
     # Get API key
     api_key = model_service.resolve_provider_api_key_sync(provider_config)
@@ -491,8 +559,9 @@ async def call_llm_stream(
         call_mode=effective_call_mode.value,
         requires_interleaved_thinking=capabilities.requires_interleaved_thinking,
         thinking_enabled=thinking_enabled,
+        reasoning_option=effective_reasoning_option,
         reasoning_effort=effective_reasoning_effort,
-        disable_thinking=explicit_disable_reasoning,
+        disable_thinking=disable_thinking,
         **extra_params,
     )
 
@@ -508,10 +577,14 @@ async def call_llm_stream(
             print(f"      Round limit: unlimited")
         else:
             print(f"      Max rounds: {max_rounds}")
-    if explicit_disable_reasoning:
+    if disable_thinking:
         print("      Thinking mode: forced off")
     elif thinking_enabled:
-        print(f"      Thinking mode: enabled (effort: {effective_reasoning_effort})")
+        option_for_log = effective_reasoning_option or effective_reasoning_effort
+        if option_for_log:
+            print(f"      Thinking mode: enabled (option: {option_for_log})")
+        else:
+            print("      Thinking mode: enabled")
     logger.info(f"Preparing streaming LLM call (model: {actual_model_id}), messages: {len(messages)}")
 
     # === Filter messages after last context boundary (separator or summary) ===
@@ -610,6 +683,7 @@ async def call_llm_stream(
             thinking_start_time: Optional[float] = None
             round_content = ""
             round_reasoning = ""
+            round_reasoning_details: Any = None
             round_tool_calls: List[Dict[str, Any]] = []
             # Merge raw LangChain chunks to get complete tool_calls after stream ends
             merged_chunk = None
@@ -626,7 +700,7 @@ async def call_llm_stream(
             )
             async for chunk in adapter.stream(active_llm, tool_loop_state.current_messages, **stream_kwargs):
                 # Handle thinking/reasoning content
-                if chunk.thinking and not explicit_disable_reasoning:
+                if chunk.thinking and not disable_thinking:
                     full_reasoning += chunk.thinking
                     round_reasoning += chunk.thinking
                     if not in_thinking_phase:
@@ -657,13 +731,18 @@ async def call_llm_stream(
                 extracted_usage = TokenUsage.extract_from_chunk(merged_chunk)
                 if extracted_usage:
                     final_usage = extracted_usage
-                if not explicit_disable_reasoning and not round_reasoning:
+                if not disable_thinking and not round_reasoning:
                     merged_kwargs = getattr(merged_chunk, "additional_kwargs", None) or {}
                     if isinstance(merged_kwargs, dict):
                         merged_reasoning = merged_kwargs.get("reasoning_content")
                         if isinstance(merged_reasoning, str) and merged_reasoning:
                             round_reasoning = merged_reasoning
                             full_reasoning += merged_reasoning
+                merged_kwargs = getattr(merged_chunk, "additional_kwargs", None) or {}
+                if isinstance(merged_kwargs, dict):
+                    merged_reasoning_details = merged_kwargs.get("reasoning_details")
+                    if merged_reasoning_details is not None:
+                        round_reasoning_details = merged_reasoning_details
 
             # After stream ends: extract complete tool_calls from merged chunk
             round_tool_calls = tool_loop_runner.extract_tool_calls(
@@ -704,6 +783,7 @@ async def call_llm_stream(
                 tool_loop_state,
                 round_content=round_content,
                 round_reasoning=round_reasoning,
+                round_reasoning_details=round_reasoning_details,
             ):
                 print(f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping")
                 logger.warning("Max tool call rounds reached")
@@ -745,11 +825,13 @@ async def call_llm_stream(
                 round_tool_calls=round_tool_calls,
                 tool_results=tool_results,
                 round_reasoning=round_reasoning,
+                round_reasoning_details=round_reasoning_details,
             )
 
             # Reset for next round
             round_content = ""
             round_reasoning = ""
+            round_reasoning_details = None
             round_tool_calls = []
 
         if tool_loop_runner.should_inject_fallback_answer(tool_loop_state, full_response):
@@ -782,12 +864,15 @@ async def call_llm_stream(
             "call_mode": effective_call_mode.value,
             "responses_fallback_enabled": allow_responses_fallback,
         }
-        if explicit_disable_reasoning:
+        if disable_thinking:
             log_extra_params["thinking_enabled"] = False
             log_extra_params["reasoning_mode"] = "none"
         elif thinking_enabled:
             log_extra_params["thinking_enabled"] = True
-            log_extra_params["reasoning_effort"] = effective_reasoning_effort
+            if effective_reasoning_option:
+                log_extra_params["reasoning_option"] = effective_reasoning_option
+            if effective_reasoning_effort:
+                log_extra_params["reasoning_effort"] = effective_reasoning_effort
         if full_reasoning:
             log_extra_params["reasoning_content"] = full_reasoning
         if final_usage:

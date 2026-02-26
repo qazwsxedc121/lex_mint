@@ -11,6 +11,7 @@ from .types import ProviderConfig, ProviderType, ApiProtocol
 from .builtin import BUILTIN_PROVIDERS, get_builtin_provider
 from .adapters import (
     OpenAIAdapter,
+    OpenRouterAdapter,
     DeepSeekAdapter,
     AnthropicAdapter,
     OllamaAdapter,
@@ -37,6 +38,7 @@ class AdapterRegistry:
     # Mapping of sdk_class names to adapter classes
     _adapters: Dict[str, Type[BaseLLMAdapter]] = {
         "openai": OpenAIAdapter,
+        "openrouter": OpenRouterAdapter,
         "deepseek": DeepSeekAdapter,
         "anthropic": AnthropicAdapter,
         "ollama": OllamaAdapter,

@@ -39,3 +39,20 @@ def test_append_round_with_tool_results_without_reasoning_stays_compatible():
     ai_msg = state.current_messages[0]
     assert isinstance(ai_msg, AIMessage)
     assert ai_msg.additional_kwargs == {}
+
+
+def test_append_round_with_tool_results_preserves_reasoning_details():
+    state = ToolLoopState(current_messages=[])
+    details = [{"type": "reasoning.text", "text": "keep-me"}]
+
+    ToolLoopRunner.append_round_with_tool_results(
+        state,
+        round_content="Need to call a tool",
+        round_tool_calls=[{"name": "simple_calculator", "args": {"expr": "1+1"}, "id": "call_1"}],
+        tool_results=[{"name": "simple_calculator", "result": "2", "tool_call_id": "call_1"}],
+        round_reasoning_details=details,
+    )
+
+    ai_msg = state.current_messages[0]
+    assert isinstance(ai_msg, AIMessage)
+    assert ai_msg.additional_kwargs.get("reasoning_details") == details

@@ -124,6 +124,7 @@ async def test_fetch_provider_models_for_kimi_returns_model_infos():
     assert result[0].capabilities is not None
     assert result[0].capabilities["reasoning"] is True
     assert result[0].capabilities["requires_interleaved_thinking"] is True
+    assert result[0].capabilities["reasoning_controls"]["mode"] == "toggle"
     adapter.fetch_models.assert_awaited_once_with("https://api.moonshot.cn/v1", "test-key")
 
 

@@ -78,7 +78,10 @@ def test_interleaved_wrapper_injects_reasoning_content_for_tool_call_messages():
         AIMessage(
             content="",
             tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
-            additional_kwargs={"reasoning_content": "I should calculate first."},
+            additional_kwargs={
+                "reasoning_content": "I should calculate first.",
+                "reasoning_details": [{"type": "reasoning.text", "text": "internal"}],
+            },
         ),
         ToolMessage(content="2", tool_call_id="call_1"),
     ]
@@ -86,6 +89,7 @@ def test_interleaved_wrapper_injects_reasoning_content_for_tool_call_messages():
     payload = llm._get_request_payload(messages)
     assistant_payload = payload["messages"][1]
     assert assistant_payload["reasoning_content"] == "I should calculate first."
+    assert assistant_payload["reasoning_details"] == [{"type": "reasoning.text", "text": "internal"}]
 
 
 def test_interleaved_wrapper_skips_reasoning_content_when_disabled():
@@ -122,6 +126,29 @@ def test_parse_model_metadata_adds_interleaved_capability_hint():
     parsed = OpenAIAdapter._parse_model_metadata(model)
     assert parsed is not None
     assert parsed["capabilities"]["requires_interleaved_thinking"] is True
+    assert parsed["capabilities"]["reasoning_controls"]["mode"] == "toggle"
+
+
+def test_create_llm_omits_effort_for_toggle_reasoning_option(monkeypatch):
+    captured = {}
+
+    class FakeChat:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("src.providers.adapters.openai_adapter.ChatOpenAIInterleaved", FakeChat)
+
+    adapter = OpenAIAdapter()
+    adapter.create_llm(
+        model="deepseek/deepseek-chat",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        thinking_enabled=True,
+        reasoning_option="enabled",
+        requires_interleaved_thinking=True,
+    )
+
+    assert captured["reasoning"] == {"summary": "auto"}
 
 
 @pytest.mark.asyncio

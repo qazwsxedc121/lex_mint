@@ -12,11 +12,22 @@ export type CallMode = 'auto' | 'native' | 'chat_completions' | 'responses';
 export type ProviderType = 'builtin' | 'custom';
 
 // Model capabilities
+export type ReasoningControlMode = 'toggle' | 'enum' | 'budget';
+
+export interface ReasoningControls {
+  mode: ReasoningControlMode;
+  param: string;
+  options: string[];
+  default_option?: string | null;
+  disable_supported: boolean;
+}
+
 export interface ModelCapabilities {
   context_length: number;
   vision: boolean;
   function_calling: boolean;
   reasoning: boolean;
+  reasoning_controls?: ReasoningControls | null;
   requires_interleaved_thinking: boolean;
   streaming: boolean;
   file_upload: boolean;
@@ -38,6 +49,7 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   vision: false,
   function_calling: false,
   reasoning: false,
+  reasoning_controls: null,
   requires_interleaved_thinking: false,
   streaming: true,
   file_upload: false,
