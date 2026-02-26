@@ -495,7 +495,11 @@ async def fetch_provider_models(
         for m in models:
             raw_capabilities: Any = m.get("capabilities")
             capabilities = raw_capabilities if isinstance(raw_capabilities, dict) else None
-            capabilities = apply_model_capability_hints(m["id"], capabilities)
+            capabilities = apply_model_capability_hints(
+                m["id"],
+                capabilities,
+                provider_id=provider_id,
+            )
 
             raw_tags: Any = m.get("tags")
             tags: Optional[List[str]]

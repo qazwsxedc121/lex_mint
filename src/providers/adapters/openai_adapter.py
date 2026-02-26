@@ -7,6 +7,7 @@ import logging
 from typing import AsyncIterator, List, Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import BaseChatOpenAI
+from urllib.parse import urlparse
 
 from ..base import BaseLLMAdapter
 from ..types import CallMode, StreamChunk, LLMResponse, TokenUsage
@@ -167,10 +168,16 @@ class OpenAIAdapter(BaseLLMAdapter):
 
         # For OpenAI o1/o3 models, enable reasoning via responses API
         if thinking_enabled:
-            llm_kwargs["reasoning"] = {
-                "effort": kwargs.get("reasoning_effort", "medium"),
-                "summary": "auto"
-            }
+            reasoning_payload: Dict[str, Any] = {"summary": "auto"}
+            reasoning_option = str(kwargs.get("reasoning_option") or "").strip().lower()
+            reasoning_effort = str(kwargs.get("reasoning_effort") or "").strip().lower()
+            if reasoning_option and reasoning_option not in {"enabled", "on", "true"}:
+                reasoning_payload["effort"] = reasoning_option
+            elif reasoning_effort and reasoning_effort not in {"enabled", "on", "true"}:
+                reasoning_payload["effort"] = reasoning_effort
+            elif not reasoning_option and not reasoning_effort:
+                reasoning_payload["effort"] = "medium"
+            llm_kwargs["reasoning"] = reasoning_payload
             logger.info(f"OpenAI reasoning mode enabled for {model}")
 
         # Add any extra kwargs
@@ -323,7 +330,26 @@ class OpenAIAdapter(BaseLLMAdapter):
         }
 
     @staticmethod
-    def _parse_model_metadata(model: dict) -> dict | None:
+    def _infer_provider_hint_from_base_url(base_url: str) -> str | None:
+        """Best-effort provider hint from endpoint host."""
+        try:
+            parsed = urlparse(base_url if "://" in base_url else f"https://{base_url}")
+            host = (parsed.netloc or "").lower()
+        except Exception:
+            return None
+
+        if "openrouter.ai" in host:
+            return "openrouter"
+        if "api.openai.com" in host:
+            return "openai"
+        if "volces.com" in host:
+            return "volcengine"
+        if "dashscope.aliyuncs.com" in host:
+            return "bailian"
+        return None
+
+    @staticmethod
+    def _parse_model_metadata(model: dict, *, provider_id: str | None = None) -> dict | None:
         """
         Parse rich model metadata from provider API responses.
 
@@ -377,7 +403,11 @@ class OpenAIAdapter(BaseLLMAdapter):
         if not tags:
             tags.append("chat")
 
-        capabilities = apply_model_capability_hints(model.get("id", ""), capabilities)
+        capabilities = apply_model_capability_hints(
+            model.get("id", ""),
+            capabilities,
+            provider_id=provider_id,
+        )
         return {"capabilities": capabilities, "tags": tags}
 
     async def fetch_models(
@@ -398,6 +428,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         import httpx
 
         try:
+            provider_hint = self._infer_provider_hint_from_base_url(base_url)
             # Normalize base URL
             url = base_url.rstrip('/')
             if not url.endswith('/v1'):
@@ -425,12 +456,16 @@ class OpenAIAdapter(BaseLLMAdapter):
                     }
 
                     # Parse rich metadata if available (e.g. OpenRouter)
-                    caps_and_tags = self._parse_model_metadata(model)
+                    caps_and_tags = self._parse_model_metadata(model, provider_id=provider_hint)
                     if caps_and_tags:
                         entry["capabilities"] = caps_and_tags["capabilities"]
                         entry["tags"] = caps_and_tags["tags"]
                     else:
-                        hinted_caps = apply_model_capability_hints(model_id, None)
+                        hinted_caps = apply_model_capability_hints(
+                            model_id,
+                            None,
+                            provider_id=provider_hint,
+                        )
                         if hinted_caps:
                             entry["capabilities"] = hinted_caps
 

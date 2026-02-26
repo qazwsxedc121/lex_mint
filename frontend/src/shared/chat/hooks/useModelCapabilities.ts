@@ -4,10 +4,12 @@
 
 import { useState, useEffect } from 'react';
 import { useChatServices } from '../services/ChatServiceProvider';
+import type { ReasoningControls } from '../../../types/model';
 
 interface ModelCapabilities {
   supportsVision: boolean;
   supportsReasoning: boolean;
+  reasoningControls: ReasoningControls | null;
   loading: boolean;
 }
 
@@ -19,6 +21,7 @@ export function useModelCapabilities(
   const { api } = useChatServices();
   const [supportsVision, setSupportsVision] = useState(false);
   const [supportsReasoning, setSupportsReasoning] = useState(false);
+  const [reasoningControls, setReasoningControls] = useState<ReasoningControls | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ export function useModelCapabilities(
           if (!assistantId || assistantId.startsWith('__legacy_model_')) {
             setSupportsVision(false);
             setSupportsReasoning(false);
+            setReasoningControls(null);
             return;
           }
           const assistant = await api.getAssistant(assistantId);
@@ -42,16 +46,19 @@ export function useModelCapabilities(
         if (!effectiveModelId) {
           setSupportsVision(false);
           setSupportsReasoning(false);
+          setReasoningControls(null);
           return;
         }
 
         const response = await api.getModelCapabilities(effectiveModelId);
         setSupportsVision(response.capabilities.vision || false);
         setSupportsReasoning(response.capabilities.reasoning || false);
+        setReasoningControls(response.capabilities.reasoning_controls || null);
       } catch (error) {
         console.error('Failed to check model capabilities:', error);
         setSupportsVision(false);
         setSupportsReasoning(false);
+        setReasoningControls(null);
       } finally {
         setLoading(false);
       }
@@ -60,5 +67,5 @@ export function useModelCapabilities(
     checkCapabilities();
   }, [targetType, assistantId, modelId, api]);
 
-  return { supportsVision, supportsReasoning, loading };
+  return { supportsVision, supportsReasoning, reasoningControls, loading };
 }

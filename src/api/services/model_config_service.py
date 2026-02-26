@@ -15,6 +15,7 @@ from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
 from src.providers import (
     AdapterRegistry,
     ModelCapabilities,
+    ReasoningControls,
     CallMode,
     ProviderType,
     ApiProtocol,
@@ -373,7 +374,11 @@ class ModelConfigService:
             if not isinstance(model_id_value, str):
                 continue
 
-            inferred = infer_capability_overrides(model_id_value)
+            provider_id_value = model_entry.get("provider_id")
+            inferred = infer_capability_overrides(
+                model_id_value,
+                provider_id=provider_id_value if isinstance(provider_id_value, str) else None,
+            )
             if inferred.get("requires_interleaved_thinking") is not True:
                 continue
 
@@ -383,6 +388,9 @@ class ModelConfigService:
 
             if model_caps.get("requires_interleaved_thinking") is False:
                 model_caps["requires_interleaved_thinking"] = True
+                changed = True
+            if inferred.get("reasoning_controls") and not isinstance(model_caps.get("reasoning_controls"), dict):
+                model_caps["reasoning_controls"] = inferred["reasoning_controls"]
                 changed = True
 
         if changed:
@@ -984,7 +992,13 @@ class ModelConfigService:
         if provider.default_capabilities:
             base_caps = base_caps.merge_with(provider.default_capabilities)
 
-        inferred_overrides = infer_capability_overrides(model.id)
+        inferred_overrides = infer_capability_overrides(
+            model.id,
+            provider_id=provider.id,
+        )
+        inferred_reasoning_controls = inferred_overrides.get("reasoning_controls")
+        if isinstance(inferred_reasoning_controls, dict):
+            inferred_overrides["reasoning_controls"] = ReasoningControls(**inferred_reasoning_controls)
         hard_require_interleaved = (
             inferred_overrides.get("requires_interleaved_thinking") is True
             if inferred_overrides

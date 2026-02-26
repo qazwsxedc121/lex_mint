@@ -30,6 +30,18 @@ def test_infer_capability_overrides_include_reasoning_and_interleaved():
     overrides = infer_capability_overrides("deepseek-r1")
     assert overrides["reasoning"] is True
     assert overrides["requires_interleaved_thinking"] is True
+    assert overrides["reasoning_controls"]["mode"] == "toggle"
+    assert overrides["reasoning_controls"]["param"] == "thinking.type"
+
+
+def test_infer_capability_overrides_provider_specific_controls():
+    openai_overrides = infer_capability_overrides("gpt-5-mini", provider_id="openai")
+    assert openai_overrides["reasoning_controls"]["mode"] == "enum"
+    assert openai_overrides["reasoning_controls"]["options"] == ["low", "medium", "high"]
+
+    volcengine_overrides = infer_capability_overrides("doubao-seed-2-0-pro", provider_id="volcengine")
+    assert volcengine_overrides["reasoning_controls"]["mode"] == "enum"
+    assert volcengine_overrides["reasoning_controls"]["options"] == ["minimal", "low", "medium", "high"]
 
 
 def test_apply_interleaved_hint_preserves_explicit_capability_override():

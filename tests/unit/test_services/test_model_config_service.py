@@ -585,6 +585,8 @@ class TestModelConfigService:
         merged = service.get_merged_capabilities(model, provider)
         assert merged.requires_interleaved_thinking is True
         assert merged.reasoning is True
+        assert merged.reasoning_controls is not None
+        assert merged.reasoning_controls.mode.value == "toggle"
 
     def test_get_merged_capabilities_hard_interleaved_rule_overrides_model_false(self, temp_config_dir):
         config_path = temp_config_dir / "models_config.yaml"
@@ -639,6 +641,27 @@ class TestModelConfigService:
 
         merged = service.get_merged_capabilities(model, provider)
         assert merged.reasoning is False
+
+    def test_get_merged_capabilities_uses_provider_reasoning_controls_fallback(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        with open(keys_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"providers": {}}, f)
+
+        service = ModelConfigService(config_path, keys_path)
+        model = Model(id="gpt-5-mini", name="GPT", provider_id="openai", enabled=True)
+        provider = Provider(
+            id="openai",
+            name="OpenAI",
+            type=ProviderType.BUILTIN,
+            protocol=ApiProtocol.OPENAI,
+            base_url="https://api.openai.com/v1",
+            enabled=True,
+        )
+        merged = service.get_merged_capabilities(model, provider)
+        assert merged.reasoning_controls is not None
+        assert merged.reasoning_controls.mode.value == "enum"
+        assert merged.reasoning_controls.options == ["low", "medium", "high"]
 
     @pytest.mark.asyncio
     async def test_sync_builtin_sets_provider_interleaved_false_for_model_level_providers(self):

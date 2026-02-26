@@ -30,6 +30,14 @@ class ProviderType(str, Enum):
     CUSTOM = "custom"      # User-defined custom provider
 
 
+class ReasoningControlMode(str, Enum):
+    """How a model expects reasoning controls to be provided."""
+
+    TOGGLE = "toggle"
+    ENUM = "enum"
+    BUDGET = "budget"
+
+
 class TokenUsage(BaseModel):
     """Token usage information from LLM response."""
     prompt_tokens: int = 0
@@ -94,12 +102,41 @@ class CostInfo(BaseModel):
     currency: str = "USD"
 
 
+class ReasoningControls(BaseModel):
+    """Native reasoning parameter schema exposed to clients."""
+
+    mode: ReasoningControlMode = Field(
+        ...,
+        description="Native reasoning control mode",
+    )
+    param: str = Field(
+        ...,
+        description="Native provider parameter name (e.g., reasoning_effort, thinking_budget)",
+    )
+    options: List[str] = Field(
+        default_factory=list,
+        description="Exact provider option values for enum-like controls",
+    )
+    default_option: Optional[str] = Field(
+        default=None,
+        description="Provider default option value",
+    )
+    disable_supported: bool = Field(
+        default=True,
+        description="Whether reasoning can be explicitly disabled",
+    )
+
+
 class ModelCapabilities(BaseModel):
     """Model capability declaration"""
     context_length: int = Field(default=4096, description="Context window size in tokens")
     vision: bool = Field(default=False, description="Supports image input")
     function_calling: bool = Field(default=False, description="Supports function/tool calling")
     reasoning: bool = Field(default=False, description="Supports thinking/reasoning mode")
+    reasoning_controls: Optional[ReasoningControls] = Field(
+        default=None,
+        description="Provider-native reasoning controls for this model",
+    )
     requires_interleaved_thinking: bool = Field(
         default=False,
         description="Requires reasoning_content on assistant tool-call messages during thinking mode",

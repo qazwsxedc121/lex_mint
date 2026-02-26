@@ -124,7 +124,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   } = useChat(currentSessionId);
 
   // Check model capabilities (vision, reasoning)
-  const { supportsVision, supportsReasoning } = useModelCapabilities(
+  const { supportsVision, supportsReasoning, reasoningControls } = useModelCapabilities(
     currentTargetType,
     currentAssistantId,
     currentModelId,
@@ -933,6 +933,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         disabled={loading || isComparing}
         isStreaming={isGenerating}
         supportsReasoning={supportsReasoning}
+        reasoningControls={reasoningControls}
         supportsVision={supportsVision}
         sessionId={currentSessionId}
         currentAssistantId={currentTargetType === 'assistant' ? currentAssistantId || undefined : undefined}
