@@ -444,12 +444,29 @@ async def call_llm_stream(
     effective_reasoning_option: Optional[str] = None
     thinking_enabled = False
 
-    reasoning_controls = capabilities.reasoning_controls
-    disable_reasoning_supported = not reasoning_controls or reasoning_controls.disable_supported
+    reasoning_controls = getattr(capabilities, "reasoning_controls", None)
+    reasoning_controls_mode: Optional[str] = None
+    if reasoning_controls is not None:
+        raw_mode = getattr(reasoning_controls, "mode", None)
+        if isinstance(raw_mode, str):
+            reasoning_controls_mode = raw_mode.strip().lower()
+        else:
+            raw_mode_value = getattr(raw_mode, "value", None)
+            if isinstance(raw_mode_value, str):
+                reasoning_controls_mode = raw_mode_value.strip().lower()
+
+    disable_reasoning_supported = True
+    if reasoning_controls is not None:
+        raw_disable_supported = getattr(reasoning_controls, "disable_supported", True)
+        if isinstance(raw_disable_supported, bool):
+            disable_reasoning_supported = raw_disable_supported
+
     disable_thinking = explicit_disable_reasoning and disable_reasoning_supported
+    raw_reasoning_options = getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    options_iterable = raw_reasoning_options if isinstance(raw_reasoning_options, list) else []
     allowed_reasoning_options = [
         str(option).strip().lower()
-        for option in (reasoning_controls.options if reasoning_controls else [])
+        for option in options_iterable
         if str(option).strip()
     ]
 
@@ -467,7 +484,7 @@ async def call_llm_stream(
             if reasoning_mode in allowed_reasoning_options:
                 thinking_enabled = True
                 effective_reasoning_option = reasoning_mode
-                if reasoning_controls and reasoning_controls.mode.value == "enum":
+                if reasoning_controls_mode == "enum":
                     effective_reasoning_effort = reasoning_mode
                 logger.info(
                     "Thinking mode enabled for %s (%s=%s)",
@@ -476,8 +493,7 @@ async def call_llm_stream(
                     effective_reasoning_option,
                 )
             elif (
-                reasoning_controls
-                and reasoning_controls.mode.value == "toggle"
+                reasoning_controls_mode == "toggle"
                 and reasoning_mode in {"low", "medium", "high", "minimal"}
             ):
                 thinking_enabled = True
