@@ -275,6 +275,7 @@ class ToolLoopRunner:
         *,
         round_content: str,
         round_reasoning: str = "",
+        round_reasoning_details: Any = None,
     ) -> bool:
         """Advance tool round; force a final non-tool pass if limit is exceeded.
 
@@ -287,8 +288,13 @@ class ToolLoopRunner:
             return False
 
         ai_kwargs: Dict[str, Any] = {}
+        additional_kwargs: Dict[str, Any] = {}
         if round_reasoning:
-            ai_kwargs["additional_kwargs"] = {"reasoning_content": round_reasoning}
+            additional_kwargs["reasoning_content"] = round_reasoning
+        if round_reasoning_details is not None:
+            additional_kwargs["reasoning_details"] = round_reasoning_details
+        if additional_kwargs:
+            ai_kwargs["additional_kwargs"] = additional_kwargs
         state.current_messages.append(AIMessage(content=round_content, **ai_kwargs))
         state.current_messages.append(HumanMessage(content=_FINALIZE_WITHOUT_TOOLS_PROMPT))
         state.force_finalize_without_tools = True
@@ -355,6 +361,7 @@ class ToolLoopRunner:
         round_tool_calls: List[Dict[str, Any]],
         tool_results: List[Dict[str, str]],
         round_reasoning: str = "",
+        round_reasoning_details: Any = None,
     ) -> None:
         """Append tool-call AI message + tool result messages for next pass."""
         ai_tool_calls = [
@@ -362,8 +369,13 @@ class ToolLoopRunner:
             for tc in round_tool_calls
         ]
         ai_kwargs: Dict[str, Any] = {"tool_calls": ai_tool_calls}
+        additional_kwargs: Dict[str, Any] = {}
         if round_reasoning:
-            ai_kwargs["additional_kwargs"] = {"reasoning_content": round_reasoning}
+            additional_kwargs["reasoning_content"] = round_reasoning
+        if round_reasoning_details is not None:
+            additional_kwargs["reasoning_details"] = round_reasoning_details
+        if additional_kwargs:
+            ai_kwargs["additional_kwargs"] = additional_kwargs
         state.current_messages.append(AIMessage(content=round_content, **ai_kwargs))
 
         for tr in tool_results:

@@ -110,6 +110,15 @@ def infer_reasoning_controls(
             "disable_supported": True,
         }
 
+    if normalized_provider == "openrouter":
+        return {
+            "mode": "enum",
+            "param": "reasoning.effort",
+            "options": ["minimal", "low", "medium", "high", "xhigh"],
+            "default_option": "medium",
+            "disable_supported": True,
+        }
+
     # DeepSeek/Kimi model families are currently toggle-based in our adapters.
     if kimi_match or deepseek_match:
         return {

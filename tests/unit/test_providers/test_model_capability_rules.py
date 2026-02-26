@@ -39,6 +39,16 @@ def test_infer_capability_overrides_provider_specific_controls():
     assert openai_overrides["reasoning_controls"]["mode"] == "enum"
     assert openai_overrides["reasoning_controls"]["options"] == ["low", "medium", "high"]
 
+    openrouter_overrides = infer_capability_overrides("deepseek/deepseek-chat", provider_id="openrouter")
+    assert openrouter_overrides["reasoning_controls"]["mode"] == "enum"
+    assert openrouter_overrides["reasoning_controls"]["options"] == [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+
     volcengine_overrides = infer_capability_overrides("doubao-seed-2-0-pro", provider_id="volcengine")
     assert volcengine_overrides["reasoning_controls"]["mode"] == "enum"
     assert volcengine_overrides["reasoning_controls"]["options"] == ["minimal", "low", "medium", "high"]

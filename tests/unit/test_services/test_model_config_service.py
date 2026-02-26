@@ -586,7 +586,8 @@ class TestModelConfigService:
         assert merged.requires_interleaved_thinking is True
         assert merged.reasoning is True
         assert merged.reasoning_controls is not None
-        assert merged.reasoning_controls.mode.value == "toggle"
+        assert merged.reasoning_controls.mode.value == "enum"
+        assert merged.reasoning_controls.options == ["minimal", "low", "medium", "high", "xhigh"]
 
     def test_get_merged_capabilities_hard_interleaved_rule_overrides_model_false(self, temp_config_dir):
         config_path = temp_config_dir / "models_config.yaml"

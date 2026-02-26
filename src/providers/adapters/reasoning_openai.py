@@ -130,5 +130,8 @@ def inject_tool_call_reasoning_content(
         reasoning_content = msg_obj.additional_kwargs.get("reasoning_content")
         if reasoning_content:
             msg_dict["reasoning_content"] = reasoning_content
+        reasoning_details = msg_obj.additional_kwargs.get("reasoning_details")
+        if reasoning_details is not None:
+            msg_dict["reasoning_details"] = reasoning_details
 
     return payload

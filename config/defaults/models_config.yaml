@@ -77,7 +77,7 @@ providers:
   url_suffix: /v1
   auto_append_path: true
   supports_model_list: true
-  sdk_class: openai
+  sdk_class: openrouter
 - id: anthropic
   name: Anthropic
   type: builtin

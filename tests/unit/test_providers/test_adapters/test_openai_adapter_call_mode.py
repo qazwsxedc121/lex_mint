@@ -78,7 +78,10 @@ def test_interleaved_wrapper_injects_reasoning_content_for_tool_call_messages():
         AIMessage(
             content="",
             tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
-            additional_kwargs={"reasoning_content": "I should calculate first."},
+            additional_kwargs={
+                "reasoning_content": "I should calculate first.",
+                "reasoning_details": [{"type": "reasoning.text", "text": "internal"}],
+            },
         ),
         ToolMessage(content="2", tool_call_id="call_1"),
     ]
@@ -86,6 +89,7 @@ def test_interleaved_wrapper_injects_reasoning_content_for_tool_call_messages():
     payload = llm._get_request_payload(messages)
     assistant_payload = payload["messages"][1]
     assert assistant_payload["reasoning_content"] == "I should calculate first."
+    assert assistant_payload["reasoning_details"] == [{"type": "reasoning.text", "text": "internal"}]
 
 
 def test_interleaved_wrapper_skips_reasoning_content_when_disabled():

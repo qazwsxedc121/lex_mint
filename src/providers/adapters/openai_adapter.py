@@ -1,7 +1,7 @@
 """
 OpenAI SDK Adapter
 
-Adapter for OpenAI and OpenAI-compatible APIs (OpenRouter, Groq, Together, etc.)
+Adapter for OpenAI and OpenAI-compatible APIs without dedicated adapters.
 """
 import logging
 from typing import AsyncIterator, List, Dict, Any
@@ -41,7 +41,7 @@ class OpenAIAdapter(BaseLLMAdapter):
     """
     Adapter for OpenAI SDK.
 
-    Supports OpenAI API and compatible providers like OpenRouter, Groq, Together AI.
+    Supports OpenAI API and compatible providers like Groq and Together AI.
     """
 
     @staticmethod
