@@ -17,12 +17,17 @@ from ..models.model_config import (
     ProviderTestRequest,
     ProviderTestStoredRequest,
     ProviderTestResponse,
+    ProviderEndpointProbeRequest,
+    ProviderEndpointProbeResponse,
+    ProviderEndpointProfilesResponse,
     ModelTestRequest,
 )
 from ..services.model_config_service import ModelConfigService
+from ..services.provider_probe_service import ProviderProbeService
 from src.providers import (
     BUILTIN_PROVIDERS,
     ModelCapabilities,
+    EndpointProfile,
     get_builtin_provider,
 )
 from src.providers.model_capability_rules import apply_model_capability_hints
@@ -50,6 +55,8 @@ class BuiltinProviderInfo(BaseModel):
     sdk_class: str
     supports_model_list: bool
     default_capabilities: ModelCapabilities
+    endpoint_profiles: List[EndpointProfile] = Field(default_factory=list)
+    default_endpoint_profile_id: Optional[str] = None
 
 
 class ModelInfo(BaseModel):
@@ -77,6 +84,8 @@ async def get_builtin_providers():
             sdk_class=definition.sdk_class,
             supports_model_list=definition.supports_model_list,
             default_capabilities=definition.default_capabilities,
+            endpoint_profiles=definition.endpoint_profiles,
+            default_endpoint_profile_id=definition.default_endpoint_profile_id,
         ))
     return result
 
@@ -104,6 +113,8 @@ async def get_builtin_provider_info(provider_id: str):
         sdk_class=definition.sdk_class,
         supports_model_list=definition.supports_model_list,
         default_capabilities=definition.default_capabilities,
+        endpoint_profiles=definition.endpoint_profiles,
+        default_endpoint_profile_id=definition.default_endpoint_profile_id,
     )
 
 
@@ -153,6 +164,7 @@ async def create_provider(
             protocol=provider_data.protocol,
             call_mode=provider_data.call_mode,
             base_url=provider_data.base_url,
+            endpoint_profile_id=provider_data.endpoint_profile_id,
             enabled=provider_data.enabled,
             default_capabilities=provider_data.default_capabilities,
             auto_append_path=provider_data.auto_append_path,
@@ -193,6 +205,26 @@ async def update_provider(
             updated_data['call_mode'] = provider_update.call_mode
         if provider_update.base_url is not None:
             updated_data['base_url'] = provider_update.base_url
+            resolved_profile_id = service.resolve_endpoint_profile_id_for_base_url(
+                existing,
+                provider_update.base_url,
+            )
+            updated_data['endpoint_profile_id'] = resolved_profile_id or "custom"
+        if provider_update.endpoint_profile_id is not None:
+            resolved_base_url = None
+            if provider_update.endpoint_profile_id and provider_update.endpoint_profile_id != "custom":
+                resolved_base_url = service.resolve_endpoint_profile_base_url(
+                    existing,
+                    provider_update.endpoint_profile_id,
+                )
+                if not resolved_base_url:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unknown endpoint profile '{provider_update.endpoint_profile_id}' for provider '{provider_id}'",
+                    )
+            updated_data['endpoint_profile_id'] = provider_update.endpoint_profile_id
+            if resolved_base_url:
+                updated_data['base_url'] = resolved_base_url
         if provider_update.enabled is not None:
             updated_data['enabled'] = provider_update.enabled
         if provider_update.default_capabilities is not None:
@@ -214,6 +246,72 @@ async def update_provider(
         return {"message": "Provider updated successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get(
+    "/providers/{provider_id}/endpoint-profiles",
+    response_model=ProviderEndpointProfilesResponse,
+)
+async def get_provider_endpoint_profiles(
+    provider_id: str,
+    client_region_hint: str = "unknown",
+    service: ModelConfigService = Depends(get_model_service),
+):
+    """获取 provider 的 endpoint 配置列表。"""
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    profiles = service.get_endpoint_profiles_for_provider(provider)
+    recommended_profile_id = service.recommend_endpoint_profile_id(
+        provider,
+        client_region_hint=client_region_hint,
+    )
+
+    return ProviderEndpointProfilesResponse(
+        provider_id=provider_id,
+        current_endpoint_profile_id=provider.endpoint_profile_id,
+        current_base_url=provider.base_url,
+        endpoint_profiles=profiles,
+        recommended_endpoint_profile_id=recommended_profile_id,
+    )
+
+
+@router.post(
+    "/providers/{provider_id}/probe-endpoints",
+    response_model=ProviderEndpointProbeResponse,
+)
+async def probe_provider_endpoints(
+    provider_id: str,
+    probe_request: ProviderEndpointProbeRequest,
+    service: ModelConfigService = Depends(get_model_service),
+):
+    """执行 provider endpoint 诊断（自动或手动）。"""
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    if not probe_request.strict:
+        raise HTTPException(status_code=400, detail="Only strict mode is supported")
+
+    api_key = ""
+    if probe_request.use_stored_key:
+        api_key = (await service.get_api_key(provider_id)) or ""
+    elif probe_request.api_key:
+        api_key = probe_request.api_key
+
+    if service.provider_requires_api_key(provider) and not api_key:
+        raise HTTPException(status_code=400, detail="No API key available for endpoint probing")
+
+    probe_service = ProviderProbeService(service)
+    try:
+        return await probe_service.probe(
+            provider,
+            request=probe_request,
+            api_key=api_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/providers/{provider_id}")

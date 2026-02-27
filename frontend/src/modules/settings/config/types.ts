@@ -72,7 +72,9 @@ export interface SelectFieldConfig extends BaseFieldConfig {
   /** Static options */
   options?: Array<{ value: string; label: string; disabled?: boolean }>;
   /** Dynamic options from context */
-  dynamicOptions?: (context: any) => Array<{ value: string; label: string; disabled?: boolean }>;
+  dynamicOptions?: (context: any, formData?: any) => Array<{ value: string; label: string; disabled?: boolean }>;
+  /** Optional side effects when value changes, merged into form state */
+  onChangeEffect?: (value: string, formData: any, context: any) => Record<string, any> | undefined;
   /** Allow empty selection */
   allowEmpty?: boolean;
   /** Empty option label */
@@ -155,7 +157,7 @@ export interface MultiSelectFieldConfig extends BaseFieldConfig {
   /** Static options */
   options?: Array<{ value: string; label: string; disabled?: boolean }>;
   /** Dynamic options from context */
-  dynamicOptions?: (context: any) => Array<{ value: string; label: string; disabled?: boolean }>;
+  dynamicOptions?: (context: any, formData?: any) => Array<{ value: string; label: string; disabled?: boolean }>;
 }
 
 /**
@@ -202,6 +204,19 @@ export interface ModelIdFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Provider endpoint diagnostics field.
+ */
+export interface EndpointProbeFieldConfig extends BaseFieldConfig {
+  type: 'endpoint-probe';
+  /** Field name containing provider id */
+  providerIdField?: string;
+  /** Field name containing base url */
+  baseUrlField?: string;
+  /** Field name containing endpoint profile id */
+  endpointProfileIdField?: string;
+}
+
+/**
  * Union type of all field configurations
  */
 export type FieldConfig =
@@ -215,7 +230,8 @@ export type FieldConfig =
   | MultiSelectFieldConfig
   | TemplateVariablesFieldConfig
   | PresetFieldConfig
-  | ModelIdFieldConfig;
+  | ModelIdFieldConfig
+  | EndpointProbeFieldConfig;
 
 // ==================== Table Configuration ====================
 

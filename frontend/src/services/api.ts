@@ -4,7 +4,18 @@
 
 import axios from 'axios';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
-import type { Provider, Model, DefaultConfig } from '../types/model';
+import type {
+  Provider,
+  Model,
+  DefaultConfig,
+  BuiltinProviderInfo,
+  ModelInfo,
+  CapabilitiesResponse,
+  ProtocolInfo,
+  ProviderEndpointProbeRequest,
+  ProviderEndpointProbeResponse,
+  ProviderEndpointProfilesResponse,
+} from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult, DirectoryEntry } from '../types/project';
 import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, KnowledgeBaseChunk, RagConfig } from '../types/knowledgeBase';
@@ -1490,13 +1501,33 @@ export async function testProviderStoredConnection(
   return response.data;
 }
 
+/**
+ * Probe provider endpoints (auto/manual diagnostics).
+ */
+export async function probeProviderEndpoints(
+  providerId: string,
+  payload: ProviderEndpointProbeRequest
+): Promise<ProviderEndpointProbeResponse> {
+  const response = await api.post<ProviderEndpointProbeResponse>(
+    `/api/models/providers/${providerId}/probe-endpoints`,
+    payload
+  );
+  return response.data;
+}
 
-import type {
-  BuiltinProviderInfo,
-  ModelInfo,
-  CapabilitiesResponse,
-  ProtocolInfo,
-} from '../types/model';
+/**
+ * List endpoint profiles for a provider.
+ */
+export async function listProviderEndpointProfiles(
+  providerId: string,
+  clientRegionHint: 'cn' | 'global' | 'unknown' = 'unknown'
+): Promise<ProviderEndpointProfilesResponse> {
+  const response = await api.get<ProviderEndpointProfilesResponse>(
+    `/api/models/providers/${providerId}/endpoint-profiles?client_region_hint=${clientRegionHint}`
+  );
+  return response.data;
+}
+
 
 /**
  * List built-in providers.

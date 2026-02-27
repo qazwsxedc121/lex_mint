@@ -169,6 +169,23 @@ class ModelCapabilities(BaseModel):
         return ModelCapabilities(**base_dict)
 
 
+class EndpointProfile(BaseModel):
+    """Named endpoint option for providers with multiple official API domains."""
+
+    id: str = Field(..., description="Unique profile identifier")
+    label: str = Field(..., description="Display label in settings UI")
+    base_url: str = Field(..., description="API base URL for this profile")
+    region_tags: List[str] = Field(
+        default_factory=list,
+        description="Optional region hints, e.g. ['cn'] or ['global']",
+    )
+    priority: int = Field(default=100, description="Lower means preferred when equally healthy")
+    probe_method: str = Field(
+        default="openai_models",
+        description="Probe strategy key for endpoint diagnosis",
+    )
+
+
 class ProviderDefinition(BaseModel):
     """
     Built-in provider definition.
@@ -187,6 +204,14 @@ class ProviderDefinition(BaseModel):
     url_suffix: str = Field(default="/v1", description="URL suffix for API calls")
     auto_append_path: bool = Field(default=True, description="Auto-append path to base URL")
     supports_model_list: bool = Field(default=False, description="Supports fetching model list via API")
+    endpoint_profiles: List[EndpointProfile] = Field(
+        default_factory=list,
+        description="Optional endpoint profiles for region/domain selection",
+    )
+    default_endpoint_profile_id: Optional[str] = Field(
+        default=None,
+        description="Default endpoint profile id for this provider",
+    )
 
 
 class ProviderConfig(BaseModel):
@@ -205,6 +230,10 @@ class ProviderConfig(BaseModel):
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API protocol type")
     call_mode: CallMode = Field(default=CallMode.AUTO, description="Provider call mode")
     base_url: str = Field(..., description="API base URL")
+    endpoint_profile_id: Optional[str] = Field(
+        default=None,
+        description="Selected endpoint profile id for providers with multiple endpoints",
+    )
     api_keys: List[str] = Field(default_factory=list, description="Multiple API keys for rotation")
 
     # === State ===
@@ -221,6 +250,10 @@ class ProviderConfig(BaseModel):
     auto_append_path: bool = Field(default=True, description="Auto-append path to base URL")
     supports_model_list: bool = Field(default=False, description="Supports fetching model list")
     sdk_class: Optional[str] = Field(default=None, description="Override SDK adapter class")
+    endpoint_profiles: List[EndpointProfile] = Field(
+        default_factory=list,
+        description="Available endpoint profile options",
+    )
 
     # === Runtime fields (not persisted) ===
     has_api_key: Optional[bool] = Field(default=None, exclude=True, description="Whether API key is configured")

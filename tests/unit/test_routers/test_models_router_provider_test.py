@@ -5,9 +5,15 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi import HTTPException
 
-from src.api.models.model_config import Provider, ProviderTestStoredRequest
+from src.api.models.model_config import (
+    Provider,
+    ProviderTestStoredRequest,
+    ProviderEndpointProbeRequest,
+    ProviderEndpointProbeResponse,
+    ProviderEndpointProbeResult,
+)
 from src.api.routers import models as models_router
-from src.providers.types import ApiProtocol, CallMode, ProviderType
+from src.providers.types import ApiProtocol, CallMode, ProviderType, EndpointProfile
 
 
 def _provider(
@@ -99,6 +105,83 @@ async def test_builtin_provider_catalog_uses_dynamic_model_discovery():
 async def test_builtin_provider_info_hides_static_model_list():
     info = await models_router.get_builtin_provider_info("volcengine")
     assert "builtin_models" not in info.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_builtin_provider_catalog_includes_minimax_and_endpoint_profiles():
+    providers = await models_router.get_builtin_providers()
+    minimax = next(p for p in providers if p.id == "minimax")
+    stepfun = next(p for p in providers if p.id == "stepfun")
+
+    assert minimax.supports_model_list is True
+    assert minimax.base_url.startswith("https://api.minimax")
+    assert len(stepfun.endpoint_profiles) >= 2
+    assert any(profile.id == "stepfun-global" for profile in stepfun.endpoint_profiles)
+
+
+@pytest.mark.asyncio
+async def test_probe_provider_endpoints_uses_stored_key(monkeypatch):
+    service = Mock()
+    provider = _provider(
+        provider_id="stepfun",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.stepfun.com/v1",
+    )
+    provider.endpoint_profile_id = "stepfun-cn"
+    provider.endpoint_profiles = [
+        EndpointProfile(
+            id="stepfun-cn",
+            label="CN",
+            base_url="https://api.stepfun.com/v1",
+            region_tags=["cn"],
+            priority=10,
+            probe_method="openai_models",
+        )
+    ]
+
+    service.get_provider = AsyncMock(return_value=provider)
+    service.get_api_key = AsyncMock(return_value="stored-key")
+    service.provider_requires_api_key = Mock(return_value=True)
+
+    class FakeProbeService:
+        def __init__(self, _service):
+            self._service = _service
+
+        async def probe(self, _provider, request, api_key):
+            assert request.mode == "auto"
+            assert api_key == "stored-key"
+            return ProviderEndpointProbeResponse(
+                provider_id="stepfun",
+                results=[
+                    ProviderEndpointProbeResult(
+                        endpoint_profile_id="stepfun-cn",
+                        label="CN",
+                        base_url="https://api.stepfun.com/v1",
+                        success=True,
+                        classification="ok",
+                        http_status=200,
+                        latency_ms=18,
+                        message="Connection successful",
+                        detected_model_count=2,
+                        priority=10,
+                        region_tags=["cn"],
+                    )
+                ],
+                recommended_endpoint_profile_id="stepfun-cn",
+                recommended_base_url="https://api.stepfun.com/v1",
+                summary="Found 1 reachable endpoint(s)",
+            )
+
+    monkeypatch.setattr(models_router, "ProviderProbeService", FakeProbeService)
+
+    response = await models_router.probe_provider_endpoints(
+        "stepfun",
+        ProviderEndpointProbeRequest(mode="auto", use_stored_key=True, strict=True),
+        service,
+    )
+
+    assert response.recommended_endpoint_profile_id == "stepfun-cn"
+    assert response.results[0].success is True
 
 
 @pytest.mark.asyncio

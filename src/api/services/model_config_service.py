@@ -15,6 +15,7 @@ from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
 from src.providers import (
     AdapterRegistry,
     ModelCapabilities,
+    EndpointProfile,
     ReasoningControls,
     CallMode,
     ProviderType,
@@ -146,6 +147,7 @@ class ModelConfigService:
             "protocol": definition.protocol.value,
             "call_mode": "auto",
             "base_url": definition.base_url,
+            "endpoint_profile_id": definition.default_endpoint_profile_id,
             "api_keys": [],
             "enabled": enabled,
             "default_capabilities": definition.default_capabilities.model_dump(mode="json"),
@@ -153,6 +155,10 @@ class ModelConfigService:
             "auto_append_path": definition.auto_append_path,
             "supports_model_list": definition.supports_model_list,
             "sdk_class": definition.sdk_class,
+            "endpoint_profiles": [
+                profile.model_dump(mode="json")
+                for profile in definition.endpoint_profiles
+            ],
         }
 
     def _model_from_definition(
@@ -330,6 +336,21 @@ class ModelConfigService:
                     if provider_entry.get("sdk_class") != definition.sdk_class:
                         provider_entry["sdk_class"] = definition.sdk_class
                         changed = True
+                    profile_payload = [
+                        profile.model_dump(mode="json")
+                        for profile in definition.endpoint_profiles
+                    ]
+                    if provider_entry.get("endpoint_profiles") != profile_payload:
+                        provider_entry["endpoint_profiles"] = profile_payload
+                        changed = True
+                    if not provider_entry.get("endpoint_profile_id"):
+                        resolved_profile = self._resolve_endpoint_profile_id_by_url(
+                            definition.endpoint_profiles,
+                            str(provider_entry.get("base_url", "")),
+                        ) or definition.default_endpoint_profile_id
+                        if resolved_profile:
+                            provider_entry["endpoint_profile_id"] = resolved_profile
+                            changed = True
 
                     provider_caps = provider_entry.get("default_capabilities")
                     if isinstance(provider_caps, dict):
@@ -482,6 +503,22 @@ class ModelConfigService:
         temp_path.replace(self.keys_path)
 
     @staticmethod
+    def _normalize_url(value: str) -> str:
+        return str(value or "").strip().rstrip("/")
+
+    @classmethod
+    def _resolve_endpoint_profile_id_by_url(
+        cls,
+        endpoint_profiles: list[EndpointProfile],
+        base_url: str,
+    ) -> Optional[str]:
+        normalized_base = cls._normalize_url(base_url)
+        for profile in endpoint_profiles:
+            if cls._normalize_url(profile.base_url) == normalized_base:
+                return profile.id
+        return None
+
+    @staticmethod
     def _same_path(path_a: Path, path_b: Path) -> bool:
         try:
             return path_a.expanduser().resolve() == path_b.expanduser().resolve()
@@ -596,6 +633,49 @@ class ModelConfigService:
 
                 return Provider(**provider_dict)
         return None
+
+    def get_endpoint_profiles_for_provider(self, provider: Provider) -> list[EndpointProfile]:
+        """Resolve endpoint profiles from builtin definitions first, then provider config."""
+        builtin = get_builtin_provider(provider.id)
+        if builtin and builtin.endpoint_profiles:
+            return list(builtin.endpoint_profiles)
+        if provider.endpoint_profiles:
+            return list(provider.endpoint_profiles)
+        return []
+
+    def resolve_endpoint_profile_base_url(self, provider: Provider, endpoint_profile_id: str) -> Optional[str]:
+        """Resolve the base URL for a given endpoint profile id."""
+        for profile in self.get_endpoint_profiles_for_provider(provider):
+            if profile.id == endpoint_profile_id:
+                return profile.base_url
+        return None
+
+    def resolve_endpoint_profile_id_for_base_url(self, provider: Provider, base_url: str) -> Optional[str]:
+        """Resolve endpoint profile id by matching base URL."""
+        return self._resolve_endpoint_profile_id_by_url(
+            self.get_endpoint_profiles_for_provider(provider),
+            base_url,
+        )
+
+    def recommend_endpoint_profile_id(
+        self,
+        provider: Provider,
+        client_region_hint: str = "unknown",
+    ) -> Optional[str]:
+        """Recommend endpoint profile by region hint + profile priority."""
+        profiles = self.get_endpoint_profiles_for_provider(provider)
+        if not profiles:
+            return None
+
+        hint = (client_region_hint or "unknown").strip().lower()
+        best = sorted(
+            profiles,
+            key=lambda p: (
+                0 if hint != "unknown" and hint in [tag.lower() for tag in p.region_tags] else 1,
+                p.priority,
+            ),
+        )[0]
+        return best.id
 
     def _mask_api_key(self, api_key: str) -> str:
         """
@@ -902,6 +982,8 @@ class ModelConfigService:
                 protocol=provider.protocol,
                 call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
                 base_url=base_url,
+                endpoint_profile_id=provider.endpoint_profile_id,
+                endpoint_profiles=provider.endpoint_profiles,
                 sdk_class=provider.sdk_class,
             )
             adapter = AdapterRegistry.get_for_provider(provider_cfg)
@@ -1154,9 +1236,11 @@ class ModelConfigService:
             protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
             call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
             base_url=provider.base_url,
+            endpoint_profile_id=provider.endpoint_profile_id,
             enabled=provider.enabled,
             default_capabilities=provider.default_capabilities,
             sdk_class=provider.sdk_class if hasattr(provider, 'sdk_class') else None,
+            endpoint_profiles=provider.endpoint_profiles if hasattr(provider, 'endpoint_profiles') else [],
         )
 
     def get_adapter_for_provider(self, provider: Provider):
