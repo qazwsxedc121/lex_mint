@@ -768,6 +768,14 @@ class ModelConfigService:
             # 复合ID格式：provider_id:model_id
             for i, model in enumerate(config.models):
                 if model.id == simple_model_id and model.provider_id == provider_id:
+                    if (
+                        model.provider_id == config.default.provider
+                        and model.id == config.default.model
+                        and not bool(updated.enabled)
+                    ):
+                        raise ValueError(
+                            "Cannot disable default model. Set another default model first."
+                        )
                     config.models[i] = updated
                     await self.save_config(config)
                     return
@@ -775,6 +783,14 @@ class ModelConfigService:
             # 简单ID（包括可能包含冒号的模型ID）
             for i, model in enumerate(config.models):
                 if model.id == model_id:
+                    if (
+                        model.provider_id == config.default.provider
+                        and model.id == config.default.model
+                        and not bool(updated.enabled)
+                    ):
+                        raise ValueError(
+                            "Cannot disable default model. Set another default model first."
+                        )
                     config.models[i] = updated
                     await self.save_config(config)
                     return
@@ -862,6 +878,14 @@ class ModelConfigService:
             raise ValueError(f"Model with id '{model_id}' not found")
         if model.provider_id != provider_id:
             raise ValueError(f"Model '{model_id}' does not belong to provider '{provider_id}'")
+        if not bool(model.enabled):
+            raise ValueError(f"Model '{model_id}' is disabled and cannot be set as default")
+
+        provider = next((p for p in config.providers if p.id == provider_id), None)
+        if not provider:
+            raise ValueError(f"Provider with id '{provider_id}' not found")
+        if not bool(provider.enabled):
+            raise ValueError(f"Provider '{provider_id}' is disabled and cannot be set as default")
 
         config.default.provider = provider_id
         config.default.model = model_id
@@ -938,30 +962,65 @@ class ModelConfigService:
             config = ModelsConfig(**data)
 
         # 确定使用哪个模型
-        if model_id is None:
-            model_id = f"{config.default.provider}:{config.default.model}"
+        requested_model_id = model_id
+        if requested_model_id is None:
+            requested_model_id = f"{config.default.provider}:{config.default.model}"
 
         # 查找模型（支持复合ID）
-        model = None
-        if ':' in model_id:
-            provider_id, simple_model_id = model_id.split(':', 1)
-            model = next(
-                (m for m in config.models
-                 if m.id == simple_model_id and m.provider_id == provider_id),
-                None
-            )
-        else:
-            model = next((m for m in config.models if m.id == model_id), None)
+        model = self._find_model_in_config(config, requested_model_id)
 
         if not model:
-            raise ValueError(f"Model with id '{model_id}' not found")
+            raise ValueError(f"Model with id '{requested_model_id}' not found")
 
         # 查找提供商
         provider = next((p for p in config.providers if p.id == model.provider_id), None)
         if not provider:
             raise ValueError(f"Provider with id '{model.provider_id}' not found")
 
+        # If default points to a disabled target, fallback to the single enabled model.
+        if model_id is None and (not bool(model.enabled) or not bool(provider.enabled)):
+            fallback = self._find_single_enabled_model_and_provider(config)
+            if fallback is not None:
+                fallback_model, fallback_provider = fallback
+                logger.warning(
+                    "Default model '%s' is disabled; falling back to enabled model '%s:%s'",
+                    requested_model_id,
+                    fallback_provider.id,
+                    fallback_model.id,
+                )
+                return fallback_model, fallback_provider
+
         return model, provider
+
+    @staticmethod
+    def _find_model_in_config(config: ModelsConfig, model_id: str) -> Optional[Model]:
+        if ":" in model_id:
+            provider_id, simple_model_id = model_id.split(":", 1)
+            return next(
+                (
+                    m
+                    for m in config.models
+                    if m.id == simple_model_id and m.provider_id == provider_id
+                ),
+                None,
+            )
+        return next((m for m in config.models if m.id == model_id), None)
+
+    @staticmethod
+    def _find_single_enabled_model_and_provider(
+        config: ModelsConfig,
+    ) -> Optional[Tuple[Model, Provider]]:
+        providers_by_id = {p.id: p for p in config.providers}
+        candidates: List[Tuple[Model, Provider]] = []
+        for model in config.models:
+            provider = providers_by_id.get(model.provider_id)
+            if provider is None:
+                continue
+            if bool(model.enabled) and bool(provider.enabled):
+                candidates.append((model, provider))
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
 
     def get_merged_capabilities(
         self,
@@ -1183,8 +1242,9 @@ class ModelConfigService:
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
         frequency_penalty: Optional[float] = None,
-        presence_penalty: Optional[float] = None
-    ) -> ChatOpenAI:
+        presence_penalty: Optional[float] = None,
+        disable_thinking: bool = False,
+    ) -> Any:
         """
         创建 LLM 实例（同步方法）
 
@@ -1205,53 +1265,67 @@ class ModelConfigService:
             config = ModelsConfig(**data)
 
         # 确定使用哪个模型
-        if model_id is None:
+        requested_model_id = model_id
+        if requested_model_id is None:
             # 使用默认模型（复合ID）
-            model_id = f"{config.default.provider}:{config.default.model}"
+            requested_model_id = f"{config.default.provider}:{config.default.model}"
 
         # 查找模型（支持复合ID）
-        model = None
-        if ':' in model_id:
-            provider_id, simple_model_id = model_id.split(':', 1)
-            model = next(
-                (m for m in config.models
-                 if m.id == simple_model_id and m.provider_id == provider_id),
-                None
-            )
-        else:
-            # 简单ID：直接匹配（向后兼容）
-            model = next((m for m in config.models if m.id == model_id), None)
+        model = self._find_model_in_config(config, requested_model_id)
 
         if not model:
-            raise ValueError(f"Model with id '{model_id}' not found")
+            raise ValueError(f"Model with id '{requested_model_id}' not found")
 
         # 查找提供商
         provider = next((p for p in config.providers if p.id == model.provider_id), None)
         if not provider:
             raise ValueError(f"Provider with id '{model.provider_id}' not found")
 
+        # If default points to a disabled target, fallback to the single enabled model.
+        if model_id is None and (not bool(model.enabled) or not bool(provider.enabled)):
+            fallback = self._find_single_enabled_model_and_provider(config)
+            if fallback is not None:
+                fallback_model, fallback_provider = fallback
+                logger.warning(
+                    "Default model '%s' is disabled; falling back to enabled model '%s:%s'",
+                    requested_model_id,
+                    fallback_provider.id,
+                    fallback_model.id,
+                )
+                model = fallback_model
+                provider = fallback_provider
+
         api_key = self.resolve_provider_api_key_sync(provider)
 
-        # 创建 LLM 实例
-        model_kwargs = {}
-        if top_p is not None:
-            model_kwargs["top_p"] = top_p
-        if top_k is not None:
-            model_kwargs["top_k"] = top_k
-        if frequency_penalty is not None:
-            model_kwargs["frequency_penalty"] = frequency_penalty
-        if presence_penalty is not None:
-            model_kwargs["presence_penalty"] = presence_penalty
+        adapter = self.get_adapter_for_provider(provider)
+        resolved_call_mode = self.resolve_effective_call_mode(provider)
+        effective_call_mode = (
+            resolved_call_mode.value
+            if isinstance(resolved_call_mode, CallMode)
+            else str(resolved_call_mode)
+        )
+        capabilities = self.get_merged_capabilities(model, provider)
 
-        build_kwargs = {
+        create_kwargs: Dict[str, Any] = {
             "model": model.id,
-            "temperature": 0.7 if temperature is None else temperature,
             "base_url": provider.base_url,
             "api_key": api_key,
+            "temperature": 0.7 if temperature is None else temperature,
+            "streaming": False,
+            "call_mode": effective_call_mode,
+            "requires_interleaved_thinking": bool(capabilities.requires_interleaved_thinking),
         }
         if max_tokens is not None:
-            build_kwargs["max_tokens"] = max_tokens
-        if model_kwargs:
-            build_kwargs["model_kwargs"] = model_kwargs
+            create_kwargs["max_tokens"] = max_tokens
+        if top_p is not None:
+            create_kwargs["top_p"] = top_p
+        if top_k is not None:
+            create_kwargs["top_k"] = top_k
+        if frequency_penalty is not None:
+            create_kwargs["frequency_penalty"] = frequency_penalty
+        if presence_penalty is not None:
+            create_kwargs["presence_penalty"] = presence_penalty
+        if disable_thinking:
+            create_kwargs["disable_thinking"] = True
 
-        return ChatOpenAI(**build_kwargs)
+        return adapter.create_llm(**create_kwargs)

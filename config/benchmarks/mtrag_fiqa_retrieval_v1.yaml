@@ -1,0 +1,20 @@
+benchmark:
+  name: mtrag_fiqa_retrieval_v1
+  domain: fiqa
+  queries_path: learn_proj/mt-rag-benchmark/human/retrieval_tasks/fiqa/fiqa_rewrite.jsonl
+  qrels_path: learn_proj/mt-rag-benchmark/human/retrieval_tasks/fiqa/qrels/dev.tsv
+
+  # Set to the KB that contains imported MTRAG FiQA passage corpus.
+  kb_ids:
+    - kb_mtrag_fiqa_v1
+
+  # Retrieval evaluation setup aligned with MTRAG retrieval README.
+  top_k: 10
+  modes:
+    - bm25
+    - vector
+    - hybrid
+  score_threshold: 0.0
+  bm25_min_term_coverage: 0.0
+  max_cases: null
+  runtime_model_id: null
