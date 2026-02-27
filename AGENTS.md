@@ -44,6 +44,7 @@ npm run lint
 
 ## Commit and Pull Request Guidelines
 - Commit history uses short, lowercase summaries, often imperative and sometimes comma-separated (example: "fix switch project bug, change some ui bug").
+- Do not run `git commit` unless the user explicitly asks for a commit in the current task.
 - PRs should describe what and why, note config changes, and include screenshots or a short clip for UI changes.
 
 ## Security and Configuration Tips

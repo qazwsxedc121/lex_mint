@@ -81,6 +81,7 @@ class KnowledgeBaseService:
             return str(self.config_path).lower()
 
     def _doc_store_key(self) -> str:
+        self._ensure_doc_store_paths()
         try:
             return str(self.docs_snapshot_path.resolve()).lower()
         except Exception:
@@ -90,7 +91,22 @@ class KnowledgeBaseService:
     def _doc_cache_key(kb_id: str, doc_id: str) -> str:
         return f"{kb_id}::{doc_id}"
 
+    def _ensure_doc_store_paths(self) -> None:
+        if hasattr(self, "docs_snapshot_path") and hasattr(self, "docs_events_path"):
+            return
+
+        if hasattr(self, "config_path"):
+            state_dir = Path(self.config_path).parent
+        elif hasattr(self, "storage_dir"):
+            state_dir = Path(self.storage_dir)
+        else:
+            state_dir = data_state_dir()
+
+        self.docs_snapshot_path = state_dir / "knowledge_base_documents.snapshot.jsonl"
+        self.docs_events_path = state_dir / "knowledge_base_documents.events.jsonl"
+
     def _ensure_doc_store_files_exist(self) -> None:
+        self._ensure_doc_store_paths()
         self.docs_snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.docs_snapshot_path.exists():
             self.docs_snapshot_path.write_text("", encoding="utf-8")
@@ -154,6 +170,7 @@ class KnowledgeBaseService:
         await self.save_config(config)
 
     async def _ensure_docs_cache_loaded(self) -> None:
+        self._ensure_doc_store_files_exist()
         store_key = self._doc_store_key()
         async with self._docs_lock:
             await self._migrate_yaml_documents_if_needed()
@@ -506,6 +523,7 @@ class KnowledgeBaseService:
 
     async def delete_document(self, kb_id: str, doc_id: str):
         """Delete a document and its chunks"""
+        remaining_kb_doc_count: Optional[int] = None
         async with self._mutation_lock:
             await self._ensure_docs_cache_loaded()
             store_key = self._doc_store_key()
@@ -528,6 +546,28 @@ class KnowledgeBaseService:
                 self._docs_event_count[store_key] = int(self._docs_event_count.get(store_key, 0) or 0) + 1
                 self._docs_events_mtime_ns[store_key] = int(self.docs_events_path.stat().st_mtime_ns)
                 await self._compact_doc_events_if_needed(store_key)
+                remaining_kb_doc_count = sum(1 for doc in docs_map.values() if doc.kb_id == kb_id)
+
+            config = await self.load_config()
+            config_changed = False
+            existing_doc_count = len(config.documents)
+            config.documents = [doc for doc in config.documents if not (doc.kb_id == kb_id and doc.id == doc_id)]
+            if len(config.documents) != existing_doc_count:
+                config_changed = True
+
+            for idx, kb in enumerate(config.knowledge_bases):
+                if kb.id != kb_id:
+                    continue
+                kb_dict = kb.model_dump()
+                next_count = int(remaining_kb_doc_count or 0)
+                if int(kb_dict.get("document_count", 0) or 0) != next_count:
+                    kb_dict["document_count"] = next_count
+                    config.knowledge_bases[idx] = KnowledgeBase(**kb_dict)
+                    config_changed = True
+                break
+
+            if config_changed:
+                await self.save_config(config)
 
         # Remove file from storage
         doc_dir = self.storage_dir / kb_id / "documents"
