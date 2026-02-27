@@ -78,6 +78,25 @@ providers:
   auto_append_path: true
   supports_model_list: true
   sdk_class: openrouter
+- id: stepfun
+  name: StepFun
+  type: builtin
+  protocol: openai
+  base_url: https://api.stepfun.com/v1
+  api_keys: []
+  enabled: false
+  default_capabilities:
+    context_length: 128000
+    vision: false
+    function_calling: true
+    reasoning: true
+    streaming: true
+    file_upload: false
+    image_output: false
+  url_suffix: /v1
+  auto_append_path: true
+  supports_model_list: true
+  sdk_class: openai
 - id: anthropic
   name: Anthropic
   type: builtin

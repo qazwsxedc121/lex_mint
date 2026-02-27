@@ -113,6 +113,21 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         supports_model_list=True,
     ),
 
+    "stepfun": ProviderDefinition(
+        id="stepfun",
+        name="StepFun",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.stepfun.com/v1",
+        sdk_class="openai",
+        default_capabilities=ModelCapabilities(
+            context_length=128000,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        supports_model_list=True,
+    ),
+
     "openrouter": ProviderDefinition(
         id="openrouter",
         name="OpenRouter",

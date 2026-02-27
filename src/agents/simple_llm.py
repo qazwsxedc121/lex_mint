@@ -699,6 +699,13 @@ async def call_llm_stream(
                 allow_responses_fallback=allow_responses_fallback,
             )
             async for chunk in adapter.stream(active_llm, tool_loop_state.current_messages, **stream_kwargs):
+                # Prefer adapter-normalized chunk usage when present.
+                # Some OpenAI-compatible providers emit cumulative usage per chunk;
+                # relying on merged raw chunks can over-count those values.
+                chunk_usage = getattr(chunk, "usage", None)
+                if chunk_usage is not None:
+                    final_usage = chunk_usage
+
                 # Handle thinking/reasoning content
                 if chunk.thinking and not disable_thinking:
                     full_reasoning += chunk.thinking
@@ -729,7 +736,7 @@ async def call_llm_stream(
             # After stream ends: extract usage from merged chunk
             if merged_chunk is not None:
                 extracted_usage = TokenUsage.extract_from_chunk(merged_chunk)
-                if extracted_usage:
+                if extracted_usage and final_usage is None:
                     final_usage = extracted_usage
                 if not disable_thinking and not round_reasoning:
                     merged_kwargs = getattr(merged_chunk, "additional_kwargs", None) or {}

@@ -219,6 +219,69 @@ class TestCallLLMStream:
     @pytest.mark.asyncio
     @patch('src.agents.simple_llm.get_llm_logger')
     @patch('src.agents.simple_llm.ModelConfigService')
+    async def test_call_llm_stream_prefers_chunk_usage_over_merged_raw_usage(
+        self, mock_model_service_class, mock_logger
+    ):
+        """Avoid inflated usage when merged raw chunks over-count cumulative metadata."""
+        mock_model = Mock()
+        mock_model.id = "step-3.5-flash"
+
+        mock_provider = Mock()
+        mock_provider.id = "stepfun"
+        mock_provider.base_url = "https://api.stepfun.com/v1"
+
+        mock_capabilities = Mock()
+        mock_capabilities.reasoning = False
+
+        mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
+
+        mock_adapter = Mock()
+        mock_llm = Mock()
+        mock_adapter.create_llm.return_value = mock_llm
+
+        async def mock_stream(*args, **kwargs):
+            chunk = Mock()
+            chunk.content = "hello"
+            chunk.thinking = None
+            chunk.usage = TokenUsage(prompt_tokens=440, completion_tokens=95, total_tokens=535)
+            chunk.raw = None
+            yield chunk
+
+            inflated_raw = SimpleNamespace(
+                usage_metadata={
+                    "input_tokens": 44000,
+                    "output_tokens": 9526,
+                    "total_tokens": 53526,
+                }
+            )
+            final_chunk = Mock()
+            final_chunk.content = ""
+            final_chunk.thinking = None
+            final_chunk.usage = TokenUsage(prompt_tokens=440, completion_tokens=95, total_tokens=535)
+            final_chunk.raw = inflated_raw
+            yield final_chunk
+
+        mock_adapter.stream = mock_stream
+        mock_service.get_adapter_for_provider.return_value = mock_adapter
+        mock_model_service_class.return_value = mock_service
+        mock_logger.return_value = Mock()
+
+        result_chunks = []
+        async for chunk in call_llm_stream([{"role": "user", "content": "你好"}], session_id="test-session"):
+            result_chunks.append(chunk)
+
+        usage_chunks = [c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"]
+        assert len(usage_chunks) == 1
+        assert usage_chunks[0]["usage"].prompt_tokens == 440
+        assert usage_chunks[0]["usage"].completion_tokens == 95
+        assert usage_chunks[0]["usage"].total_tokens == 535
+
+    @pytest.mark.asyncio
+    @patch('src.agents.simple_llm.get_llm_logger')
+    @patch('src.agents.simple_llm.ModelConfigService')
     async def test_call_llm_stream_with_system_prompt(self, mock_model_service_class, mock_logger):
         """Test streaming with system prompt."""
         mock_model = Mock()
