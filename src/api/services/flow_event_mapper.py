@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
 
 from .flow_events import FlowEventStage, new_flow_event
 
@@ -18,6 +18,7 @@ class FlowEventMapper:
     stream_id: str
     conversation_id: Optional[str] = None
     default_turn_id: Optional[str] = None
+    seq_provider: Optional[Callable[[], int]] = None
     _seq: int = 0
 
     def to_sse_payload(self, chunk: StreamChunk) -> Dict[str, Any]:
@@ -50,6 +51,8 @@ class FlowEventMapper:
         }
 
     def _next_seq(self) -> int:
+        if self.seq_provider is not None:
+            return int(self.seq_provider())
         self._seq += 1
         return self._seq
 

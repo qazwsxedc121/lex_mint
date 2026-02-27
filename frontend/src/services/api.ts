@@ -113,6 +113,10 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function parseFlowEvent(value: unknown): FlowEvent | null {
   const record = asRecord(value);
   if (!record) {
@@ -944,6 +948,8 @@ export async function sendMessageStream(
         return 'handled';
       }
       case 'stream_started':
+      case 'resume_started':
+      case 'replay_finished':
         return 'handled';
       default:
         return 'unhandled';
@@ -984,174 +990,248 @@ export async function sendMessageStream(
       requestBody.file_references = fileReferences;
     }
 
-    const response = await fetch(`${API_BASE}/api/chat/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+    let activeStreamId: string | undefined;
+    let lastEventId: string | undefined;
+    let resumeAttempts = 0;
+    const resumeDelaysMs = [500, 1500];
 
+    const consumeResponse = async (response: Response): Promise<'done' | 'disconnected'> => {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+
+      try {
+        try {
+          for await (const dataStr of iterateSSEData(reader)) {
+            try {
+              const data = JSON.parse(dataStr);
+              const flowEvent = parseFlowEvent(data.flow_event);
+              if (flowEvent) {
+                activeStreamId = flowEvent.stream_id;
+                lastEventId = flowEvent.event_id;
+
+                const handleResult = handleFlowEvent(flowEvent);
+                if (handleResult === 'return') {
+                  return 'done';
+                }
+                if (handleResult === 'handled') {
+                  continue;
+                }
+              }
+
+              if (data.error) {
+                onError(data.error);
+                return 'done';
+              }
+
+              if (data.done) {
+                onDone();
+                return 'done';
+              }
+
+              // Handle usage/cost event
+              if (data.type === 'usage' && data.usage) {
+                if (onUsage) {
+                  onUsage(data.usage, data.cost);
+                }
+                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+                  onGroupEvent(data);
+                }
+                continue;
+              }
+
+              // Handle sources event
+              if (data.type === 'sources' && data.sources) {
+                if (onSources) {
+                  onSources(data.sources);
+                }
+                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+                  onGroupEvent(data);
+                }
+                continue;
+              }
+
+              // Handle user_message_id event
+              if (data.type === 'user_message_id' && data.message_id && onUserMessageId) {
+                onUserMessageId(data.message_id);
+                continue;
+              }
+
+              // Handle assistant_message_id event
+              if (data.type === 'assistant_message_id' && data.message_id) {
+                if (onAssistantMessageId) {
+                  onAssistantMessageId(data.message_id);
+                }
+                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+                  onGroupEvent(data);
+                }
+                continue;
+              }
+
+              // Handle followup_questions event
+              if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
+                onFollowupQuestions(data.questions);
+                continue;
+              }
+
+              // Handle context_info event
+              if (data.type === 'context_info' && onContextInfo) {
+                onContextInfo(data);
+                continue;
+              }
+
+              // Handle thinking_duration event
+              if (data.type === 'thinking_duration') {
+                if (onThinkingDuration) {
+                  onThinkingDuration(data.duration_ms);
+                }
+                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
+                  onGroupEvent(data);
+                }
+                continue;
+              }
+
+              // Handle tool_calls event
+              if (data.type === 'tool_calls' && data.calls && onToolCalls) {
+                onToolCalls(data.calls);
+                continue;
+              }
+
+              // Handle tool_results event
+              if (data.type === 'tool_results' && data.results && onToolResults) {
+                onToolResults(data.results);
+                continue;
+              }
+
+              // Handle assistant_start event (group chat)
+              if (data.type === 'assistant_start') {
+                if (onGroupEvent) {
+                  onGroupEvent(data);
+                } else if (onAssistantStart) {
+                  onAssistantStart(data.assistant_id, data.name, data.icon);
+                }
+                continue;
+              }
+
+              // Handle assistant_done event (group chat)
+              if (data.type === 'assistant_done') {
+                if (onGroupEvent) {
+                  onGroupEvent(data);
+                } else if (onAssistantDone) {
+                  onAssistantDone(data.assistant_id);
+                }
+                continue;
+              }
+
+              // Handle assistant_chunk event (group chat)
+              if (data.type === 'assistant_chunk' && data.chunk) {
+                if (onGroupEvent) {
+                  onGroupEvent(data);
+                } else {
+                  onChunk(data.chunk);
+                }
+                continue;
+              }
+
+              // Handle committee orchestration events
+              if (
+                onGroupEvent &&
+                (data.type === 'group_round_start' || data.type === 'group_action' || data.type === 'group_done')
+              ) {
+                onGroupEvent(data);
+                continue;
+              }
+
+              if (data.chunk) {
+                onChunk(data.chunk);
+              }
+            } catch {
+              // Ignore malformed SSE event payloads.
+              continue;
+            }
+          }
+          return 'disconnected';
+        } catch (streamError: unknown) {
+          if (streamError instanceof Error && streamError.name === 'AbortError') {
+            throw streamError;
+          }
+          return 'disconnected';
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    };
+
+    const openInitialStream = async (): Promise<Response> => {
+      return fetch(`${API_BASE}/api/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    };
+
+    const openResumeStream = async (): Promise<Response> => {
+      if (!activeStreamId || !lastEventId) {
+        throw new Error('Resume cursor is unavailable');
+      }
+      return fetch(`${API_BASE}/api/chat/stream/resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          stream_id: activeStreamId,
+          last_event_id: lastEventId,
+          context_type: contextType,
+          project_id: projectId,
+        }),
+        signal: controller.signal,
+      });
+    };
+
+    let response = await openInitialStream();
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const reader = response.body?.getReader();
-
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (flowEvent) {
-            const handleResult = handleFlowEvent(flowEvent);
-            if (handleResult === 'return') {
-              return;
-            }
-            if (handleResult === 'handled') {
-              continue;
-            }
-          }
-
-
-          if (data.error) {
-            onError(data.error);
-            return;
-          }
-
-          if (data.done) {
-            onDone();
-            return;
-          }
-
-          // Handle usage/cost event
-          if (data.type === 'usage' && data.usage) {
-            if (onUsage) {
-              onUsage(data.usage, data.cost);
-            }
-            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-              onGroupEvent(data);
-            }
-            continue;
-          }
-
-          // Handle sources event
-          if (data.type === 'sources' && data.sources) {
-            if (onSources) {
-              onSources(data.sources);
-            }
-            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-              onGroupEvent(data);
-            }
-            continue;
-          }
-
-          // Handle user_message_id event
-          if (data.type === 'user_message_id' && data.message_id && onUserMessageId) {
-            onUserMessageId(data.message_id);
-            continue;
-          }
-
-          // Handle assistant_message_id event
-          if (data.type === 'assistant_message_id' && data.message_id) {
-            if (onAssistantMessageId) {
-              onAssistantMessageId(data.message_id);
-            }
-            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-              onGroupEvent(data);
-            }
-            continue;
-          }
-
-          // Handle followup_questions event
-          if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
-            onFollowupQuestions(data.questions);
-            continue;
-          }
-
-          // Handle context_info event
-          if (data.type === 'context_info' && onContextInfo) {
-            onContextInfo(data);
-            continue;
-          }
-
-          // Handle thinking_duration event
-          if (data.type === 'thinking_duration') {
-            if (onThinkingDuration) {
-              onThinkingDuration(data.duration_ms);
-            }
-            if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-              onGroupEvent(data);
-            }
-            continue;
-          }
-
-          // Handle tool_calls event
-          if (data.type === 'tool_calls' && data.calls && onToolCalls) {
-            onToolCalls(data.calls);
-            continue;
-          }
-
-          // Handle tool_results event
-          if (data.type === 'tool_results' && data.results && onToolResults) {
-            onToolResults(data.results);
-            continue;
-          }
-
-          // Handle assistant_start event (group chat)
-          if (data.type === 'assistant_start') {
-            if (onGroupEvent) {
-              onGroupEvent(data);
-            } else if (onAssistantStart) {
-              onAssistantStart(data.assistant_id, data.name, data.icon);
-            }
-            continue;
-          }
-
-          // Handle assistant_done event (group chat)
-          if (data.type === 'assistant_done') {
-            if (onGroupEvent) {
-              onGroupEvent(data);
-            } else if (onAssistantDone) {
-              onAssistantDone(data.assistant_id);
-            }
-            continue;
-          }
-
-          // Handle assistant_chunk event (group chat)
-          if (data.type === 'assistant_chunk' && data.chunk) {
-            if (onGroupEvent) {
-              onGroupEvent(data);
-            } else {
-              onChunk(data.chunk);
-            }
-            continue;
-          }
-
-          // Handle committee orchestration events
-          if (
-            onGroupEvent &&
-            (data.type === 'group_round_start' || data.type === 'group_action' || data.type === 'group_done')
-          ) {
-            onGroupEvent(data);
-            continue;
-          }
-
-          if (data.chunk) {
-            onChunk(data.chunk);
-          }
-        } catch {
-          // Ignore malformed SSE event payloads.
-          continue;
-        }
+    while (true) {
+      const status = await consumeResponse(response);
+      if (status === 'done') {
+        return;
       }
-    } finally {
-      reader.releaseLock();
+
+      if (!activeStreamId || !lastEventId) {
+        throw new Error('Stream disconnected before flow_event cursor was available');
+      }
+
+      if (resumeAttempts >= resumeDelaysMs.length) {
+        throw new Error('Stream disconnected and resume retries were exhausted');
+      }
+
+      await sleep(resumeDelaysMs[resumeAttempts]);
+      resumeAttempts += 1;
+
+      response = await openResumeStream();
+      if (response.status === 410) {
+        onError('Stream resume cursor expired, please resend your message.');
+        return;
+      }
+      if (response.status === 404) {
+        onError('Stream not found for resume.');
+        return;
+      }
+      if (response.status === 409) {
+        onError('Stream context mismatch, please resend your message.');
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`Resume stream failed: ${response.status}`);
+      }
     }
   } catch (error: unknown) {
     // Handle abort as normal completion (keep partial content)

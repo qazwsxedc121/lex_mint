@@ -177,6 +177,30 @@ data: {"type":"usage","usage":{"prompt_tokens":12,"completion_tokens":8,"total_t
 data: {"done":true,"flow_event":{"event_type":"stream_ended","stage":"transport","payload":{"done":true}, ...}}
 ```
 
+### Resume Stream
+
+**POST** `/api/chat/stream/resume`
+
+Resume an existing stream from a known `flow_event.event_id` cursor.
+
+**Request Body:**
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "stream_id": "4c90cc1c-2819-4b4f-8f6e-daf7f0e1b5d4",
+  "last_event_id": "ec69a644-bf1a-44ef-87d4-3ec8a9f74587",
+  "context_type": "chat",
+  "project_id": null
+}
+```
+
+**Response:** Server-Sent Events stream (replayed events, then live events)
+
+**Error Codes:**
+- `404` with `code=stream_not_found`
+- `409` with `code=stream_context_mismatch`
+- `410` with `code=replay_cursor_gone`
+
 ### Delete Message
 
 **DELETE** `/api/chat/{session_id}/messages/{message_index}`

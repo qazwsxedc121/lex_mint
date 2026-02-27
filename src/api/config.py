@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Flow stream replay/resume runtime
+    flow_stream_ttl_seconds: int = 900
+    flow_stream_max_events: int = 5000
+    flow_stream_max_active: int = 200
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

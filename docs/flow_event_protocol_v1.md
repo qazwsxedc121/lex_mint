@@ -5,6 +5,7 @@ This document defines the `flow_event` envelope attached to chat SSE payloads.
 ## Scope
 
 - Stage 1 rollout target: `POST /api/chat/stream`
+- Stage 2 adds: `POST /api/chat/stream/resume`
 - Mode: backward compatible dual output
   - Legacy fields are preserved (`chunk`, `type`, `done`, `error`, ...)
   - New structured field is attached as `flow_event`
@@ -68,3 +69,11 @@ This document defines the `flow_event` envelope attached to chat SSE payloads.
 
 - Clients that do not parse `flow_event` continue to work with legacy fields.
 - Clients that parse `flow_event` should prefer it and ignore duplicated legacy fields.
+
+## Resume semantics (Stage 2)
+
+- Server keeps an in-memory replay window per `stream_id`.
+- Client can reconnect with `stream_id + last_event_id` to request replay.
+- On success, server replays events after `last_event_id`, then continues live events.
+- If `last_event_id` is no longer in replay window, server returns:
+  - HTTP `410`, code `replay_cursor_gone`

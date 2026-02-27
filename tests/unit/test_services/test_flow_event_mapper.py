@@ -51,3 +51,15 @@ def test_mapper_maps_transport_events_for_done_and_error():
     assert error_event["stage"] == "transport"
     assert error_event["payload"]["error"] == "boom"
     assert error_event["seq"] == done_event["seq"] + 1
+
+
+def test_mapper_uses_external_sequence_provider():
+    state = {"seq": 41}
+
+    def _next_seq() -> int:
+        state["seq"] += 1
+        return state["seq"]
+
+    mapper = FlowEventMapper(stream_id="stream-4", seq_provider=_next_seq)
+    payload = mapper.to_sse_payload("hello")
+    assert payload["flow_event"]["seq"] == 42

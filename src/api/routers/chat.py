@@ -1,18 +1,26 @@
 """Chat API endpoints."""
 
+import asyncio
+import json
+import logging
+import uuid
+
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form, Query
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-import logging
-import json
-import uuid
 
 # 使用简化版 AgentService（不使用 LangGraph）
 from ..services.agent_service_simple import AgentService
-from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from ..services.conversation_storage import create_storage_with_project_resolver
 from ..services.file_service import FileService
 from ..services.flow_event_mapper import FlowEventMapper
+from ..services.flow_stream_runtime import (
+    FlowReplayCursorGoneError,
+    FlowStreamContextMismatchError,
+    FlowStreamNotFoundError,
+    FlowStreamRuntime,
+)
 from ..models.search import SearchSource
 from ..config import settings
 
@@ -103,6 +111,16 @@ class CompareRequest(BaseModel):
     file_references: Optional[List[Dict[str, str]]] = None  # List of {path, project_id} for @file references
 
 
+class ResumeStreamRequest(BaseModel):
+    """Request model for resuming an existing stream."""
+
+    session_id: str
+    stream_id: str
+    last_event_id: str
+    context_type: str = "chat"
+    project_id: Optional[str] = None
+
+
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
     storage = create_storage_with_project_resolver(settings.conversations_dir)
@@ -112,6 +130,128 @@ def get_agent_service() -> AgentService:
 def get_file_service() -> FileService:
     """Dependency injection for FileService."""
     return FileService(settings.attachments_dir, settings.max_file_size_mb)
+
+
+_flow_stream_runtime = FlowStreamRuntime(
+    ttl_seconds=settings.flow_stream_ttl_seconds,
+    max_events_per_stream=settings.flow_stream_max_events,
+    max_active_streams=settings.flow_stream_max_active,
+)
+
+
+def get_flow_stream_runtime() -> FlowStreamRuntime:
+    """Dependency injection for in-memory FlowEvent replay runtime."""
+    return _flow_stream_runtime
+
+
+def _is_terminal_payload(payload: Dict[str, Any]) -> bool:
+    flow_event = payload.get("flow_event")
+    if isinstance(flow_event, dict):
+        if flow_event.get("event_type") in {"stream_ended", "stream_error"}:
+            return True
+    return payload.get("done") is True or "error" in payload
+
+
+async def _build_stream_fn(
+    request: ChatRequest,
+    agent: AgentService,
+):
+    if request.truncate_after_index is not None:
+        print(f"[SSE] Truncating messages to index {request.truncate_after_index}")
+        logger.info(f"[SSE] Truncating messages to index {request.truncate_after_index}")
+        await agent.storage.truncate_messages_after(
+            request.session_id,
+            request.truncate_after_index,
+            context_type=request.context_type,
+            project_id=request.project_id,
+        )
+
+    session_data = await agent.storage.get_session(
+        request.session_id,
+        context_type=request.context_type,
+        project_id=request.project_id,
+    )
+    group_assistants = session_data.get("group_assistants")
+    group_mode = session_data.get("group_mode", "round_robin")
+    group_settings = session_data.get("group_settings")
+
+    if group_assistants and len(group_assistants) >= 2:
+        return agent.process_group_message_stream(
+            request.session_id,
+            request.message,
+            group_assistants=group_assistants,
+            group_mode=group_mode,
+            group_settings=group_settings,
+            skip_user_append=request.skip_user_message,
+            reasoning_effort=request.reasoning_effort,
+            attachments=request.attachments,
+            context_type=request.context_type,
+            project_id=request.project_id,
+            use_web_search=request.use_web_search,
+            search_query=request.search_query,
+            file_references=request.file_references,
+        )
+
+    return agent.process_message_stream(
+        request.session_id,
+        request.message,
+        skip_user_append=request.skip_user_message,
+        reasoning_effort=request.reasoning_effort,
+        attachments=request.attachments,
+        context_type=request.context_type,
+        project_id=request.project_id,
+        use_web_search=request.use_web_search,
+        search_query=request.search_query,
+        file_references=request.file_references,
+    )
+
+
+async def _run_chat_stream_producer(
+    *,
+    request: ChatRequest,
+    agent: AgentService,
+    runtime: FlowStreamRuntime,
+    stream_id: str,
+) -> None:
+    mapper = FlowEventMapper(
+        stream_id=stream_id,
+        conversation_id=request.session_id,
+        seq_provider=lambda: runtime.next_seq(stream_id),
+    )
+
+    try:
+        print("[SSE] Starting stream processing...")
+        logger.info("[SSE] Starting stream processing...")
+        runtime.append_payload(
+            stream_id,
+            mapper.make_stream_started_payload(context_type=request.context_type),
+        )
+
+        stream_fn = await _build_stream_fn(request, agent)
+        async for chunk in stream_fn:
+            runtime.append_payload(stream_id, mapper.to_sse_payload(chunk))
+
+        runtime.append_payload(stream_id, mapper.to_sse_payload({"done": True}))
+
+        print("=" * 80)
+        print("[OK] Stream processing complete")
+        print("=" * 80)
+        logger.info("=" * 80)
+        logger.info("[OK] Stream processing complete")
+        logger.info("=" * 80)
+
+    except FileNotFoundError:
+        print(f"❌ 会话未找到: {request.session_id}")
+        logger.error(f"❌ 会话未找到: {request.session_id}")
+        runtime.append_payload(stream_id, mapper.to_sse_payload({"error": "Session not found"}))
+    except ValueError as e:
+        print(f"❌ 验证错误: {str(e)}")
+        logger.error(f"❌ 验证错误: {str(e)}")
+        runtime.append_payload(stream_id, mapper.to_sse_payload({"error": str(e)}))
+    except Exception as e:
+        print(f"❌ Agent 错误: {str(e)}")
+        logger.error(f"❌ Agent 错误: {str(e)}", exc_info=True)
+        runtime.append_payload(stream_id, mapper.to_sse_payload({"error": str(e)}))
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -199,7 +339,8 @@ async def chat(
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: AgentService = Depends(get_agent_service),
+    runtime: FlowStreamRuntime = Depends(get_flow_stream_runtime),
 ):
     """流式发送消息并接收 AI 响应.
 
@@ -230,119 +371,37 @@ async def chat_stream(
     logger.info(f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
     logger.info("=" * 80)
 
-    async def event_generator():
-        """Generate SSE (Server-Sent Events) formatted data stream"""
-        mapper = FlowEventMapper(
-            stream_id=str(uuid.uuid4()),
+    stream_id = str(uuid.uuid4())
+    try:
+        runtime.create_stream(
+            stream_id=stream_id,
             conversation_id=request.session_id,
+            context_type=request.context_type,
+            project_id=request.project_id,
         )
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="flow stream runtime overloaded")
+
+    subscriber_id, queue = runtime.subscribe(stream_id)
+    asyncio.create_task(
+        _run_chat_stream_producer(
+            request=request,
+            agent=agent,
+            runtime=runtime,
+            stream_id=stream_id,
+        )
+    )
+
+    async def event_generator():
+        """Generate SSE data stream from runtime queue."""
         try:
-            print("[SSE] Starting stream processing...")
-            logger.info("[SSE] Starting stream processing...")
-            started_payload = mapper.make_stream_started_payload(context_type=request.context_type)
-            yield f"data: {json.dumps(started_payload, ensure_ascii=False, default=str)}\n\n"
-
-            # Truncate messages if specified
-            if request.truncate_after_index is not None:
-                print(f"[SSE] Truncating messages to index {request.truncate_after_index}")
-                logger.info(f"[SSE] Truncating messages to index {request.truncate_after_index}")
-                await agent.storage.truncate_messages_after(
-                    request.session_id,
-                    request.truncate_after_index,
-                    context_type=request.context_type,
-                    project_id=request.project_id
-                )
-
-            # Check for group chat mode
-            session_data = await agent.storage.get_session(
-                request.session_id,
-                context_type=request.context_type,
-                project_id=request.project_id
-            )
-            group_assistants = session_data.get("group_assistants")
-            group_mode = session_data.get("group_mode", "round_robin")
-            group_settings = session_data.get("group_settings")
-
-            if group_assistants and len(group_assistants) >= 2:
-                # Group chat: process with multiple assistants
-                stream_fn = agent.process_group_message_stream(
-                    request.session_id,
-                    request.message,
-                    group_assistants=group_assistants,
-                    group_mode=group_mode,
-                    group_settings=group_settings,
-                    skip_user_append=request.skip_user_message,
-                    reasoning_effort=request.reasoning_effort,
-                    attachments=request.attachments,
-                    context_type=request.context_type,
-                    project_id=request.project_id,
-                    use_web_search=request.use_web_search,
-                    search_query=request.search_query,
-                    file_references=request.file_references
-                )
-            else:
-                # Single assistant: normal processing
-                stream_fn = agent.process_message_stream(
-                    request.session_id,
-                    request.message,
-                    skip_user_append=request.skip_user_message,
-                    reasoning_effort=request.reasoning_effort,
-                    attachments=request.attachments,
-                    context_type=request.context_type,
-                    project_id=request.project_id,
-                    use_web_search=request.use_web_search,
-                    search_query=request.search_query,
-                    file_references=request.file_references
-                )
-
-            # Stream process messages
-            async for chunk in stream_fn:
-                data = json.dumps(
-                    mapper.to_sse_payload(chunk),
-                    ensure_ascii=False,
-                    default=str,
-                )
-                yield f"data: {data}\n\n"
-
-            # Send completion marker
-            done_payload = mapper.to_sse_payload({"done": True})
-            yield f"data: {json.dumps(done_payload, ensure_ascii=False, default=str)}\n\n"
-
-            print("=" * 80)
-            print("[OK] Stream processing complete")
-            print("=" * 80)
-
-            logger.info("=" * 80)
-            logger.info("[OK] Stream processing complete")
-            logger.info("=" * 80)
-
-        except FileNotFoundError as e:
-            print(f"❌ 会话未找到: {request.session_id}")
-            logger.error(f"❌ 会话未找到: {request.session_id}")
-            error_data = json.dumps(
-                mapper.to_sse_payload({"error": "Session not found"}),
-                ensure_ascii=False,
-                default=str,
-            )
-            yield f"data: {error_data}\n\n"
-        except ValueError as e:
-            print(f"❌ 验证错误: {str(e)}")
-            logger.error(f"❌ 验证错误: {str(e)}")
-            error_data = json.dumps(
-                mapper.to_sse_payload({"error": str(e)}),
-                ensure_ascii=False,
-                default=str,
-            )
-            yield f"data: {error_data}\n\n"
-        except Exception as e:
-            print(f"❌ Agent 错误: {str(e)}")
-            logger.error(f"❌ Agent 错误: {str(e)}", exc_info=True)
-            error_data = json.dumps(
-                mapper.to_sse_payload({"error": str(e)}),
-                ensure_ascii=False,
-                default=str,
-            )
-            yield f"data: {error_data}\n\n"
+            while True:
+                payload = await queue.get()
+                yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                if _is_terminal_payload(payload):
+                    return
+        finally:
+            runtime.unsubscribe(stream_id, subscriber_id)
 
     return StreamingResponse(
         event_generator(),
@@ -352,6 +411,71 @@ async def chat_stream(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲
         }
+    )
+
+
+@router.post("/chat/stream/resume")
+async def resume_chat_stream(
+    request: ResumeStreamRequest,
+    runtime: FlowStreamRuntime = Depends(get_flow_stream_runtime),
+):
+    """Resume an existing chat stream from a known flow_event cursor."""
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    try:
+        subscriber_id, queue, replay_payloads = runtime.resume_subscribe(
+            stream_id=request.stream_id,
+            last_event_id=request.last_event_id,
+            conversation_id=request.session_id,
+            context_type=request.context_type,
+            project_id=request.project_id,
+        )
+    except FlowStreamNotFoundError:
+        raise HTTPException(status_code=404, detail={"code": "stream_not_found", "message": "stream not found"})
+    except FlowReplayCursorGoneError:
+        raise HTTPException(
+            status_code=410,
+            detail={"code": "replay_cursor_gone", "message": "last_event_id is outside replay window"},
+        )
+    except FlowStreamContextMismatchError:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "stream_context_mismatch", "message": "stream context does not match request"},
+        )
+
+    async def event_generator():
+        """Replay cached events and then continue with live queue."""
+        terminal_seen = False
+        try:
+            for payload in replay_payloads:
+                yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                if _is_terminal_payload(payload):
+                    terminal_seen = True
+                    return
+
+            if terminal_seen:
+                return
+
+            if runtime.get_stream(request.stream_id).done:
+                return
+
+            while True:
+                payload = await queue.get()
+                yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                if _is_terminal_payload(payload):
+                    return
+        finally:
+            runtime.unsubscribe(request.stream_id, subscriber_id)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
