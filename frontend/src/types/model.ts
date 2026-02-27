@@ -34,6 +34,15 @@ export interface ModelCapabilities {
   image_output: boolean;
 }
 
+export interface EndpointProfile {
+  id: string;
+  label: string;
+  base_url: string;
+  region_tags: string[];
+  priority: number;
+  probe_method: string;
+}
+
 export interface ChatTemplate {
   temperature?: number;
   max_tokens?: number;
@@ -63,6 +72,8 @@ export interface Provider {
   protocol?: ApiProtocol;        // API protocol type
   call_mode?: CallMode;          // Call mode within adapter family
   base_url: string;
+  endpoint_profile_id?: string | null;
+  endpoint_profiles?: EndpointProfile[];
   api_keys?: string[];           // Multiple keys for rotation
   enabled: boolean;
   has_api_key?: boolean;         // Flag indicating if API key is configured
@@ -111,6 +122,8 @@ export interface BuiltinProviderInfo {
   sdk_class: string;
   supports_model_list: boolean;
   default_capabilities: ModelCapabilities;
+  endpoint_profiles: EndpointProfile[];
+  default_endpoint_profile_id?: string | null;
 }
 
 // Model info (from fetch models API)
@@ -133,4 +146,45 @@ export interface ProtocolInfo {
   id: ApiProtocol;
   name: string;
   description: string;
+}
+
+export interface ProviderEndpointProbeRequest {
+  mode?: 'auto' | 'manual';
+  endpoint_profile_id?: string;
+  base_url_override?: string;
+  use_stored_key?: boolean;
+  api_key?: string;
+  model_id?: string;
+  strict?: boolean;
+  client_region_hint?: 'cn' | 'global' | 'unknown';
+}
+
+export interface ProviderEndpointProbeResult {
+  endpoint_profile_id?: string | null;
+  label: string;
+  base_url: string;
+  success: boolean;
+  classification: string;
+  http_status?: number | null;
+  latency_ms?: number | null;
+  message: string;
+  detected_model_count?: number | null;
+  priority: number;
+  region_tags: string[];
+}
+
+export interface ProviderEndpointProbeResponse {
+  provider_id: string;
+  results: ProviderEndpointProbeResult[];
+  recommended_endpoint_profile_id?: string | null;
+  recommended_base_url?: string | null;
+  summary: string;
+}
+
+export interface ProviderEndpointProfilesResponse {
+  provider_id: string;
+  current_endpoint_profile_id?: string | null;
+  current_base_url: string;
+  endpoint_profiles: EndpointProfile[];
+  recommended_endpoint_profile_id?: string | null;
 }

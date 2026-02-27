@@ -7,6 +7,7 @@ from .types import (
     ProviderDefinition,
     ModelCapabilities,
     ApiProtocol,
+    EndpointProfile,
 )
 
 
@@ -111,6 +112,87 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
             streaming=True,
         ),
         supports_model_list=True,
+        endpoint_profiles=[
+            EndpointProfile(
+                id="zhipu-cn",
+                label="China Mainland (.cn)",
+                base_url="https://open.bigmodel.cn/api/paas/v4",
+                region_tags=["cn"],
+                priority=10,
+            ),
+            EndpointProfile(
+                id="zhipu-global",
+                label="Global (.com)",
+                base_url="https://open.bigmodel.com/api/paas/v4",
+                region_tags=["global"],
+                priority=20,
+            ),
+        ],
+        default_endpoint_profile_id="zhipu-cn",
+    ),
+
+    "stepfun": ProviderDefinition(
+        id="stepfun",
+        name="StepFun",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.stepfun.com/v1",
+        sdk_class="openai",
+        default_capabilities=ModelCapabilities(
+            context_length=128000,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        supports_model_list=True,
+        endpoint_profiles=[
+            EndpointProfile(
+                id="stepfun-cn",
+                label="China Mainland (.com)",
+                base_url="https://api.stepfun.com/v1",
+                region_tags=["cn"],
+                priority=10,
+            ),
+            EndpointProfile(
+                id="stepfun-global",
+                label="Global (.ai)",
+                base_url="https://api.stepfun.ai/v1",
+                region_tags=["global"],
+                priority=20,
+            ),
+        ],
+        default_endpoint_profile_id="stepfun-cn",
+    ),
+
+    "minimax": ProviderDefinition(
+        id="minimax",
+        name="MiniMax",
+        protocol=ApiProtocol.OPENAI,
+        base_url="https://api.minimax.chat/v1",
+        sdk_class="openai",
+        default_capabilities=ModelCapabilities(
+            context_length=128000,
+            reasoning=True,
+            function_calling=True,
+            streaming=True,
+        ),
+        supports_model_list=True,
+        endpoint_profiles=[
+            EndpointProfile(
+                id="minimax-cn",
+                label="China Mainland (.chat)",
+                base_url="https://api.minimax.chat/v1",
+                region_tags=["cn"],
+                priority=10,
+            ),
+            EndpointProfile(
+                id="minimax-global",
+                label="Global (.io)",
+                base_url="https://api.minimax.io/v1",
+                region_tags=["global"],
+                priority=20,
+            ),
+        ],
+        default_endpoint_profile_id="minimax-cn",
     ),
 
     "openrouter": ProviderDefinition(

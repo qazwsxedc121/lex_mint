@@ -6,10 +6,10 @@
  * and builtin provider picker can be added later.
  */
 
-import { SignalIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, SignalIcon } from '@heroicons/react/24/outline';
 import type { CrudSettingsConfig } from './types';
 import type { Provider } from '../../../types/model';
-import { fetchProviderModels, testProviderStoredConnection } from '../../../services/api';
+import { fetchProviderModels, probeProviderEndpoints, testProviderStoredConnection } from '../../../services/api';
 import i18n from '../../../i18n';
 
 const BAILIAN_PROVIDER_ID = 'bailian';
@@ -18,10 +18,51 @@ const PROMPT_MODEL_PREVIEW_LIMIT = 12;
 const SHOW_ADVANCED_FIELD = '__show_advanced';
 
 const showAdvanced = (formData: Record<string, any>) => Boolean(formData?.[SHOW_ADVANCED_FIELD]);
+const isBuiltinProvider = (formData: Record<string, any>) => formData?.type === 'builtin';
 const protocolLabel = (protocol?: string) =>
   i18n.t(`settings:providers.field.protocol.option.${protocol || 'openai'}`, {
     defaultValue: protocol || 'openai',
   });
+
+const detectClientRegionHint = (): 'cn' | 'global' | 'unknown' => {
+  try {
+    const language = (navigator.language || '').toLowerCase();
+    const timezone = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+    if (language.startsWith('zh-cn') || timezone.includes('shanghai') || timezone.includes('beijing')) {
+      return 'cn';
+    }
+    if (language || timezone) {
+      return 'global';
+    }
+  } catch {
+    // Use unknown when browser hints are unavailable.
+  }
+  return 'unknown';
+};
+
+const endpointProfileOptions = (_context: any, formData?: Record<string, any>) => {
+  const profiles = Array.isArray(formData?.endpoint_profiles) ? formData.endpoint_profiles : [];
+  const options = profiles.map((profile: any) => ({
+    value: profile.id,
+    label: `${profile.label} - ${profile.base_url}`,
+  }));
+  return [
+    ...options,
+    { value: 'custom', label: 'Custom URL' },
+  ];
+};
+
+const endpointProfileChangeEffect = (value: string, formData: Record<string, any>) => {
+  if (!value || value === 'custom') {
+    return undefined;
+  }
+  const profiles = Array.isArray(formData?.endpoint_profiles) ? formData.endpoint_profiles : [];
+  const selected = profiles.find((profile: any) => profile.id === value);
+  if (!selected?.base_url) {
+    return undefined;
+  }
+  return { base_url: selected.base_url };
+};
 
 async function pickBailianTestModel(provider: Provider): Promise<string | undefined | null> {
   try {
@@ -216,6 +257,24 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get helpText() { return i18n.t('settings:providers.field.baseUrl.help'); }
     },
     {
+      type: 'select',
+      name: 'endpoint_profile_id',
+      label: 'Endpoint Profile',
+      allowEmpty: true,
+      emptyLabel: 'Auto',
+      dynamicOptions: endpointProfileOptions,
+      onChangeEffect: endpointProfileChangeEffect,
+      helpText: 'Select an official endpoint profile, or use Custom URL.',
+      condition: (formData) => isBuiltinProvider(formData)
+    },
+    {
+      type: 'endpoint-probe',
+      name: '__endpoint_probe',
+      label: 'Endpoint Diagnostics',
+      helpText: 'Run strict endpoint diagnostics and apply the recommended endpoint manually.',
+      condition: (formData) => isBuiltinProvider(formData)
+    },
+    {
       type: 'password',
       name: 'api_key',
       get label() { return i18n.t('settings:providers.field.apiKey'); },
@@ -290,6 +349,24 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get helpText() { return i18n.t('settings:providers.field.baseUrl.help'); }
     },
     {
+      type: 'select',
+      name: 'endpoint_profile_id',
+      label: 'Endpoint Profile',
+      allowEmpty: true,
+      emptyLabel: 'Auto',
+      dynamicOptions: endpointProfileOptions,
+      onChangeEffect: endpointProfileChangeEffect,
+      helpText: 'Select an official endpoint profile, or use Custom URL.',
+      condition: (formData) => isBuiltinProvider(formData)
+    },
+    {
+      type: 'endpoint-probe',
+      name: '__endpoint_probe',
+      label: 'Endpoint Diagnostics',
+      helpText: 'Run strict endpoint diagnostics and apply the recommended endpoint manually.',
+      condition: (formData) => isBuiltinProvider(formData)
+    },
+    {
       type: 'password',
       name: 'api_key',
       get label() { return i18n.t('settings:providers.field.apiKey'); },
@@ -347,6 +424,34 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
           }
         } catch (err: any) {
           alert(i18n.t('settings:testConnection.failed') + '\n' + (err.message || String(err)));
+        }
+      }
+    },
+    {
+      id: 'probe-endpoints',
+      label: '',
+      icon: MagnifyingGlassIcon,
+      tooltip: 'Diagnose endpoints',
+      disabled: (item: Provider) => item.type !== 'builtin',
+      onClick: async (item: Provider) => {
+        try {
+          const result = await probeProviderEndpoints(item.id, {
+            mode: 'auto',
+            use_stored_key: true,
+            strict: true,
+            client_region_hint: detectClientRegionHint(),
+          });
+          const lines = result.results.map((entry) =>
+            `${entry.success ? 'OK' : 'FAIL'} ${entry.base_url} (${entry.classification}${entry.http_status ? `/${entry.http_status}` : ''})`
+          );
+          const preview = lines.slice(0, 6).join('\n');
+          const more = lines.length > 6 ? `\n...and ${lines.length - 6} more` : '';
+          const recommendation = result.recommended_base_url
+            ? `\nRecommended: ${result.recommended_base_url}`
+            : '';
+          alert(`${result.summary}${recommendation}\n\n${preview}${more}`);
+        } catch (err: any) {
+          alert(`Endpoint diagnostics failed\n${err.message || String(err)}`);
         }
       }
     }

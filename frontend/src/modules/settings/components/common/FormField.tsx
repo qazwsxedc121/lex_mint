@@ -16,8 +16,8 @@ import {
   ASSISTANT_ICON_KEYS,
   getAssistantIcon,
 } from '../../../../shared/constants/assistantIcons';
-import { fetchProviderModels } from '../../../../services/api';
-import type { ModelInfo } from '../../../../types/model';
+import { fetchProviderModels, probeProviderEndpoints } from '../../../../services/api';
+import type { ModelInfo, ProviderEndpointProbeResult } from '../../../../types/model';
 
 const TEMPLATE_VARIABLE_TYPE_OPTIONS: PromptTemplateVariableType[] = ['text', 'number', 'boolean', 'select'];
 
@@ -104,13 +104,25 @@ export const FormField: React.FC<FormFieldProps> = ({
 
       case 'select': {
         const options = config.dynamicOptions
-          ? config.dynamicOptions(context)
+          ? config.dynamicOptions(context, formData)
           : config.options || [];
 
         return (
           <select
             value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              if (config.onChangeEffect) {
+                const sideEffects = config.onChangeEffect(nextValue, formData, context) || {};
+                onChange({
+                  __batchUpdate: true,
+                  [config.name]: nextValue,
+                  ...sideEffects,
+                });
+                return;
+              }
+              onChange(nextValue);
+            }}
             required={config.required}
             disabled={config.disabled}
             className={inputClasses}
@@ -253,7 +265,7 @@ export const FormField: React.FC<FormFieldProps> = ({
 
       case 'multi-select': {
         const options = config.dynamicOptions
-          ? config.dynamicOptions(context)
+          ? config.dynamicOptions(context, formData)
           : config.options || [];
         const selectedValues: string[] = Array.isArray(value) ? value : [];
 
@@ -327,6 +339,15 @@ export const FormField: React.FC<FormFieldProps> = ({
             onChange={onChange}
             formData={formData}
             inputClasses={inputClasses}
+          />
+        );
+
+      case 'endpoint-probe':
+        return (
+          <EndpointProbeField
+            config={config}
+            formData={formData}
+            onChange={onChange}
           />
         );
 
@@ -900,6 +921,159 @@ const ModelIdField: React.FC<{
               </div>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const detectClientRegionHint = (): 'cn' | 'global' | 'unknown' => {
+  try {
+    const language = (navigator.language || '').toLowerCase();
+    const timezone = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+    if (language.startsWith('zh-cn') || timezone.includes('shanghai') || timezone.includes('beijing')) {
+      return 'cn';
+    }
+    if (language || timezone) {
+      return 'global';
+    }
+  } catch {
+    // Keep unknown on any runtime env issue.
+  }
+  return 'unknown';
+};
+
+const EndpointProbeField: React.FC<{
+  config: Extract<FieldConfig, { type: 'endpoint-probe' }>;
+  formData: any;
+  onChange: (value: any) => void;
+}> = ({ config, formData, onChange }) => {
+  const providerIdField = config.providerIdField || 'id';
+  const baseUrlField = config.baseUrlField || 'base_url';
+  const endpointProfileIdField = config.endpointProfileIdField || 'endpoint_profile_id';
+  const providerId = String(formData?.[providerIdField] || '').trim();
+  const baseUrl = String(formData?.[baseUrlField] || '').trim();
+  const endpointProfileId = String(formData?.[endpointProfileIdField] || '').trim();
+  const isBuiltin = formData?.type === 'builtin';
+
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState('');
+  const [results, setResults] = useState<ProviderEndpointProbeResult[]>([]);
+  const [recommendedBaseUrl, setRecommendedBaseUrl] = useState<string | null>(null);
+  const [recommendedEndpointProfileId, setRecommendedEndpointProfileId] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  const runProbe = useCallback(
+    async (mode: 'auto' | 'manual') => {
+      if (!providerId) return;
+      setLoading(true);
+      setLastError(null);
+      try {
+        const payload =
+          mode === 'auto'
+            ? {
+                mode: 'auto' as const,
+                use_stored_key: true,
+                strict: true,
+                client_region_hint: detectClientRegionHint(),
+              }
+            : {
+                mode: 'manual' as const,
+                use_stored_key: true,
+                strict: true,
+                endpoint_profile_id: endpointProfileId || undefined,
+                base_url_override: baseUrl || undefined,
+                client_region_hint: detectClientRegionHint(),
+              };
+        const response = await probeProviderEndpoints(providerId, payload);
+        setSummary(response.summary);
+        setResults(response.results || []);
+        setRecommendedBaseUrl(response.recommended_base_url || null);
+        setRecommendedEndpointProfileId(response.recommended_endpoint_profile_id || null);
+      } catch (error: any) {
+        setLastError(error?.message || String(error));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [providerId, endpointProfileId, baseUrl]
+  );
+
+  const applyRecommended = useCallback(() => {
+    if (!recommendedBaseUrl) return;
+    onChange({
+      __batchUpdate: true,
+      [baseUrlField]: recommendedBaseUrl,
+      [endpointProfileIdField]: recommendedEndpointProfileId || 'custom',
+    });
+  }, [recommendedBaseUrl, recommendedEndpointProfileId, baseUrlField, endpointProfileIdField, onChange]);
+
+  if (!isBuiltin) {
+    return (
+      <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
+        Endpoint diagnostics are available for built-in providers.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3" data-name="provider-endpoint-probe-field">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => runProbe('auto')}
+          disabled={loading || !providerId}
+          className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
+        >
+          {loading ? 'Probing...' : 'Auto detect endpoints'}
+        </button>
+        <button
+          type="button"
+          onClick={() => runProbe('manual')}
+          disabled={loading || !providerId || !baseUrl}
+          className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
+        >
+          Probe current endpoint
+        </button>
+        <button
+          type="button"
+          onClick={applyRecommended}
+          disabled={!recommendedBaseUrl}
+          className="px-3 py-1.5 text-xs font-medium rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 disabled:opacity-40"
+        >
+          Apply recommended endpoint
+        </button>
+      </div>
+
+      {summary && (
+        <div className="text-xs text-gray-700 dark:text-gray-300">{summary}</div>
+      )}
+      {lastError && (
+        <div className="text-xs text-red-600 dark:text-red-400">{lastError}</div>
+      )}
+      {results.length > 0 && (
+        <div className="space-y-1">
+          {results.map((result, index) => {
+            const success = result.success;
+            return (
+              <div
+                key={`${result.base_url}-${index}`}
+                className={`rounded-md border px-2 py-1.5 text-xs ${
+                  success
+                    ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
+                    : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                }`}
+              >
+                <div className="font-medium">{result.label}</div>
+                <div className="font-mono break-all">{result.base_url}</div>
+                <div>
+                  {result.classification}
+                  {result.http_status ? `, HTTP ${result.http_status}` : ''}
+                  {result.latency_ms != null ? `, ${result.latency_ms}ms` : ''}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -81,9 +81,15 @@ class TestModelConfigService:
 
             service = ModelConfigService(config_path, keys_path)
             provider = await service.get_provider("deepseek")
+            stepfun = await service.get_provider("stepfun")
 
             assert provider is not None
             assert provider.supports_model_list is True
+            assert stepfun is not None
+            assert stepfun.base_url == "https://api.stepfun.com/v1"
+            assert stepfun.sdk_class == "openai"
+            assert stepfun.supports_model_list is True
+            assert stepfun.enabled is False
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

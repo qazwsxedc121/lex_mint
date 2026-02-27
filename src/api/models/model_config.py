@@ -5,9 +5,15 @@ LLM 模型配置数据模型
 """
 from pydantic import BaseModel, Field
 from pydantic import model_validator
-from typing import List, Optional
+from typing import List, Optional, Literal
 
-from src.providers.types import ApiProtocol, CallMode, ProviderType, ModelCapabilities
+from src.providers.types import (
+    ApiProtocol,
+    CallMode,
+    ProviderType,
+    ModelCapabilities,
+    EndpointProfile,
+)
 
 
 class ChatTemplate(BaseModel):
@@ -28,6 +34,7 @@ class Provider(BaseModel):
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
     call_mode: CallMode = Field(default=CallMode.AUTO, description="调用模式")
     base_url: str = Field(..., description="API 基础 URL")
+    endpoint_profile_id: Optional[str] = Field(default=None, description="endpoint 配置 ID")
     api_keys: List[str] = Field(default_factory=list, description="多 Key 轮询列表")
     enabled: bool = Field(default=True, description="是否启用")
 
@@ -42,6 +49,7 @@ class Provider(BaseModel):
     auto_append_path: bool = Field(default=True, description="是否自动拼接路径")
     supports_model_list: bool = Field(default=False, description="是否支持获取模型列表")
     sdk_class: Optional[str] = Field(default=None, description="SDK 适配器类覆盖")
+    endpoint_profiles: List[EndpointProfile] = Field(default_factory=list, description="可选 endpoint 配置")
 
     # Runtime fields (not persisted)
     has_api_key: Optional[bool] = Field(default=None, description="是否已配置 API 密钥")
@@ -126,6 +134,7 @@ class ProviderCreate(BaseModel):
     protocol: ApiProtocol = Field(default=ApiProtocol.OPENAI, description="API 协议类型")
     call_mode: CallMode = Field(default=CallMode.AUTO, description="调用模式")
     base_url: str = Field(..., description="API 基础 URL")
+    endpoint_profile_id: Optional[str] = Field(default=None, description="endpoint 配置 ID")
     api_key: str = Field(default="", description="API 密钥")
     enabled: bool = Field(default=True, description="是否启用")
     default_capabilities: Optional[ModelCapabilities] = Field(default=None, description="默认模型能力")
@@ -138,6 +147,7 @@ class ProviderUpdate(BaseModel):
     protocol: Optional[ApiProtocol] = Field(None, description="API 协议类型")
     call_mode: Optional[CallMode] = Field(None, description="调用模式")
     base_url: Optional[str] = Field(None, description="API 基础 URL")
+    endpoint_profile_id: Optional[str] = Field(None, description="endpoint 配置 ID")
     enabled: Optional[bool] = Field(None, description="是否启用")
     api_key: Optional[str] = Field(None, min_length=1, description="API 密钥（可选，不提供则保持不变）")
     default_capabilities: Optional[ModelCapabilities] = Field(None, description="默认模型能力")
@@ -168,6 +178,58 @@ class ProviderTestResponse(BaseModel):
     """测试提供商连接响应"""
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(..., description="测试结果消息")
+
+
+class ProviderEndpointProbeRequest(BaseModel):
+    """Endpoint 探测请求（自动或手动）。"""
+
+    mode: Literal["auto", "manual"] = Field(default="auto", description="探测模式")
+    endpoint_profile_id: Optional[str] = Field(default=None, description="手动模式下指定的 profile ID")
+    base_url_override: Optional[str] = Field(default=None, description="手动模式下指定 base URL")
+    use_stored_key: bool = Field(default=True, description="是否使用已保存的 API key")
+    api_key: Optional[str] = Field(default=None, description="显式传入 API key（use_stored_key=false 时）")
+    model_id: Optional[str] = Field(default=None, description="可选模型ID（预留）")
+    strict: bool = Field(default=True, description="是否启用严格判定（仅真实 API 成功算通过）")
+    client_region_hint: Literal["cn", "global", "unknown"] = Field(
+        default="unknown",
+        description="客户端区域提示，用于推荐排序",
+    )
+
+
+class ProviderEndpointProbeResult(BaseModel):
+    """单个 endpoint 的探测结果。"""
+
+    endpoint_profile_id: Optional[str] = Field(default=None, description="endpoint profile ID")
+    label: str = Field(..., description="显示名称")
+    base_url: str = Field(..., description="被探测的 base URL")
+    success: bool = Field(..., description="是否探测成功")
+    classification: str = Field(..., description="结果分类")
+    http_status: Optional[int] = Field(default=None, description="HTTP 状态码")
+    latency_ms: Optional[int] = Field(default=None, description="耗时毫秒")
+    message: str = Field(..., description="结果消息")
+    detected_model_count: Optional[int] = Field(default=None, description="识别到的模型数")
+    priority: int = Field(default=100, description="推荐排序优先级（越小越优先）")
+    region_tags: List[str] = Field(default_factory=list, description="endpoint 区域标签")
+
+
+class ProviderEndpointProbeResponse(BaseModel):
+    """Endpoint 探测响应。"""
+
+    provider_id: str = Field(..., description="provider ID")
+    results: List[ProviderEndpointProbeResult] = Field(default_factory=list, description="探测结果列表")
+    recommended_endpoint_profile_id: Optional[str] = Field(default=None, description="推荐 profile ID")
+    recommended_base_url: Optional[str] = Field(default=None, description="推荐 base URL")
+    summary: str = Field(..., description="结果摘要")
+
+
+class ProviderEndpointProfilesResponse(BaseModel):
+    """Provider endpoint profiles 响应。"""
+
+    provider_id: str = Field(..., description="provider ID")
+    current_endpoint_profile_id: Optional[str] = Field(default=None, description="当前 profile ID")
+    current_base_url: str = Field(..., description="当前 base URL")
+    endpoint_profiles: List[EndpointProfile] = Field(default_factory=list, description="endpoint 配置列表")
+    recommended_endpoint_profile_id: Optional[str] = Field(default=None, description="按区域推荐的 profile ID")
 
 
 class ModelTestRequest(BaseModel):
