@@ -8,14 +8,14 @@ def test_mapper_wraps_text_chunk_with_flow_event():
 
     payload = mapper.to_sse_payload("hello")
 
-    assert payload["chunk"] == "hello"
     flow_event = payload["flow_event"]
-    assert flow_event["event_type"] == "assistant_text_delta"
+    assert set(payload.keys()) == {"flow_event"}
+    assert flow_event["event_type"] == "text_delta"
     assert flow_event["stage"] == "content"
     assert flow_event["seq"] == 1
     assert flow_event["stream_id"] == "stream-1"
     assert flow_event["conversation_id"] == "session-1"
-    assert flow_event["payload"]["chunk"] == "hello"
+    assert flow_event["payload"]["text"] == "hello"
 
 
 def test_mapper_maps_usage_event():

@@ -164,17 +164,17 @@ Send a message and receive AI response as Server-Sent Events (SSE).
 }
 ```
 
-**Response:** Server-Sent Events stream (legacy fields + `flow_event`)
+**Response:** Server-Sent Events stream (`flow_event` only)
 
 ```text
-data: {"type":"stream_started","flow_event":{"event_type":"stream_started","stage":"transport","payload":{"context_type":"chat"}, ...}}
+data: {"flow_event":{"event_type":"stream_started","stage":"transport","payload":{"context_type":"chat"}, ...}}
 
-data: {"chunk":"Python","flow_event":{"event_type":"assistant_text_delta","stage":"content","payload":{"chunk":"Python"}, ...}}
-data: {"chunk":" is","flow_event":{"event_type":"assistant_text_delta","stage":"content","payload":{"chunk":" is"}, ...}}
+data: {"flow_event":{"event_type":"text_delta","stage":"content","payload":{"text":"Python"}, ...}}
+data: {"flow_event":{"event_type":"text_delta","stage":"content","payload":{"text":" is"}, ...}}
 
-data: {"type":"usage","usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20},"flow_event":{"event_type":"usage_reported","stage":"meta","payload":{"usage":{...}}, ...}}
+data: {"flow_event":{"event_type":"usage_reported","stage":"meta","payload":{"usage":{...}}, ...}}
 
-data: {"done":true,"flow_event":{"event_type":"stream_ended","stage":"transport","payload":{"done":true}, ...}}
+data: {"flow_event":{"event_type":"stream_ended","stage":"transport","payload":{"done":true}, ...}}
 ```
 
 ### Resume Stream
@@ -200,6 +200,37 @@ Resume an existing stream from a known `flow_event.event_id` cursor.
 - `404` with `code=stream_not_found`
 - `409` with `code=stream_context_mismatch`
 - `410` with `code=replay_cursor_gone`
+
+### Compare Message (Streaming)
+
+**POST** `/api/chat/compare`
+
+Response is `flow_event` SSE only:
+- `compare_model_started`
+- `text_delta` (payload includes `model_id`)
+- `compare_model_finished` / `compare_model_failed`
+- `stream_ended`
+
+### Compress Context (Streaming)
+
+**POST** `/api/chat/compress`
+
+Response is `flow_event` SSE only:
+- `stream_started`
+- `text_delta`
+- `compression_completed`
+- `stream_ended`
+
+### Translate Text (Streaming)
+
+**POST** `/api/translate`
+
+Response is `flow_event` SSE only:
+- `stream_started`
+- `language_detected` (optional)
+- `text_delta`
+- `translation_completed`
+- `stream_ended`
 
 ### Delete Message
 

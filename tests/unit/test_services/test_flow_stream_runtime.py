@@ -10,7 +10,7 @@ from src.api.services.flow_stream_runtime import (
 )
 
 
-def _payload(event_id: str, seq: int, event_type: str = "assistant_text_delta"):
+def _payload(event_id: str, seq: int, event_type: str = "text_delta"):
     payload = {
         "flow_event": {
             "event_id": event_id,
@@ -22,7 +22,6 @@ def _payload(event_id: str, seq: int, event_type: str = "assistant_text_delta"):
         }
     }
     if event_type == "stream_ended":
-        payload["done"] = True
         payload["flow_event"]["stage"] = "transport"
         payload["flow_event"]["payload"] = {"done": True}
     return payload

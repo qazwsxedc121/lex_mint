@@ -549,25 +549,35 @@ export async function compressContext(
       for await (const dataStr of iterateSSEData(reader)) {
         try {
           const data = JSON.parse(dataStr);
-          if (data.error) {
-            onError(data.error);
+          const flowEvent = parseFlowEvent(data.flow_event);
+          if (!flowEvent) {
+            onError('Invalid stream event payload: missing flow_event');
             return;
           }
 
-          if (data.done) {
+          if (flowEvent.event_type === 'stream_error') {
+            onError(asString(flowEvent.payload.error) || 'Compression stream error');
             return;
           }
 
-          if (data.type === 'compression_complete') {
+          if (flowEvent.event_type === 'stream_ended') {
+            return;
+          }
+
+          if (flowEvent.event_type === 'compression_completed') {
+            const payload = flowEvent.payload;
             onComplete({
-              message_id: data.message_id,
-              compressed_count: data.compressed_count,
+              message_id: asString(payload.message_id) || '',
+              compressed_count: asNumber(payload.compressed_count) || 0,
             });
             continue;
           }
 
-          if (data.chunk) {
-            onChunk(data.chunk);
+          if (flowEvent.event_type === 'text_delta') {
+            const text = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
+            if (text) {
+              onChunk(text);
+            }
           }
         } catch {
           // Ignore malformed SSE event payloads.
@@ -636,22 +646,31 @@ export async function translateText(
       for await (const dataStr of iterateSSEData(reader)) {
         try {
           const data = JSON.parse(dataStr);
-          if (data.error) {
-            onError(data.error);
+          const flowEvent = parseFlowEvent(data.flow_event);
+          if (!flowEvent) {
+            onError('Invalid stream event payload: missing flow_event');
             return;
           }
 
-          if (data.done) {
+          if (flowEvent.event_type === 'stream_error') {
+            onError(asString(flowEvent.payload.error) || 'Translation stream error');
+            return;
+          }
+
+          if (flowEvent.event_type === 'stream_ended') {
             onComplete();
             return;
           }
 
-          if (data.type === 'translation_complete') {
+          if (flowEvent.event_type === 'translation_completed' || flowEvent.event_type === 'language_detected') {
             continue;
           }
 
-          if (data.chunk) {
-            onChunk(data.chunk);
+          if (flowEvent.event_type === 'text_delta') {
+            const textChunk = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
+            if (textChunk) {
+              onChunk(textChunk);
+            }
           }
         } catch {
           // Ignore malformed SSE event payloads.
@@ -790,8 +809,8 @@ export async function sendMessageStream(
       case 'stream_error':
         onError(asString(payload.error) || 'Stream error');
         return 'return';
-      case 'assistant_text_delta': {
-        const chunk = asString(payload.chunk) || asString(payload.text);
+      case 'text_delta': {
+        const chunk = asString(payload.text) || asString(payload.chunk);
         if (!chunk) {
           return 'handled';
         }
@@ -1007,144 +1026,20 @@ export async function sendMessageStream(
             try {
               const data = JSON.parse(dataStr);
               const flowEvent = parseFlowEvent(data.flow_event);
-              if (flowEvent) {
-                activeStreamId = flowEvent.stream_id;
-                lastEventId = flowEvent.event_id;
-
-                const handleResult = handleFlowEvent(flowEvent);
-                if (handleResult === 'return') {
-                  return 'done';
-                }
-                if (handleResult === 'handled') {
-                  continue;
-                }
-              }
-
-              if (data.error) {
-                onError(data.error);
+              if (!flowEvent) {
+                onError('Invalid stream event payload: missing flow_event');
                 return 'done';
               }
 
-              if (data.done) {
-                onDone();
+              activeStreamId = flowEvent.stream_id;
+              lastEventId = flowEvent.event_id;
+
+              const handleResult = handleFlowEvent(flowEvent);
+              if (handleResult === 'return') {
                 return 'done';
               }
-
-              // Handle usage/cost event
-              if (data.type === 'usage' && data.usage) {
-                if (onUsage) {
-                  onUsage(data.usage, data.cost);
-                }
-                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-                  onGroupEvent(data);
-                }
+              if (handleResult === 'handled') {
                 continue;
-              }
-
-              // Handle sources event
-              if (data.type === 'sources' && data.sources) {
-                if (onSources) {
-                  onSources(data.sources);
-                }
-                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-                  onGroupEvent(data);
-                }
-                continue;
-              }
-
-              // Handle user_message_id event
-              if (data.type === 'user_message_id' && data.message_id && onUserMessageId) {
-                onUserMessageId(data.message_id);
-                continue;
-              }
-
-              // Handle assistant_message_id event
-              if (data.type === 'assistant_message_id' && data.message_id) {
-                if (onAssistantMessageId) {
-                  onAssistantMessageId(data.message_id);
-                }
-                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-                  onGroupEvent(data);
-                }
-                continue;
-              }
-
-              // Handle followup_questions event
-              if (data.type === 'followup_questions' && data.questions && onFollowupQuestions) {
-                onFollowupQuestions(data.questions);
-                continue;
-              }
-
-              // Handle context_info event
-              if (data.type === 'context_info' && onContextInfo) {
-                onContextInfo(data);
-                continue;
-              }
-
-              // Handle thinking_duration event
-              if (data.type === 'thinking_duration') {
-                if (onThinkingDuration) {
-                  onThinkingDuration(data.duration_ms);
-                }
-                if (onGroupEvent && (data.assistant_id || data.assistant_turn_id)) {
-                  onGroupEvent(data);
-                }
-                continue;
-              }
-
-              // Handle tool_calls event
-              if (data.type === 'tool_calls' && data.calls && onToolCalls) {
-                onToolCalls(data.calls);
-                continue;
-              }
-
-              // Handle tool_results event
-              if (data.type === 'tool_results' && data.results && onToolResults) {
-                onToolResults(data.results);
-                continue;
-              }
-
-              // Handle assistant_start event (group chat)
-              if (data.type === 'assistant_start') {
-                if (onGroupEvent) {
-                  onGroupEvent(data);
-                } else if (onAssistantStart) {
-                  onAssistantStart(data.assistant_id, data.name, data.icon);
-                }
-                continue;
-              }
-
-              // Handle assistant_done event (group chat)
-              if (data.type === 'assistant_done') {
-                if (onGroupEvent) {
-                  onGroupEvent(data);
-                } else if (onAssistantDone) {
-                  onAssistantDone(data.assistant_id);
-                }
-                continue;
-              }
-
-              // Handle assistant_chunk event (group chat)
-              if (data.type === 'assistant_chunk' && data.chunk) {
-                if (onGroupEvent) {
-                  onGroupEvent(data);
-                } else {
-                  onChunk(data.chunk);
-                }
-                continue;
-              }
-
-              // Handle committee orchestration events
-              if (
-                onGroupEvent &&
-                (data.type === 'group_round_start' || data.type === 'group_action' || data.type === 'group_done')
-              ) {
-                onGroupEvent(data);
-                continue;
-              }
-
-              if (data.chunk) {
-                onChunk(data.chunk);
               }
             } catch {
               // Ignore malformed SSE event payloads.
@@ -1333,49 +1228,86 @@ export async function sendCompareStream(
       for await (const dataStr of iterateSSEData(reader)) {
         try {
           const data = JSON.parse(dataStr);
+          const flowEvent = parseFlowEvent(data.flow_event);
+          if (!flowEvent) {
+            callbacks.onError('Invalid compare stream event payload: missing flow_event');
+            return;
+          }
+          const payload = flowEvent.payload;
 
-          if (data.error) {
-            callbacks.onError(data.error);
+          if (flowEvent.event_type === 'stream_error') {
+            callbacks.onError(asString(payload.error) || 'Compare stream error');
             return;
           }
 
-          if (data.done) {
+          if (flowEvent.event_type === 'stream_ended') {
             callbacks.onDone();
             return;
           }
 
-          if (data.type === 'model_start') {
-            callbacks.onModelStart(data.model_id, data.model_name);
+          if (flowEvent.event_type === 'compare_model_started') {
+            const modelId = asString(payload.model_id);
+            if (!modelId) {
+              continue;
+            }
+            callbacks.onModelStart(modelId, asString(payload.model_name) || modelId);
             continue;
           }
 
-          if (data.type === 'model_chunk') {
-            callbacks.onModelChunk(data.model_id, data.chunk);
+          if (flowEvent.event_type === 'text_delta') {
+            const modelId = asString(payload.model_id);
+            const text = asString(payload.text) || asString(payload.chunk);
+            if (!modelId || !text) {
+              continue;
+            }
+            callbacks.onModelChunk(modelId, text);
             continue;
           }
 
-          if (data.type === 'model_done') {
-            callbacks.onModelDone(data.model_id, data.content, data.usage, data.cost);
+          if (flowEvent.event_type === 'compare_model_finished') {
+            const modelId = asString(payload.model_id);
+            if (!modelId) {
+              continue;
+            }
+            callbacks.onModelDone(
+              modelId,
+              asString(payload.content) || '',
+              payload.usage as TokenUsage | undefined,
+              payload.cost as CostInfo | undefined
+            );
             continue;
           }
 
-          if (data.type === 'model_error') {
-            callbacks.onModelError(data.model_id, data.error);
+          if (flowEvent.event_type === 'compare_model_failed') {
+            const modelId = asString(payload.model_id);
+            if (!modelId) {
+              continue;
+            }
+            callbacks.onModelError(modelId, asString(payload.error) || 'Model compare failed');
             continue;
           }
 
-          if (data.type === 'user_message_id' && data.message_id) {
-            callbacks.onUserMessageId(data.message_id);
+          if (flowEvent.event_type === 'user_message_identified') {
+            const messageId = asString(payload.message_id);
+            if (messageId) {
+              callbacks.onUserMessageId(messageId);
+            }
             continue;
           }
 
-          if (data.type === 'assistant_message_id' && data.message_id) {
-            callbacks.onAssistantMessageId(data.message_id);
+          if (flowEvent.event_type === 'assistant_message_identified') {
+            const messageId = asString(payload.message_id);
+            if (messageId) {
+              callbacks.onAssistantMessageId(messageId);
+            }
             continue;
           }
 
-          if (data.type === 'sources' && data.sources && callbacks.onSources) {
-            callbacks.onSources(data.sources);
+          if (flowEvent.event_type === 'sources_reported' && callbacks.onSources) {
+            const sources = payload.sources as SearchSource[] | undefined;
+            if (sources) {
+              callbacks.onSources(sources);
+            }
             continue;
           }
         } catch {

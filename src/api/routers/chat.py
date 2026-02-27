@@ -14,7 +14,9 @@ from typing import Optional, List, Dict, Any
 from ..services.agent_service_simple import AgentService
 from ..services.conversation_storage import create_storage_with_project_resolver
 from ..services.file_service import FileService
+from ..services.flow_event_emitter import FlowEventEmitter
 from ..services.flow_event_mapper import FlowEventMapper
+from ..services.flow_events import FlowEventStage
 from ..services.flow_stream_runtime import (
     FlowReplayCursorGoneError,
     FlowStreamContextMismatchError,
@@ -150,6 +152,106 @@ def _is_terminal_payload(payload: Dict[str, Any]) -> bool:
         if flow_event.get("event_type") in {"stream_ended", "stream_error"}:
             return True
     return payload.get("done") is True or "error" in payload
+
+
+def _map_compare_event_to_flow_payload(
+    emitter: FlowEventEmitter,
+    event: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    event_type = event.get("type")
+
+    if event_type == "model_start":
+        return emitter.emit(
+            event_type="compare_model_started",
+            stage=FlowEventStage.ORCHESTRATION,
+            payload={
+                "model_id": event.get("model_id"),
+                "model_name": event.get("model_name"),
+            },
+        )
+    if event_type == "model_chunk":
+        text = str(event.get("chunk") or "")
+        if not text:
+            return None
+        return emitter.emit_text_delta(text, payload={"model_id": event.get("model_id")})
+    if event_type == "model_done":
+        return emitter.emit(
+            event_type="compare_model_finished",
+            stage=FlowEventStage.ORCHESTRATION,
+            payload={
+                "model_id": event.get("model_id"),
+                "model_name": event.get("model_name"),
+                "content": event.get("content"),
+                "usage": event.get("usage"),
+                "cost": event.get("cost"),
+            },
+        )
+    if event_type == "model_error":
+        return emitter.emit(
+            event_type="compare_model_failed",
+            stage=FlowEventStage.ORCHESTRATION,
+            payload={
+                "model_id": event.get("model_id"),
+                "model_name": event.get("model_name"),
+                "error": event.get("error"),
+            },
+        )
+    if event_type == "compare_complete":
+        return emitter.emit(
+            event_type="compare_completed",
+            stage=FlowEventStage.ORCHESTRATION,
+            payload={"model_results": event.get("model_results")},
+        )
+    if event_type == "user_message_id":
+        return emitter.emit(
+            event_type="user_message_identified",
+            stage=FlowEventStage.META,
+            payload={"message_id": event.get("message_id")},
+        )
+    if event_type == "assistant_message_id":
+        return emitter.emit(
+            event_type="assistant_message_identified",
+            stage=FlowEventStage.META,
+            payload={"message_id": event.get("message_id")},
+        )
+    if event_type == "sources":
+        return emitter.emit(
+            event_type="sources_reported",
+            stage=FlowEventStage.META,
+            payload={"sources": event.get("sources")},
+        )
+    if event_type == "error":
+        return emitter.emit_error(str(event.get("error") or "compare stream error"))
+
+    return emitter.emit(
+        event_type="legacy_event",
+        stage=FlowEventStage.META,
+        payload={"legacy_type": str(event_type or ""), "data": event},
+    )
+
+
+def _map_compress_event_to_flow_payload(
+    emitter: FlowEventEmitter,
+    event: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    event_type = str(event.get("type") or "")
+    if event_type == "compression_complete":
+        return emitter.emit(
+            event_type="compression_completed",
+            stage=FlowEventStage.META,
+            payload={
+                "message_id": event.get("message_id"),
+                "compressed_count": event.get("compressed_count"),
+                "compression_meta": event.get("compression_meta"),
+            },
+        )
+    if event_type == "error":
+        return emitter.emit_error(str(event.get("error") or "compression stream error"))
+    return emitter.emit(
+        event_type="legacy_event",
+        stage=FlowEventStage.META,
+        payload={"legacy_type": event_type, "data": event},
+    )
 
 
 async def _build_stream_fn(
@@ -447,12 +549,31 @@ async def resume_chat_stream(
     async def event_generator():
         """Replay cached events and then continue with live queue."""
         terminal_seen = False
+        resume_emitter = FlowEventEmitter(
+            stream_id=request.stream_id,
+            conversation_id=request.session_id,
+            seq_provider=lambda: runtime.next_seq(request.stream_id),
+        )
         try:
+            resume_started = resume_emitter.emit(
+                event_type="resume_started",
+                stage=FlowEventStage.TRANSPORT,
+                payload={"last_event_id": request.last_event_id},
+            )
+            yield f"data: {json.dumps(resume_started, ensure_ascii=False, default=str)}\n\n"
+
             for payload in replay_payloads:
                 yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
                 if _is_terminal_payload(payload):
                     terminal_seen = True
                     return
+
+            replay_finished = resume_emitter.emit(
+                event_type="replay_finished",
+                stage=FlowEventStage.TRANSPORT,
+                payload={"replayed_count": len(replay_payloads)},
+            )
+            yield f"data: {json.dumps(replay_finished, ensure_ascii=False, default=str)}\n\n"
 
             if terminal_seen:
                 return
@@ -769,8 +890,14 @@ async def compress_context(
 
     from ..services.compression_service import CompressionService
     compression_service = CompressionService(agent.storage)
+    emitter = FlowEventEmitter(
+        stream_id=str(uuid.uuid4()),
+        conversation_id=request.session_id,
+    )
 
     async def event_generator():
+        started_payload = emitter.emit_started(context_type=request.context_type)
+        yield f"data: {json.dumps(started_payload, ensure_ascii=False, default=str)}\n\n"
         try:
             async for chunk in compression_service.compress_context_stream(
                 session_id=request.session_id,
@@ -778,25 +905,30 @@ async def compress_context(
                 project_id=request.project_id,
             ):
                 if isinstance(chunk, dict):
-                    data = json.dumps(chunk, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
+                    mapped_payload = _map_compress_event_to_flow_payload(emitter, chunk)
+                    if mapped_payload is None:
+                        continue
+                    yield f"data: {json.dumps(mapped_payload, ensure_ascii=False, default=str)}\n\n"
+                    if _is_terminal_payload(mapped_payload):
+                        return
                     continue
 
-                data = json.dumps({"chunk": chunk}, ensure_ascii=False)
-                yield f"data: {data}\n\n"
+                text_payload = emitter.emit_text_delta(str(chunk))
+                yield f"data: {json.dumps(text_payload, ensure_ascii=False, default=str)}\n\n"
 
-            yield f"data: {json.dumps({'done': True})}\n\n"
+            ended_payload = emitter.emit_ended()
+            yield f"data: {json.dumps(ended_payload, ensure_ascii=False, default=str)}\n\n"
 
         except FileNotFoundError:
-            error_data = json.dumps({"error": "Session not found"})
-            yield f"data: {error_data}\n\n"
+            error_payload = emitter.emit_error("Session not found")
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False, default=str)}\n\n"
         except ValueError as e:
-            error_data = json.dumps({"error": str(e)})
-            yield f"data: {error_data}\n\n"
+            error_payload = emitter.emit_error(str(e))
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False, default=str)}\n\n"
         except Exception as e:
             logger.error(f"Compress context error: {str(e)}", exc_info=True)
-            error_data = json.dumps({"error": str(e)})
-            yield f"data: {error_data}\n\n"
+            error_payload = emitter.emit_error(str(e))
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False, default=str)}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -837,8 +969,14 @@ async def chat_compare(
         raise HTTPException(status_code=400, detail="At least 2 model_ids are required for comparison")
 
     logger.info(f"Compare request: session={request.session_id[:16]}..., models={request.model_ids}")
+    emitter = FlowEventEmitter(
+        stream_id=str(uuid.uuid4()),
+        conversation_id=request.session_id,
+    )
 
     async def event_generator():
+        started_payload = emitter.emit_started(context_type=request.context_type)
+        yield f"data: {json.dumps(started_payload, ensure_ascii=False, default=str)}\n\n"
         try:
             async for event in agent.process_compare_stream(
                 request.session_id,
@@ -853,24 +991,29 @@ async def chat_compare(
                 file_references=request.file_references,
             ):
                 if isinstance(event, dict):
-                    data = json.dumps(event, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
+                    mapped_payload = _map_compare_event_to_flow_payload(emitter, event)
+                    if mapped_payload is None:
+                        continue
+                    yield f"data: {json.dumps(mapped_payload, ensure_ascii=False, default=str)}\n\n"
+                    if _is_terminal_payload(mapped_payload):
+                        return
                 else:
-                    data = json.dumps({"chunk": event}, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
+                    text_payload = emitter.emit_text_delta(str(event))
+                    yield f"data: {json.dumps(text_payload, ensure_ascii=False, default=str)}\n\n"
 
-            yield f"data: {json.dumps({'done': True})}\n\n"
+            ended_payload = emitter.emit_ended()
+            yield f"data: {json.dumps(ended_payload, ensure_ascii=False, default=str)}\n\n"
 
         except FileNotFoundError:
-            error_data = json.dumps({"error": "Session not found"})
-            yield f"data: {error_data}\n\n"
+            error_payload = emitter.emit_error("Session not found")
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False, default=str)}\n\n"
         except ValueError as e:
-            error_data = json.dumps({"error": str(e)})
-            yield f"data: {error_data}\n\n"
+            error_payload = emitter.emit_error(str(e))
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False, default=str)}\n\n"
         except Exception as e:
             logger.error(f"Compare error: {str(e)}", exc_info=True)
-            error_data = json.dumps({"error": str(e)})
-            yield f"data: {error_data}\n\n"
+            error_payload = emitter.emit_error(str(e))
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False, default=str)}\n\n"
 
     return StreamingResponse(
         event_generator(),

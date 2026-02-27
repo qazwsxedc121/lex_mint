@@ -22,20 +22,12 @@ class FlowEventMapper:
     _seq: int = 0
 
     def to_sse_payload(self, chunk: StreamChunk) -> Dict[str, Any]:
-        """Return legacy payload with an attached normalized flow_event block."""
+        """Return flow_event-only payload mapped from stream chunk."""
 
-        legacy_payload: Dict[str, Any]
-        if isinstance(chunk, Mapping):
-            legacy_payload = dict(chunk)
-        else:
-            legacy_payload = {"chunk": str(chunk)}
-
-        flow_event = self._map_chunk_to_flow_event(chunk)
-        legacy_payload["flow_event"] = flow_event
-        return legacy_payload
+        return {"flow_event": self._map_chunk_to_flow_event(chunk)}
 
     def make_stream_started_payload(self, *, context_type: Optional[str] = None) -> Dict[str, Any]:
-        """Build an initial stream-start envelope for transport visibility."""
+        """Build an initial stream-start payload."""
 
         payload: Dict[str, Any] = {}
         if context_type:
@@ -45,10 +37,7 @@ class FlowEventMapper:
             stage=FlowEventStage.TRANSPORT,
             payload=payload,
         )
-        return {
-            "type": "stream_started",
-            "flow_event": flow_event,
-        }
+        return {"flow_event": flow_event}
 
     def _next_seq(self) -> int:
         if self.seq_provider is not None:
@@ -93,9 +82,9 @@ class FlowEventMapper:
             return self._map_legacy_event(payload)
 
         return self._create_event(
-            event_type="assistant_text_delta",
+            event_type="text_delta",
             stage=FlowEventStage.CONTENT,
-            payload={"chunk": str(chunk)},
+            payload={"text": str(chunk)},
         )
 
     def _map_legacy_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
@@ -112,9 +101,9 @@ class FlowEventMapper:
 
         if "chunk" in event:
             return self._create_event(
-                event_type="assistant_text_delta",
+                event_type="text_delta",
                 stage=FlowEventStage.CONTENT,
-                payload={"chunk": str(event.get("chunk") or "")},
+                payload={"text": str(event.get("chunk") or "")},
             )
 
         return self._create_event(
@@ -148,7 +137,9 @@ class FlowEventMapper:
                 event,
                 ("chunk", "assistant_id", "assistant_turn_id"),
             )
-            return "assistant_text_delta", FlowEventStage.CONTENT, payload
+            chunk = str(payload.pop("chunk", "") or "")
+            payload["text"] = chunk
+            return "text_delta", FlowEventStage.CONTENT, payload
 
         if legacy_type == "usage":
             payload = self._copy_selected_fields(

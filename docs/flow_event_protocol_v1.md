@@ -1,14 +1,16 @@
 # FlowEvent Protocol v1
 
-This document defines the `flow_event` envelope attached to chat SSE payloads.
+This document defines the canonical `flow_event` envelope for streaming SSE APIs.
 
 ## Scope
 
-- Stage 1 rollout target: `POST /api/chat/stream`
-- Stage 2 adds: `POST /api/chat/stream/resume`
-- Mode: backward compatible dual output
-  - Legacy fields are preserved (`chunk`, `type`, `done`, `error`, ...)
-  - New structured field is attached as `flow_event`
+- Scope endpoints:
+  - `POST /api/chat/stream`
+  - `POST /api/chat/stream/resume`
+  - `POST /api/chat/compare`
+  - `POST /api/chat/compress`
+  - `POST /api/translate`
+- Mode: `flow_event` only
 
 ## Envelope
 
@@ -21,7 +23,7 @@ This document defines the `flow_event` envelope attached to chat SSE payloads.
     "stream_id": "uuid",
     "conversation_id": "session_id",
     "turn_id": "optional_assistant_turn_id",
-    "event_type": "assistant_text_delta",
+    "event_type": "text_delta",
     "stage": "content",
     "payload": {
       "chunk": "hello"
@@ -38,14 +40,16 @@ This document defines the `flow_event` envelope attached to chat SSE payloads.
 - `orchestration`
 - `meta`
 
-## Event types in v1
+## Event types in v1 (full-chain)
 
 - transport
   - `stream_started`
   - `stream_ended`
   - `stream_error`
+  - `resume_started`
+  - `replay_finished`
 - content
-  - `assistant_text_delta`
+  - `text_delta`
   - `reasoning_duration_reported`
 - tool
   - `tool_call_started`
@@ -56,6 +60,10 @@ This document defines the `flow_event` envelope attached to chat SSE payloads.
   - `group_round_started`
   - `group_action_reported`
   - `group_done_reported`
+  - `compare_model_started`
+  - `compare_model_finished`
+  - `compare_model_failed`
+  - `compare_completed`
 - meta
   - `usage_reported`
   - `sources_reported`
@@ -63,12 +71,14 @@ This document defines the `flow_event` envelope attached to chat SSE payloads.
   - `user_message_identified`
   - `assistant_message_identified`
   - `followup_questions_reported`
+  - `language_detected`
+  - `translation_completed`
+  - `compression_completed`
   - `legacy_event` (fallback)
 
 ## Compatibility
 
-- Clients that do not parse `flow_event` continue to work with legacy fields.
-- Clients that parse `flow_event` should prefer it and ignore duplicated legacy fields.
+- Clients must parse `flow_event`.
 
 ## Resume semantics (Stage 2)
 
