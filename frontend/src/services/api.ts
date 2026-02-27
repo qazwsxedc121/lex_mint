@@ -84,6 +84,75 @@ async function* iterateSSEData(
   }
 }
 
+type FlowEventStage = 'transport' | 'content' | 'tool' | 'orchestration' | 'meta';
+
+interface FlowEvent {
+  event_id: string;
+  seq: number;
+  ts: number;
+  stream_id: string;
+  conversation_id?: string;
+  turn_id?: string;
+  event_type: string;
+  stage: FlowEventStage;
+  payload: Record<string, unknown>;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
+
+function parseFlowEvent(value: unknown): FlowEvent | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const stage = record.stage;
+  if (
+    stage !== 'transport' &&
+    stage !== 'content' &&
+    stage !== 'tool' &&
+    stage !== 'orchestration' &&
+    stage !== 'meta'
+  ) {
+    return null;
+  }
+
+  const eventId = asString(record.event_id);
+  const eventType = asString(record.event_type);
+  const streamId = asString(record.stream_id);
+  const seq = asNumber(record.seq);
+  const ts = asNumber(record.ts);
+  const payload = asRecord(record.payload) || {};
+
+  if (!eventId || !eventType || !streamId || seq === undefined || ts === undefined) {
+    return null;
+  }
+
+  return {
+    event_id: eventId,
+    seq,
+    ts,
+    stream_id: streamId,
+    conversation_id: asString(record.conversation_id),
+    turn_id: asString(record.turn_id),
+    event_type: eventType,
+    stage,
+    payload,
+  };
+}
+
 /**
  * Create a new conversation session.
  */
@@ -476,7 +545,6 @@ export async function compressContext(
       for await (const dataStr of iterateSSEData(reader)) {
         try {
           const data = JSON.parse(dataStr);
-
           if (data.error) {
             onError(data.error);
             return;
@@ -564,7 +632,6 @@ export async function translateText(
       for await (const dataStr of iterateSSEData(reader)) {
         try {
           const data = JSON.parse(dataStr);
-
           if (data.error) {
             onError(data.error);
             return;
@@ -703,6 +770,186 @@ export async function sendMessageStream(
     abortControllerRef.current = controller;
   }
 
+  type FlowHandleResult = 'handled' | 'return' | 'unhandled';
+
+  const handleFlowEvent = (flowEvent: FlowEvent): FlowHandleResult => {
+    const payload = flowEvent.payload || {};
+    const assistantId = asString(payload.assistant_id);
+    const assistantTurnId = asString(payload.assistant_turn_id) || flowEvent.turn_id;
+    const name = asString(payload.name);
+    const icon = asString(payload.icon);
+
+    switch (flowEvent.event_type) {
+      case 'stream_ended':
+        onDone();
+        return 'return';
+      case 'stream_error':
+        onError(asString(payload.error) || 'Stream error');
+        return 'return';
+      case 'assistant_text_delta': {
+        const chunk = asString(payload.chunk) || asString(payload.text);
+        if (!chunk) {
+          return 'handled';
+        }
+        if ((assistantId || assistantTurnId) && onGroupEvent) {
+          onGroupEvent({
+            type: 'assistant_chunk',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+            chunk,
+          });
+          return 'handled';
+        }
+        onChunk(chunk);
+        return 'handled';
+      }
+      case 'usage_reported': {
+        const usage = payload.usage as TokenUsage | undefined;
+        const cost = payload.cost as CostInfo | undefined;
+        if (usage && onUsage) {
+          onUsage(usage, cost);
+        }
+        if (onGroupEvent && (assistantId || assistantTurnId)) {
+          onGroupEvent({
+            type: 'usage',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+            usage,
+            cost,
+          });
+        }
+        return 'handled';
+      }
+      case 'sources_reported': {
+        const sources = payload.sources as SearchSource[] | undefined;
+        if (sources && onSources) {
+          onSources(sources);
+        }
+        if (onGroupEvent && (assistantId || assistantTurnId)) {
+          onGroupEvent({
+            type: 'sources',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+            sources,
+          });
+        }
+        return 'handled';
+      }
+      case 'context_reported': {
+        if (onContextInfo) {
+          onContextInfo(payload as unknown as ContextInfo);
+        }
+        return 'handled';
+      }
+      case 'reasoning_duration_reported': {
+        const durationMs = asNumber(payload.duration_ms);
+        if (durationMs !== undefined && onThinkingDuration) {
+          onThinkingDuration(durationMs);
+        }
+        if (onGroupEvent && (assistantId || assistantTurnId)) {
+          onGroupEvent({
+            type: 'thinking_duration',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+            duration_ms: durationMs,
+          });
+        }
+        return 'handled';
+      }
+      case 'tool_call_started': {
+        const calls = payload.calls as Array<{ name: string; args: Record<string, unknown> }> | undefined;
+        if (calls && onToolCalls) {
+          onToolCalls(calls);
+        }
+        return 'handled';
+      }
+      case 'tool_call_finished': {
+        const results = payload.results as Array<{ name: string; result: string; tool_call_id: string }> | undefined;
+        if (results && onToolResults) {
+          onToolResults(results);
+        }
+        return 'handled';
+      }
+      case 'user_message_identified': {
+        const messageId = asString(payload.message_id);
+        if (messageId && onUserMessageId) {
+          onUserMessageId(messageId);
+        }
+        return 'handled';
+      }
+      case 'assistant_message_identified': {
+        const messageId = asString(payload.message_id);
+        if (messageId && onAssistantMessageId) {
+          onAssistantMessageId(messageId);
+        }
+        if (onGroupEvent && (assistantId || assistantTurnId || messageId)) {
+          onGroupEvent({
+            type: 'assistant_message_id',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+            message_id: messageId,
+          });
+        }
+        return 'handled';
+      }
+      case 'assistant_turn_started': {
+        if (onGroupEvent) {
+          onGroupEvent({
+            type: 'assistant_start',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+            name,
+            icon,
+          });
+        } else if (assistantId && name && onAssistantStart) {
+          onAssistantStart(assistantId, name, icon);
+        }
+        return 'handled';
+      }
+      case 'assistant_turn_finished': {
+        if (onGroupEvent) {
+          onGroupEvent({
+            type: 'assistant_done',
+            assistant_id: assistantId,
+            assistant_turn_id: assistantTurnId,
+          });
+        } else if (assistantId && onAssistantDone) {
+          onAssistantDone(assistantId);
+        }
+        return 'handled';
+      }
+      case 'group_round_started':
+      case 'group_action_reported':
+      case 'group_done_reported': {
+        if (!onGroupEvent) {
+          return 'handled';
+        }
+        const mappedType =
+          flowEvent.event_type === 'group_round_started'
+            ? 'group_round_start'
+            : flowEvent.event_type === 'group_action_reported'
+              ? 'group_action'
+              : 'group_done';
+        onGroupEvent({
+          type: mappedType,
+          ...payload,
+        });
+        return 'handled';
+      }
+      case 'followup_questions_reported': {
+        const questions = payload.questions;
+        if (Array.isArray(questions) && onFollowupQuestions) {
+          onFollowupQuestions(questions.filter((item): item is string => typeof item === 'string'));
+        }
+        return 'handled';
+      }
+      case 'stream_started':
+        return 'handled';
+      default:
+        return 'unhandled';
+    }
+  };
+
   try {
     const requestBody: any = {
       session_id: sessionId,
@@ -760,6 +1007,17 @@ export async function sendMessageStream(
       for await (const dataStr of iterateSSEData(reader)) {
         try {
           const data = JSON.parse(dataStr);
+          const flowEvent = parseFlowEvent(data.flow_event);
+          if (flowEvent) {
+            const handleResult = handleFlowEvent(flowEvent);
+            if (handleResult === 'return') {
+              return;
+            }
+            if (handleResult === 'handled') {
+              continue;
+            }
+          }
+
 
           if (data.error) {
             onError(data.error);

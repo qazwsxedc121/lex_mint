@@ -164,13 +164,17 @@ Send a message and receive AI response as Server-Sent Events (SSE).
 }
 ```
 
-**Response:** Server-Sent Events stream
+**Response:** Server-Sent Events stream (legacy fields + `flow_event`)
 
-```
-data: {"type": "token", "content": "Python"}
-data: {"type": "token", "content": " is"}
-data: {"type": "token", "content": " a"}
-data: {"type": "done", "full_response": "Python is a high-level programming language..."}
+```text
+data: {"type":"stream_started","flow_event":{"event_type":"stream_started","stage":"transport","payload":{"context_type":"chat"}, ...}}
+
+data: {"chunk":"Python","flow_event":{"event_type":"assistant_text_delta","stage":"content","payload":{"chunk":"Python"}, ...}}
+data: {"chunk":" is","flow_event":{"event_type":"assistant_text_delta","stage":"content","payload":{"chunk":" is"}, ...}}
+
+data: {"type":"usage","usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20},"flow_event":{"event_type":"usage_reported","stage":"meta","payload":{"usage":{...}}, ...}}
+
+data: {"done":true,"flow_event":{"event_type":"stream_ended","stage":"transport","payload":{"done":true}, ...}}
 ```
 
 ### Delete Message

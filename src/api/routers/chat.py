@@ -6,11 +6,13 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 import json
+import uuid
 
 # 使用简化版 AgentService（不使用 LangGraph）
 from ..services.agent_service_simple import AgentService
 from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..services.file_service import FileService
+from ..services.flow_event_mapper import FlowEventMapper
 from ..models.search import SearchSource
 from ..config import settings
 
@@ -230,9 +232,15 @@ async def chat_stream(
 
     async def event_generator():
         """Generate SSE (Server-Sent Events) formatted data stream"""
+        mapper = FlowEventMapper(
+            stream_id=str(uuid.uuid4()),
+            conversation_id=request.session_id,
+        )
         try:
             print("[SSE] Starting stream processing...")
             logger.info("[SSE] Starting stream processing...")
+            started_payload = mapper.make_stream_started_payload(context_type=request.context_type)
+            yield f"data: {json.dumps(started_payload, ensure_ascii=False, default=str)}\n\n"
 
             # Truncate messages if specified
             if request.truncate_after_index is not None:
@@ -289,19 +297,16 @@ async def chat_stream(
 
             # Stream process messages
             async for chunk in stream_fn:
-                # Check if chunk is a dict event (usage, user_message_id, assistant_message_id)
-                if isinstance(chunk, dict):
-                    # Forward dict events as-is
-                    data = json.dumps(chunk, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
-                    continue
-
-                # Regular content chunk (string)
-                data = json.dumps({"chunk": chunk}, ensure_ascii=False)
+                data = json.dumps(
+                    mapper.to_sse_payload(chunk),
+                    ensure_ascii=False,
+                    default=str,
+                )
                 yield f"data: {data}\n\n"
 
             # Send completion marker
-            yield f"data: {json.dumps({'done': True})}\n\n"
+            done_payload = mapper.to_sse_payload({"done": True})
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False, default=str)}\n\n"
 
             print("=" * 80)
             print("[OK] Stream processing complete")
@@ -314,17 +319,29 @@ async def chat_stream(
         except FileNotFoundError as e:
             print(f"❌ 会话未找到: {request.session_id}")
             logger.error(f"❌ 会话未找到: {request.session_id}")
-            error_data = json.dumps({"error": "Session not found"})
+            error_data = json.dumps(
+                mapper.to_sse_payload({"error": "Session not found"}),
+                ensure_ascii=False,
+                default=str,
+            )
             yield f"data: {error_data}\n\n"
         except ValueError as e:
             print(f"❌ 验证错误: {str(e)}")
             logger.error(f"❌ 验证错误: {str(e)}")
-            error_data = json.dumps({"error": str(e)})
+            error_data = json.dumps(
+                mapper.to_sse_payload({"error": str(e)}),
+                ensure_ascii=False,
+                default=str,
+            )
             yield f"data: {error_data}\n\n"
         except Exception as e:
             print(f"❌ Agent 错误: {str(e)}")
             logger.error(f"❌ Agent 错误: {str(e)}", exc_info=True)
-            error_data = json.dumps({"error": str(e)})
+            error_data = json.dumps(
+                mapper.to_sse_payload({"error": str(e)}),
+                ensure_ascii=False,
+                default=str,
+            )
             yield f"data: {error_data}\n\n"
 
     return StreamingResponse(
