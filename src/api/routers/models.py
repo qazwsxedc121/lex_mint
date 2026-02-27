@@ -333,7 +333,9 @@ async def update_model(
         await service.update_model(model_id, model)
         return {"message": "Model updated successfully"}
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        detail = str(e)
+        status_code = 404 if "not found" in detail.lower() else 400
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.delete("/list/{model_id:path}")

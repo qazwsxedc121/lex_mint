@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -175,6 +176,7 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
             "mrr": no_answer_success,
             "precision_at_k": 0.0,
             "recall_at_k": 0.0,
+            "ndcg_at_k": no_answer_success,
             "first_relevant_rank": None,
             "relevant_ranks": [],
             "no_answer_success": no_answer_success,
@@ -195,6 +197,17 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
     mrr = (1.0 / first_rank) if first_rank else 0.0
     precision_at_k = (len(relevant_ranks) / max(1, top_k))
     recall_at_k = (len(seen_targets) / max(1, total_targets))
+    # Binary nDCG with one gain per newly matched target label.
+    dcg = 0.0
+    seen_for_dcg: Set[str] = set()
+    for rank, item in enumerate(capped, start=1):
+        matched = _match_targets(case, item) - seen_for_dcg
+        if matched:
+            dcg += 1.0 / math.log2(rank + 1.0)
+            seen_for_dcg.update(matched)
+    ideal_hits = min(total_targets, top_k)
+    idcg = sum(1.0 / math.log2(rank + 1.0) for rank in range(1, ideal_hits + 1))
+    ndcg_at_k = (dcg / idcg) if idcg > 0 else 0.0
 
     return {
         "case_id": case.case_id,
@@ -208,6 +221,7 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
         "mrr": mrr,
         "precision_at_k": precision_at_k,
         "recall_at_k": recall_at_k,
+        "ndcg_at_k": ndcg_at_k,
         "first_relevant_rank": first_rank,
         "relevant_ranks": relevant_ranks,
         "no_answer_success": None,
@@ -224,6 +238,7 @@ def _summarize_mode(mode: str, case_rows: Sequence[Dict[str, Any]]) -> Dict[str,
             "mean_mrr": 0.0,
             "mean_precision_at_k": 0.0,
             "mean_recall_at_k": 0.0,
+            "mean_ndcg_at_k": 0.0,
             "answerable_case_count": 0,
             "no_answer_case_count": 0,
             "no_answer_success_rate": 0.0,
@@ -239,12 +254,14 @@ def _summarize_mode(mode: str, case_rows: Sequence[Dict[str, Any]]) -> Dict[str,
         mean_mrr = mean(row["mrr"] for row in answerable_rows)
         mean_precision = mean(row["precision_at_k"] for row in answerable_rows)
         mean_recall = mean(row["recall_at_k"] for row in answerable_rows)
+        mean_ndcg = mean(row.get("ndcg_at_k", 0.0) for row in answerable_rows)
     else:
         hit_rate = 0.0
         citation_hit_rate = 0.0
         mean_mrr = 0.0
         mean_precision = 0.0
         mean_recall = 0.0
+        mean_ndcg = 0.0
 
     no_answer_success_rate = (
         mean(float(row.get("no_answer_success", 0.0) or 0.0) for row in no_answer_rows)
@@ -263,6 +280,7 @@ def _summarize_mode(mode: str, case_rows: Sequence[Dict[str, Any]]) -> Dict[str,
         "mean_mrr": mean_mrr,
         "mean_precision_at_k": mean_precision,
         "mean_recall_at_k": mean_recall,
+        "mean_ndcg_at_k": mean_ndcg,
         "answerable_case_count": len(answerable_rows),
         "no_answer_case_count": len(no_answer_rows),
         "no_answer_success_rate": no_answer_success_rate,
@@ -287,13 +305,13 @@ def _build_report(
         "",
         "## Mode Summary",
         "",
-        "| Mode | Cases | Hit Rate | Citation Hit | Mean MRR | Mean P@K | Mean Recall@K |",
-        "|------|------:|---------:|-------------:|---------:|---------:|--------------:|",
+        "| Mode | Cases | Hit Rate | Citation Hit | Mean MRR | Mean P@K | Mean Recall@K | Mean nDCG@K |",
+        "|------|------:|---------:|-------------:|---------:|---------:|--------------:|------------:|",
     ]
     for item in summaries:
         lines.append(
             "| {mode} | {case_count} | {hit_rate:.3f} | {citation_hit_rate:.3f} | "
-            "{mean_mrr:.3f} | {mean_precision_at_k:.3f} | {mean_recall_at_k:.3f} |".format(**item)
+            "{mean_mrr:.3f} | {mean_precision_at_k:.3f} | {mean_recall_at_k:.3f} | {mean_ndcg_at_k:.3f} |".format(**item)
         )
 
     lines.extend(

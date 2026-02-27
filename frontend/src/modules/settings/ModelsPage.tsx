@@ -134,9 +134,17 @@ export const ModelsPage: React.FC = () => {
     });
   }, [providerFilteredModels, selectedTags]);
 
+  const defaultModelId = useMemo(() => {
+    if (!modelsHook.defaultConfig) {
+      return null;
+    }
+    return `${modelsHook.defaultConfig.provider}:${modelsHook.defaultConfig.model}`;
+  }, [modelsHook.defaultConfig]);
+
   // Adapt useModels hook to CrudHook interface
   const crudHook: CrudHook<Model> = {
     items: filteredModels,
+    defaultItemId: defaultModelId,
     loading: modelsHook.loading,
     error: modelsHook.error,
     createItem: modelsHook.createModel,
@@ -145,6 +153,15 @@ export const ModelsPage: React.FC = () => {
       return modelsHook.updateModel(id, data as Model);
     },
     deleteItem: modelsHook.deleteModel,
+    setDefault: async (id: string) => {
+      const separator = id.indexOf(':');
+      if (separator <= 0 || separator === id.length - 1) {
+        throw new Error(`Invalid model id: ${id}`);
+      }
+      const providerId = id.slice(0, separator);
+      const modelId = id.slice(separator + 1);
+      await modelsHook.setDefault(providerId, modelId);
+    },
     refreshData: modelsHook.refreshData
   };
 

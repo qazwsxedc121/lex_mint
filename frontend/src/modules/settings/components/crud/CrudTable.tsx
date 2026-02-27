@@ -128,7 +128,7 @@ export function CrudTable<T = any>({
     const enabledActions = config.enableDefaultActions || {};
     const showEdit = enabledActions.edit !== false;
     const showDelete = enabledActions.delete !== false;
-    const showSetDefault = enabledActions.setDefault !== false && config.defaultKey;
+    const showSetDefault = enabledActions.setDefault !== false && !!onSetDefault;
 
     if (showEdit || showDelete || showSetDefault || config.rowActions) {
       cols.push({

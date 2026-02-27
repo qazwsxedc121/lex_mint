@@ -216,7 +216,8 @@ class QueryTransformService:
             llm = self.model_config_service.get_llm_instance(
                 model_id=resolved_model_id,
                 temperature=0.0,
-                max_tokens=160,
+                max_tokens=96,
+                disable_thinking=True,
             )
             prompt = self._build_rewrite_prompt(original_query)
             response = await asyncio.wait_for(

@@ -377,6 +377,6 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     create: true,
     edit: true,
     delete: true,
-    setDefault: false // Models don't have a default
+    setDefault: true
   }
 };
