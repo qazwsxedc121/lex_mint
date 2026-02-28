@@ -6,8 +6,10 @@ import json
 from typing import Any, Dict, List
 
 import pytest
+from fastapi import HTTPException
 
 from src.api.routers import chat as chat_router
+from src.api.routers import editor as editor_router
 from src.api.routers import translation as translation_router
 from src.api.services.flow_stream_runtime import FlowStreamRuntime
 
@@ -232,3 +234,47 @@ async def test_translate_contract_flow_event_only(monkeypatch):
     ]
     assert events[0]["payload"]["context_type"] == "translation"
     assert events[2]["payload"]["text"] == "ni hao"
+
+
+@pytest.mark.asyncio
+async def test_editor_rewrite_contract_flow_event_only():
+    class _FakeRewriteService:
+        async def stream_rewrite(self, **_kwargs):
+            yield "rewritten"
+            yield " text"
+
+    request = editor_router.RewriteRequest(
+        session_id="session-editor-1",
+        selected_text="source text",
+        context_before="before",
+        context_after="after",
+        context_type="project",
+        project_id="proj-1",
+    )
+
+    response = await editor_router.rewrite_text(request=request, rewrite_service=_FakeRewriteService())
+    payloads = await _collect_sse_payloads(response)
+    events = [_assert_flow_event_envelope(payload) for payload in payloads]
+    _assert_seq_strictly_increasing(events)
+
+    event_types = [event["event_type"] for event in events]
+    assert event_types == ["stream_started", "text_delta", "text_delta", "stream_ended"]
+    assert events[0]["payload"]["context_type"] == "project"
+    assert events[1]["payload"]["text"] == "rewritten"
+    assert events[2]["payload"]["text"] == " text"
+
+
+@pytest.mark.asyncio
+async def test_editor_rewrite_requires_project_context():
+    with pytest.raises(HTTPException) as exc_info:
+        await editor_router.rewrite_text(
+            request=editor_router.RewriteRequest(
+                session_id="session-editor-2",
+                selected_text="source text",
+                context_type="chat",
+                project_id="proj-1",
+            ),
+            rewrite_service=object(),  # type: ignore[arg-type]
+        )
+
+    assert exc_info.value.status_code == 400

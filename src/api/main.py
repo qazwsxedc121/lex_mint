@@ -20,6 +20,7 @@ from .routers import (
     assistants,
     chat,
     compression_config,
+    editor,
     file_reference_config,
     followup,
     folders,
@@ -60,6 +61,7 @@ app.add_middleware(
 # Register routers
 app.include_router(sessions.router)
 app.include_router(chat.router)
+app.include_router(editor.router)
 app.include_router(models.router)
 app.include_router(assistants.router)
 app.include_router(title_generation.router)

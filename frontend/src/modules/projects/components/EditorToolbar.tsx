@@ -11,6 +11,7 @@ import {
   ArrowsPointingOutIcon,
   HashtagIcon,
   ArrowUpOnSquareIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { ChatToggleButton } from './ChatToggleButton';
 
@@ -50,6 +51,11 @@ interface EditorToolbarProps {
   onInsertToChat: () => void;
   insertToChatDisabled: boolean;
   insertToChatTitle: string;
+
+  // Inline rewrite
+  onInlineRewrite: () => void;
+  inlineRewriteDisabled: boolean;
+  inlineRewriteTitle: string;
 }
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
@@ -77,6 +83,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onInsertToChat,
   insertToChatDisabled,
   insertToChatTitle,
+  onInlineRewrite,
+  inlineRewriteDisabled,
+  inlineRewriteTitle,
 }) => {
   const { t } = useTranslation('projects');
 
@@ -186,6 +195,19 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
         {/* Group 4: Chat Toggle */}
         <div className="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-3 mr-2">
+          <button
+            title={inlineRewriteTitle}
+            onClick={onInlineRewrite}
+            disabled={inlineRewriteDisabled}
+            data-name="editor-inline-rewrite-button"
+            className={`p-1.5 rounded ${
+              inlineRewriteDisabled
+                ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            <SparklesIcon className="h-4 w-4" />
+          </button>
           <button
             title={insertToChatTitle}
             onClick={onInsertToChat}

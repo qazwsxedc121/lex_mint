@@ -17,11 +17,31 @@ import { openSearchPanel, search } from '@codemirror/search';
 import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import type { FileContent } from '../../../types/project';
 import { Breadcrumb } from './Breadcrumb';
-import { writeFile } from '../../../services/api';
+import { streamEditorRewrite, writeFile } from '../../../services/api';
 import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
+import { InlineRewritePanel } from './InlineRewritePanel';
+import type { RewritePreset } from './InlineRewritePanel';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
+const INLINE_REWRITE_CONTEXT_CHARS = 1200;
+const THINK_BLOCK_REGEX = /<think>[\s\S]*?<\/think>/g;
+const REWRITE_PRESET_INSTRUCTIONS: Record<RewritePreset, string> = {
+  clarity: 'Improve clarity and readability while preserving the original meaning.',
+  concise: 'Make the text more concise while preserving key meaning and facts.',
+  professional: 'Rewrite in a professional and polished tone while keeping intent.',
+  grammar: 'Fix grammar, spelling, and punctuation while preserving style and meaning.',
+};
+
+interface RewriteSelectionSnapshot {
+  from: number;
+  to: number;
+  selectedText: string;
+  contextBefore: string;
+  contextAfter: string;
+  filePath: string;
+  language: string;
+}
 
 interface FileViewerProps {
   projectId: string;
@@ -120,12 +140,22 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInsertingToChat, setIsInsertingToChat] = useState(false);
   const [refreshingProject, setRefreshingProject] = useState(false);
+  const [hasSelection, setHasSelection] = useState(false);
+  const [inlineRewriteOpen, setInlineRewriteOpen] = useState(false);
+  const [inlineRewriteStreaming, setInlineRewriteStreaming] = useState(false);
+  const [inlineRewriteError, setInlineRewriteError] = useState<string | null>(null);
+  const [inlineRewritePreset, setInlineRewritePreset] = useState<RewritePreset>('clarity');
+  const [inlineRewriteInstruction, setInlineRewriteInstruction] = useState('');
+  const [inlineRewriteSourceText, setInlineRewriteSourceText] = useState('');
+  const [inlineRewritePreview, setInlineRewritePreview] = useState('');
 
-  const { currentSessionId, createSession, navigation } = useChatServices();
+  const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
 
   // Editor view reference
   const editorViewRef = useRef<EditorView | null>(null);
+  const inlineRewriteAbortRef = useRef<AbortController | null>(null);
+  const rewriteSelectionRef = useRef<RewriteSelectionSnapshot | null>(null);
 
   // Line wrapping setting (default: true, persisted in localStorage)
   const [lineWrapping, setLineWrapping] = useState<boolean>(() => {
@@ -174,6 +204,13 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setOriginalContent(content.content);
       setSaveError(null);
       setSaveSuccess(false);
+      setHasSelection(false);
+      setInlineRewriteOpen(false);
+      setInlineRewriteStreaming(false);
+      setInlineRewriteError(null);
+      setInlineRewriteSourceText('');
+      setInlineRewritePreview('');
+      rewriteSelectionRef.current = null;
     }
   }, [content]);
 
@@ -223,6 +260,203 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return null;
     }
   }, [currentSessionId, createSession, navigation]);
+
+  const ensureInlineRewriteSession = useCallback(async () => {
+    if (currentSessionId) {
+      return currentSessionId;
+    }
+
+    try {
+      const newSessionId = await createTemporarySession();
+      navigation?.navigateToSession(newSessionId);
+      return newSessionId;
+    } catch (err) {
+      console.error('Failed to create temporary project session for inline rewrite:', err);
+      setInlineRewriteError(t('inlineRewrite.createSessionFailed'));
+      return null;
+    }
+  }, [currentSessionId, createTemporarySession, navigation, t]);
+
+  const getInlineRewriteSelectionSnapshot = useCallback((): RewriteSelectionSnapshot | null => {
+    if (!content || !editorViewRef.current) {
+      return null;
+    }
+
+    const view = editorViewRef.current;
+    const selection = view.state.selection.main;
+    if (selection.empty) {
+      return null;
+    }
+
+    const selectedText = view.state.doc.sliceString(selection.from, selection.to);
+    if (!selectedText.trim()) {
+      return null;
+    }
+
+    const contextBefore = view.state.doc.sliceString(
+      Math.max(0, selection.from - INLINE_REWRITE_CONTEXT_CHARS),
+      selection.from
+    );
+    const contextAfter = view.state.doc.sliceString(
+      selection.to,
+      Math.min(view.state.doc.length, selection.to + INLINE_REWRITE_CONTEXT_CHARS)
+    );
+
+    return {
+      from: selection.from,
+      to: selection.to,
+      selectedText,
+      contextBefore,
+      contextAfter,
+      filePath: content.path,
+      language: getLanguageTag(content.path),
+    };
+  }, [content]);
+
+  const buildInlineRewriteInstruction = useCallback(() => {
+    const presetInstruction = REWRITE_PRESET_INSTRUCTIONS[inlineRewritePreset];
+    const customInstruction = inlineRewriteInstruction.trim();
+    if (!customInstruction) {
+      return presetInstruction;
+    }
+    return `${presetInstruction}\n${customInstruction}`;
+  }, [inlineRewriteInstruction, inlineRewritePreset]);
+
+  const handleOpenInlineRewrite = useCallback(() => {
+    const snapshot = getInlineRewriteSelectionSnapshot();
+    setInlineRewriteOpen(true);
+    setInlineRewriteError(null);
+
+    if (!snapshot) {
+      setInlineRewriteSourceText('');
+      setInlineRewritePreview('');
+      setInlineRewriteError(t('inlineRewrite.selectTextFirst'));
+      return;
+    }
+
+    setInlineRewriteSourceText(snapshot.selectedText);
+    setInlineRewritePreview('');
+  }, [getInlineRewriteSelectionSnapshot, t]);
+
+  const handleStopInlineRewrite = useCallback(() => {
+    inlineRewriteAbortRef.current?.abort();
+    inlineRewriteAbortRef.current = null;
+    setInlineRewriteStreaming(false);
+  }, []);
+
+  const handleCloseInlineRewrite = useCallback(() => {
+    handleStopInlineRewrite();
+    setInlineRewriteOpen(false);
+    setInlineRewriteError(null);
+    setInlineRewritePreview('');
+    rewriteSelectionRef.current = null;
+  }, [handleStopInlineRewrite]);
+
+  const handleStartInlineRewrite = useCallback(async () => {
+    if (inlineRewriteStreaming || !content) {
+      return;
+    }
+
+    const snapshot = getInlineRewriteSelectionSnapshot();
+    if (!snapshot) {
+      setInlineRewriteOpen(true);
+      setInlineRewriteError(t('inlineRewrite.selectTextFirst'));
+      return;
+    }
+
+    const sessionId = await ensureInlineRewriteSession();
+    if (!sessionId) {
+      return;
+    }
+
+    rewriteSelectionRef.current = snapshot;
+    setInlineRewriteSourceText(snapshot.selectedText);
+    setInlineRewritePreview('');
+    setInlineRewriteError(null);
+    setInlineRewriteStreaming(true);
+
+    try {
+      await streamEditorRewrite(
+        {
+          sessionId,
+          selectedText: snapshot.selectedText,
+          instruction: buildInlineRewriteInstruction(),
+          contextBefore: snapshot.contextBefore,
+          contextAfter: snapshot.contextAfter,
+          filePath: snapshot.filePath,
+          language: snapshot.language,
+          contextType: 'project',
+          projectId,
+        },
+        (chunk) => {
+          setInlineRewritePreview((prev) => prev + chunk);
+        },
+        () => {
+          setInlineRewriteStreaming(false);
+        },
+        (errorMessage) => {
+          setInlineRewriteStreaming(false);
+          setInlineRewriteError(errorMessage);
+        },
+        inlineRewriteAbortRef
+      );
+    } catch (err) {
+      console.error('Inline rewrite request failed:', err);
+      setInlineRewriteError(err instanceof Error ? err.message : t('inlineRewrite.requestFailed'));
+    } finally {
+      setInlineRewriteStreaming(false);
+    }
+  }, [
+    inlineRewriteStreaming,
+    content,
+    getInlineRewriteSelectionSnapshot,
+    t,
+    ensureInlineRewriteSession,
+    buildInlineRewriteInstruction,
+    projectId,
+  ]);
+
+  const handleAcceptInlineRewrite = useCallback(() => {
+    if (!editorViewRef.current) {
+      return;
+    }
+    const selectionSnapshot = rewriteSelectionRef.current;
+    if (!selectionSnapshot) {
+      setInlineRewriteError(t('inlineRewrite.selectionMissing'));
+      return;
+    }
+
+    const rewrittenText = inlineRewritePreview.replace(THINK_BLOCK_REGEX, '');
+    if (!rewrittenText.trim()) {
+      setInlineRewriteError(t('inlineRewrite.emptyRewriteResult'));
+      return;
+    }
+
+    const view = editorViewRef.current;
+    const currentSelectedText = view.state.doc.sliceString(selectionSnapshot.from, selectionSnapshot.to);
+    if (currentSelectedText !== selectionSnapshot.selectedText) {
+      setInlineRewriteError(t('inlineRewrite.selectionChanged'));
+      return;
+    }
+
+    view.dispatch({
+      changes: {
+        from: selectionSnapshot.from,
+        to: selectionSnapshot.to,
+        insert: rewrittenText,
+      },
+      selection: {
+        anchor: selectionSnapshot.from,
+        head: selectionSnapshot.from + rewrittenText.length,
+      },
+    });
+    view.focus();
+
+    setInlineRewriteOpen(false);
+    setInlineRewriteError(null);
+    setInlineRewritePreview('');
+    rewriteSelectionRef.current = null;
+  }, [inlineRewritePreview, t]);
 
   const getEditorContext = useCallback(() => {
     if (!content) return null;
@@ -422,6 +656,25 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
 
+  // Ctrl/Cmd+K handler for opening inline rewrite panel
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        handleOpenInlineRewrite();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleOpenInlineRewrite]);
+
+  useEffect(() => {
+    return () => {
+      inlineRewriteAbortRef.current?.abort();
+      inlineRewriteAbortRef.current = null;
+    };
+  }, []);
+
   // Detect dark mode from system preference (Tailwind defaults to media strategy)
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === 'undefined' || !window.matchMedia) {
@@ -458,6 +711,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           line: line.number,
           col: pos - line.from + 1
         });
+        setHasSelection(!update.state.selection.main.empty);
       }
     }),
   []);
@@ -498,6 +752,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const onEditorCreate = useCallback((view: EditorView) => {
     editorViewRef.current = view;
     updateUndoRedoState();
+    setHasSelection(!view.state.selection.main.empty);
 
     // Notify parent immediately when editor is ready
     if (onEditorReady) {
@@ -524,6 +779,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     ? 'Inserting to chat...'
     : 'Insert selection or file to chat';
   const refreshTitle = refreshingProject ? t('fileViewer.refreshing') : t('fileViewer.refresh');
+  const inlineRewriteTitle = hasSelection
+    ? t('inlineRewrite.button')
+    : t('inlineRewrite.selectTextFirst');
 
   const renderBreadcrumbBar = (filePath?: string) => (
     <div data-name="file-viewer-breadcrumb-bar" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
@@ -636,6 +894,26 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onInsertToChat={handleInsertToChat}
         insertToChatDisabled={!content || isInsertingToChat}
         insertToChatTitle={insertToChatTitle}
+        onInlineRewrite={handleOpenInlineRewrite}
+        inlineRewriteDisabled={!content || !hasSelection || inlineRewriteStreaming}
+        inlineRewriteTitle={inlineRewriteTitle}
+      />
+
+      <InlineRewritePanel
+        isOpen={inlineRewriteOpen}
+        isStreaming={inlineRewriteStreaming}
+        sourceText={inlineRewriteSourceText}
+        rewrittenText={inlineRewritePreview}
+        error={inlineRewriteError}
+        preset={inlineRewritePreset}
+        customInstruction={inlineRewriteInstruction}
+        onPresetChange={setInlineRewritePreset}
+        onCustomInstructionChange={setInlineRewriteInstruction}
+        onGenerate={handleStartInlineRewrite}
+        onStop={handleStopInlineRewrite}
+        onAccept={handleAcceptInlineRewrite}
+        onReject={handleCloseInlineRewrite}
+        onClose={handleCloseInlineRewrite}
       />
 
       {/* Editor */}
