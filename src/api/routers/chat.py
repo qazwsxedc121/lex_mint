@@ -16,6 +16,20 @@ from ..services.conversation_storage import create_storage_with_project_resolver
 from ..services.file_service import FileService
 from ..services.flow_event_emitter import FlowEventEmitter
 from ..services.flow_event_mapper import FlowEventMapper
+from ..services.flow_event_types import (
+    ASSISTANT_MESSAGE_IDENTIFIED,
+    COMPRESSION_COMPLETED,
+    COMPARE_COMPLETED,
+    COMPARE_MODEL_FAILED,
+    COMPARE_MODEL_FINISHED,
+    COMPARE_MODEL_STARTED,
+    LEGACY_EVENT,
+    REPLAY_FINISHED,
+    RESUME_STARTED,
+    SOURCES_REPORTED,
+    TERMINAL_EVENT_TYPES,
+    USER_MESSAGE_IDENTIFIED,
+)
 from ..services.flow_events import FlowEventStage
 from ..services.flow_stream_runtime import (
     FlowReplayCursorGoneError,
@@ -149,7 +163,7 @@ def get_flow_stream_runtime() -> FlowStreamRuntime:
 def _is_terminal_payload(payload: Dict[str, Any]) -> bool:
     flow_event = payload.get("flow_event")
     if isinstance(flow_event, dict):
-        if flow_event.get("event_type") in {"stream_ended", "stream_error"}:
+        if flow_event.get("event_type") in TERMINAL_EVENT_TYPES:
             return True
     return payload.get("done") is True or "error" in payload
 
@@ -162,7 +176,7 @@ def _map_compare_event_to_flow_payload(
 
     if event_type == "model_start":
         return emitter.emit(
-            event_type="compare_model_started",
+            event_type=COMPARE_MODEL_STARTED,
             stage=FlowEventStage.ORCHESTRATION,
             payload={
                 "model_id": event.get("model_id"),
@@ -176,7 +190,7 @@ def _map_compare_event_to_flow_payload(
         return emitter.emit_text_delta(text, payload={"model_id": event.get("model_id")})
     if event_type == "model_done":
         return emitter.emit(
-            event_type="compare_model_finished",
+            event_type=COMPARE_MODEL_FINISHED,
             stage=FlowEventStage.ORCHESTRATION,
             payload={
                 "model_id": event.get("model_id"),
@@ -188,7 +202,7 @@ def _map_compare_event_to_flow_payload(
         )
     if event_type == "model_error":
         return emitter.emit(
-            event_type="compare_model_failed",
+            event_type=COMPARE_MODEL_FAILED,
             stage=FlowEventStage.ORCHESTRATION,
             payload={
                 "model_id": event.get("model_id"),
@@ -198,25 +212,25 @@ def _map_compare_event_to_flow_payload(
         )
     if event_type == "compare_complete":
         return emitter.emit(
-            event_type="compare_completed",
+            event_type=COMPARE_COMPLETED,
             stage=FlowEventStage.ORCHESTRATION,
             payload={"model_results": event.get("model_results")},
         )
     if event_type == "user_message_id":
         return emitter.emit(
-            event_type="user_message_identified",
+            event_type=USER_MESSAGE_IDENTIFIED,
             stage=FlowEventStage.META,
             payload={"message_id": event.get("message_id")},
         )
     if event_type == "assistant_message_id":
         return emitter.emit(
-            event_type="assistant_message_identified",
+            event_type=ASSISTANT_MESSAGE_IDENTIFIED,
             stage=FlowEventStage.META,
             payload={"message_id": event.get("message_id")},
         )
     if event_type == "sources":
         return emitter.emit(
-            event_type="sources_reported",
+            event_type=SOURCES_REPORTED,
             stage=FlowEventStage.META,
             payload={"sources": event.get("sources")},
         )
@@ -224,7 +238,7 @@ def _map_compare_event_to_flow_payload(
         return emitter.emit_error(str(event.get("error") or "compare stream error"))
 
     return emitter.emit(
-        event_type="legacy_event",
+        event_type=LEGACY_EVENT,
         stage=FlowEventStage.META,
         payload={"legacy_type": str(event_type or ""), "data": event},
     )
@@ -237,7 +251,7 @@ def _map_compress_event_to_flow_payload(
     event_type = str(event.get("type") or "")
     if event_type == "compression_complete":
         return emitter.emit(
-            event_type="compression_completed",
+            event_type=COMPRESSION_COMPLETED,
             stage=FlowEventStage.META,
             payload={
                 "message_id": event.get("message_id"),
@@ -248,7 +262,7 @@ def _map_compress_event_to_flow_payload(
     if event_type == "error":
         return emitter.emit_error(str(event.get("error") or "compression stream error"))
     return emitter.emit(
-        event_type="legacy_event",
+        event_type=LEGACY_EVENT,
         stage=FlowEventStage.META,
         payload={"legacy_type": event_type, "data": event},
     )
@@ -556,7 +570,7 @@ async def resume_chat_stream(
         )
         try:
             resume_started = resume_emitter.emit(
-                event_type="resume_started",
+                event_type=RESUME_STARTED,
                 stage=FlowEventStage.TRANSPORT,
                 payload={"last_event_id": request.last_event_id},
             )
@@ -569,7 +583,7 @@ async def resume_chat_stream(
                     return
 
             replay_finished = resume_emitter.emit(
-                event_type="replay_finished",
+                event_type=REPLAY_FINISHED,
                 stage=FlowEventStage.TRANSPORT,
                 payload={"replayed_count": len(replay_payloads)},
             )

@@ -14,6 +14,12 @@ from typing import Optional
 
 from ..services.language_detection_service import LanguageDetectionService
 from ..services.flow_event_emitter import FlowEventEmitter
+from ..services.flow_event_types import (
+    LANGUAGE_DETECTED,
+    LEGACY_EVENT,
+    STREAM_ERROR,
+    TRANSLATION_COMPLETED,
+)
 from ..services.flow_events import FlowEventStage
 
 logger = logging.getLogger(__name__)
@@ -90,7 +96,7 @@ async def translate_text(request: TranslateRequest):
                     event_type = str(chunk.get("type") or "")
                     if event_type == "language_detected":
                         payload = emitter.emit(
-                            event_type="language_detected",
+                            event_type=LANGUAGE_DETECTED,
                             stage=FlowEventStage.META,
                             payload={
                                 "language": chunk.get("language"),
@@ -100,7 +106,7 @@ async def translate_text(request: TranslateRequest):
                         )
                     elif event_type == "translation_complete":
                         payload = emitter.emit(
-                            event_type="translation_completed",
+                            event_type=TRANSLATION_COMPLETED,
                             stage=FlowEventStage.META,
                             payload={
                                 "detected_source_language": chunk.get("detected_source_language"),
@@ -112,13 +118,13 @@ async def translate_text(request: TranslateRequest):
                         payload = emitter.emit_error(str(chunk.get("error") or "translation stream error"))
                     else:
                         payload = emitter.emit(
-                            event_type="legacy_event",
+                            event_type=LEGACY_EVENT,
                             stage=FlowEventStage.META,
                             payload={"legacy_type": event_type, "data": chunk},
                         )
                     yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
                     flow_event = payload.get("flow_event")
-                    if isinstance(flow_event, dict) and flow_event.get("event_type") == "stream_error":
+                    if isinstance(flow_event, dict) and flow_event.get("event_type") == STREAM_ERROR:
                         return
                     continue
 

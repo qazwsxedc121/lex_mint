@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from .flow_events import FlowEventStage, new_flow_event
+from .flow_event_types import STREAM_ENDED, STREAM_ERROR, STREAM_STARTED, TEXT_DELTA
 
 
 @dataclass
@@ -48,21 +49,21 @@ class FlowEventEmitter:
         if context_type:
             payload["context_type"] = context_type
         return self.emit(
-            event_type="stream_started",
+            event_type=STREAM_STARTED,
             stage=FlowEventStage.TRANSPORT,
             payload=payload,
         )
 
     def emit_ended(self) -> Dict[str, Any]:
         return self.emit(
-            event_type="stream_ended",
+            event_type=STREAM_ENDED,
             stage=FlowEventStage.TRANSPORT,
             payload={"done": True},
         )
 
     def emit_error(self, message: str) -> Dict[str, Any]:
         return self.emit(
-            event_type="stream_error",
+            event_type=STREAM_ERROR,
             stage=FlowEventStage.TRANSPORT,
             payload={"error": str(message)},
         )
@@ -72,7 +73,7 @@ class FlowEventEmitter:
         if payload:
             body.update(payload)
         return self.emit(
-            event_type="text_delta",
+            event_type=TEXT_DELTA,
             stage=FlowEventStage.CONTENT,
             payload=body,
         )

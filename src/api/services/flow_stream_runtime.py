@@ -9,6 +9,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
+from .flow_event_types import TERMINAL_EVENT_TYPES
+
 
 class FlowStreamError(Exception):
     """Base error for stream runtime operations."""
@@ -110,7 +112,7 @@ class FlowStreamRuntime:
             if isinstance(seq, int) and seq > state.seq:
                 state.seq = seq
             event_type = flow_event.get("event_type")
-            if event_type in {"stream_ended", "stream_error"}:
+            if event_type in TERMINAL_EVENT_TYPES:
                 state.done = True
         elif payload.get("done") is True or "error" in payload:
             state.done = True

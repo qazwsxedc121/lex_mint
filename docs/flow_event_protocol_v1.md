@@ -26,7 +26,7 @@ This document defines the canonical `flow_event` envelope for streaming SSE APIs
     "event_type": "text_delta",
     "stage": "content",
     "payload": {
-      "chunk": "hello"
+      "text": "hello"
     }
   }
 }
@@ -41,6 +41,8 @@ This document defines the canonical `flow_event` envelope for streaming SSE APIs
 - `meta`
 
 ## Event types in v1 (full-chain)
+
+Backend source of truth: `src/api/services/flow_event_types.py`
 
 - transport
   - `stream_started`
@@ -79,6 +81,33 @@ This document defines the canonical `flow_event` envelope for streaming SSE APIs
 ## Compatibility
 
 - Clients must parse `flow_event`.
+
+## Protocol guard tests
+
+- Contract test entry: `tests/unit/test_routers/test_flow_event_stream_contract.py`
+- Covered endpoints:
+  - `POST /api/chat/stream`
+  - `POST /api/chat/compare`
+  - `POST /api/chat/compress`
+  - `POST /api/translate`
+- Guard assertions:
+  - SSE top-level payload is `{"flow_event": ...}` only.
+  - `flow_event.seq` is strictly increasing within one stream.
+  - `text_delta` uses `payload.text`.
+  - `stream_error` terminates stream early.
+  - Unknown legacy events are mapped to `legacy_event`.
+
+Run only contract tests:
+
+```bash
+./venv/Scripts/pytest tests/unit/test_routers/test_flow_event_stream_contract.py
+```
+
+Run backend full tests:
+
+```bash
+./venv/Scripts/pytest
+```
 
 ## Resume semantics (Stage 2)
 
