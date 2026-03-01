@@ -7,6 +7,7 @@ import uuid
 from pydantic import BaseModel
 
 from ..services.project_service import ProjectService
+from ..services.project_service import ProjectConflictError
 from ..services.project_document_tool_service import (
     ConfirmPendingPatchArgs,
     ProjectDocumentToolError,
@@ -383,9 +384,19 @@ async def write_file(
             project_id,
             file_data.path,
             file_data.content,
-            file_data.encoding
+            file_data.encoding,
+            file_data.expected_hash,
         )
         return content
+    except ProjectConflictError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": e.code,
+                "message": e.message,
+                **e.extra,
+            },
+        )
     except ValueError as e:
         logger.error(f"Validation error writing file: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -544,5 +555,39 @@ async def search_project_files(
         return results
     except Exception as e:
         logger.error(f"Error searching files in project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/text/search")
+async def search_project_text(
+    project_id: str,
+    query: str = Query(..., description="Text or regex query"),
+    case_sensitive: bool = Query(False, description="Enable case-sensitive matching"),
+    use_regex: bool = Query(False, description="Treat query as regex pattern"),
+    include_glob: Optional[str] = Query(None, description="Include files by glob pattern"),
+    exclude_glob: Optional[str] = Query(None, description="Exclude files by glob pattern"),
+    max_results: int = Query(30, ge=1, le=200, description="Max number of matches to return"),
+    context_lines: int = Query(0, ge=0, le=3, description="Context lines before and after each match"),
+    max_chars_per_line: int = Query(300, ge=80, le=1200, description="Max chars per returned line"),
+):
+    """Search text content across project files."""
+    try:
+        service = get_project_service()
+        return await service.search_project_text(
+            project_id=project_id,
+            query=query,
+            case_sensitive=case_sensitive,
+            use_regex=use_regex,
+            include_glob=include_glob,
+            exclude_glob=exclude_glob,
+            max_results=max_results,
+            context_lines=context_lines,
+            max_chars_per_line=max_chars_per_line,
+        )
+    except ValueError as e:
+        logger.error(f"Validation error searching project text: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error searching project text in project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

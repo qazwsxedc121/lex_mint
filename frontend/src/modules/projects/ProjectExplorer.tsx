@@ -240,9 +240,10 @@ export const ProjectExplorer: React.FC = () => {
     return createProjectChatAPI(projectId, {
       getActiveDocumentContext: () => ({
         activeFilePath: selectedFilePath || undefined,
+        activeFileHash: content?.content_hash || undefined,
       }),
     });
-  }, [projectId, selectedFilePath]);
+  }, [content?.content_hash, projectId, selectedFilePath]);
 
   const navigation: ChatNavigation | undefined = useMemo(() => {
     if (!projectId) return undefined;
@@ -334,6 +335,7 @@ export const ProjectExplorer: React.FC = () => {
                 />
                 <div className="flex-1 overflow-hidden">
                 <FileTree
+                  projectId={projectId}
                   tree={tree}
                   selectedPath={selectedFilePath}
                   onFileSelect={handleFileSelect}

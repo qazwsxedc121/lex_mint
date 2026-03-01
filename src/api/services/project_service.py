@@ -5,6 +5,9 @@ import logging
 import os
 import asyncio
 import shutil
+import hashlib
+import fnmatch
+import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -21,6 +24,18 @@ from src.api.config import settings
 from src.api.paths import ensure_local_file, repo_root
 
 logger = logging.getLogger(__name__)
+_TEXT_SEARCH_MAX_FILES = 5000
+
+
+class ProjectConflictError(ValueError):
+    """Conflict error for optimistic-lock write operations."""
+
+    def __init__(self, code: str, message: str, **extra: Any):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.extra = extra
+
 
 class ProjectService:
     """Service for managing projects and file operations."""
@@ -420,6 +435,7 @@ class ProjectService:
         return FileContent(
             path=relative_path,
             content=content,
+            content_hash=self._compute_content_hash(content),
             encoding=encoding,
             size=file_size,
             mime_type=mime_type
@@ -593,6 +609,7 @@ class ProjectService:
         return FileContent(
             path=relative_path,
             content=content,
+            content_hash=self._compute_content_hash(content),
             encoding=encoding,
             size=file_size,
             mime_type=mime_type
@@ -858,6 +875,16 @@ class ProjectService:
 
         return 0
 
+    @staticmethod
+    def _compute_content_hash(content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _trim_search_line(text: str, max_chars_per_line: int) -> str:
+        if len(text) <= max_chars_per_line:
+            return text
+        return text[: max_chars_per_line - 1] + "..."
+
     def _detect_encoding(self, file_path: Path) -> str:
         """Detect file encoding.
 
@@ -974,7 +1001,8 @@ class ProjectService:
         project_id: str,
         relative_path: str,
         content: str,
-        encoding: str = "utf-8"
+        encoding: str = "utf-8",
+        expected_hash: Optional[str] = None,
     ) -> FileContent:
         """Write content to a file in a project.
 
@@ -983,6 +1011,7 @@ class ProjectService:
             relative_path: Relative path to file from project root
             content: Content to write
             encoding: File encoding (default: utf-8)
+            expected_hash: Optional hash for optimistic locking
 
         Returns:
             FileContent with updated file data
@@ -1007,6 +1036,31 @@ class ProjectService:
         # Security check: prevent path traversal
         if not self._is_safe_path(root_path, target_path):
             raise ValueError(f"Invalid path: {relative_path}")
+
+        normalized_expected_hash = (expected_hash or "").strip() or None
+        if normalized_expected_hash:
+            if not target_path.exists() or not target_path.is_file():
+                raise ProjectConflictError(
+                    "FILE_MISSING",
+                    "File was removed before save. Refresh file before saving again.",
+                    path=relative_path,
+                    expected_hash=normalized_expected_hash,
+                )
+
+            current_encoding = self._detect_encoding(target_path)
+            try:
+                current_content = target_path.read_text(encoding=current_encoding, errors="replace")
+            except Exception as e:
+                raise ValueError(f"Failed to read current file for hash check: {e}")
+            current_hash = self._compute_content_hash(current_content)
+            if current_hash != normalized_expected_hash:
+                raise ProjectConflictError(
+                    "HASH_MISMATCH",
+                    "File changed since last read. Refresh file before saving.",
+                    path=relative_path,
+                    current_hash=current_hash,
+                    expected_hash=normalized_expected_hash,
+                )
 
         # Check content size
         content_bytes = content.encode(encoding)
@@ -1041,10 +1095,146 @@ class ProjectService:
         return FileContent(
             path=relative_path,
             content=content,
+            content_hash=self._compute_content_hash(content),
             encoding=encoding,
             size=file_size,
             mime_type=mime_type
         )
+
+    async def search_project_text(
+        self,
+        project_id: str,
+        query: str,
+        *,
+        case_sensitive: bool = False,
+        use_regex: bool = False,
+        include_glob: Optional[str] = None,
+        exclude_glob: Optional[str] = None,
+        max_results: int = 30,
+        context_lines: int = 0,
+        max_chars_per_line: int = 300,
+    ) -> Dict[str, Any]:
+        """Search text across project files for user-facing discovery."""
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        normalized_query = (query or "").strip()
+        if not normalized_query:
+            raise ValueError("Query is required")
+
+        include_glob = (include_glob or "").strip() or None
+        exclude_glob = (exclude_glob or "").strip() or None
+        max_results = max(1, min(int(max_results), 200))
+        context_lines = max(0, min(int(context_lines), 3))
+        max_chars_per_line = max(80, min(int(max_chars_per_line), 1200))
+
+        regex: Optional[re.Pattern[str]] = None
+        if use_regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                regex = re.compile(normalized_query, flags)
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern: {e}")
+
+        root_path = Path(project.root_path)
+        max_file_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        results: List[Dict[str, Any]] = []
+        scanned_files = 0
+        skipped_hidden_files = 0
+        skipped_binary_files = 0
+        skipped_large_files = 0
+        scan_limit_hit = False
+        truncated = False
+
+        for abs_path in root_path.rglob("*"):
+            if not abs_path.is_file():
+                continue
+
+            if scanned_files >= _TEXT_SEARCH_MAX_FILES:
+                scan_limit_hit = True
+                break
+            scanned_files += 1
+
+            rel_path = str(abs_path.relative_to(root_path)).replace("\\", "/")
+            path_parts = Path(rel_path).parts
+            if any(part.startswith(".") for part in path_parts):
+                skipped_hidden_files += 1
+                continue
+
+            if include_glob and not fnmatch.fnmatch(rel_path, include_glob):
+                continue
+            if exclude_glob and fnmatch.fnmatch(rel_path, exclude_glob):
+                continue
+
+            try:
+                file_size = abs_path.stat().st_size
+                if file_size > max_file_bytes:
+                    skipped_large_files += 1
+                    continue
+
+                raw = abs_path.read_bytes()
+                if b"\x00" in raw[:4096]:
+                    skipped_binary_files += 1
+                    continue
+                text = raw.decode("utf-8", errors="replace")
+            except OSError:
+                continue
+
+            lines = text.splitlines()
+            for idx, line in enumerate(lines):
+                if use_regex:
+                    assert regex is not None
+                    is_match = bool(regex.search(line))
+                elif case_sensitive:
+                    is_match = normalized_query in line
+                else:
+                    is_match = normalized_query.lower() in line.lower()
+
+                if not is_match:
+                    continue
+
+                start = max(0, idx - context_lines)
+                end = min(len(lines), idx + context_lines + 1)
+                results.append(
+                    {
+                        "file_path": rel_path,
+                        "line_number": idx + 1,
+                        "line_text": self._trim_search_line(line, max_chars_per_line),
+                        "context_before": [
+                            self._trim_search_line(lines[i], max_chars_per_line)
+                            for i in range(start, idx)
+                        ],
+                        "context_after": [
+                            self._trim_search_line(lines[i], max_chars_per_line)
+                            for i in range(idx + 1, end)
+                        ],
+                    }
+                )
+                if len(results) >= max_results:
+                    truncated = True
+                    break
+
+            if truncated:
+                break
+
+        return {
+            "ok": True,
+            "query": normalized_query,
+            "case_sensitive": case_sensitive,
+            "use_regex": use_regex,
+            "include_glob": include_glob,
+            "exclude_glob": exclude_glob,
+            "max_results": max_results,
+            "results_count": len(results),
+            "truncated": truncated,
+            "scan_limit_hit": scan_limit_hit,
+            "scanned_files": scanned_files,
+            "skipped_hidden_files": skipped_hidden_files,
+            "skipped_binary_files": skipped_binary_files,
+            "skipped_large_files": skipped_large_files,
+            "results": results,
+        }
 
     async def delete_file(
         self,

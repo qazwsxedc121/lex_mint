@@ -17,7 +17,7 @@ import { openSearchPanel, search } from '@codemirror/search';
 import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import type { FileContent } from '../../../types/project';
 import { Breadcrumb } from './Breadcrumb';
-import { streamEditorRewrite, writeFile } from '../../../services/api';
+import { readFile, streamEditorRewrite, writeFile } from '../../../services/api';
 import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
 import { InlineRewritePanel } from './InlineRewritePanel';
@@ -41,6 +41,12 @@ interface RewriteSelectionSnapshot {
   contextAfter: string;
   filePath: string;
   language: string;
+}
+
+interface SaveConflictState {
+  code: string;
+  localDraft: string;
+  remoteLoaded: boolean;
 }
 
 interface FileViewerProps {
@@ -118,6 +124,8 @@ const countLines = (text: string) => {
   return lines > 0 ? lines : 1;
 };
 
+const normalizeProjectPath = (pathValue: string) => pathValue.replace(/\\/g, '/');
+
 export const FileViewer: React.FC<FileViewerProps> = ({
   projectId,
   projectName,
@@ -135,8 +143,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const { t } = useTranslation('projects');
   const [value, setValue] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
+  const [originalHash, setOriginalHash] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveConflict, setSaveConflict] = useState<SaveConflictState | null>(null);
+  const [conflictBusy, setConflictBusy] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInsertingToChat, setIsInsertingToChat] = useState(false);
   const [refreshingProject, setRefreshingProject] = useState(false);
@@ -156,6 +167,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const editorViewRef = useRef<EditorView | null>(null);
   const inlineRewriteAbortRef = useRef<AbortController | null>(null);
   const rewriteSelectionRef = useRef<RewriteSelectionSnapshot | null>(null);
+  const pendingJumpRef = useRef<{ filePath: string; line: number } | null>(null);
 
   // Line wrapping setting (default: true, persisted in localStorage)
   const [lineWrapping, setLineWrapping] = useState<boolean>(() => {
@@ -202,7 +214,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     if (content) {
       setValue(content.content);
       setOriginalContent(content.content);
+      setOriginalHash(content.content_hash || null);
       setSaveError(null);
+      setSaveConflict(null);
+      setConflictBusy(false);
       setSaveSuccess(false);
       setHasSelection(false);
       setInlineRewriteOpen(false);
@@ -590,17 +605,41 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
   }, []);
 
+  const jumpToLine = useCallback((lineNumber: number) => {
+    if (!editorViewRef.current) {
+      return;
+    }
+    const view = editorViewRef.current;
+    const totalLines = Math.max(1, view.state.doc.lines);
+    const safeLine = Math.max(1, Math.min(lineNumber, totalLines));
+    const line = view.state.doc.line(safeLine);
+    view.dispatch({
+      selection: { anchor: line.from },
+      scrollIntoView: true,
+    });
+    view.focus();
+  }, []);
+
   // Save handler
   const handleSave = useCallback(async () => {
     if (!content || !hasUnsavedChanges) return;
 
     setSaving(true);
     setSaveError(null);
+    setSaveConflict(null);
     setSaveSuccess(false);
 
     try {
-      await writeFile(projectId, content.path, value, content.encoding);
-      setOriginalContent(value);
+      const saved = await writeFile(
+        projectId,
+        content.path,
+        value,
+        content.encoding,
+        originalHash || undefined
+      );
+      setOriginalContent(saved.content);
+      setOriginalHash(saved.content_hash || null);
+      setSaveConflict(null);
       setSaveSuccess(true);
 
       // Clear success message after 2 seconds
@@ -610,16 +649,83 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onContentSaved();
       }
     } catch (err: any) {
-      setSaveError(err.response?.data?.detail || err.message || 'Failed to save file');
+      const detail = err?.response?.data?.detail;
+      if (typeof detail === 'string') {
+        setSaveError(detail);
+      } else if (detail && typeof detail === 'object') {
+        const code = typeof detail.code === 'string' ? detail.code : '';
+        const message = typeof detail.message === 'string' ? detail.message : '';
+        if (code === 'HASH_MISMATCH' || code === 'FILE_MISSING') {
+          setSaveConflict({
+            code,
+            localDraft: value,
+            remoteLoaded: false,
+          });
+          setSaveError(t('editor.conflictDetected'));
+        } else if (code && message) {
+          setSaveError(`${code}: ${message}`);
+        } else if (message) {
+          setSaveError(message);
+        } else {
+          setSaveError(err?.message || 'Failed to save file');
+        }
+      } else {
+        setSaveError(err?.message || 'Failed to save file');
+      }
     } finally {
       setSaving(false);
     }
-  }, [content, hasUnsavedChanges, onContentSaved, projectId, value]);
+  }, [content, hasUnsavedChanges, onContentSaved, originalHash, projectId, t, value]);
+
+  const handleLoadLatestAfterConflict = useCallback(async () => {
+    if (!content || !saveConflict || conflictBusy) {
+      return;
+    }
+    setConflictBusy(true);
+    try {
+      const latest = await readFile(projectId, content.path);
+      setValue(latest.content);
+      setOriginalContent(latest.content);
+      setOriginalHash(latest.content_hash || null);
+      setSaveSuccess(false);
+      setSaveError(t('editor.conflictLatestLoaded'));
+      setSaveConflict((prev) => (prev ? { ...prev, remoteLoaded: true } : prev));
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.detail || err?.message || t('fileViewer.refreshFailed'));
+    } finally {
+      setConflictBusy(false);
+    }
+  }, [conflictBusy, content, projectId, saveConflict, t]);
+
+  const handleRestoreConflictDraft = useCallback(() => {
+    if (!saveConflict || !saveConflict.remoteLoaded) {
+      return;
+    }
+    setValue(saveConflict.localDraft);
+    setSaveError(t('editor.conflictDraftRestored'));
+    setSaveSuccess(false);
+    setSaveConflict((prev) => (prev ? { ...prev, remoteLoaded: false } : prev));
+  }, [saveConflict, t]);
+
+  const handleCopyConflictDraft = useCallback(async () => {
+    if (!saveConflict) {
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(saveConflict.localDraft);
+      }
+      setSaveError(t('editor.conflictDraftCopied'));
+    } catch {
+      setSaveError(t('editor.conflictDraftCopyFailed'));
+    }
+  }, [saveConflict, t]);
 
   // Cancel handler
   const handleCancel = () => {
     setValue(originalContent);
     setSaveError(null);
+    setSaveConflict(null);
     setSaveSuccess(false);
   };
 
@@ -634,6 +740,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
     setRefreshingProject(true);
     setSaveError(null);
+    setSaveConflict(null);
     setSaveSuccess(false);
     try {
       await onRefreshProject();
@@ -667,6 +774,41 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [handleOpenInlineRewrite]);
+
+  useEffect(() => {
+    const handler = (rawEvent: Event) => {
+      const event = rawEvent as CustomEvent<{ filePath?: string; line?: number }>;
+      const filePath = typeof event.detail?.filePath === 'string' ? normalizeProjectPath(event.detail.filePath) : '';
+      const rawLine = event.detail?.line;
+      const line = typeof rawLine === 'number' ? rawLine : Number(rawLine);
+      if (!filePath || !Number.isFinite(line) || line < 1) {
+        return;
+      }
+
+      pendingJumpRef.current = { filePath, line: Math.floor(line) };
+      if (content && normalizeProjectPath(content.path) === filePath) {
+        window.setTimeout(() => jumpToLine(Math.floor(line)), 0);
+      }
+    };
+
+    window.addEventListener('project-open-line', handler as EventListener);
+    return () => window.removeEventListener('project-open-line', handler as EventListener);
+  }, [content, jumpToLine]);
+
+  useEffect(() => {
+    if (!content || !pendingJumpRef.current) {
+      return;
+    }
+    const pending = pendingJumpRef.current;
+    if (normalizeProjectPath(content.path) !== pending.filePath) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      jumpToLine(pending.line);
+      pendingJumpRef.current = null;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [content, jumpToLine]);
 
   useEffect(() => {
     return () => {
@@ -872,6 +1014,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         saving={saving}
         saveSuccess={saveSuccess}
         saveError={saveError}
+        saveConflictState={saveConflict ? (saveConflict.remoteLoaded ? 'remoteLoaded' : 'detected') : 'none'}
+        conflictBusy={conflictBusy}
+        onLoadLatestAfterConflict={saveConflict ? handleLoadLatestAfterConflict : undefined}
+        onRestoreConflictDraft={saveConflict?.remoteLoaded ? handleRestoreConflictDraft : undefined}
+        onCopyConflictDraft={saveConflict ? handleCopyConflictDraft : undefined}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onFind={handleFind}

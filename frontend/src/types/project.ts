@@ -39,6 +39,7 @@ export interface FileNode {
 export interface FileContent {
   path: string;
   content: string;
+  content_hash?: string;
   encoding: string;
   size: number;
   mime_type: string;

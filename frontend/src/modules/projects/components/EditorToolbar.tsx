@@ -23,6 +23,11 @@ interface EditorToolbarProps {
   saving: boolean;
   saveSuccess: boolean;
   saveError: string | null;
+  saveConflictState?: 'none' | 'detected' | 'remoteLoaded';
+  conflictBusy?: boolean;
+  onLoadLatestAfterConflict?: () => void;
+  onRestoreConflictDraft?: () => void;
+  onCopyConflictDraft?: () => void;
 
   // Editor commands
   onUndo: () => void;
@@ -65,6 +70,11 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   saving,
   saveSuccess,
   saveError,
+  saveConflictState = 'none',
+  conflictBusy = false,
+  onLoadLatestAfterConflict,
+  onRestoreConflictDraft,
+  onCopyConflictDraft,
   onUndo,
   onRedo,
   onFind,
@@ -93,8 +103,42 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
     <div className="border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
       {/* Error message */}
       {saveError && (
-        <div className="mx-4 mt-4 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-800 dark:text-red-200">
-          {saveError}
+        <div className="mx-4 mt-4 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-800 dark:text-red-200 space-y-2">
+          <div>{saveError}</div>
+          {saveConflictState !== 'none' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {onLoadLatestAfterConflict && (
+                <button
+                  type="button"
+                  onClick={onLoadLatestAfterConflict}
+                  disabled={conflictBusy}
+                  className="px-2 py-1 rounded bg-red-700 hover:bg-red-800 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {conflictBusy ? t('editor.conflictLoadingLatest') : t('editor.conflictLoadLatest')}
+                </button>
+              )}
+              {saveConflictState === 'remoteLoaded' && onRestoreConflictDraft && (
+                <button
+                  type="button"
+                  onClick={onRestoreConflictDraft}
+                  disabled={conflictBusy}
+                  className="px-2 py-1 rounded border border-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {t('editor.conflictRestoreDraft')}
+                </button>
+              )}
+              {onCopyConflictDraft && (
+                <button
+                  type="button"
+                  onClick={onCopyConflictDraft}
+                  disabled={conflictBusy}
+                  className="px-2 py-1 rounded border border-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {t('editor.conflictCopyDraft')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

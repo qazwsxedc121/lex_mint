@@ -296,6 +296,32 @@ export interface FileSearchResult {
   proximityReason: 'same-dir' | 'child-dir' | 'parent-dir' | 'sibling' | 'project-wide' | 'no-match';
 }
 
+export interface ProjectTextSearchMatch {
+  file_path: string;
+  line_number: number;
+  line_text: string;
+  context_before: string[];
+  context_after: string[];
+}
+
+export interface ProjectTextSearchResponse {
+  ok: boolean;
+  query: string;
+  case_sensitive: boolean;
+  use_regex: boolean;
+  include_glob?: string | null;
+  exclude_glob?: string | null;
+  max_results: number;
+  results_count: number;
+  truncated: boolean;
+  scan_limit_hit: boolean;
+  scanned_files: number;
+  skipped_hidden_files: number;
+  skipped_binary_files: number;
+  skipped_large_files: number;
+  results: ProjectTextSearchMatch[];
+}
+
 /**
  * Search sessions by title and message content.
  */
@@ -2181,11 +2207,18 @@ export async function readFile(id: string, path: string): Promise<FileContent> {
 /**
  * Write content to a file in a project
  */
-export async function writeFile(id: string, path: string, content: string, encoding: string = 'utf-8'): Promise<FileContent> {
+export async function writeFile(
+  id: string,
+  path: string,
+  content: string,
+  encoding: string = 'utf-8',
+  expectedHash?: string
+): Promise<FileContent> {
   const response = await api.put<FileContent>(`/api/projects/${id}/files`, {
     path,
     content,
-    encoding
+    encoding,
+    expected_hash: expectedHash,
   });
   return response.data;
 }
@@ -2241,6 +2274,48 @@ export async function searchProjectFiles(
 
   const response = await api.get<FileSearchResult[]>(
     `/api/projects/${projectId}/files/search?${params}`
+  );
+  return response.data;
+}
+
+export async function searchProjectText(
+  projectId: string,
+  query: string,
+  options?: {
+    caseSensitive?: boolean;
+    useRegex?: boolean;
+    includeGlob?: string;
+    excludeGlob?: string;
+    maxResults?: number;
+    contextLines?: number;
+    maxCharsPerLine?: number;
+  }
+): Promise<ProjectTextSearchResponse> {
+  const params = new URLSearchParams({ query });
+  if (options?.caseSensitive) {
+    params.append('case_sensitive', 'true');
+  }
+  if (options?.useRegex) {
+    params.append('use_regex', 'true');
+  }
+  if (options?.includeGlob) {
+    params.append('include_glob', options.includeGlob);
+  }
+  if (options?.excludeGlob) {
+    params.append('exclude_glob', options.excludeGlob);
+  }
+  if (typeof options?.maxResults === 'number') {
+    params.append('max_results', String(options.maxResults));
+  }
+  if (typeof options?.contextLines === 'number') {
+    params.append('context_lines', String(options.contextLines));
+  }
+  if (typeof options?.maxCharsPerLine === 'number') {
+    params.append('max_chars_per_line', String(options.maxCharsPerLine));
+  }
+
+  const response = await api.get<ProjectTextSearchResponse>(
+    `/api/projects/${projectId}/text/search?${params.toString()}`
   );
   return response.data;
 }

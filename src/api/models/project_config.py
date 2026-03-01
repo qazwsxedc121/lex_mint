@@ -70,6 +70,7 @@ class FileContent(BaseModel):
 
     path: str = Field(..., description="Relative path from project root")
     content: str = Field(..., description="File content")
+    content_hash: Optional[str] = Field(default=None, description="SHA-256 hash of content")
     encoding: str = Field(default="utf-8", description="File encoding")
     size: int = Field(..., description="File size in bytes")
     mime_type: Optional[str] = Field(None, description="MIME type")
@@ -89,6 +90,12 @@ class FileWrite(BaseModel):
     path: str = Field(..., description="Relative path from project root")
     content: str = Field(..., description="File content to write")
     encoding: str = Field(default="utf-8", description="File encoding")
+    expected_hash: Optional[str] = Field(
+        default=None,
+        min_length=16,
+        max_length=128,
+        description="Optional optimistic-lock hash from last read",
+    )
 
 
 class FileRename(BaseModel):

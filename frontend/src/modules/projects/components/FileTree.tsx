@@ -7,11 +7,14 @@ import { Menu, Transition } from '@headlessui/react';
 import { FolderIcon, FolderOpenIcon, DocumentIcon, ChevronRightIcon, ChevronDownIcon, EllipsisVerticalIcon, TrashIcon, Square2StackIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import type { FileNode } from '../../../types/project';
+import { searchProjectText } from '../../../services/api';
+import type { ProjectTextSearchMatch } from '../../../services/api';
 
 type FileTreeMenuAction = 'new-file' | 'new-folder' | 'delete-folder' | 'duplicate-file' | 'delete-file' | 'rename-path';
 type FileTreeCreateKind = 'file' | 'folder';
 
 interface FileTreeProps {
+  projectId: string;
   tree: FileNode;
   selectedPath: string | null;
   onFileSelect: (path: string) => void;
@@ -282,6 +285,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
 };
 
 export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
+  projectId,
   tree,
   selectedPath,
   onFileSelect,
@@ -317,6 +321,11 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   const [renameName, setRenameName] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [textSearchQuery, setTextSearchQuery] = useState('');
+  const [textSearchResults, setTextSearchResults] = useState<ProjectTextSearchMatch[]>([]);
+  const [textSearchLoading, setTextSearchLoading] = useState(false);
+  const [textSearchError, setTextSearchError] = useState<string | null>(null);
+  const [textSearchTruncated, setTextSearchTruncated] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const deleteInputRef = useRef<HTMLInputElement | null>(null);
   const duplicateInputRef = useRef<HTMLInputElement | null>(null);
@@ -368,6 +377,40 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [renameTarget]);
+
+  useEffect(() => {
+    const trimmed = textSearchQuery.trim();
+    if (!projectId || !trimmed) {
+      setTextSearchResults([]);
+      setTextSearchError(null);
+      setTextSearchLoading(false);
+      setTextSearchTruncated(false);
+      return;
+    }
+
+    setTextSearchLoading(true);
+    setTextSearchError(null);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const payload = await searchProjectText(projectId, trimmed, {
+          maxResults: 40,
+          contextLines: 1,
+          maxCharsPerLine: 220,
+        });
+        setTextSearchResults(payload.results || []);
+        setTextSearchTruncated(Boolean(payload.truncated));
+      } catch (err: any) {
+        const message = err?.response?.data?.detail || err?.message || t('fileTree.textSearch.error');
+        setTextSearchError(String(message));
+        setTextSearchResults([]);
+        setTextSearchTruncated(false);
+      } finally {
+        setTextSearchLoading(false);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [projectId, t, textSearchQuery]);
 
   const getDuplicateName = (filename: string, siblingNames: Set<string>) => {
     const dotIndex = filename.lastIndexOf('.');
@@ -650,6 +693,73 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
 
   return (
     <div data-name="file-tree" className="h-full overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700">
+      <div data-name="file-tree-text-search-panel" className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur p-2">
+        <input
+          data-name="file-tree-text-search-input"
+          type="text"
+          value={textSearchQuery}
+          onChange={(event) => setTextSearchQuery(event.target.value)}
+          placeholder={t('fileTree.textSearch.placeholder')}
+          className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+        />
+        {textSearchLoading && (
+          <div data-name="file-tree-text-search-loading" className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {t('fileTree.textSearch.loading')}
+          </div>
+        )}
+        {textSearchError && (
+          <div data-name="file-tree-text-search-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+            {textSearchError}
+          </div>
+        )}
+        {!textSearchLoading && !textSearchError && textSearchQuery.trim() && (
+          <div data-name="file-tree-text-search-results" className="mt-1 space-y-1">
+            {textSearchResults.length > 0 && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {t('fileTree.textSearch.resultCount', { count: textSearchResults.length })}
+              </div>
+            )}
+            {textSearchResults.length === 0 && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {t('fileTree.textSearch.noResults')}
+              </div>
+            )}
+            {textSearchResults.length > 0 && (
+              <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded">
+                {textSearchResults.map((item, idx) => (
+                  <button
+                    key={`${item.file_path}:${item.line_number}:${idx}`}
+                    type="button"
+                    onClick={() => {
+                      onFileSelect(item.file_path);
+                      window.dispatchEvent(new CustomEvent('project-open-line', {
+                        detail: {
+                          filePath: item.file_path,
+                          line: item.line_number,
+                        },
+                      }));
+                    }}
+                    data-name="file-tree-text-search-result-item"
+                    className="w-full text-left px-2 py-1.5 border-b last:border-b-0 border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">
+                      {item.file_path}:{item.line_number}
+                    </div>
+                    <div className="text-[11px] text-gray-600 dark:text-gray-400 break-all">
+                      {item.line_text}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {textSearchTruncated && (
+              <div className="text-xs text-yellow-700 dark:text-yellow-300">
+                {t('fileTree.textSearch.truncated')}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <FileTreeItem
         tree={tree}
         selectedPath={selectedPath}

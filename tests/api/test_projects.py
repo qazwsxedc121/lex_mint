@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from src.api.services.project_service import ProjectService
+from src.api.services.project_service import ProjectService, ProjectConflictError
 from src.api.models.project_config import Project, ProjectCreate
 from src.api.config import settings
 
@@ -420,6 +420,8 @@ class TestProjectServiceFileReading:
         assert content.content == "Test content"
         assert content.encoding == "utf-8"
         assert content.size > 0
+        assert isinstance(content.content_hash, str)
+        assert len(content.content_hash) == 64
 
     @pytest.mark.asyncio
     async def test_read_file_with_utf8(self, project_service, test_project_path):
@@ -519,6 +521,118 @@ class TestProjectServiceFileReading:
         """Test reading file from nonexistent project."""
         with pytest.raises(ValueError, match="not found"):
             await project_service.read_file("nonexistent", "file.txt")
+
+
+class TestProjectServiceFileWriting:
+    """Tests for file writing functionality with optimistic locking."""
+
+    @pytest.mark.asyncio
+    async def test_write_file_with_expected_hash_success(self, project_service, test_project_path):
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        before = await project_service.read_file("test_proj", "file1.txt")
+        updated = await project_service.write_file(
+            "test_proj",
+            "file1.txt",
+            "Updated content",
+            "utf-8",
+            expected_hash=before.content_hash,
+        )
+
+        assert updated.content == "Updated content"
+        assert updated.content_hash != before.content_hash
+        reread = await project_service.read_file("test_proj", "file1.txt")
+        assert reread.content == "Updated content"
+        assert reread.content_hash == updated.content_hash
+
+    @pytest.mark.asyncio
+    async def test_write_file_hash_mismatch_raises_conflict(self, project_service, test_project_path):
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        before = await project_service.read_file("test_proj", "file1.txt")
+        (test_project_path / "file1.txt").write_text("Changed elsewhere", encoding="utf-8")
+
+        with pytest.raises(ProjectConflictError, match="changed since last read") as exc_info:
+            await project_service.write_file(
+                "test_proj",
+                "file1.txt",
+                "My local update",
+                "utf-8",
+                expected_hash=before.content_hash,
+            )
+
+        err = exc_info.value
+        assert err.code == "HASH_MISMATCH"
+        assert err.extra.get("expected_hash") == before.content_hash
+        assert isinstance(err.extra.get("current_hash"), str)
+
+
+class TestProjectServiceTextSearch:
+    """Tests for project text search functionality."""
+
+    @pytest.mark.asyncio
+    async def test_search_project_text_basic(self, project_service, test_project_path):
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        payload = await project_service.search_project_text("test_proj", "hello")
+        assert payload["ok"] is True
+        assert payload["results_count"] >= 1
+        assert any(r["file_path"] == "subdir/file2.py" for r in payload["results"])
+
+    @pytest.mark.asyncio
+    async def test_search_project_text_invalid_regex(self, project_service, test_project_path):
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        with pytest.raises(ValueError, match="Invalid regex pattern"):
+            await project_service.search_project_text("test_proj", "(", use_regex=True)
+
+    @pytest.mark.asyncio
+    async def test_search_project_text_respects_max_results(self, project_service, test_project_path):
+        repeated_file = test_project_path / "repeated.txt"
+        repeated_file.write_text("token\ntoken\ntoken\n", encoding="utf-8")
+
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        payload = await project_service.search_project_text("test_proj", "token", max_results=2)
+        assert payload["results_count"] == 2
+        assert payload["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_search_project_text_excludes_hidden_files(self, project_service, test_project_path):
+        project = Project(
+            id="test_proj",
+            name="Test Project",
+            root_path=str(test_project_path)
+        )
+        await project_service.add_project(project)
+
+        payload = await project_service.search_project_text("test_proj", "hidden")
+        assert payload["results_count"] == 0
 
 
 # =============================================================================
