@@ -220,5 +220,14 @@
 
   "toolCall.calling": "正在调用 {{name}}...",
   "toolCall.arguments": "参数",
-  "toolCall.result": "结果"
+  "toolCall.result": "结果",
+  "toolCall.applyDiff.request": "补丁请求",
+  "toolCall.applyDiff.baseHash": "基线哈希",
+  "toolCall.applyDiff.dryRun": "仅预览",
+  "toolCall.applyDiff.summary": "+{{additions}} / -{{deletions}} / 块 {{hunks}}",
+  "toolCall.applyDiff.diffPreview": "差异预览",
+  "toolCall.applyDiff.noDiffProvided": "工具参数里没有提供 diff 内容。",
+  "toolCall.applyDiff.linesHidden": "... 还有 {{count}} 行未显示",
+  "toolCall.applyDiff.file": "文件",
+  "toolCall.applyDiff.rawPayload": "原始载荷（调试）"
 }

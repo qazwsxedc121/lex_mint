@@ -220,5 +220,14 @@
 
   "toolCall.calling": "Calling {{name}}...",
   "toolCall.arguments": "Arguments",
-  "toolCall.result": "Result"
+  "toolCall.result": "Result",
+  "toolCall.applyDiff.request": "Patch request",
+  "toolCall.applyDiff.baseHash": "Base hash",
+  "toolCall.applyDiff.dryRun": "Dry run",
+  "toolCall.applyDiff.summary": "+{{additions}} / -{{deletions}} / hunks {{hunks}}",
+  "toolCall.applyDiff.diffPreview": "Diff preview",
+  "toolCall.applyDiff.noDiffProvided": "Diff content was not provided in tool arguments.",
+  "toolCall.applyDiff.linesHidden": "... {{count}} more lines hidden",
+  "toolCall.applyDiff.file": "File",
+  "toolCall.applyDiff.rawPayload": "Raw payload (debug)"
 }
