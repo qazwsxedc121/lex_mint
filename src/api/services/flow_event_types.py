@@ -37,6 +37,12 @@ LANGUAGE_DETECTED: Final[str] = "language_detected"
 TRANSLATION_COMPLETED: Final[str] = "translation_completed"
 COMPRESSION_COMPLETED: Final[str] = "compression_completed"
 LEGACY_EVENT: Final[str] = "legacy_event"
+WORKFLOW_RUN_STARTED: Final[str] = "workflow_run_started"
+WORKFLOW_NODE_STARTED: Final[str] = "workflow_node_started"
+WORKFLOW_NODE_FINISHED: Final[str] = "workflow_node_finished"
+WORKFLOW_CONDITION_EVALUATED: Final[str] = "workflow_condition_evaluated"
+WORKFLOW_OUTPUT_REPORTED: Final[str] = "workflow_output_reported"
+WORKFLOW_RUN_FINISHED: Final[str] = "workflow_run_finished"
 
 TERMINAL_EVENT_TYPES: Final[FrozenSet[str]] = frozenset(
     {

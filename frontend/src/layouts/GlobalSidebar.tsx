@@ -14,6 +14,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   WrenchScrewdriverIcon,
+  RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { useDeveloperMode } from '../hooks/useDeveloperMode';
 import { LanguageSwitcher } from '../i18n/components/LanguageSwitcher';
@@ -38,6 +39,7 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   const navItems: NavItem[] = [
     { path: '/chat', labelKey: 'nav.chat', icon: ChatBubbleLeftRightIcon },
     { path: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
+    { path: '/workflows', labelKey: 'nav.workflows', icon: RectangleStackIcon },
     ...(developerEnabled ? [{ path: '/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon }] : []),
     { path: '/settings', labelKey: 'nav.settings', icon: Cog6ToothIcon },
   ];

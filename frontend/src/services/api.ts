@@ -3,6 +3,7 @@
  */
 
 import axios from 'axios';
+import i18n from '../i18n';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type {
   Provider,
@@ -22,6 +23,14 @@ import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, Knowledge
 import type { PromptTemplate, PromptTemplateCreate, PromptTemplateUpdate } from '../types/promptTemplate';
 import type { Folder } from '../types/folder';
 import type { MutableRefObject } from 'react';
+import type {
+  Workflow,
+  WorkflowCreate,
+  WorkflowFlowEvent,
+  WorkflowRunCallbacks,
+  WorkflowRunRecord,
+  WorkflowUpdate,
+} from '../types/workflow';
 import type {
   MemoryCreateRequest,
   MemoryItem,
@@ -97,7 +106,7 @@ async function* iterateSSEData(
 
 type FlowEventStage = 'transport' | 'content' | 'tool' | 'orchestration' | 'meta';
 
-interface FlowEvent {
+export interface FlowEvent {
   event_id: string;
   seq: number;
   ts: number;
@@ -478,6 +487,44 @@ export async function deletePromptTemplate(templateId: string): Promise<void> {
 }
 
 /**
+ * Workflows CRUD
+ */
+export async function listWorkflows(): Promise<Workflow[]> {
+  const response = await api.get<Workflow[]>('/api/workflows');
+  return response.data;
+}
+
+export async function getWorkflow(workflowId: string): Promise<Workflow> {
+  const response = await api.get<Workflow>(`/api/workflows/${workflowId}`);
+  return response.data;
+}
+
+export async function createWorkflow(workflow: WorkflowCreate): Promise<string> {
+  const response = await api.post<{ id: string }>('/api/workflows', workflow);
+  return response.data.id;
+}
+
+export async function updateWorkflow(workflowId: string, workflow: WorkflowUpdate): Promise<void> {
+  await api.put(`/api/workflows/${workflowId}`, workflow);
+}
+
+export async function deleteWorkflow(workflowId: string): Promise<void> {
+  await api.delete(`/api/workflows/${workflowId}`);
+}
+
+export async function listWorkflowRuns(workflowId: string, limit: number = 50): Promise<WorkflowRunRecord[]> {
+  const response = await api.get<WorkflowRunRecord[]>(`/api/workflows/${workflowId}/runs`, {
+    params: { limit },
+  });
+  return response.data;
+}
+
+export async function getWorkflowRun(workflowId: string, runId: string): Promise<WorkflowRunRecord> {
+  const response = await api.get<WorkflowRunRecord>(`/api/workflows/${workflowId}/runs/${runId}`);
+  return response.data;
+}
+
+/**
  * Delete a single message from a conversation.
  */
 export async function deleteMessage(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
@@ -820,6 +867,87 @@ export async function streamEditorRewrite(
   } catch (error: unknown) {
     if (error instanceof Error && error.name === 'AbortError') {
       console.log('Inline rewrite aborted by user');
+      return;
+    }
+    throw error;
+  } finally {
+    if (abortControllerRef) {
+      abortControllerRef.current = null;
+    }
+  }
+}
+
+/**
+ * Run a workflow and consume flow_event SSE stream.
+ */
+export async function runWorkflowStream(
+  workflowId: string,
+  inputs: Record<string, unknown>,
+  callbacks: WorkflowRunCallbacks,
+  abortControllerRef?: MutableRefObject<AbortController | null>
+): Promise<void> {
+  const controller = new AbortController();
+  if (abortControllerRef) {
+    abortControllerRef.current = controller;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/run/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    try {
+      for await (const dataStr of iterateSSEData(reader)) {
+        try {
+          const data = JSON.parse(dataStr);
+          const flowEvent = parseFlowEvent(data.flow_event);
+          if (!flowEvent) {
+            callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
+            return;
+          }
+
+          const workflowEvent = flowEvent as WorkflowFlowEvent;
+          callbacks.onEvent?.(workflowEvent);
+
+          if (workflowEvent.event_type === 'stream_error') {
+            callbacks.onError?.(asString(workflowEvent.payload.error) || i18n.t('workflow:errors.runFailed'));
+            return;
+          }
+
+          if (workflowEvent.event_type === 'text_delta') {
+            const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
+            if (textChunk) {
+              callbacks.onChunk?.(textChunk, workflowEvent);
+            }
+            continue;
+          }
+
+          if (workflowEvent.event_type === 'stream_ended') {
+            callbacks.onComplete?.();
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       return;
     }
     throw error;

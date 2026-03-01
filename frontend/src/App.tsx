@@ -33,6 +33,7 @@ import { DeveloperSettings } from './modules/settings/DeveloperSettings';
 import { PromptTemplatesPage } from './modules/settings/PromptTemplatesPage';
 import { MemorySettings } from './modules/settings/MemorySettings';
 import { DeveloperModule } from './modules/developer';
+import { WorkflowsModule } from './modules/workflows';
 import './index.css';
 
 function App() {
@@ -49,6 +50,7 @@ function App() {
             <Route index element={<ProjectsWelcome />} />
             <Route path=":projectId" element={<ProjectExplorer />} />
           </Route>
+          <Route path="workflows" element={<WorkflowsModule />} />
           <Route path="developer" element={<DeveloperModule />} />
           <Route path="settings" element={<SettingsModule />}>
             <Route index element={<Navigate to="assistants" replace />} />

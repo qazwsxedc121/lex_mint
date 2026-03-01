@@ -1,0 +1,121 @@
+{
+  "title": "工作流",
+  "description": "构建并运行文本工作流",
+  "deleteConfirm": "确定删除这个工作流吗？",
+  "actions": {
+    "new": "新建",
+    "delete": "删除",
+    "save": "保存",
+    "saving": "保存中...",
+    "run": "运行",
+    "stop": "停止",
+    "use": "使用"
+  },
+  "view": {
+    "builder": "编辑",
+    "playground": "体验",
+    "history": "运行记录"
+  },
+  "playground": {
+    "noEnabledWorkflows": "当前没有可运行的工作流，请先在编辑页启用一个工作流。"
+  },
+  "list": {
+    "title": "工作流",
+    "loading": "加载中...",
+    "empty": "暂无工作流",
+    "statusOn": "开启",
+    "statusOff": "关闭"
+  },
+  "meta": {
+    "name": "名称",
+    "namePlaceholder": "工作流名称",
+    "description": "描述",
+    "descriptionPlaceholder": "这个工作流的用途",
+    "status": "状态",
+    "enabled": "已启用",
+    "disabled": "已禁用"
+  },
+  "editor": {
+    "title": "工作流 DSL（JSON）"
+  },
+  "runner": {
+    "title": "运行",
+    "boolTrue": "true",
+    "boolFalse": "false",
+    "liveOutput": "实时输出",
+    "finalOutput": "最终输出",
+    "running": "运行中...",
+    "events": "事件",
+    "emptyEvents": "暂无事件",
+    "statusTitle": "执行状态",
+    "runningNode": "正在运行节点：",
+    "preparing": "正在准备工作流...",
+    "idle": "空闲",
+    "showDetails": "展开详情",
+    "hideDetails": "收起详情",
+    "showDebug": "显示调试",
+    "hideDebug": "隐藏调试",
+    "event": {
+      "workflowRunStarted": "工作流已开始",
+      "workflowNodeStarted": "节点开始：",
+      "workflowNodeFinished": "节点结束：",
+      "workflowConditionEvaluated": "条件计算",
+      "workflowRunFinished": "工作流已结束",
+      "streamError": "运行失败"
+    }
+  },
+  "history": {
+    "title": "最近运行",
+    "empty": "暂无运行历史",
+    "showDetails": "展开",
+    "hideDetails": "收起",
+    "runId": "运行ID",
+    "inputs": "参数",
+    "output": "最终输出",
+    "error": "错误",
+    "status": {
+      "success": "成功",
+      "error": "失败"
+    }
+  },
+  "templates": {
+    "title": "模板",
+    "summarizeTranslate": {
+      "name": "摘要 + 翻译",
+      "description": "先总结输入内容，再按需翻译到目标语言。",
+      "workflowName": "摘要 + 翻译",
+      "workflowDescription": "长文本摘要并按需翻译"
+    },
+    "meetingMinutes": {
+      "name": "会议纪要",
+      "description": "从会议笔记中提取行动项、风险和负责人。",
+      "workflowName": "会议纪要",
+      "workflowDescription": "生成结构化会议纪要"
+    },
+    "draftReview": {
+      "name": "稿件评审",
+      "description": "根据严格模式分支输出详细或轻量评审。",
+      "workflowName": "稿件评审",
+      "workflowDescription": "按严格程度进行文本评审"
+    }
+  },
+  "defaults": {
+    "newWorkflowName": "新工作流",
+    "newWorkflowDescription": "工作流 MVP"
+  },
+  "errors": {
+    "loadWorkflows": "加载工作流失败",
+    "loadRunHistory": "加载运行历史失败",
+    "createWorkflow": "创建工作流失败",
+    "updateWorkflow": "更新工作流失败",
+    "deleteWorkflow": "删除工作流失败",
+    "parseInvalidJsonObject": "JSON 对象无效",
+    "parseInputSchemaArray": "input_schema 必须是数组",
+    "parseNodesArray": "nodes 必须是数组",
+    "parseEntryNode": "entry_node_id 必须是非空字符串",
+    "parseInvalidJson": "JSON 格式无效",
+    "runStreamInvalidPayload": "工作流流式返回格式无效：缺少 flow_event",
+    "runFailed": "工作流运行失败",
+    "runRequestFailed": "执行工作流失败"
+  }
+}

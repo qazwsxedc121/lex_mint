@@ -1,0 +1,121 @@
+{
+  "title": "Workflows",
+  "description": "Build and run text-based workflows",
+  "deleteConfirm": "Delete this workflow?",
+  "actions": {
+    "new": "New",
+    "delete": "Delete",
+    "save": "Save",
+    "saving": "Saving...",
+    "run": "Run",
+    "stop": "Stop",
+    "use": "Use"
+  },
+  "view": {
+    "builder": "Builder",
+    "playground": "Playground",
+    "history": "Run History"
+  },
+  "playground": {
+    "noEnabledWorkflows": "No runnable workflows. Enable one in Builder first."
+  },
+  "list": {
+    "title": "Workflows",
+    "loading": "Loading...",
+    "empty": "No workflows yet",
+    "statusOn": "ON",
+    "statusOff": "OFF"
+  },
+  "meta": {
+    "name": "Name",
+    "namePlaceholder": "Workflow name",
+    "description": "Description",
+    "descriptionPlaceholder": "What this workflow does",
+    "status": "Status",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "editor": {
+    "title": "Workflow DSL (JSON)"
+  },
+  "runner": {
+    "title": "Run",
+    "boolTrue": "true",
+    "boolFalse": "false",
+    "liveOutput": "Live Output",
+    "finalOutput": "Final Output",
+    "running": "Running...",
+    "events": "Events",
+    "emptyEvents": "No events yet",
+    "statusTitle": "Execution Status",
+    "runningNode": "Running node:",
+    "preparing": "Preparing workflow...",
+    "idle": "Idle",
+    "showDetails": "Show details",
+    "hideDetails": "Hide details",
+    "showDebug": "Show debug",
+    "hideDebug": "Hide debug",
+    "event": {
+      "workflowRunStarted": "Workflow started",
+      "workflowNodeStarted": "Node started:",
+      "workflowNodeFinished": "Node finished:",
+      "workflowConditionEvaluated": "Condition evaluated",
+      "workflowRunFinished": "Workflow finished",
+      "streamError": "Run failed"
+    }
+  },
+  "history": {
+    "title": "Recent Runs",
+    "empty": "No run history",
+    "showDetails": "Expand",
+    "hideDetails": "Collapse",
+    "runId": "Run ID",
+    "inputs": "Inputs",
+    "output": "Final Output",
+    "error": "Error",
+    "status": {
+      "success": "Success",
+      "error": "Error"
+    }
+  },
+  "templates": {
+    "title": "Templates",
+    "summarizeTranslate": {
+      "name": "Summarize + Translate",
+      "description": "Summarize input first, then translate to target language if needed.",
+      "workflowName": "Summarize + Translate",
+      "workflowDescription": "Summarize long text and optionally translate"
+    },
+    "meetingMinutes": {
+      "name": "Meeting Minutes",
+      "description": "Extract action items, risks and owners from meeting notes.",
+      "workflowName": "Meeting Minutes",
+      "workflowDescription": "Generate structured meeting minutes"
+    },
+    "draftReview": {
+      "name": "Draft Reviewer",
+      "description": "Review text and route to strict or light feedback.",
+      "workflowName": "Draft Reviewer",
+      "workflowDescription": "Quality review with branch by strictness"
+    }
+  },
+  "defaults": {
+    "newWorkflowName": "New Workflow",
+    "newWorkflowDescription": "MVP workflow"
+  },
+  "errors": {
+    "loadWorkflows": "Failed to load workflows",
+    "loadRunHistory": "Failed to load run history",
+    "createWorkflow": "Failed to create workflow",
+    "updateWorkflow": "Failed to update workflow",
+    "deleteWorkflow": "Failed to delete workflow",
+    "parseInvalidJsonObject": "Invalid JSON object",
+    "parseInputSchemaArray": "input_schema must be an array",
+    "parseNodesArray": "nodes must be an array",
+    "parseEntryNode": "entry_node_id must be a non-empty string",
+    "parseInvalidJson": "Invalid JSON",
+    "runStreamInvalidPayload": "Invalid workflow stream payload: missing flow_event",
+    "runFailed": "Workflow run failed",
+    "runRequestFailed": "Failed to run workflow"
+  }
+}

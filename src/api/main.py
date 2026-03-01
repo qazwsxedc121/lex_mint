@@ -37,6 +37,7 @@ from .routers import (
     translation_config,
     tts,
     tts_config,
+    workflows,
     webpage_config,
 )
 
@@ -80,6 +81,7 @@ app.include_router(knowledge_base.router)
 app.include_router(prompt_templates.router)
 app.include_router(folders.router)
 app.include_router(memory.router)
+app.include_router(workflows.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")

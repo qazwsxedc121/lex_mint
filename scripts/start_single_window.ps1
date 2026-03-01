@@ -157,6 +157,54 @@ function Read-NewFileLines {
   return @{ Lines = $lines; Offset = $newOffset }
 }
 
+function Stop-ProcessTree {
+  param(
+    [Parameter(Mandatory = $true)]
+    [int]$RootPid
+  )
+
+  $all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId
+  $childrenMap = @{}
+  foreach ($item in $all) {
+    $parentKey = [int]$item.ParentProcessId
+    if (-not $childrenMap.ContainsKey($parentKey)) {
+      $childrenMap[$parentKey] = New-Object System.Collections.Generic.List[int]
+    }
+    $childrenMap[$parentKey].Add([int]$item.ProcessId)
+  }
+
+  $toVisit = New-Object System.Collections.Generic.Queue[int]
+  $toVisit.Enqueue($RootPid)
+  $descendants = New-Object System.Collections.Generic.List[int]
+
+  while ($toVisit.Count -gt 0) {
+    $current = $toVisit.Dequeue()
+    if (-not $childrenMap.ContainsKey($current)) {
+      continue
+    }
+    foreach ($childPid in $childrenMap[$current]) {
+      $descendants.Add($childPid) | Out-Null
+      $toVisit.Enqueue($childPid)
+    }
+  }
+
+  foreach ($pid in ($descendants | Sort-Object -Descending)) {
+    try {
+      Stop-Process -Id $pid -Force -ErrorAction Stop
+    }
+    catch {
+      # Ignore already-exited processes.
+    }
+  }
+
+  try {
+    Stop-Process -Id $RootPid -Force -ErrorAction Stop
+  }
+  catch {
+    # Ignore already-exited root process.
+  }
+}
+
 $srcDir = Join-Path $projectRoot "src"
 $backendArgs = @(
   "-m",
@@ -215,7 +263,19 @@ try {
 
   Set-WindowTitle -Title $windowTitle
 
-  Write-Host "[1/3] Starting backend service..."
+  $killPortsScript = Join-Path $PSScriptRoot "kill_env_ports.ps1"
+  if (Test-Path $killPortsScript) {
+    Write-Host "[0/4] Cleaning old listeners from .env ports..."
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $killPortsScript -EnvFile (Join-Path $projectRoot ".env")
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "[WARN] Port cleanup script returned non-zero exit code ($LASTEXITCODE)"
+    }
+  }
+  else {
+    Write-Host "[WARN] Port cleanup script not found: $killPortsScript"
+  }
+
+  Write-Host "[1/4] Starting backend service..."
   if ($isolateBackendConsole) {
     # On Windows, uvicorn --reload uses CTRL_C_EVENT during reload.
     # Running backend in the same console may broadcast that signal to Vite and kill frontend.
@@ -233,12 +293,12 @@ try {
     Write-Host "      Backend log merge: ON ($backendLogPath)"
   }
 
-  Write-Host "[2/3] Starting frontend service..."
+  Write-Host "[2/4] Starting frontend service..."
   $frontendProcess = Start-Process -FilePath "node.exe" -ArgumentList $frontendArgs -WorkingDirectory (Join-Path $projectRoot "frontend") -NoNewWindow -PassThru
   Write-Host "      Frontend: http://localhost:$frontendPort (PID $($frontendProcess.Id))"
   Start-Sleep -Seconds 2
 
-  Write-Host "[3/3] Opening browser..."
+  Write-Host "[3/4] Opening browser..."
   Start-Process "http://localhost:$frontendPort" | Out-Null
 
   Write-Host ""
@@ -321,12 +381,12 @@ finally {
   }
 
   if ($backendProcess -and -not $backendProcess.HasExited) {
-    Stop-Process -Id $backendProcess.Id -Force -ErrorAction SilentlyContinue
+    Stop-ProcessTree -RootPid $backendProcess.Id
     Wait-Process -Id $backendProcess.Id -ErrorAction SilentlyContinue
   }
 
   if ($frontendProcess -and -not $frontendProcess.HasExited) {
-    Stop-Process -Id $frontendProcess.Id -Force -ErrorAction SilentlyContinue
+    Stop-ProcessTree -RootPid $frontendProcess.Id
     Wait-Process -Id $frontendProcess.Id -ErrorAction SilentlyContinue
   }
 }

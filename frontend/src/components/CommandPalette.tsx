@@ -6,6 +6,7 @@ import {
   ChatBubbleLeftIcon,
   Cog6ToothIcon,
   FolderIcon,
+  RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { createSession, searchSessions } from '../services/api';
 import type { SearchResult } from '../services/api';
@@ -87,6 +88,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       label: 'Projects',
       icon: <FolderIcon className="h-4 w-4" />,
       action: () => navigate('/projects'),
+    },
+    {
+      id: 'cmd-workflows',
+      type: 'command' as const,
+      label: 'Workflows',
+      icon: <RectangleStackIcon className="h-4 w-4" />,
+      action: () => navigate('/workflows'),
     },
   ], [navigate]);
 
