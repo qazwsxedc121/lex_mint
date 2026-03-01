@@ -43,6 +43,8 @@ interface EditorToolbarProps {
   onToggleLineNumbers: (enabled: boolean) => void;
   fontSize: 'small' | 'medium' | 'large';
   onChangeFontSize: (size: 'small' | 'medium' | 'large') => void;
+  autoSaveBeforeAgentSend: boolean;
+  onToggleAutoSaveBeforeAgentSend: (enabled: boolean) => void;
 
   // Status display
   cursorPosition: { line: number; col: number };
@@ -86,6 +88,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onToggleLineNumbers,
   fontSize,
   onChangeFontSize,
+  autoSaveBeforeAgentSend,
+  onToggleAutoSaveBeforeAgentSend,
   cursorPosition,
   fileInfo,
   chatSidebarOpen,
@@ -239,6 +243,18 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
         {/* Group 4: Chat Toggle */}
         <div className="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-3 mr-2">
+          <label
+            title={t('editor.agentSend.autoSaveHelp')}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+          >
+            <input
+              type="checkbox"
+              checked={autoSaveBeforeAgentSend}
+              onChange={(e) => onToggleAutoSaveBeforeAgentSend(e.target.checked)}
+              className="h-3 w-3"
+            />
+            <span className="text-[11px] whitespace-nowrap">{t('editor.agentSend.autoSaveLabel')}</span>
+          </label>
           <button
             title={inlineRewriteTitle}
             onClick={onInlineRewrite}

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { ProjectSelector } from './components/ProjectSelector';
 import { FileTree } from './components/FileTree';
 import { FileViewer } from './components/FileViewer';
+import type { BeforeAgentSendHandler } from './components/FileViewer';
 import { useFileTree } from './hooks/useFileTree';
 import { useFileContent } from './hooks/useFileContent';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
@@ -53,6 +54,7 @@ export const ProjectExplorer: React.FC = () => {
 
   // State for editor actions (used by context)
   const [editorActions, setEditorActions] = useState<{ insertContent: (text: string) => void } | null>(null);
+  const [beforeAgentSendHandler, setBeforeAgentSendHandler] = useState<BeforeAgentSendHandler | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const closingProjectRef = useRef(false);
 
@@ -235,6 +237,10 @@ export const ProjectExplorer: React.FC = () => {
     navigate('/projects', { replace: true });
   }, [navigate, setCurrentProject]);
 
+  const handleRegisterBeforeAgentSend = useCallback((handler: BeforeAgentSendHandler | null) => {
+    setBeforeAgentSendHandler(() => handler);
+  }, []);
+
   const projectChatAPI = useMemo(() => {
     if (!projectId) return null;
     return createProjectChatAPI(projectId, {
@@ -242,8 +248,14 @@ export const ProjectExplorer: React.FC = () => {
         activeFilePath: selectedFilePath || undefined,
         activeFileHash: content?.content_hash || undefined,
       }),
+      beforeSendMessage: async () => {
+        if (!beforeAgentSendHandler) {
+          return { proceed: true };
+        }
+        return beforeAgentSendHandler();
+      },
     });
-  }, [content?.content_hash, projectId, selectedFilePath]);
+  }, [beforeAgentSendHandler, content?.content_hash, projectId, selectedFilePath]);
 
   const navigation: ChatNavigation | undefined = useMemo(() => {
     if (!projectId) return undefined;
@@ -364,6 +376,7 @@ export const ProjectExplorer: React.FC = () => {
                 onToggleChatSidebar={toggleChatSidebar}
                 onToggleFileTree={toggleFileTree}
                 onEditorReady={setEditorActions}
+                onRegisterBeforeAgentSend={handleRegisterBeforeAgentSend}
               />
             </div>
 

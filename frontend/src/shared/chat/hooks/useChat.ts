@@ -395,6 +395,22 @@ export function useChat(sessionId: string | null) {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
+    try {
+      if (api.beforeSendMessage) {
+        const gate = await api.beforeSendMessage({ sessionId, message: content });
+        if (!gate.proceed) {
+          if (gate.reason) {
+            setError(gate.reason);
+          }
+          isProcessingRef.current = false;
+          return;
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to prepare message send');
+      isProcessingRef.current = false;
+      return;
+    }
 
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
@@ -906,6 +922,23 @@ export function useChat(sessionId: string | null) {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
+    try {
+      if (api.beforeSendMessage) {
+        const gate = await api.beforeSendMessage({ sessionId, message: content });
+        if (!gate.proceed) {
+          if (gate.reason) {
+            setError(gate.reason);
+          }
+          isProcessingRef.current = false;
+          return;
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to prepare message send');
+      isProcessingRef.current = false;
+      return;
+    }
+
     setFollowupQuestions([]);
     setIsComparing(true);
 

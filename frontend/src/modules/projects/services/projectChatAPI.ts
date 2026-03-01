@@ -11,8 +11,16 @@ interface ActiveDocumentContext {
   activeFileHash?: string;
 }
 
+interface BeforeSendMessageResult {
+  proceed: boolean;
+  reason?: string;
+  activeFilePath?: string;
+  activeFileHash?: string;
+}
+
 interface ProjectChatAPIOptions {
   getActiveDocumentContext?: () => ActiveDocumentContext;
+  beforeSendMessage?: () => Promise<BeforeSendMessageResult> | BeforeSendMessageResult;
 }
 
 /**
@@ -24,8 +32,29 @@ interface ProjectChatAPIOptions {
  */
 export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPIOptions): ChatAPI => {
   const contextType = 'project';
+  let preparedActiveContext: ActiveDocumentContext | null = null;
 
   return {
+    beforeSendMessage: async () => {
+      if (!options?.beforeSendMessage) {
+        preparedActiveContext = null;
+        return { proceed: true };
+      }
+      const result = await options.beforeSendMessage();
+      if (!result.proceed) {
+        preparedActiveContext = null;
+        return {
+          proceed: false,
+          reason: result.reason,
+        };
+      }
+      preparedActiveContext = {
+        activeFilePath: result.activeFilePath,
+        activeFileHash: result.activeFileHash,
+      };
+      return { proceed: true };
+    },
+
     // Session operations
     getSession: async (sessionId: string) => {
       return api.getSession(sessionId, contextType, projectId);
@@ -120,7 +149,8 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
       activeFilePath?,
       activeFileHash?
     ) => {
-      const activeContext = options?.getActiveDocumentContext?.() || {};
+      const activeContext = preparedActiveContext || options?.getActiveDocumentContext?.() || {};
+      preparedActiveContext = null;
       const resolvedActiveFilePath = activeContext.activeFilePath || activeFilePath;
       const resolvedActiveFileHash = activeContext.activeFileHash || activeFileHash;
       return api.sendMessageStream(

@@ -25,6 +25,7 @@ import type { RewritePreset } from './InlineRewritePanel';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
 const INLINE_REWRITE_CONTEXT_CHARS = 1200;
+const AGENT_AUTO_SAVE_BEFORE_SEND_KEY = 'project-agent-auto-save-before-send';
 const THINK_BLOCK_REGEX = /<think>[\s\S]*?<\/think>/g;
 const REWRITE_PRESET_INSTRUCTIONS: Record<RewritePreset, string> = {
   clarity: 'Improve clarity and readability while preserving the original meaning.',
@@ -49,6 +50,15 @@ interface SaveConflictState {
   remoteLoaded: boolean;
 }
 
+export interface BeforeAgentSendResult {
+  proceed: boolean;
+  reason?: string;
+  activeFilePath?: string;
+  activeFileHash?: string;
+}
+
+export type BeforeAgentSendHandler = () => Promise<BeforeAgentSendResult>;
+
 interface FileViewerProps {
   projectId: string;
   projectName: string;
@@ -62,6 +72,7 @@ interface FileViewerProps {
   onToggleChatSidebar: () => void;
   onToggleFileTree: () => void;
   onEditorReady?: (actions: { insertContent: (text: string) => void }) => void;
+  onRegisterBeforeAgentSend?: (handler: BeforeAgentSendHandler | null) => void;
 }
 
 const getLanguageExtension = (path: string) => {
@@ -139,6 +150,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   onToggleChatSidebar,
   onToggleFileTree,
   onEditorReady,
+  onRegisterBeforeAgentSend,
 }) => {
   const { t } = useTranslation('projects');
   const [value, setValue] = useState<string>('');
@@ -159,6 +171,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [inlineRewriteInstruction, setInlineRewriteInstruction] = useState('');
   const [inlineRewriteSourceText, setInlineRewriteSourceText] = useState('');
   const [inlineRewritePreview, setInlineRewritePreview] = useState('');
+  const [autoSaveBeforeAgentSend, setAutoSaveBeforeAgentSend] = useState<boolean>(() => {
+    return localStorage.getItem(AGENT_AUTO_SAVE_BEFORE_SEND_KEY) === 'true';
+  });
 
   const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
@@ -208,6 +223,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   useEffect(() => {
     localStorage.setItem('editor-font-size', fontSize);
   }, [fontSize]);
+
+  useEffect(() => {
+    localStorage.setItem(AGENT_AUTO_SAVE_BEFORE_SEND_KEY, autoSaveBeforeAgentSend ? 'true' : 'false');
+  }, [autoSaveBeforeAgentSend]);
 
   // Sync content when file changes
   useEffect(() => {
@@ -620,9 +639,13 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     view.focus();
   }, []);
 
-  // Save handler
-  const handleSave = useCallback(async () => {
-    if (!content || !hasUnsavedChanges) return;
+  const saveCurrentFile = useCallback(async (): Promise<{ ok: boolean; contentHash?: string }> => {
+    if (!content) {
+      return { ok: false };
+    }
+    if (!hasUnsavedChanges) {
+      return { ok: true, contentHash: originalHash || undefined };
+    }
 
     setSaving(true);
     setSaveError(null);
@@ -648,6 +671,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       if (onContentSaved) {
         onContentSaved();
       }
+      return { ok: true, contentHash: saved.content_hash || undefined };
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       if (typeof detail === 'string') {
@@ -672,10 +696,82 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       } else {
         setSaveError(err?.message || 'Failed to save file');
       }
+      return { ok: false };
     } finally {
       setSaving(false);
     }
   }, [content, hasUnsavedChanges, onContentSaved, originalHash, projectId, t, value]);
+
+  // Save handler
+  const handleSave = useCallback(async () => {
+    await saveCurrentFile();
+  }, [saveCurrentFile]);
+
+  const prepareBeforeAgentSend = useCallback(async (): Promise<BeforeAgentSendResult> => {
+    if (!content) {
+      return { proceed: true };
+    }
+
+    if (!hasUnsavedChanges) {
+      return {
+        proceed: true,
+        activeFilePath: content.path,
+        activeFileHash: originalHash || undefined,
+      };
+    }
+
+    if (autoSaveBeforeAgentSend) {
+      const saved = await saveCurrentFile();
+      if (!saved.ok) {
+        return {
+          proceed: false,
+          reason: t('editor.agentSend.autoSaveFailed'),
+        };
+      }
+      return {
+        proceed: true,
+        activeFilePath: content.path,
+        activeFileHash: saved.contentHash,
+      };
+    }
+
+    const shouldSaveFirst = window.confirm(
+      t('editor.agentSend.unsavedPromptSave', { filePath: content.path })
+    );
+    if (shouldSaveFirst) {
+      const saved = await saveCurrentFile();
+      if (!saved.ok) {
+        return {
+          proceed: false,
+          reason: t('editor.agentSend.autoSaveFailed'),
+        };
+      }
+      return {
+        proceed: true,
+        activeFilePath: content.path,
+        activeFileHash: saved.contentHash,
+      };
+    }
+
+    const continueWithoutSaving = window.confirm(t('editor.agentSend.unsavedPromptContinue'));
+    if (!continueWithoutSaving) {
+      return { proceed: false };
+    }
+
+    return {
+      proceed: true,
+      activeFilePath: content.path,
+      activeFileHash: originalHash || undefined,
+    };
+  }, [autoSaveBeforeAgentSend, content, hasUnsavedChanges, originalHash, saveCurrentFile, t]);
+
+  useEffect(() => {
+    if (!onRegisterBeforeAgentSend) {
+      return;
+    }
+    onRegisterBeforeAgentSend(prepareBeforeAgentSend);
+    return () => onRegisterBeforeAgentSend(null);
+  }, [onRegisterBeforeAgentSend, prepareBeforeAgentSend]);
 
   const handleLoadLatestAfterConflict = useCallback(async () => {
     if (!content || !saveConflict || conflictBusy) {
@@ -1030,6 +1126,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onToggleLineNumbers={setLineNumbers}
         fontSize={fontSize}
         onChangeFontSize={setFontSize}
+        autoSaveBeforeAgentSend={autoSaveBeforeAgentSend}
+        onToggleAutoSaveBeforeAgentSend={setAutoSaveBeforeAgentSend}
         cursorPosition={cursorPosition}
         fileInfo={{
           encoding: content.encoding,

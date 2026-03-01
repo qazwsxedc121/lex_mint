@@ -22,6 +22,8 @@ import type { MutableRefObject } from 'react';
  * This interface allows different modules to provide custom implementations
  */
 export interface ChatAPI {
+  beforeSendMessage?(payload: { sessionId: string; message: string }): Promise<{ proceed: boolean; reason?: string }>;
+
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
   createSession(

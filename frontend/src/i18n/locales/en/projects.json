@@ -129,6 +129,11 @@
   "editor.conflictDraftRestored": "Your draft has been restored.",
   "editor.conflictDraftCopied": "Your draft has been copied to clipboard.",
   "editor.conflictDraftCopyFailed": "Failed to copy draft to clipboard.",
+  "editor.agentSend.autoSaveLabel": "Auto-save before send",
+  "editor.agentSend.autoSaveHelp": "Automatically save unsaved editor changes before sending project chat messages.",
+  "editor.agentSend.unsavedPromptSave": "You have unsaved changes in {{filePath}}. Save first before sending to Agent?",
+  "editor.agentSend.unsavedPromptContinue": "Continue without saving? Agent will read only the last saved version.",
+  "editor.agentSend.autoSaveFailed": "Failed to save current file. Message was not sent.",
 
   "inlineRewrite.title": "Inline Rewrite",
   "inlineRewrite.button": "Inline rewrite (Ctrl/Cmd+K)",
