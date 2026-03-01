@@ -1100,7 +1100,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   )}
                   {/* Tool call block */}
                   {message.toolCalls && message.toolCalls.length > 0 && (
-                    <ToolCallBlock toolCalls={message.toolCalls} />
+                    <ToolCallBlock toolCalls={message.toolCalls} sessionId={sessionId} />
                   )}
                   {/* Main content */}
                   <ReactMarkdown

@@ -6,6 +6,15 @@
 import * as api from '../../../services/api';
 import type { ChatAPI } from '../../../shared/chat';
 
+interface ActiveDocumentContext {
+  activeFilePath?: string;
+  activeFileHash?: string;
+}
+
+interface ProjectChatAPIOptions {
+  getActiveDocumentContext?: () => ActiveDocumentContext;
+}
+
 /**
  * Creates a project-specific ChatAPI instance
  * All methods automatically include context_type=project and the specified project_id
@@ -13,7 +22,7 @@ import type { ChatAPI } from '../../../shared/chat';
  * @param projectId - The ID of the project this chat is associated with
  * @returns A ChatAPI instance configured for the project
  */
-export const createProjectChatAPI = (projectId: string): ChatAPI => {
+export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPIOptions): ChatAPI => {
   const contextType = 'project';
 
   return {
@@ -107,8 +116,13 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
       onToolResults?,
       onAssistantStart?,
       onAssistantDone?,
-      onGroupEvent?
+      onGroupEvent?,
+      activeFilePath?,
+      activeFileHash?
     ) => {
+      const activeContext = options?.getActiveDocumentContext?.() || {};
+      const resolvedActiveFilePath = activeContext.activeFilePath || activeFilePath;
+      const resolvedActiveFileHash = activeContext.activeFileHash || activeFileHash;
       return api.sendMessageStream(
         sessionId,
         message,
@@ -135,7 +149,9 @@ export const createProjectChatAPI = (projectId: string): ChatAPI => {
         onToolResults,
         onAssistantStart,
         onAssistantDone,
-        onGroupEvent
+        onGroupEvent,
+        resolvedActiveFilePath,
+        resolvedActiveFileHash
       );
     },
 

@@ -23,6 +23,9 @@ type SendMessageOptions = {
   fileReferences?: Array<{ path: string; project_id: string }>;
 };
 
+const TOOL_CALL_CACHE_STORAGE_KEY = 'lex-mint.tool-calls.cache.v1';
+const TOOL_CALL_CACHE_LIMIT = 300;
+
 export function useChat(sessionId: string | null) {
   const { api } = useChatServices();
 
@@ -53,6 +56,89 @@ export function useChat(sessionId: string | null) {
   const [groupTimeline, setGroupTimeline] = useState<GroupTimelineEvent[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingRef = useRef(false);
+  const toolCallsByMessageIdRef = useRef<Record<string, NonNullable<Message['toolCalls']>>>({});
+
+  const persistToolCallCache = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        TOOL_CALL_CACHE_STORAGE_KEY,
+        JSON.stringify(toolCallsByMessageIdRef.current)
+      );
+    } catch {
+      // Ignore storage quota/availability errors.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const raw = window.sessionStorage.getItem(TOOL_CALL_CACHE_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return;
+      }
+      const hydrated: Record<string, NonNullable<Message['toolCalls']>> = {};
+      for (const [messageId, value] of Object.entries(parsed)) {
+        if (!messageId || !Array.isArray(value) || value.length === 0) {
+          continue;
+        }
+        hydrated[messageId] = value as NonNullable<Message['toolCalls']>;
+      }
+      toolCallsByMessageIdRef.current = hydrated;
+    } catch {
+      // Ignore malformed persisted cache.
+    }
+  }, []);
+
+  const rememberToolCalls = useCallback((items: Message[]) => {
+    let updated = false;
+    for (const item of items) {
+      if (
+        item.role === 'assistant' &&
+        item.message_id &&
+        Array.isArray(item.toolCalls) &&
+        item.toolCalls.length > 0
+      ) {
+        toolCallsByMessageIdRef.current[item.message_id] = item.toolCalls;
+        updated = true;
+      }
+    }
+    if (!updated) {
+      return;
+    }
+    const messageIds = Object.keys(toolCallsByMessageIdRef.current);
+    if (messageIds.length > TOOL_CALL_CACHE_LIMIT) {
+      const trimCount = messageIds.length - TOOL_CALL_CACHE_LIMIT;
+      for (let i = 0; i < trimCount; i += 1) {
+        delete toolCallsByMessageIdRef.current[messageIds[i]];
+      }
+    }
+    persistToolCallCache();
+  }, [persistToolCallCache]);
+
+  const mergeToolCallsFromCache = useCallback((items: Message[]): Message[] => {
+    return items.map((item) => {
+      if (item.role !== 'assistant' || !item.message_id || (item.toolCalls && item.toolCalls.length > 0)) {
+        return item;
+      }
+      const cachedToolCalls = toolCallsByMessageIdRef.current[item.message_id];
+      if (!cachedToolCalls || cachedToolCalls.length === 0) {
+        return item;
+      }
+      return {
+        ...item,
+        toolCalls: cachedToolCalls,
+      };
+    });
+  }, []);
 
   const appendGroupTimelineEvent = (event: {
     type: string;
@@ -101,6 +187,15 @@ export function useChat(sessionId: string | null) {
 
   // Extract loadSession as a standalone function so it can be called after sending messages
   const loadSession = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    isProcessingRef.current = false;
+    setIsStreaming(false);
+    setIsComparing(false);
+    setIsCompressing(false);
+
     if (!sessionId) {
       setMessages([]);
       setCurrentModelId(null);
@@ -179,7 +274,9 @@ export function useChat(sessionId: string | null) {
         });
       }
 
+      loadedMessages = mergeToolCallsFromCache(loadedMessages);
       setMessages(loadedMessages);
+      rememberToolCalls(loadedMessages);
       setCurrentModelId(session.model_id || null);
       setCurrentAssistantId(session.assistant_id || null);
       const inferredTargetType: ChatTargetType =
@@ -225,7 +322,11 @@ export function useChat(sessionId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [api, sessionId]);
+  }, [api, mergeToolCallsFromCache, rememberToolCalls, sessionId]);
+
+  useEffect(() => {
+    rememberToolCalls(messages);
+  }, [messages, rememberToolCalls]);
 
   // Load session messages when sessionId changes
   useEffect(() => {
@@ -543,10 +644,15 @@ export function useChat(sessionId: string | null) {
         },
         options?.fileReferences,
         // Tool calls: onToolCalls
-        (calls: Array<{ name: string; args: Record<string, unknown> }>) => {
+        (calls: Array<{ id?: string; name: string; args: Record<string, unknown> }>) => {
           if (runtimeIsGroupChat) return;
           // Add tool calls with 'calling' status
-          const toolCalls = calls.map(c => ({ name: c.name, args: c.args, status: 'calling' as const }));
+          const toolCalls = calls.map(c => ({
+            toolCallId: c.id,
+            name: c.name,
+            args: c.args,
+            status: 'calling' as const,
+          }));
           updateAssistantMessage(
             (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
             { allowSingleFallback: true }
@@ -558,10 +664,25 @@ export function useChat(sessionId: string | null) {
           // Update tool calls with results
           updateAssistantMessage(
             (message) => {
+              const used = new Set<number>();
               const updated = (message.toolCalls || []).map(tc => {
-                const match = results.find(r => r.name === tc.name && tc.status === 'calling');
-                if (match) {
-                  return { ...tc, result: match.result, status: 'done' as const };
+                let matchIndex = -1;
+                if (tc.toolCallId) {
+                  matchIndex = results.findIndex(r => r.tool_call_id === tc.toolCallId);
+                } else {
+                  matchIndex = results.findIndex(
+                    (r, idx) => !used.has(idx) && r.name === tc.name
+                  );
+                }
+                if (matchIndex >= 0) {
+                  const match = results[matchIndex];
+                  used.add(matchIndex);
+                  return {
+                    ...tc,
+                    toolCallId: tc.toolCallId || match.tool_call_id,
+                    result: match.result,
+                    status: 'done' as const,
+                  };
                 }
                 return tc;
               });
@@ -1337,9 +1458,14 @@ export function useChat(sessionId: string | null) {
         },
         undefined,
         // onToolCalls (regenerate)
-        (calls: Array<{ name: string; args: Record<string, unknown> }>) => {
+        (calls: Array<{ id?: string; name: string; args: Record<string, unknown> }>) => {
           if (runtimeIsGroupChat) return;
-          const toolCalls = calls.map(c => ({ name: c.name, args: c.args, status: 'calling' as const }));
+          const toolCalls = calls.map(c => ({
+            toolCallId: c.id,
+            name: c.name,
+            args: c.args,
+            status: 'calling' as const,
+          }));
           updateAssistantMessage(
             (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
             { allowSingleFallback: true }
@@ -1350,10 +1476,25 @@ export function useChat(sessionId: string | null) {
           if (runtimeIsGroupChat) return;
           updateAssistantMessage(
             (message) => {
+              const used = new Set<number>();
               const updated = (message.toolCalls || []).map(tc => {
-                const match = results.find(r => r.name === tc.name && tc.status === 'calling');
-                if (match) {
-                  return { ...tc, result: match.result, status: 'done' as const };
+                let matchIndex = -1;
+                if (tc.toolCallId) {
+                  matchIndex = results.findIndex(r => r.tool_call_id === tc.toolCallId);
+                } else {
+                  matchIndex = results.findIndex(
+                    (r, idx) => !used.has(idx) && r.name === tc.name
+                  );
+                }
+                if (matchIndex >= 0) {
+                  const match = results[matchIndex];
+                  used.add(matchIndex);
+                  return {
+                    ...tc,
+                    toolCallId: tc.toolCallId || match.tool_call_id,
+                    result: match.result,
+                    status: 'done' as const,
+                  };
                 }
                 return tc;
               });

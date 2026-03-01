@@ -4,8 +4,14 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 import logging
 import uuid
+from pydantic import BaseModel
 
 from ..services.project_service import ProjectService
+from ..services.project_document_tool_service import (
+    ConfirmPendingPatchArgs,
+    ProjectDocumentToolError,
+    confirm_pending_patch_apply,
+)
 from ..models.project_config import (
     Project,
     ProjectCreate,
@@ -36,6 +42,16 @@ def get_project_service() -> ProjectService:
     if _project_service is None:
         _project_service = ProjectService()
     return _project_service
+
+
+class ProjectChatApplyDiffResponse(BaseModel):
+    """Response model for confirmed project chat diff apply."""
+
+    ok: bool
+    file_path: str
+    new_content_hash: str
+    updated_at: int
+    content: str
 
 
 @router.get("", response_model=List[Project])
@@ -375,6 +391,46 @@ async def write_file(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error writing file to {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project_id}/chat/apply-diff", response_model=ProjectChatApplyDiffResponse)
+async def apply_chat_diff(
+    project_id: str,
+    payload: ConfirmPendingPatchArgs,
+):
+    """Apply one pending chat-generated diff after explicit user confirmation."""
+    try:
+        result = await confirm_pending_patch_apply(
+            project_id=project_id,
+            session_id=payload.session_id,
+            pending_patch_id=payload.pending_patch_id,
+            expected_hash=payload.expected_hash,
+            project_service=get_project_service(),
+        )
+        return ProjectChatApplyDiffResponse.model_validate(result)
+    except ProjectDocumentToolError as e:
+        logger.warning(
+            "Project chat apply diff rejected (project=%s, session=%s, patch=%s, code=%s, message=%s, extra=%s)",
+            project_id,
+            payload.session_id,
+            payload.pending_patch_id,
+            e.code,
+            e.message,
+            e.extra,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": e.code,
+                "message": e.message,
+                **e.extra,
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error applying chat diff for project %s: %s", project_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

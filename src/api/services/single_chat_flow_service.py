@@ -60,6 +60,8 @@ class SingleChatRuntime:
     max_rounds: Optional[int]
     is_legacy_assistant: bool
     assistant_memory_enabled: bool
+    active_file_path: Optional[str] = None
+    active_file_hash: Optional[str] = None
     compression_event: Optional[StreamEvent] = None
 
 
@@ -92,6 +94,8 @@ class SingleChatFlowService:
         use_web_search: bool = False,
         search_query: Optional[str] = None,
         file_references: Optional[List[Dict[str, str]]] = None,
+        active_file_path: Optional[str] = None,
+        active_file_hash: Optional[str] = None,
     ) -> AsyncIterator[StreamItem]:
         """Prepare context, run single-turn orchestrator, and persist final outputs."""
         runtime = await self._prepare_runtime(
@@ -104,6 +108,8 @@ class SingleChatFlowService:
             use_web_search=use_web_search,
             search_query=search_query,
             file_references=file_references,
+            active_file_path=active_file_path,
+            active_file_hash=active_file_hash,
         )
 
         if runtime.user_message_id:
@@ -128,6 +134,11 @@ class SingleChatFlowService:
             assistant_obj=runtime.assistant_obj,
             model_id=runtime.model_id,
             is_legacy_assistant=runtime.is_legacy_assistant,
+            context_type=runtime.context_type,
+            project_id=runtime.project_id,
+            session_id=runtime.session_id,
+            active_file_path=runtime.active_file_path,
+            active_file_hash=runtime.active_file_hash,
         )
         outcome = SingleTurnOutcome()
         async for event in self._stream_single_turn(
@@ -153,6 +164,8 @@ class SingleChatFlowService:
         use_web_search: bool,
         search_query: Optional[str],
         file_references: Optional[List[Dict[str, str]]],
+        active_file_path: Optional[str],
+        active_file_hash: Optional[str],
     ) -> SingleChatRuntime:
         original_user_message = user_message
         file_context_block = await self.deps.build_file_context_block(file_references)
@@ -205,6 +218,8 @@ class SingleChatFlowService:
             max_rounds=ctx.max_rounds,
             is_legacy_assistant=ctx.is_legacy_assistant,
             assistant_memory_enabled=ctx.assistant_memory_enabled,
+            active_file_path=(active_file_path or "").strip() or None,
+            active_file_hash=(active_file_hash or "").strip() or None,
             compression_event=compression_event,
         )
 
@@ -419,19 +434,25 @@ class SingleChatFlowService:
         assistant_obj: Optional[AssistantLike],
         model_id: str,
         is_legacy_assistant: bool,
+        context_type: str,
+        project_id: Optional[str],
+        session_id: str,
+        active_file_path: Optional[str],
+        active_file_hash: Optional[str],
     ) -> Tuple[Optional[List[Any]], Optional[Any]]:
         """Resolve function-calling tools and optional assistant-scoped RAG tool executor."""
         llm_tools: Optional[List[Any]] = None
-        rag_tool_executor = None
+        tool_executors: List[Any] = []
         try:
             from .model_config_service import ModelConfigService
+            from .project_document_tool_service import ProjectDocumentToolService
             from src.tools.registry import get_tool_registry
 
             model_service = ModelConfigService()
             model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
             if not merged_caps.function_calling:
-                return llm_tools, rag_tool_executor
+                return llm_tools, None
 
             llm_tools = list(get_tool_registry().get_all_tools())
             kb_ids_for_tools = list(getattr(assistant_obj, "knowledge_base_ids", None) or [])
@@ -444,13 +465,49 @@ class SingleChatFlowService:
                 rag_tools = rag_tool_service.get_tools()
                 if rag_tools:
                     llm_tools.extend(rag_tools)
-                    rag_tool_executor = rag_tool_service.execute_tool
+                    tool_executors.append(rag_tool_service.execute_tool)
                     print(
                         f"[TOOLS] Added RAG tools for assistant {assistant_id}: "
                         f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
                     )
+
+            if (
+                context_type == "project"
+                and project_id
+                and active_file_path
+            ):
+                doc_tool_service = ProjectDocumentToolService(
+                    project_id=project_id,
+                    session_id=session_id,
+                    active_file_path=active_file_path,
+                    active_file_hash=active_file_hash,
+                )
+                doc_tools = doc_tool_service.get_tools()
+                if doc_tools:
+                    llm_tools.extend(doc_tools)
+                    tool_executors.append(doc_tool_service.execute_tool)
+                    print(
+                        f"[TOOLS] Added project document tools: {len(doc_tools)} "
+                        f"(project={project_id}, file={active_file_path})"
+                    )
             print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
-        return llm_tools, rag_tool_executor
+
+        if not tool_executors:
+            return llm_tools, None
+
+        async def _combined_tool_executor(name: str, args: Dict[str, Any]) -> Optional[str]:
+            for executor in tool_executors:
+                try:
+                    maybe_result = executor(name, args)
+                    if asyncio.iscoroutine(maybe_result):
+                        maybe_result = await maybe_result
+                    if maybe_result is not None:
+                        return str(maybe_result)
+                except Exception as exec_error:
+                    logger.warning("Tool executor failed for %s: %s", name, exec_error)
+            return None
+
+        return llm_tools, _combined_tool_executor
 

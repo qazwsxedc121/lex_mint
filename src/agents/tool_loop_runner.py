@@ -306,7 +306,14 @@ class ToolLoopRunner:
         """Build frontend event payload for announced tool calls."""
         return {
             "type": "tool_calls",
-            "calls": [{"name": tc["name"], "args": tc["args"]} for tc in round_tool_calls],
+            "calls": [
+                {
+                    "id": tc.get("id") or "",
+                    "name": tc["name"],
+                    "args": tc["args"],
+                }
+                for tc in round_tool_calls
+            ],
         }
 
     @staticmethod

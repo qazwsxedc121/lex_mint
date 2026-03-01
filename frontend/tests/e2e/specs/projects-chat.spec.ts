@@ -8,6 +8,26 @@ if (!process.env.API_PORT) {
 }
 const API_BASE = `http://127.0.0.1:${process.env.API_PORT}`;
 
+function buildFlowEvent(
+  seq: number,
+  eventType: string,
+  stage: 'transport' | 'content' | 'tool' | 'orchestration' | 'meta',
+  payload: Record<string, unknown>,
+  streamId: string = 'stream-e2e-project-tools',
+) {
+  return {
+    flow_event: {
+      event_id: `${streamId}-${seq}`,
+      seq,
+      ts: Date.now(),
+      stream_id: streamId,
+      event_type: eventType,
+      stage,
+      payload,
+    },
+  };
+}
+
 async function createTempProject(api: APIRequestContext) {
   const nonce = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lex-mint-e2e-project-chat-'));
@@ -356,6 +376,207 @@ test.describe('Projects chat smoke', () => {
       }
       if (targetProjectId && targetRoot) {
         await cleanupProject(api, targetProjectId, targetRoot);
+      }
+      await api.dispose();
+    }
+  });
+
+  test('project chat tool flow shows apply diff and confirms apply request', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    let projectId = '';
+    let tempRoot = '';
+
+    try {
+      const created = await createTempProject(api);
+      projectId = created.projectId;
+      tempRoot = created.tempRoot;
+
+      await openProjectAndSelectFile(page, created.projectName, projectId, created.topFileName);
+      await openChatSidebar(page);
+      await ensureProjectChatSession(page, projectId);
+
+      const streamBodies: Array<Record<string, unknown>> = [];
+      await page.route('**/api/chat/stream', async (route) => {
+        const postData = route.request().postDataJSON() as Record<string, unknown>;
+        streamBodies.push(postData);
+
+        const applyResult = JSON.stringify({
+          ok: true,
+          mode: 'dry_run',
+          applied: false,
+          file_path: created.topFileName,
+          base_hash: 'fnv1a:abcd1234',
+          pending_patch_id: 'pending-e2e-1',
+          preview: { additions: 2, deletions: 1, hunks: 1 },
+        });
+
+        const events = [
+          buildFlowEvent(1, 'stream_started', 'transport', { context_type: 'project' }),
+          buildFlowEvent(2, 'tool_call_started', 'tool', {
+            calls: [
+              { id: 'tool-read-1', name: 'read_current_document', args: { start_line: 1, end_line: 20 } },
+              { id: 'tool-apply-1', name: 'apply_diff_current_document', args: { dry_run: true } },
+            ],
+          }),
+          buildFlowEvent(3, 'tool_call_finished', 'tool', {
+            results: [
+              {
+                name: 'read_current_document',
+                tool_call_id: 'tool-read-1',
+                result: JSON.stringify({ ok: true, file_path: created.topFileName }),
+              },
+              {
+                name: 'apply_diff_current_document',
+                tool_call_id: 'tool-apply-1',
+                result: applyResult,
+              },
+            ],
+          }),
+          buildFlowEvent(4, 'text_delta', 'content', { text: 'Done.' }),
+          buildFlowEvent(5, 'stream_ended', 'transport', { done: true }),
+        ];
+        const sseBody = events.map((evt) => `data: ${JSON.stringify(evt)}\n\n`).join('');
+
+        await route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+          body: sseBody,
+        });
+      });
+
+      let applyRequestBody: Record<string, unknown> | null = null;
+      await page.route(`**/api/projects/${projectId}/chat/apply-diff`, async (route) => {
+        applyRequestBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            file_path: created.topFileName,
+            new_content_hash: 'fnv1a:efgh5678',
+            updated_at: Date.now(),
+            content: '# Project Chat Smoke\nhello project chat e2e\n',
+          }),
+        });
+      });
+
+      const input = page.locator('[data-name="input-box-root"] textarea');
+      await expect(input).toBeVisible();
+      await input.fill('Please rewrite paragraph 3 with a stronger conflict.');
+
+      const sendButton = page
+        .locator('[data-name="input-box-input-controls"] button')
+        .filter({ hasText: /Send|发送/ })
+        .first();
+      await expect(sendButton).toBeVisible();
+      await sendButton.click();
+
+      await expect(page.locator('[data-name="tool-call-block"]')).toBeVisible();
+      const applyActions = page.locator('[data-name="tool-apply-diff-actions"]').first();
+      if (!(await applyActions.isVisible())) {
+        await page.getByRole('button', { name: /apply_diff_current_document/ }).first().click();
+      }
+      await expect(applyActions).toBeVisible();
+      await expect(applyActions).toContainText('Diff preview ready');
+
+      const applyButton = page.getByRole('button', { name: 'Apply Changes' });
+      await expect(applyButton).toBeVisible();
+      await applyButton.click();
+
+      await expect(page.getByRole('button', { name: 'Applied' })).toBeVisible();
+
+      expect(streamBodies.length).toBeGreaterThan(0);
+      const streamBody = streamBodies[0];
+      expect(streamBody.context_type).toBe('project');
+      expect(streamBody.project_id).toBe(projectId);
+      expect(streamBody.active_file_path).toBe(created.topFileName);
+      expect(typeof streamBody.active_file_hash).toBe('string');
+      expect((streamBody.active_file_hash as string).length).toBeGreaterThan(5);
+
+      expect(applyRequestBody).not.toBeNull();
+      expect(applyRequestBody?.session_id).toBeTruthy();
+      expect(applyRequestBody?.pending_patch_id).toBe('pending-e2e-1');
+      expect(applyRequestBody?.expected_hash).toBe('fnv1a:abcd1234');
+    } finally {
+      if (projectId && tempRoot) {
+        await cleanupProject(api, projectId, tempRoot);
+      }
+      await api.dispose();
+    }
+  });
+
+  test('real llm project tool flow applies diff to file', async ({ page }) => {
+    test.slow();
+    test.setTimeout(240000);
+    test.skip(!process.env.E2E_REAL_LLM, 'Set E2E_REAL_LLM=1 to run real LLM tool e2e.');
+
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    let projectId = '';
+    let tempRoot = '';
+
+    try {
+      const created = await createTempProject(api);
+      projectId = created.projectId;
+      tempRoot = created.tempRoot;
+
+      await openProjectAndSelectFile(page, created.projectName, projectId, created.topFileName);
+      await openChatSidebar(page);
+      await ensureProjectChatSession(page, projectId);
+
+      const streamReqPromise = page.waitForRequest((req) => (
+        req.method() === 'POST' && req.url().includes('/api/chat/stream')
+      ));
+
+      const input = page.locator('[data-name="input-box-root"] textarea');
+      await expect(input).toBeVisible();
+      await input.fill(
+        'Use tools to edit the currently active document. ' +
+        'First call read_current_document. Then call apply_diff_current_document (dry_run=true) ' +
+        'to replace exact text "hello project chat e2e" with "hello project chat AGENTIC e2e". ' +
+        'After tool preview, stop and wait for user confirmation.'
+      );
+
+      const sendButton = page
+        .locator('[data-name="input-box-input-controls"] button')
+        .filter({ hasText: /Send|发送/ })
+        .first();
+      await expect(sendButton).toBeVisible();
+      await sendButton.click();
+
+      const streamReq = await streamReqPromise;
+      const streamBody = streamReq.postDataJSON() as {
+        context_type: string;
+        project_id?: string;
+        active_file_path?: string;
+        active_file_hash?: string;
+      };
+      expect(streamBody.context_type).toBe('project');
+      expect(streamBody.project_id).toBe(projectId);
+      expect(streamBody.active_file_path).toBe(created.topFileName);
+      expect(typeof streamBody.active_file_hash).toBe('string');
+      expect((streamBody.active_file_hash || '').length).toBeGreaterThan(5);
+
+      const applyDiffHeader = page.getByRole('button', { name: /apply_diff_current_document/ }).first();
+      await expect(applyDiffHeader).toBeVisible({ timeout: 180000 });
+
+      const applyActions = page.locator('[data-name="tool-apply-diff-actions"]').first();
+      if (!(await applyActions.isVisible())) {
+        await applyDiffHeader.click();
+      }
+
+      const applyButton = page.getByRole('button', { name: 'Apply Changes' }).first();
+      await expect(applyButton).toBeVisible({ timeout: 180000 });
+      await applyButton.click();
+
+      await expect(page.getByRole('button', { name: 'Applied' }).first()).toBeVisible({ timeout: 30000 });
+
+      const fileRes = await api.get(`/api/projects/${projectId}/files?path=${encodeURIComponent(created.topFileName)}`);
+      expect(fileRes.ok()).toBeTruthy();
+      const fileBody = await fileRes.json() as { content: string };
+      expect(fileBody.content).toContain('hello project chat AGENTIC e2e');
+    } finally {
+      if (projectId && tempRoot) {
+        await cleanupProject(api, projectId, tempRoot);
       }
       await api.dispose();
     }

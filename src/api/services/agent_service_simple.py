@@ -627,7 +627,9 @@ class AgentService:
         project_id: Optional[str] = None,
         use_web_search: bool = False,
         search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None
+        file_references: Optional[List[Dict[str, str]]] = None,
+        active_file_path: Optional[str] = None,
+        active_file_hash: Optional[str] = None,
     ) -> tuple[str, List[Dict[str, Any]]]:
         """Process a user message and return AI response.
 
@@ -658,6 +660,8 @@ class AgentService:
             use_web_search=use_web_search,
             search_query=search_query,
             file_references=file_references,
+            active_file_path=active_file_path,
+            active_file_hash=active_file_hash,
         ):
             if isinstance(event, str):
                 response_chunks.append(event)
@@ -680,7 +684,9 @@ class AgentService:
         project_id: Optional[str] = None,
         use_web_search: bool = False,
         search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None
+        file_references: Optional[List[Dict[str, str]]] = None,
+        active_file_path: Optional[str] = None,
+        active_file_hash: Optional[str] = None,
     ) -> AsyncIterator[Any]:
         """Stream process user message and return AI response stream.
 
@@ -715,6 +721,8 @@ class AgentService:
             use_web_search=use_web_search,
             search_query=search_query,
             file_references=file_references,
+            active_file_path=active_file_path,
+            active_file_hash=active_file_hash,
         ):
             yield event
 

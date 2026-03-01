@@ -1,5 +1,5 @@
-[X] 分支对话
-[X] Compact context
+[X] 分支对话（已验证）
+[X] Compact context（已验证）
 [X] 助手icons
 [X] Temp Chat
 [X] 搜索

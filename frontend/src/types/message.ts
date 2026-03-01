@@ -136,6 +136,7 @@ export interface CompareModelResponse {
 }
 
 export interface ToolCallInfo {
+  toolCallId?: string;
   name: string;
   args: Record<string, unknown>;
   result?: string;

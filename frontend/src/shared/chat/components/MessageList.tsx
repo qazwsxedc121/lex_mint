@@ -55,7 +55,18 @@ export const MessageList: React.FC<MessageListProps> = ({
     <div data-name="message-list" className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
       {messages.length === 0 ? (
         <div data-name="message-list-empty" className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-          <p>Start a new conversation...</p>
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm">
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span>Loading conversation...</span>
+            </div>
+          ) : (
+            <p>Start a new conversation...</p>
+          )}
         </div>
       ) : (
         <>
@@ -99,4 +110,3 @@ export const MessageList: React.FC<MessageListProps> = ({
     </div>
   );
 };
-

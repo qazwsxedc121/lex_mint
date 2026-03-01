@@ -69,7 +69,7 @@ export interface ChatAPI {
     onContextInfo?: (info: ContextInfo) => void,
     onThinkingDuration?: (durationMs: number) => void,
     fileReferences?: Array<{ path: string; project_id: string }>,
-    onToolCalls?: (calls: Array<{ name: string; args: Record<string, unknown> }>) => void,
+    onToolCalls?: (calls: Array<{ id?: string; name: string; args: Record<string, unknown> }>) => void,
     onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
     onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
     onAssistantDone?: (assistantId: string) => void,
@@ -95,7 +95,9 @@ export interface ChatAPI {
       sources?: SearchSource[];
       duration_ms?: number;
       [key: string]: unknown;
-    }) => void
+    }) => void,
+    activeFilePath?: string,
+    activeFileHash?: string
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;

@@ -63,6 +63,8 @@ class ChatRequest(BaseModel):
     reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
     context_type: str = "chat"  # Context type: "chat" or "project"
     project_id: Optional[str] = None  # Project ID (required when context_type="project")
+    active_file_path: Optional[str] = None  # Active file path for project chat document tools
+    active_file_hash: Optional[str] = None  # Optional client-side content hash for active file
     use_web_search: bool = False  # Whether to use web search for this message
     search_query: Optional[str] = None  # Optional explicit search query
 
@@ -319,6 +321,8 @@ async def _build_stream_fn(
         use_web_search=request.use_web_search,
         search_query=request.search_query,
         file_references=request.file_references,
+        active_file_path=request.active_file_path,
+        active_file_hash=request.active_file_hash,
     )
 
 
@@ -416,7 +420,9 @@ async def chat(
             project_id=request.project_id,
             use_web_search=request.use_web_search,
             search_query=request.search_query,
-            file_references=request.file_references
+            file_references=request.file_references,
+            active_file_path=request.active_file_path,
+            active_file_hash=request.active_file_hash,
         )
 
         print("=" * 80)

@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     flow_stream_max_events: int = 5000
     flow_stream_max_active: int = 200
 
+    # Project chat pending patch confirmation window
+    project_chat_pending_patch_ttl_seconds: int = 3600
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

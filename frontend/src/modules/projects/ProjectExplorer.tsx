@@ -101,6 +101,19 @@ export const ProjectExplorer: React.FC = () => {
     selectedFilePath
   );
 
+  useEffect(() => {
+    if (!projectId || !selectedFilePath) {
+      return;
+    }
+
+    const onFileUpdated = () => {
+      void refreshContent();
+    };
+
+    window.addEventListener('project-file-updated', onFileUpdated);
+    return () => window.removeEventListener('project-file-updated', onFileUpdated);
+  }, [projectId, selectedFilePath, refreshContent]);
+
   const handleRefreshProject = useCallback(async () => {
     await refreshTree();
     await refreshContent();
@@ -223,8 +236,13 @@ export const ProjectExplorer: React.FC = () => {
   }, [navigate, setCurrentProject]);
 
   const projectChatAPI = useMemo(() => {
-    return projectId ? createProjectChatAPI(projectId) : null;
-  }, [projectId]);
+    if (!projectId) return null;
+    return createProjectChatAPI(projectId, {
+      getActiveDocumentContext: () => ({
+        activeFilePath: selectedFilePath || undefined,
+      }),
+    });
+  }, [projectId, selectedFilePath]);
 
   const navigation: ChatNavigation | undefined = useMemo(() => {
     if (!projectId) return undefined;

@@ -870,7 +870,7 @@ export async function sendMessageStream(
   onContextInfo?: (info: ContextInfo) => void,
   onThinkingDuration?: (durationMs: number) => void,
   fileReferences?: Array<{ path: string; project_id: string }>,
-  onToolCalls?: (calls: Array<{ name: string; args: Record<string, unknown> }>) => void,
+  onToolCalls?: (calls: Array<{ id?: string; name: string; args: Record<string, unknown> }>) => void,
   onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
   onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
   onAssistantDone?: (assistantId: string) => void,
@@ -896,7 +896,9 @@ export async function sendMessageStream(
     sources?: SearchSource[];
     duration_ms?: number;
     [key: string]: unknown;
-  }) => void
+  }) => void,
+  activeFilePath?: string,
+  activeFileHash?: string,
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -991,7 +993,7 @@ export async function sendMessageStream(
         return 'handled';
       }
       case 'tool_call_started': {
-        const calls = payload.calls as Array<{ name: string; args: Record<string, unknown> }> | undefined;
+        const calls = payload.calls as Array<{ id?: string; name: string; args: Record<string, unknown> }> | undefined;
         if (calls && onToolCalls) {
           onToolCalls(calls);
         }
@@ -1118,6 +1120,13 @@ export async function sendMessageStream(
 
     if (fileReferences && fileReferences.length > 0) {
       requestBody.file_references = fileReferences;
+    }
+
+    if (activeFilePath) {
+      requestBody.active_file_path = activeFilePath;
+    }
+    if (activeFileHash) {
+      requestBody.active_file_hash = activeFileHash;
     }
 
     let activeStreamId: string | undefined;
@@ -2178,6 +2187,31 @@ export async function writeFile(id: string, path: string, content: string, encod
     content,
     encoding
   });
+  return response.data;
+}
+
+export interface ApplyProjectChatDiffRequest {
+  session_id: string;
+  pending_patch_id: string;
+  expected_hash?: string;
+}
+
+export interface ApplyProjectChatDiffResponse {
+  ok: boolean;
+  file_path: string;
+  new_content_hash: string;
+  updated_at: number;
+  content: string;
+}
+
+export async function applyProjectChatDiff(
+  id: string,
+  payload: ApplyProjectChatDiffRequest
+): Promise<ApplyProjectChatDiffResponse> {
+  const response = await api.post<ApplyProjectChatDiffResponse>(
+    `/api/projects/${id}/chat/apply-diff`,
+    payload
+  );
   return response.data;
 }
 
