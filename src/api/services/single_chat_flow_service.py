@@ -471,11 +471,7 @@ class SingleChatFlowService:
                         f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
                     )
 
-            if (
-                context_type == "project"
-                and project_id
-                and active_file_path
-            ):
+            if context_type == "project" and project_id:
                 doc_tool_service = ProjectDocumentToolService(
                     project_id=project_id,
                     session_id=session_id,
@@ -486,9 +482,10 @@ class SingleChatFlowService:
                 if doc_tools:
                     llm_tools.extend(doc_tools)
                     tool_executors.append(doc_tool_service.execute_tool)
+                    active_file_log = active_file_path or "(none)"
                     print(
                         f"[TOOLS] Added project document tools: {len(doc_tools)} "
-                        f"(project={project_id}, file={active_file_path})"
+                        f"(project={project_id}, file={active_file_log})"
                     )
             print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
         except Exception as e:

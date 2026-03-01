@@ -465,3 +465,88 @@ async def test_search_project_text_honors_max_results(tmp_path, project_service:
     assert payload["ok"] is True
     assert payload["results_count"] == 2
     assert payload["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_read_project_document_without_active_file(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-project-read",
+        active_file_path=None,
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    payload = json.loads(
+        await service.read_project_document(
+            file_path="notes.txt",
+            start_line=2,
+            end_line=2,
+        )
+    )
+    assert payload["ok"] is True
+    assert payload["file_path"] == "notes.txt"
+    assert payload["content"] == "line2"
+    assert payload["line_count"] == 2
+    assert payload["client_hash"] is None
+
+
+@pytest.mark.asyncio
+async def test_apply_diff_project_document_without_active_file(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-project-apply",
+        active_file_path=None,
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+    read_payload = json.loads(await service.read_project_document(file_path="notes.txt"))
+    base_hash = read_payload["content_hash"]
+    diff_text = (
+        "--- a/notes.txt\n"
+        "+++ b/notes.txt\n"
+        "@@ -1,2 +1,2 @@\n"
+        " line1\n"
+        "-line2\n"
+        "+line-two\n"
+    )
+    dry_run_payload = json.loads(
+        await service.apply_diff_project_document(
+            file_path="notes.txt",
+            unified_diff=diff_text,
+            base_hash=base_hash,
+            dry_run=True,
+        )
+    )
+    assert dry_run_payload["ok"] is True
+    assert dry_run_payload["file_path"] == "notes.txt"
+
+    confirm_payload = await confirm_pending_patch_apply(
+        project_id=prepared_project.id,
+        session_id="session-project-apply",
+        pending_patch_id=dry_run_payload["pending_patch_id"],
+        expected_hash=base_hash,
+        project_service=project_service,
+        pending_store=service.pending_store,
+    )
+    assert confirm_payload["ok"] is True
+    after = await project_service.read_file(prepared_project.id, "notes.txt")
+    assert after.content == "line1\nline-two\n"
+
+
+@pytest.mark.asyncio
+async def test_read_current_document_without_active_file_returns_error(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-no-active",
+        active_file_path=None,
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    payload = json.loads(await service.execute_tool("read_current_document", {}))
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "NO_ACTIVE_FILE"

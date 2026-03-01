@@ -581,4 +581,77 @@ test.describe('Projects chat smoke', () => {
       await api.dispose();
     }
   });
+
+  test('real llm cross-file tool flow applies diff to non-active file', async ({ page }) => {
+    test.slow();
+    test.setTimeout(240000);
+    test.skip(!process.env.E2E_REAL_LLM, 'Set E2E_REAL_LLM=1 to run real LLM tool e2e.');
+
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    let projectId = '';
+    let tempRoot = '';
+
+    try {
+      const created = await createTempProject(api);
+      projectId = created.projectId;
+      tempRoot = created.tempRoot;
+
+      await openProjectAndSelectFile(page, created.projectName, projectId, created.topFileName);
+      await openChatSidebar(page);
+      await ensureProjectChatSession(page, projectId);
+
+      const streamReqPromise = page.waitForRequest((req) => (
+        req.method() === 'POST' && req.url().includes('/api/chat/stream')
+      ));
+
+      const input = page.locator('[data-name="input-box-root"] textarea');
+      await expect(input).toBeVisible();
+      await input.fill(
+        'Use cross-file project tools only. Do NOT use read_current_document or apply_diff_current_document. ' +
+        'Edit file src/app.py (not the active file). ' +
+        'First call read_project_document for src/app.py, then call apply_diff_project_document with dry_run=true ' +
+        'to replace exact text print("project chat") with print("project chat AGENTIC"). ' +
+        'After diff preview, stop and wait for user confirmation.'
+      );
+
+      const sendButton = page
+        .locator('[data-name="input-box-input-controls"] button')
+        .filter({ hasText: /Send|发送/ })
+        .first();
+      await expect(sendButton).toBeVisible();
+      await sendButton.click();
+
+      const streamReq = await streamReqPromise;
+      const streamBody = streamReq.postDataJSON() as {
+        context_type: string;
+        project_id?: string;
+      };
+      expect(streamBody.context_type).toBe('project');
+      expect(streamBody.project_id).toBe(projectId);
+
+      const applyDiffHeader = page.getByRole('button', { name: /apply_diff_project_document/ }).first();
+      await expect(applyDiffHeader).toBeVisible({ timeout: 180000 });
+
+      const applyActions = page.locator('[data-name="tool-apply-diff-actions"]').first();
+      if (!(await applyActions.isVisible())) {
+        await applyDiffHeader.click();
+      }
+
+      const applyButton = page.getByRole('button', { name: 'Apply Changes' }).first();
+      await expect(applyButton).toBeVisible({ timeout: 180000 });
+      await applyButton.click();
+
+      await expect(page.getByRole('button', { name: 'Applied' }).first()).toBeVisible({ timeout: 30000 });
+
+      const fileRes = await api.get(`/api/projects/${projectId}/files?path=${encodeURIComponent('src/app.py')}`);
+      expect(fileRes.ok()).toBeTruthy();
+      const fileBody = await fileRes.json() as { content: string };
+      expect(fileBody.content).toContain('print("project chat AGENTIC")');
+    } finally {
+      if (projectId && tempRoot) {
+        await cleanupProject(api, projectId, tempRoot);
+      }
+      await api.dispose();
+    }
+  });
 });

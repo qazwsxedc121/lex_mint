@@ -54,7 +54,10 @@ interface UnifiedDiffPreview {
   hiddenLineCount: number;
 }
 
-const APPLY_DIFF_TOOL_NAME = 'apply_diff_current_document';
+const APPLY_DIFF_TOOL_NAMES = new Set([
+  'apply_diff_current_document',
+  'apply_diff_project_document',
+]);
 const APPLIED_PATCH_STORAGE_KEY = 'lex-mint.project-chat.applied-patches.v1';
 const DISMISSED_PATCH_STORAGE_KEY = 'lex-mint.project-chat.dismissed-patches.v1';
 const MAX_DIFF_PREVIEW_LINES = 240;
@@ -227,7 +230,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
     }
     for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
       const tc = toolCalls[index];
-      if (tc.name !== APPLY_DIFF_TOOL_NAME) {
+      if (!APPLY_DIFF_TOOL_NAMES.has(tc.name)) {
         continue;
       }
       const parsedResult = safeParseJson(tc.result);
@@ -316,8 +319,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
         const isExpanded = expandedIndex === index;
         const isCalling = tc.status === 'calling';
         const isError = tc.status === 'error';
-        const isApplyDiffTool = tc.name === APPLY_DIFF_TOOL_NAME;
-        const parsedResult = tc.name === APPLY_DIFF_TOOL_NAME ? safeParseJson(tc.result) : null;
+        const isApplyDiffTool = APPLY_DIFF_TOOL_NAMES.has(tc.name);
+        const parsedResult = isApplyDiffTool ? safeParseJson(tc.result) : null;
         const applyDiffRaw = isApplyDiffTool ? extractUnifiedDiff(tc.args) : '';
         const applyDiffPreview = applyDiffRaw ? parseUnifiedDiffPreview(applyDiffRaw) : null;
         const patchId = parsedResult?.pending_patch_id || '';

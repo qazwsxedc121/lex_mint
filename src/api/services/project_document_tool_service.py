@@ -133,6 +133,60 @@ class ConfirmPendingPatchArgs(BaseModel):
     expected_hash: Optional[str] = Field(default=None, min_length=16, max_length=128)
 
 
+class ReadProjectDocumentArgs(BaseModel):
+    """Arguments for read_project_document."""
+
+    file_path: str = Field(
+        ...,
+        min_length=1,
+        max_length=800,
+        description="Project-relative file path to read.",
+    )
+    start_line: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="1-based start line (inclusive). Omit to read from the first line.",
+    )
+    end_line: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="1-based end line (inclusive). Omit to read through the last line.",
+    )
+    max_chars: int = Field(
+        default=12000,
+        ge=500,
+        le=120000,
+        description="Maximum characters to return; content is truncated when this limit is reached.",
+    )
+
+
+class ApplyDiffProjectDocumentArgs(BaseModel):
+    """Arguments for apply_diff_project_document."""
+
+    file_path: str = Field(
+        ...,
+        min_length=1,
+        max_length=800,
+        description="Project-relative file path to patch.",
+    )
+    unified_diff: str = Field(
+        ...,
+        min_length=1,
+        max_length=300000,
+        description="Single-file unified diff targeting file_path.",
+    )
+    base_hash: str = Field(
+        ...,
+        min_length=16,
+        max_length=128,
+        description="content_hash returned by read_project_document or read_current_document.",
+    )
+    dry_run: bool = Field(
+        default=True,
+        description="Preview only. Must stay true; final apply requires explicit confirmation.",
+    )
+
+
 @dataclass
 class PendingPatch:
     """One pending dry-run patch waiting for user confirmation."""
@@ -460,14 +514,14 @@ def _apply_parsed_diff(content: str, parsed: ParsedUnifiedDiff) -> str:
 
 
 class ProjectDocumentToolService:
-    """Project chat tools bound to one active document."""
+    """Project chat tools for active-file and cross-file editing."""
 
     def __init__(
         self,
         *,
         project_id: str,
         session_id: str,
-        active_file_path: str,
+        active_file_path: Optional[str] = None,
         active_file_hash: Optional[str] = None,
         project_service: Optional[ProjectService] = None,
         pending_store: Optional[PendingPatchStore] = None,
@@ -475,7 +529,7 @@ class ProjectDocumentToolService:
     ) -> None:
         self.project_id = project_id
         self.session_id = session_id
-        self.active_file_path = _normalize_rel_path(active_file_path)
+        self.active_file_path = _normalize_rel_path(active_file_path) or None
         self.active_file_hash = (active_file_hash or "").strip() or None
         self.project_service = project_service or ProjectService()
         self.pending_store = pending_store or _pending_patch_store
@@ -501,27 +555,54 @@ class ProjectDocumentToolService:
 
     def get_tools(self) -> List[BaseTool]:
         """Build project-document tools for LLM function calling."""
-        return [
+        tools: List[BaseTool] = [
             StructuredTool.from_function(
-                coroutine=self.read_current_document,
-                name="read_current_document",
+                coroutine=self.read_project_document,
+                name="read_project_document",
                 description=(
-                    "Read the active project file and return content with content_hash. "
+                    "Read any project file by path and return content with content_hash. "
                     "Output may be truncated by max_chars. "
-                    "Call this before apply_diff_current_document."
+                    "Call this before apply_diff_project_document."
                 ),
-                args_schema=ReadCurrentDocumentArgs,
+                args_schema=ReadProjectDocumentArgs,
             ),
             StructuredTool.from_function(
-                coroutine=self.apply_diff_current_document,
-                name="apply_diff_current_document",
+                coroutine=self.apply_diff_project_document,
+                name="apply_diff_project_document",
                 description=(
-                    "Preview a unified diff patch for the active file. "
-                    "base_hash must match read_current_document.content_hash. "
+                    "Preview a unified diff patch for a project file. "
+                    "base_hash must match read_project_document.content_hash for the same file_path. "
                     "This tool only supports dry_run=true and returns pending_patch_id for confirmation."
                 ),
-                args_schema=ApplyDiffCurrentDocumentArgs,
+                args_schema=ApplyDiffProjectDocumentArgs,
             ),
+        ]
+
+        if self.active_file_path:
+            tools.extend([
+                StructuredTool.from_function(
+                    coroutine=self.read_current_document,
+                    name="read_current_document",
+                    description=(
+                        "Read the active project file and return content with content_hash. "
+                        "Output may be truncated by max_chars. "
+                        "Call this before apply_diff_current_document."
+                    ),
+                    args_schema=ReadCurrentDocumentArgs,
+                ),
+                StructuredTool.from_function(
+                    coroutine=self.apply_diff_current_document,
+                    name="apply_diff_current_document",
+                    description=(
+                        "Preview a unified diff patch for the active file. "
+                        "base_hash must match read_current_document.content_hash. "
+                        "This tool only supports dry_run=true and returns pending_patch_id for confirmation."
+                    ),
+                    args_schema=ApplyDiffCurrentDocumentArgs,
+                ),
+            ])
+
+        tools.append(
             StructuredTool.from_function(
                 coroutine=self.search_project_text,
                 name="search_project_text",
@@ -530,12 +611,31 @@ class ProjectDocumentToolService:
                     "Supports regex, glob filters, and capped results for cross-file discovery."
                 ),
                 args_schema=SearchProjectTextArgs,
-            ),
-        ]
+            )
+        )
+        return tools
 
     async def execute_tool(self, name: str, args: Dict[str, Any]) -> Optional[str]:
         """Request-scoped executor contract used by tool loop."""
         try:
+            if name == "read_project_document":
+                parsed = ReadProjectDocumentArgs.model_validate(args or {})
+                return await self.read_project_document(
+                    file_path=parsed.file_path,
+                    start_line=parsed.start_line,
+                    end_line=parsed.end_line,
+                    max_chars=parsed.max_chars,
+                )
+
+            if name == "apply_diff_project_document":
+                parsed = ApplyDiffProjectDocumentArgs.model_validate(args or {})
+                return await self.apply_diff_project_document(
+                    file_path=parsed.file_path,
+                    unified_diff=parsed.unified_diff,
+                    base_hash=parsed.base_hash,
+                    dry_run=parsed.dry_run,
+                )
+
             if name == "read_current_document":
                 parsed = ReadCurrentDocumentArgs.model_validate(args or {})
                 return await self.read_current_document(
@@ -574,28 +674,51 @@ class ProjectDocumentToolService:
             logger.exception("Project document tool execution failed: %s", e)
             return self._error("TOOL_EXECUTION_FAILED", f"Tool execution failed: {e}")
 
-    async def _read_active_file(self) -> Tuple[str, str]:
-        file_data = await self.project_service.read_file(self.project_id, self.active_file_path)
+    def _require_active_file_path(self) -> str:
+        if self.active_file_path:
+            return self.active_file_path
+        raise ProjectDocumentToolError(
+            "NO_ACTIVE_FILE",
+            "No active file selected. Use read_project_document/apply_diff_project_document with file_path.",
+        )
+
+    @staticmethod
+    def _normalize_required_file_path(file_path: str) -> str:
+        normalized = _normalize_rel_path(file_path)
+        if not normalized:
+            raise ProjectDocumentToolError("INVALID_ARGUMENT", "file_path is required")
+        return normalized
+
+    async def _read_project_file(self, file_path: str) -> Tuple[str, str]:
+        normalized_file_path = self._normalize_required_file_path(file_path)
+        file_data = await self.project_service.read_file(self.project_id, normalized_file_path)
         return file_data.content or "", file_data.encoding
 
-    async def read_current_document(
+    async def _read_active_file(self) -> Tuple[str, str]:
+        active_file_path = self._require_active_file_path()
+        file_data = await self.project_service.read_file(self.project_id, active_file_path)
+        return file_data.content or "", file_data.encoding
+
+    def _build_read_payload(
         self,
-        start_line: Optional[int] = None,
-        end_line: Optional[int] = None,
-        max_chars: int = 12000,
-    ) -> str:
-        """Read current active file content (optionally by line range)."""
-        content, _ = await self._read_active_file()
+        *,
+        file_path: str,
+        content: str,
+        start_line: Optional[int],
+        end_line: Optional[int],
+        max_chars: int,
+        client_hash: Optional[str],
+    ) -> Dict[str, Any]:
         all_lines = content.splitlines()
         line_count = len(all_lines)
 
         if line_count == 0:
-            payload = {
+            return {
                 "ok": True,
-                "file_path": self.active_file_path,
+                "file_path": file_path,
                 "line_count": 0,
                 "content_hash": compute_content_hash(content),
-                "client_hash": self.active_file_hash,
+                "client_hash": client_hash,
                 "range": {
                     "start_line": 1,
                     "end_line": 0,
@@ -603,7 +726,6 @@ class ProjectDocumentToolService:
                 "truncated": False,
                 "content": "",
             }
-            return self._json(payload)
 
         if start_line is None:
             start_line = 1
@@ -624,13 +746,12 @@ class ProjectDocumentToolService:
             selected_content = selected_content[:max_chars]
             truncated = True
 
-        current_hash = compute_content_hash(content)
-        payload = {
+        return {
             "ok": True,
-            "file_path": self.active_file_path,
+            "file_path": file_path,
             "line_count": line_count,
-            "content_hash": current_hash,
-            "client_hash": self.active_file_hash,
+            "content_hash": compute_content_hash(content),
+            "client_hash": client_hash,
             "range": {
                 "start_line": start_line,
                 "end_line": min(end_line, line_count),
@@ -638,6 +759,24 @@ class ProjectDocumentToolService:
             "truncated": truncated,
             "content": selected_content,
         }
+
+    async def read_current_document(
+        self,
+        start_line: Optional[int] = None,
+        end_line: Optional[int] = None,
+        max_chars: int = 12000,
+    ) -> str:
+        """Read current active file content (optionally by line range)."""
+        active_file_path = self._require_active_file_path()
+        content, _ = await self._read_active_file()
+        payload = self._build_read_payload(
+            file_path=active_file_path,
+            content=content,
+            start_line=start_line,
+            end_line=end_line,
+            max_chars=max_chars,
+            client_hash=self.active_file_hash,
+        )
         return self._json(payload)
 
     async def apply_diff_current_document(
@@ -647,24 +786,92 @@ class ProjectDocumentToolService:
         dry_run: bool = True,
     ) -> str:
         """Validate and dry-run apply unified diff for active file."""
+        active_file_path = self._require_active_file_path()
+        payload = await self._apply_diff_for_file(
+            file_path=active_file_path,
+            unified_diff=unified_diff,
+            base_hash=base_hash,
+            dry_run=dry_run,
+            mode="dry_run",
+            hash_mismatch_message="Document changed since read; call read_current_document again.",
+            target_mismatch_message=(
+                f"Diff target does not match active file '{active_file_path}'."
+            ),
+        )
+        return self._json(payload)
+
+    async def read_project_document(
+        self,
+        *,
+        file_path: str,
+        start_line: Optional[int] = None,
+        end_line: Optional[int] = None,
+        max_chars: int = 12000,
+    ) -> str:
+        """Read any project file content by file path."""
+        normalized_file_path = self._normalize_required_file_path(file_path)
+        content, _ = await self._read_project_file(normalized_file_path)
+        payload = self._build_read_payload(
+            file_path=normalized_file_path,
+            content=content,
+            start_line=start_line,
+            end_line=end_line,
+            max_chars=max_chars,
+            client_hash=None,
+        )
+        return self._json(payload)
+
+    async def apply_diff_project_document(
+        self,
+        *,
+        file_path: str,
+        unified_diff: str,
+        base_hash: str,
+        dry_run: bool = True,
+    ) -> str:
+        """Validate and dry-run apply unified diff for a specific project file."""
+        normalized_file_path = self._normalize_required_file_path(file_path)
+        payload = await self._apply_diff_for_file(
+            file_path=normalized_file_path,
+            unified_diff=unified_diff,
+            base_hash=base_hash,
+            dry_run=dry_run,
+            mode="dry_run",
+            hash_mismatch_message="Document changed since read; call read_project_document again.",
+            target_mismatch_message=(
+                f"Diff target does not match file_path '{normalized_file_path}'."
+            ),
+        )
+        return self._json(payload)
+
+    async def _apply_diff_for_file(
+        self,
+        *,
+        file_path: str,
+        unified_diff: str,
+        base_hash: str,
+        dry_run: bool,
+        mode: str,
+        hash_mismatch_message: str,
+        target_mismatch_message: str,
+    ) -> Dict[str, Any]:
         if not dry_run:
             raise ProjectDocumentToolError(
                 "CONFIRMATION_REQUIRED",
-                "apply_diff_current_document only supports dry_run=true. Confirm via API to apply.",
+                "apply_diff tools only support dry_run=true. Confirm via API to apply.",
             )
 
-        current_content, _ = await self._read_active_file()
+        current_content, _ = await self._read_project_file(file_path)
         current_hash = compute_content_hash(current_content)
         if current_hash != base_hash:
             raise ProjectDocumentToolError(
                 "HASH_MISMATCH",
-                "Document changed since read; call read_current_document again.",
+                hash_mismatch_message,
                 current_hash=current_hash,
                 expected_hash=base_hash,
             )
 
         parsed = _parse_unified_diff(unified_diff)
-        expected_path = self.active_file_path
         for diff_path in (parsed.old_path, parsed.new_path):
             if not diff_path:
                 continue
@@ -672,12 +879,14 @@ class ProjectDocumentToolService:
             if normalized_diff_path in ("/dev/null", "dev/null"):
                 raise ProjectDocumentToolError(
                     "TARGET_FILE_NOT_ALLOWED",
-                    "Creating or deleting files is not allowed in current-file mode.",
+                    "Creating or deleting files is not allowed in project chat patch mode.",
                 )
-            if _normalize_rel_path(normalized_diff_path) != expected_path:
+            if _normalize_rel_path(normalized_diff_path) != file_path:
                 raise ProjectDocumentToolError(
                     "TARGET_FILE_NOT_ALLOWED",
-                    f"Diff target '{normalized_diff_path}' does not match active file '{expected_path}'.",
+                    target_mismatch_message,
+                    diff_target=normalized_diff_path,
+                    file_path=file_path,
                 )
 
         patched_content = _apply_parsed_diff(current_content, parsed)
@@ -690,7 +899,7 @@ class ProjectDocumentToolService:
                 patch_id=pending_patch_id,
                 project_id=self.project_id,
                 session_id=self.session_id,
-                file_path=self.active_file_path,
+                file_path=file_path,
                 base_hash=base_hash,
                 patched_content=patched_content,
                 created_at=created_at,
@@ -698,11 +907,11 @@ class ProjectDocumentToolService:
             )
         )
 
-        payload = {
+        return {
             "ok": True,
-            "mode": "dry_run",
+            "mode": mode,
             "applied": False,
-            "file_path": self.active_file_path,
+            "file_path": file_path,
             "base_hash": base_hash,
             "new_content_hash": new_hash,
             "pending_patch_id": pending_patch_id,
@@ -714,7 +923,6 @@ class ProjectDocumentToolService:
                 "hunks": len(parsed.hunks),
             },
         }
-        return self._json(payload)
 
     @staticmethod
     def _trim_line(text: str, max_chars_per_line: int) -> str:
