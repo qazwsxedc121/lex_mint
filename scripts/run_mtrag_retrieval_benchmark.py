@@ -71,6 +71,7 @@ def main() -> None:
     top_k = int(cfg.get("top_k") or 10)
     score_threshold = float(cfg.get("score_threshold") or 0.0)
     bm25_min_term_coverage = float(cfg.get("bm25_min_term_coverage") or 0.0)
+    benchmark_strict = bool(cfg.get("benchmark_strict", False))
     max_cases = args.max_cases if args.max_cases is not None else cfg.get("max_cases")
     runtime_model_id = args.runtime_model_id or str(cfg.get("runtime_model_id") or "").strip() or None
 
@@ -112,6 +113,8 @@ def main() -> None:
     ]
     if runtime_model_id:
         cmd.extend(["--runtime-model-id", runtime_model_id])
+    if benchmark_strict:
+        cmd.append("--benchmark-strict")
 
     manifest = {
         "benchmark_name": name,
@@ -123,6 +126,7 @@ def main() -> None:
         "top_k": top_k,
         "score_threshold": score_threshold,
         "bm25_min_term_coverage": bm25_min_term_coverage,
+        "benchmark_strict": benchmark_strict,
         "max_cases": max_cases,
         "runtime_model_id": runtime_model_id,
         "converted_dataset_path": str(dataset_path),
