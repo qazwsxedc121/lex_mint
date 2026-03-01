@@ -18,11 +18,16 @@ logger = logging.getLogger(__name__)
 class SearchKnowledgeArgs(BaseModel):
     """Arguments for search_knowledge tool."""
 
-    query: str = Field(..., min_length=1, max_length=500, description="Natural-language search query")
-    top_k: int = Field(5, ge=1, le=8, description="Maximum number of hits to return")
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Search query for assistant-bound knowledge bases.",
+    )
+    top_k: int = Field(5, ge=1, le=8, description="Maximum number of hits to return (1-8).")
     include_diagnostics: bool = Field(
         False,
-        description="Whether to include condensed retrieval diagnostics in the result",
+        description="Include compact retrieval diagnostics in the response.",
     )
 
 
@@ -33,14 +38,19 @@ class ReadKnowledgeArgs(BaseModel):
         ...,
         min_length=1,
         max_length=8,
-        description="Reference ids returned by search_knowledge, e.g. kb:foo|doc:bar|chunk:3",
+        description="ref_id values from search_knowledge, e.g. kb:foo|doc:bar|chunk:3.",
     )
-    max_chars: int = Field(6000, ge=1000, le=12000, description="Total max characters to return")
+    max_chars: int = Field(
+        6000,
+        ge=1000,
+        le=12000,
+        description="Total character cap for all returned content; output is truncated when reached.",
+    )
     neighbor_window: int = Field(
         0,
         ge=0,
         le=2,
-        description="Include +/- N adjacent chunks around each requested chunk",
+        description="Include plus or minus N adjacent chunks around each requested chunk.",
     )
 
 
@@ -463,7 +473,7 @@ class RagToolService:
                 coroutine=_search_knowledge,
                 name="search_knowledge",
                 description=(
-                    "Search assistant-bound knowledge bases and return concise hits with ref_id. "
+                    "Search assistant-bound knowledge bases and return ranked hits with ref_id. "
                     "Call this before read_knowledge."
                 ),
                 args_schema=SearchKnowledgeArgs,
@@ -472,8 +482,8 @@ class RagToolService:
                 coroutine=_read_knowledge,
                 name="read_knowledge",
                 description=(
-                    "Read full chunk content by refs returned from search_knowledge. "
-                    "Use this when you need exact wording for grounded answers."
+                    "Read chunk content for ref_id values from search_knowledge. "
+                    "Returns at most max_chars characters across all requested refs."
                 ),
                 args_schema=ReadKnowledgeArgs,
             ),

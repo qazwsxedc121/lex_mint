@@ -201,3 +201,267 @@ async def test_confirm_pending_patch_expired_error_contains_expiry(tmp_path, pro
 
     assert exc.value.code == "PATCH_EXPIRED"
     assert "expires_at" in exc.value.extra
+
+
+@pytest.mark.asyncio
+async def test_apply_diff_accepts_paths_with_spaces(tmp_path, project_service: ProjectService):
+    root = tmp_path / "project_root_spaces"
+    root.mkdir()
+    (root / "notes file.txt").write_text("line1\nline2\n", encoding="utf-8")
+    project = Project(
+        id="proj_tools_spaces",
+        name="Project Spaces",
+        root_path=str(root),
+    )
+    await project_service.add_project(project)
+
+    service = ProjectDocumentToolService(
+        project_id=project.id,
+        session_id="session-spaces",
+        active_file_path="notes file.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+    read_payload = json.loads(await service.read_current_document())
+    base_hash = read_payload["content_hash"]
+
+    diff_text = (
+        "--- a/notes file.txt\n"
+        "+++ b/notes file.txt\n"
+        "@@ -1,2 +1,2 @@\n"
+        " line1\n"
+        "-line2\n"
+        "+line-two\n"
+    )
+    dry_run_payload = json.loads(
+        await service.apply_diff_current_document(
+            unified_diff=diff_text,
+            base_hash=base_hash,
+            dry_run=True,
+        )
+    )
+
+    assert dry_run_payload["ok"] is True
+    assert dry_run_payload["preview"]["additions"] == 1
+    assert dry_run_payload["preview"]["deletions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_apply_diff_fallbacks_when_hunk_line_number_is_wrong(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    store = PendingPatchStore()
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-1",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=store,
+    )
+
+    read_payload = json.loads(await service.read_current_document())
+    base_hash = read_payload["content_hash"]
+    diff_text = (
+        "--- a/notes.txt\n"
+        "+++ b/notes.txt\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-line2\n"
+        "+line-two\n"
+    )
+    dry_run_payload = json.loads(
+        await service.apply_diff_current_document(
+            unified_diff=diff_text,
+            base_hash=base_hash,
+            dry_run=True,
+        )
+    )
+
+    assert dry_run_payload["ok"] is True
+    confirm_payload = await confirm_pending_patch_apply(
+        project_id=prepared_project.id,
+        session_id="session-1",
+        pending_patch_id=dry_run_payload["pending_patch_id"],
+        expected_hash=base_hash,
+        project_service=project_service,
+        pending_store=store,
+    )
+    assert confirm_payload["ok"] is True
+    after = await project_service.read_file(prepared_project.id, "notes.txt")
+    assert after.content == "line1\nline-two\n"
+
+
+@pytest.mark.asyncio
+async def test_apply_diff_rejects_ambiguous_hunk_fallback(tmp_path, project_service: ProjectService):
+    root = tmp_path / "project_root_ambiguous"
+    root.mkdir()
+    (root / "notes.txt").write_text("dup\ndup\n", encoding="utf-8")
+    project = Project(
+        id="proj_tools_ambiguous",
+        name="Project Ambiguous",
+        root_path=str(root),
+    )
+    await project_service.add_project(project)
+    service = ProjectDocumentToolService(
+        project_id=project.id,
+        session_id="session-ambiguous",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    read_payload = json.loads(await service.read_current_document())
+    base_hash = read_payload["content_hash"]
+    diff_text = (
+        "--- a/notes.txt\n"
+        "+++ b/notes.txt\n"
+        "@@ -99,1 +99,1 @@\n"
+        "-dup\n"
+        "+updated\n"
+    )
+    payload = json.loads(
+        await service.execute_tool(
+            "apply_diff_current_document",
+            {
+                "unified_diff": diff_text,
+                "base_hash": base_hash,
+                "dry_run": True,
+            },
+        )
+    )
+
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "PATCH_APPLY_FAILED"
+    assert "ambiguous" in payload["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_apply_diff_rejects_invalid_hunk_counts(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-1",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    read_payload = json.loads(await service.read_current_document())
+    base_hash = read_payload["content_hash"]
+    diff_text = (
+        "--- a/notes.txt\n"
+        "+++ b/notes.txt\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-line2\n"
+        "+line-two\n"
+    )
+    payload = json.loads(
+        await service.execute_tool(
+            "apply_diff_current_document",
+            {
+                "unified_diff": diff_text,
+                "base_hash": base_hash,
+                "dry_run": True,
+            },
+        )
+    )
+
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_DIFF_FORMAT"
+    assert "line counts" in payload["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_search_project_text_basic_match(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    root = tmp_path / "project_root"
+    (root / "src").mkdir()
+    (root / "src" / "main.py").write_text("print('hello')\n", encoding="utf-8")
+
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-search",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    payload = json.loads(await service.search_project_text(query="line2"))
+    assert payload["ok"] is True
+    assert payload["results_count"] == 1
+    assert payload["results"][0]["file_path"] == "notes.txt"
+    assert payload["results"][0]["line_number"] == 2
+
+
+@pytest.mark.asyncio
+async def test_search_project_text_include_glob_filters_files(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    root = tmp_path / "project_root"
+    (root / "script.py").write_text("needle = 1\n", encoding="utf-8")
+    (root / "README.md").write_text("needle in markdown\n", encoding="utf-8")
+
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-search",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    payload = json.loads(
+        await service.search_project_text(
+            query="needle",
+            include_glob="*.py",
+        )
+    )
+    assert payload["ok"] is True
+    assert payload["results_count"] == 1
+    assert payload["results"][0]["file_path"] == "script.py"
+
+
+@pytest.mark.asyncio
+async def test_search_project_text_invalid_regex_returns_error(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-search",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    payload = json.loads(
+        await service.execute_tool(
+            "search_project_text",
+            {
+                "query": "(",
+                "use_regex": True,
+            },
+        )
+    )
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_ARGUMENT"
+    assert "regex" in payload["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_search_project_text_honors_max_results(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    root = tmp_path / "project_root"
+    (root / "many.txt").write_text("hit one\nhit two\nhit three\n", encoding="utf-8")
+
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-search",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    payload = json.loads(
+        await service.search_project_text(
+            query="hit",
+            max_results=2,
+        )
+    )
+    assert payload["ok"] is True
+    assert payload["results_count"] == 2
+    assert payload["truncated"] is True

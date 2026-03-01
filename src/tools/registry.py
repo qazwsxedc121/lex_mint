@@ -22,14 +22,10 @@ logger = logging.getLogger(__name__)
 
 @tool
 def get_current_time(timezone_name: str = "UTC") -> str:
-    """Get the current date and time in the specified timezone.
+    """Return the current date and time for UTC or a fixed UTC offset.
 
-    Args:
-        timezone_name: Timezone name. Supports "UTC" and UTC offset format
-            like "UTC+8", "UTC-5". Defaults to "UTC".
-
-    Returns:
-        Current date and time as a formatted string.
+    timezone_name supports "UTC" and "UTC+/-H" (for example, "UTC+8").
+    Unsupported formats fall back to UTC.
     """
     try:
         if timezone_name.upper() == "UTC":
@@ -84,16 +80,10 @@ def _safe_eval_expr(node: ast.AST) -> float:
 
 @tool
 def simple_calculator(expression: str) -> str:
-    """Evaluate a basic mathematical expression.
+    """Evaluate a numeric arithmetic expression.
 
-    Supports: +, -, *, /, //, %, ** and parentheses.
-    Only numeric literals and arithmetic operators are allowed (no variables or functions).
-
-    Args:
-        expression: A math expression string, e.g. "1234 * 5678" or "(2 + 3) ** 4".
-
-    Returns:
-        The result of the calculation as a string.
+    Supports +, -, *, /, //, %, **, and parentheses.
+    Only numbers and arithmetic operators are allowed (no variables or functions).
     """
     try:
         tree = ast.parse(expression.strip(), mode="eval")

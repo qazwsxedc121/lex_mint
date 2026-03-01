@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import logging
@@ -9,6 +10,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -43,17 +45,84 @@ def _normalize_rel_path(path: str) -> str:
 class ReadCurrentDocumentArgs(BaseModel):
     """Arguments for read_current_document."""
 
-    start_line: Optional[int] = Field(default=None, ge=1)
-    end_line: Optional[int] = Field(default=None, ge=1)
-    max_chars: int = Field(default=12000, ge=500, le=120000)
+    start_line: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="1-based start line (inclusive). Omit to read from the first line.",
+    )
+    end_line: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="1-based end line (inclusive). Omit to read through the last line.",
+    )
+    max_chars: int = Field(
+        default=12000,
+        ge=500,
+        le=120000,
+        description="Maximum characters to return; content is truncated when this limit is reached.",
+    )
 
 
 class ApplyDiffCurrentDocumentArgs(BaseModel):
     """Arguments for apply_diff_current_document."""
 
-    unified_diff: str = Field(..., min_length=1, max_length=300000)
-    base_hash: str = Field(..., min_length=16, max_length=128)
-    dry_run: bool = True
+    unified_diff: str = Field(
+        ...,
+        min_length=1,
+        max_length=300000,
+        description="Single-file unified diff targeting the active document.",
+    )
+    base_hash: str = Field(
+        ...,
+        min_length=16,
+        max_length=128,
+        description="content_hash returned by read_current_document; must match latest file content.",
+    )
+    dry_run: bool = Field(
+        default=True,
+        description="Preview only. Must stay true; final apply requires explicit confirmation.",
+    )
+
+
+class SearchProjectTextArgs(BaseModel):
+    """Arguments for search_project_text."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Text or regex pattern to match.",
+    )
+    case_sensitive: bool = Field(default=False, description="Enable case-sensitive matching.")
+    use_regex: bool = Field(default=False, description="Treat query as a regular expression.")
+    include_glob: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Optional include glob, for example **/*.py.",
+    )
+    exclude_glob: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Optional exclude glob, for example **/node_modules/**.",
+    )
+    max_results: int = Field(
+        default=30,
+        ge=1,
+        le=200,
+        description="Maximum number of matches to return.",
+    )
+    context_lines: int = Field(
+        default=0,
+        ge=0,
+        le=3,
+        description="Number of context lines before and after each match.",
+    )
+    max_chars_per_line: int = Field(
+        default=300,
+        ge=80,
+        le=1200,
+        description="Maximum characters per returned line; longer lines are clipped.",
+    )
 
 
 class ConfirmPendingPatchArgs(BaseModel):
@@ -135,9 +204,14 @@ class PendingPatchStore:
 
 
 _pending_patch_store = PendingPatchStore()
+_SEARCH_MAX_FILES = 5000
 
 
 _HUNK_HEADER_RE = re.compile(r"^@@\s+\-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
+_SPECIAL_SPACE_RE = re.compile(r"[\u00A0\u2002-\u200A\u202F\u205F\u3000]")
+_SMART_SINGLE_QUOTES_RE = re.compile(r"[\u2018\u2019\u201A\u201B]")
+_SMART_DOUBLE_QUOTES_RE = re.compile(r"[\u201C\u201D\u201E\u201F]")
+_DASH_RE = re.compile(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
 
 
 @dataclass
@@ -222,6 +296,17 @@ def _parse_unified_diff(unified_diff: str) -> ParsedUnifiedDiff:
                 hunk_lines.append((prefix, text))
                 idx += 1
 
+            old_line_total = sum(1 for prefix, _ in hunk_lines if prefix in (" ", "-"))
+            new_line_total = sum(1 for prefix, _ in hunk_lines if prefix in (" ", "+"))
+            if old_line_total != old_count or new_line_total != new_count:
+                raise ProjectDocumentToolError(
+                    "INVALID_DIFF_FORMAT",
+                    (
+                        "Hunk line counts do not match header: "
+                        f"expected -{old_count}/+{new_count}, got -{old_line_total}/+{new_line_total}."
+                    ),
+                )
+
             hunks.append(
                 ParsedHunk(
                     old_start=old_start,
@@ -250,21 +335,88 @@ def _strip_diff_path(path: str) -> str:
     value = _normalize_rel_path(path)
     if "\t" in value:
         value = value.split("\t", 1)[0]
-    if " " in value:
-        value = value.split(" ", 1)[0]
+    if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+        value = value[1:-1]
     if value.startswith("a/") or value.startswith("b/"):
         return value[2:]
     return value
 
 
+def _normalize_for_fuzzy_match(text: str) -> str:
+    normalized = text.rstrip()
+    normalized = _SMART_SINGLE_QUOTES_RE.sub("'", normalized)
+    normalized = _SMART_DOUBLE_QUOTES_RE.sub('"', normalized)
+    normalized = _DASH_RE.sub("-", normalized)
+    normalized = _SPECIAL_SPACE_RE.sub(" ", normalized)
+    return normalized
+
+
 def _same_line_text(source_line: str, diff_line: str) -> bool:
-    return source_line.rstrip("\r\n") == diff_line
+    source_text = source_line.rstrip("\r\n")
+    if source_text == diff_line:
+        return True
+    return _normalize_for_fuzzy_match(source_text) == _normalize_for_fuzzy_match(diff_line)
 
 
 def _detect_newline_style(content: str) -> str:
     if "\r\n" in content:
         return "\r\n"
     return "\n"
+
+
+def _hunk_matches_at(source_lines: List[str], start: int, hunk: ParsedHunk) -> bool:
+    cursor = start
+    for prefix, text in hunk.lines:
+        if prefix == "+":
+            continue
+        if cursor >= len(source_lines) or not _same_line_text(source_lines[cursor], text):
+            return False
+        cursor += 1
+    return True
+
+
+def _resolve_hunk_start(source_lines: List[str], cursor: int, expected_start: int, hunk: ParsedHunk) -> int:
+    if expected_start < cursor:
+        raise ProjectDocumentToolError(
+            "PATCH_APPLY_FAILED",
+            "Overlapping hunks are not supported",
+        )
+
+    if _hunk_matches_at(source_lines, expected_start, hunk):
+        return expected_start
+
+    pattern_len = sum(1 for prefix, _ in hunk.lines if prefix != "+")
+    if pattern_len == 0:
+        return expected_start
+
+    max_start = len(source_lines) - pattern_len
+    if max_start < cursor:
+        raise ProjectDocumentToolError(
+            "PATCH_APPLY_FAILED",
+            f"Context mismatch near line {expected_start + 1}",
+        )
+
+    matches: List[int] = []
+    for candidate in range(cursor, max_start + 1):
+        if _hunk_matches_at(source_lines, candidate, hunk):
+            matches.append(candidate)
+            if len(matches) > 1:
+                break
+
+    if not matches:
+        raise ProjectDocumentToolError(
+            "PATCH_APPLY_FAILED",
+            f"Context mismatch near line {expected_start + 1}",
+        )
+    if len(matches) > 1:
+        raise ProjectDocumentToolError(
+            "PATCH_APPLY_FAILED",
+            (
+                "Patch hunk location is ambiguous; multiple candidate regions match. "
+                "Regenerate the diff with more surrounding context."
+            ),
+        )
+    return matches[0]
 
 
 def _apply_parsed_diff(content: str, parsed: ParsedUnifiedDiff) -> str:
@@ -275,11 +427,7 @@ def _apply_parsed_diff(content: str, parsed: ParsedUnifiedDiff) -> str:
 
     for hunk in parsed.hunks:
         hunk_start = max(0, hunk.old_start - 1)
-        if hunk_start < cursor:
-            raise ProjectDocumentToolError(
-                "PATCH_APPLY_FAILED",
-                "Overlapping hunks are not supported",
-            )
+        hunk_start = _resolve_hunk_start(source_lines, cursor, hunk_start, hunk)
 
         result.extend(source_lines[cursor:hunk_start])
         cursor = hunk_start
@@ -358,8 +506,9 @@ class ProjectDocumentToolService:
                 coroutine=self.read_current_document,
                 name="read_current_document",
                 description=(
-                    "Read the currently active project document. "
-                    "Use this before editing to get the latest content and base hash."
+                    "Read the active project file and return content with content_hash. "
+                    "Output may be truncated by max_chars. "
+                    "Call this before apply_diff_current_document."
                 ),
                 args_schema=ReadCurrentDocumentArgs,
             ),
@@ -367,11 +516,20 @@ class ProjectDocumentToolService:
                 coroutine=self.apply_diff_current_document,
                 name="apply_diff_current_document",
                 description=(
-                    "Propose edits to the currently active document using unified diff. "
-                    "Always call read_current_document first and pass its content_hash as base_hash. "
-                    "This tool only supports dry_run preview and requires explicit user confirmation to apply."
+                    "Preview a unified diff patch for the active file. "
+                    "base_hash must match read_current_document.content_hash. "
+                    "This tool only supports dry_run=true and returns pending_patch_id for confirmation."
                 ),
                 args_schema=ApplyDiffCurrentDocumentArgs,
+            ),
+            StructuredTool.from_function(
+                coroutine=self.search_project_text,
+                name="search_project_text",
+                description=(
+                    "Search text across project files and return matching snippets. "
+                    "Supports regex, glob filters, and capped results for cross-file discovery."
+                ),
+                args_schema=SearchProjectTextArgs,
             ),
         ]
 
@@ -392,6 +550,19 @@ class ProjectDocumentToolService:
                     unified_diff=parsed.unified_diff,
                     base_hash=parsed.base_hash,
                     dry_run=parsed.dry_run,
+                )
+
+            if name == "search_project_text":
+                parsed = SearchProjectTextArgs.model_validate(args or {})
+                return await self.search_project_text(
+                    query=parsed.query,
+                    case_sensitive=parsed.case_sensitive,
+                    use_regex=parsed.use_regex,
+                    include_glob=parsed.include_glob,
+                    exclude_glob=parsed.exclude_glob,
+                    max_results=parsed.max_results,
+                    context_lines=parsed.context_lines,
+                    max_chars_per_line=parsed.max_chars_per_line,
                 )
 
             return None
@@ -542,6 +713,156 @@ class ProjectDocumentToolService:
                 "deletions": parsed.deletions,
                 "hunks": len(parsed.hunks),
             },
+        }
+        return self._json(payload)
+
+    @staticmethod
+    def _trim_line(text: str, max_chars_per_line: int) -> str:
+        if len(text) <= max_chars_per_line:
+            return text
+        return text[: max_chars_per_line - 1] + "…"
+
+    @staticmethod
+    def _line_matches(
+        line: str,
+        *,
+        query: str,
+        use_regex: bool,
+        case_sensitive: bool,
+        regex: Optional[re.Pattern[str]],
+    ) -> bool:
+        if use_regex:
+            assert regex is not None
+            return bool(regex.search(line))
+        if case_sensitive:
+            return query in line
+        return query.lower() in line.lower()
+
+    async def search_project_text(
+        self,
+        query: str,
+        case_sensitive: bool = False,
+        use_regex: bool = False,
+        include_glob: Optional[str] = None,
+        exclude_glob: Optional[str] = None,
+        max_results: int = 30,
+        context_lines: int = 0,
+        max_chars_per_line: int = 300,
+    ) -> str:
+        """Search text in project files and return compact structured matches."""
+        project = await self.project_service.get_project(self.project_id)
+        if project is None:
+            raise ProjectDocumentToolError("PROJECT_NOT_FOUND", f"Project not found: {self.project_id}")
+
+        root_path = Path(project.root_path)
+        if not root_path.exists() or not root_path.is_dir():
+            raise ProjectDocumentToolError(
+                "PROJECT_ROOT_INVALID",
+                f"Project root is not a directory: {project.root_path}",
+            )
+
+        regex: Optional[re.Pattern[str]] = None
+        if use_regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                regex = re.compile(query, flags)
+            except re.error as e:
+                raise ProjectDocumentToolError("INVALID_ARGUMENT", f"Invalid regex pattern: {e}")
+
+        max_file_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        results: List[Dict[str, Any]] = []
+        scanned_files = 0
+        skipped_binary_files = 0
+        skipped_large_files = 0
+        skipped_hidden_files = 0
+        scan_limit_hit = False
+        truncated = False
+
+        for abs_path in root_path.rglob("*"):
+            if not abs_path.is_file():
+                continue
+
+            if scanned_files >= _SEARCH_MAX_FILES:
+                scan_limit_hit = True
+                break
+            scanned_files += 1
+
+            rel_path = str(abs_path.relative_to(root_path)).replace("\\", "/")
+            path_parts = Path(rel_path).parts
+            if any(part.startswith(".") for part in path_parts):
+                skipped_hidden_files += 1
+                continue
+
+            if include_glob and not fnmatch.fnmatch(rel_path, include_glob):
+                continue
+            if exclude_glob and fnmatch.fnmatch(rel_path, exclude_glob):
+                continue
+
+            try:
+                file_size = abs_path.stat().st_size
+                if file_size > max_file_bytes:
+                    skipped_large_files += 1
+                    continue
+
+                raw = abs_path.read_bytes()
+                if b"\x00" in raw[:4096]:
+                    skipped_binary_files += 1
+                    continue
+                text = raw.decode("utf-8", errors="replace")
+            except OSError:
+                continue
+
+            lines = text.splitlines()
+            for idx, line in enumerate(lines):
+                if not self._line_matches(
+                    line,
+                    query=query,
+                    use_regex=use_regex,
+                    case_sensitive=case_sensitive,
+                    regex=regex,
+                ):
+                    continue
+
+                start = max(0, idx - context_lines)
+                end = min(len(lines), idx + context_lines + 1)
+                results.append(
+                    {
+                        "file_path": rel_path,
+                        "line_number": idx + 1,
+                        "line_text": self._trim_line(line, max_chars_per_line),
+                        "context_before": [
+                            self._trim_line(lines[i], max_chars_per_line)
+                            for i in range(start, idx)
+                        ],
+                        "context_after": [
+                            self._trim_line(lines[i], max_chars_per_line)
+                            for i in range(idx + 1, end)
+                        ],
+                    }
+                )
+                if len(results) >= max_results:
+                    truncated = True
+                    break
+
+            if truncated:
+                break
+
+        payload = {
+            "ok": True,
+            "query": query,
+            "case_sensitive": case_sensitive,
+            "use_regex": use_regex,
+            "include_glob": include_glob,
+            "exclude_glob": exclude_glob,
+            "max_results": max_results,
+            "results_count": len(results),
+            "truncated": truncated,
+            "scan_limit_hit": scan_limit_hit,
+            "scanned_files": scanned_files,
+            "skipped_hidden_files": skipped_hidden_files,
+            "skipped_binary_files": skipped_binary_files,
+            "skipped_large_files": skipped_large_files,
+            "results": results,
         }
         return self._json(payload)
 
