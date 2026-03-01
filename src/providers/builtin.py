@@ -60,6 +60,16 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
             streaming=True,
         ),
         supports_model_list=True,
+        endpoint_profiles=[
+            EndpointProfile(
+                id="zhipu-cn",
+                label="China Mainland (.cn)",
+                base_url="https://open.bigmodel.cn/api/paas/v4",
+                region_tags=["cn"],
+                priority=10,
+            ),
+        ],
+        default_endpoint_profile_id="zhipu-cn",
     ),
 
     "gemini": ProviderDefinition(
@@ -112,23 +122,6 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
             streaming=True,
         ),
         supports_model_list=True,
-        endpoint_profiles=[
-            EndpointProfile(
-                id="zhipu-cn",
-                label="China Mainland (.cn)",
-                base_url="https://open.bigmodel.cn/api/paas/v4",
-                region_tags=["cn"],
-                priority=10,
-            ),
-            EndpointProfile(
-                id="zhipu-global",
-                label="Global (.com)",
-                base_url="https://open.bigmodel.com/api/paas/v4",
-                region_tags=["global"],
-                priority=20,
-            ),
-        ],
-        default_endpoint_profile_id="zhipu-cn",
     ),
 
     "stepfun": ProviderDefinition(

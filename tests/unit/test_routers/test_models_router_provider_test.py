@@ -112,11 +112,14 @@ async def test_builtin_provider_catalog_includes_minimax_and_endpoint_profiles()
     providers = await models_router.get_builtin_providers()
     minimax = next(p for p in providers if p.id == "minimax")
     stepfun = next(p for p in providers if p.id == "stepfun")
+    zhipu = next(p for p in providers if p.id == "zhipu")
 
     assert minimax.supports_model_list is True
     assert minimax.base_url.startswith("https://api.minimax")
     assert len(stepfun.endpoint_profiles) >= 2
     assert any(profile.id == "stepfun-global" for profile in stepfun.endpoint_profiles)
+    assert len(zhipu.endpoint_profiles) >= 1
+    assert zhipu.default_endpoint_profile_id == "zhipu-cn"
 
 
 @pytest.mark.asyncio
