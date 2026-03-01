@@ -23,6 +23,7 @@
     "title": "工作流",
     "loading": "加载中...",
     "empty": "暂无工作流",
+    "system": "系统",
     "statusOn": "开启",
     "statusOff": "关闭"
   },
@@ -114,6 +115,7 @@
     "parseNodesArray": "nodes 必须是数组",
     "parseEntryNode": "entry_node_id 必须是非空字符串",
     "parseInvalidJson": "JSON 格式无效",
+    "systemReadonly": "系统工作流为只读，不能修改。",
     "runStreamInvalidPayload": "工作流流式返回格式无效：缺少 flow_event",
     "runFailed": "工作流运行失败",
     "runRequestFailed": "执行工作流失败"

@@ -20,7 +20,6 @@ from .routers import (
     assistants,
     chat,
     compression_config,
-    editor,
     file_reference_config,
     followup,
     folders,
@@ -62,7 +61,6 @@ app.add_middleware(
 # Register routers
 app.include_router(sessions.router)
 app.include_router(chat.router)
-app.include_router(editor.router)
 app.include_router(models.router)
 app.include_router(assistants.router)
 app.include_router(title_generation.router)
@@ -107,9 +105,12 @@ async def startup_event():
     # Initialize prompt templates and chat folders configs if missing.
     from .services.prompt_template_service import PromptTemplateConfigService
     from .services.folder_service import FolderService
+    from .services.workflow_config_service import WorkflowConfigService
 
     PromptTemplateConfigService()
     FolderService()
+    workflow_service = WorkflowConfigService()
+    await workflow_service.ensure_system_workflows()
 
     # Migrate project conversations from conversations/projects/ to .lex_mint/
     from .services.migration_service import migrate_project_conversations

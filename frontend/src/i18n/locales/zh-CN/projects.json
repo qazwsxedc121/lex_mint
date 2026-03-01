@@ -137,6 +137,10 @@
 
   "inlineRewrite.title": "内联改写",
   "inlineRewrite.button": "内联改写 (Ctrl/Cmd+K)",
+  "inlineRewrite.workflowLabel": "改写工作流",
+  "inlineRewrite.loadingWorkflows": "正在加载工作流...",
+  "inlineRewrite.noWorkflows": "当前没有可用的改写工作流。",
+  "inlineRewrite.loadWorkflowsFailed": "加载改写工作流失败。",
   "inlineRewrite.presetLabel": "预设",
   "inlineRewrite.preset.clarity": "提升清晰度",
   "inlineRewrite.preset.concise": "精简表达",

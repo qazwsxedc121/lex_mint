@@ -137,6 +137,10 @@
 
   "inlineRewrite.title": "Inline Rewrite",
   "inlineRewrite.button": "Inline rewrite (Ctrl/Cmd+K)",
+  "inlineRewrite.workflowLabel": "Rewrite workflow",
+  "inlineRewrite.loadingWorkflows": "Loading workflows...",
+  "inlineRewrite.noWorkflows": "No rewrite workflows available.",
+  "inlineRewrite.loadWorkflowsFailed": "Failed to load rewrite workflows.",
   "inlineRewrite.presetLabel": "Preset",
   "inlineRewrite.preset.clarity": "Improve clarity",
   "inlineRewrite.preset.concise": "Make concise",

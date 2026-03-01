@@ -108,6 +108,9 @@ class WorkflowBase(BaseModel):
     name: str
     description: Optional[str] = None
     enabled: bool = True
+    scenario: Literal["general", "editor_rewrite"] = "general"
+    is_system: bool = False
+    template_version: Optional[int] = Field(default=None, ge=1)
     input_schema: List[WorkflowInputDef] = Field(default_factory=list)
     entry_node_id: str = Field(..., pattern=_KEY_PATTERN)
     nodes: List[WorkflowNode] = Field(default_factory=list)
@@ -201,6 +204,7 @@ class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[bool] = None
+    scenario: Optional[Literal["general", "editor_rewrite"]] = None
     input_schema: Optional[List[WorkflowInputDef]] = None
     entry_node_id: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
     nodes: Optional[List[WorkflowNode]] = None

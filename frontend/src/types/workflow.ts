@@ -1,4 +1,5 @@
 export type WorkflowNodeType = 'start' | 'llm' | 'condition' | 'end';
+export type WorkflowScenario = 'general' | 'editor_rewrite';
 
 export interface WorkflowInputDef {
   key: string;
@@ -47,6 +48,9 @@ export interface Workflow {
   name: string;
   description?: string | null;
   enabled: boolean;
+  scenario: WorkflowScenario;
+  is_system: boolean;
+  template_version?: number | null;
   input_schema: WorkflowInputDef[];
   entry_node_id: string;
   nodes: WorkflowNode[];
@@ -59,6 +63,9 @@ export interface WorkflowCreate {
   name: string;
   description?: string | null;
   enabled: boolean;
+  scenario?: WorkflowScenario;
+  is_system?: boolean;
+  template_version?: number | null;
   input_schema: WorkflowInputDef[];
   entry_node_id: string;
   nodes: WorkflowNode[];
@@ -68,6 +75,7 @@ export interface WorkflowUpdate {
   name?: string;
   description?: string | null;
   enabled?: boolean;
+  scenario?: WorkflowScenario;
   input_schema?: WorkflowInputDef[];
   entry_node_id?: string;
   nodes?: WorkflowNode[];

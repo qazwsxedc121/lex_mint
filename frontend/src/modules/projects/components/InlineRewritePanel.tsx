@@ -20,8 +20,12 @@ interface InlineRewritePanelProps {
   sourceText: string;
   rewrittenText: string;
   error: string | null;
+  workflowOptions: Array<{ id: string; name: string }>;
+  selectedWorkflowId: string;
+  workflowLoading: boolean;
   preset: RewritePreset;
   customInstruction: string;
+  onWorkflowChange: (workflowId: string) => void;
   onPresetChange: (preset: RewritePreset) => void;
   onCustomInstructionChange: (value: string) => void;
   onGenerate: () => void;
@@ -116,8 +120,12 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   sourceText,
   rewrittenText,
   error,
+  workflowOptions,
+  selectedWorkflowId,
+  workflowLoading,
   preset,
   customInstruction,
+  onWorkflowChange,
   onPresetChange,
   onCustomInstructionChange,
   onGenerate,
@@ -133,6 +141,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
     [sourceText, rewrittenText]
   );
   const hasRewriteResult = rewrittenText.length > 0;
+  const canGenerate = workflowOptions.length > 0 && !workflowLoading;
 
   if (!isOpen) {
     return null;
@@ -154,6 +163,30 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
         >
           {t('common:close')}
         </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2">
+        <label className="text-xs text-gray-600 dark:text-gray-400 self-center" htmlFor="inline-rewrite-workflow">
+          {t('inlineRewrite.workflowLabel')}
+        </label>
+        <select
+          id="inline-rewrite-workflow"
+          data-name="inline-rewrite-workflow"
+          value={selectedWorkflowId}
+          onChange={(event) => onWorkflowChange(event.target.value)}
+          disabled={workflowLoading || workflowOptions.length === 0}
+          className="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-500"
+        >
+          {workflowOptions.length === 0 ? (
+            <option value="">{workflowLoading ? t('inlineRewrite.loadingWorkflows') : t('inlineRewrite.noWorkflows')}</option>
+          ) : (
+            workflowOptions.map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {workflow.name}
+              </option>
+            ))
+          )}
+        </select>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2">
@@ -201,7 +234,8 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
             type="button"
             data-name="inline-rewrite-generate"
             onClick={onGenerate}
-            className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white"
+            disabled={!canGenerate}
+            className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed"
           >
             {t('inlineRewrite.generate')}
           </button>

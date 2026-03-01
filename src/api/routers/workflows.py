@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -44,6 +44,10 @@ class WorkflowRunRequest(BaseModel):
     """Request body for workflow execution."""
 
     inputs: Dict[str, Any] = Field(default_factory=dict)
+    session_id: Optional[str] = None
+    context_type: Literal["workflow", "chat", "project"] = "workflow"
+    project_id: Optional[str] = None
+    stream_mode: Literal["default", "editor_rewrite"] = "default"
 
 
 def get_workflow_config_service() -> WorkflowConfigService:
@@ -183,6 +187,9 @@ async def create_workflow(
     payload: WorkflowCreate,
     service: WorkflowConfigService = Depends(get_workflow_config_service),
 ):
+    if payload.is_system:
+        raise HTTPException(status_code=403, detail="System workflows cannot be created via API")
+
     now = datetime.now(timezone.utc)
     workflow_id = payload.id or f"wf_{uuid.uuid4().hex[:12]}"
 
@@ -191,6 +198,9 @@ async def create_workflow(
         name=payload.name,
         description=payload.description,
         enabled=payload.enabled,
+        scenario=payload.scenario,
+        is_system=False,
+        template_version=payload.template_version,
         input_schema=payload.input_schema,
         entry_node_id=payload.entry_node_id,
         nodes=payload.nodes,
@@ -213,6 +223,8 @@ async def update_workflow(
     existing = await service.get_workflow(workflow_id)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+    if existing.is_system:
+        raise HTTPException(status_code=403, detail="System workflows cannot be modified")
 
     merged = existing.model_dump(mode="python")
     for key, value in payload.model_dump(exclude_unset=True).items():
@@ -234,6 +246,10 @@ async def delete_workflow(
     service: WorkflowConfigService = Depends(get_workflow_config_service),
     history_service: WorkflowRunHistoryService = Depends(get_workflow_run_history_service),
 ):
+    existing = await service.get_workflow(workflow_id)
+    if existing and existing.is_system:
+        raise HTTPException(status_code=403, detail="System workflows cannot be deleted")
+
     try:
         await service.delete_workflow(workflow_id)
         await history_service.delete_runs(workflow_id)
@@ -254,18 +270,24 @@ async def run_workflow_stream(
         raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
     if not workflow.enabled:
         raise HTTPException(status_code=409, detail="Workflow is disabled")
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required when context_type is 'project'")
 
     run_id = str(uuid.uuid4())
     emitter = FlowEventEmitter(stream_id=run_id, conversation_id=workflow_id, default_turn_id=run_id)
 
     async def event_generator():
-        started_payload = emitter.emit_started(context_type="workflow")
+        started_payload = emitter.emit_started(context_type=request.context_type)
         yield f"data: {json.dumps(started_payload, ensure_ascii=False, default=str)}\n\n"
         saw_terminal = False
         async for event in execution_service.execute_stream(
             workflow,
             request.inputs,
             run_id=run_id,
+            session_id=request.session_id,
+            context_type=request.context_type,
+            project_id=request.project_id,
+            stream_mode=request.stream_mode,
         ):
             payload = _map_workflow_event_to_flow_payload(emitter, event)
             yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"

@@ -10,7 +10,11 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 
 from src.agents.simple_llm import call_llm_stream
 
+from ..config import settings
 from ..models.workflow import ConditionNode, EndNode, LlmNode, StartNode, Workflow, WorkflowRunRecord
+from .assistant_config_service import AssistantConfigService
+from .conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from .think_tag_filter import ThinkTagStreamFilter
 from .workflow_run_history_service import WorkflowRunHistoryService
 
 
@@ -21,6 +25,13 @@ _TEMPLATE_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")
 class _Token:
     kind: str
     value: str
+
+
+@dataclass
+class _ResolvedRuntimeConfig:
+    model_id: Optional[str]
+    system_prompt: Optional[str]
+    generation_params: Dict[str, Any]
 
 
 class _ConditionParser:
@@ -179,6 +190,15 @@ def _resolve_context_path(context: Dict[str, Any], path: str) -> Any:
 class WorkflowExecutionService:
     """Execute workflow definitions and emit runtime events."""
 
+    _PARAM_KEYS = (
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "top_k",
+        "frequency_penalty",
+        "presence_penalty",
+    )
+
     def __init__(
         self,
         *,
@@ -186,10 +206,12 @@ class WorkflowExecutionService:
         llm_stream_fn: Optional[
             Callable[..., AsyncIterator[Union[str, Dict[str, Any]]]]
         ] = None,
+        storage: Optional[ConversationStorage] = None,
         max_steps: int = 100,
     ):
         self.history_service = history_service or WorkflowRunHistoryService()
         self.llm_stream_fn = llm_stream_fn or call_llm_stream
+        self.storage = storage or create_storage_with_project_resolver(settings.conversations_dir)
         self.max_steps = max(1, int(max_steps))
 
     async def execute_stream(
@@ -198,6 +220,10 @@ class WorkflowExecutionService:
         inputs: Optional[Dict[str, Any]] = None,
         *,
         run_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        context_type: str = "workflow",
+        project_id: Optional[str] = None,
+        stream_mode: str = "default",
     ) -> AsyncIterator[Dict[str, Any]]:
         """Execute a workflow and stream runtime events."""
         run_identifier = run_id or str(uuid.uuid4())
@@ -209,6 +235,11 @@ class WorkflowExecutionService:
         error_message: Optional[str] = None
 
         try:
+            runtime = await self._resolve_runtime_config(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            )
             normalized_inputs = self._validate_and_normalize_inputs(workflow, inputs or {})
             node_map = {node.id: node for node in workflow.nodes}
             current_id = workflow.entry_node_id
@@ -253,23 +284,54 @@ class WorkflowExecutionService:
                     prompt = self._render_template(node.prompt_template, template_context)
                     chunk_parts: List[str] = []
                     usage: Optional[Dict[str, Any]] = None
+                    think_filter = ThinkTagStreamFilter() if stream_mode == "editor_rewrite" else None
+
+                    request_params: Dict[str, Any] = {}
+                    model_id = node.model_id or runtime.model_id
+                    system_prompt = (
+                        node.system_prompt
+                        if node.system_prompt is not None
+                        else runtime.system_prompt
+                    )
+                    request_params["model_id"] = model_id
+                    request_params["system_prompt"] = system_prompt
+
+                    temperature = (
+                        node.temperature
+                        if node.temperature is not None
+                        else runtime.generation_params.get("temperature")
+                    )
+                    max_tokens = (
+                        node.max_tokens
+                        if node.max_tokens is not None
+                        else runtime.generation_params.get("max_tokens")
+                    )
+                    request_params["temperature"] = temperature
+                    request_params["max_tokens"] = max_tokens
+
+                    for key in ("top_p", "top_k", "frequency_penalty", "presence_penalty"):
+                        value = runtime.generation_params.get(key)
+                        if value is not None:
+                            request_params[key] = value
 
                     async for chunk in self.llm_stream_fn(
                         messages=[{"role": "user", "content": prompt}],
                         session_id=f"workflow:{workflow.id}:{run_identifier}",
-                        model_id=node.model_id,
-                        system_prompt=node.system_prompt,
-                        temperature=node.temperature,
-                        max_tokens=node.max_tokens,
+                        **request_params,
                     ):
                         if isinstance(chunk, str):
-                            chunk_parts.append(chunk)
+                            visible_text = chunk
+                            if think_filter is not None:
+                                visible_text = think_filter.feed(chunk)
+                                if not visible_text:
+                                    continue
+                            chunk_parts.append(visible_text)
                             yield {
                                 "type": "text_delta",
                                 "workflow_id": workflow.id,
                                 "run_id": run_identifier,
                                 "node_id": node.id,
-                                "text": chunk,
+                                "text": visible_text,
                             }
                             continue
 
@@ -277,6 +339,18 @@ class WorkflowExecutionService:
                             raw_usage = chunk.get("usage")
                             if isinstance(raw_usage, dict):
                                 usage = raw_usage
+
+                    if think_filter is not None:
+                        tail = think_filter.flush()
+                        if tail:
+                            chunk_parts.append(tail)
+                            yield {
+                                "type": "text_delta",
+                                "workflow_id": workflow.id,
+                                "run_id": run_identifier,
+                                "node_id": node.id,
+                                "text": tail,
+                            }
 
                     node_output = "".join(chunk_parts)
                     output_key = node.output_key or f"node_{node.id}_output"
@@ -376,6 +450,58 @@ class WorkflowExecutionService:
                 error=error_message,
             )
             await self.history_service.append_run(record)
+
+    async def _resolve_runtime_config(
+        self,
+        *,
+        session_id: Optional[str],
+        context_type: str,
+        project_id: Optional[str],
+    ) -> _ResolvedRuntimeConfig:
+        if not session_id or context_type not in {"chat", "project"}:
+            return _ResolvedRuntimeConfig(model_id=None, system_prompt=None, generation_params={})
+
+        session = await self.storage.get_session(
+            session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+        assistant_id = session.get("assistant_id")
+        model_id = session.get("model_id")
+        system_prompt: Optional[str] = None
+        generation_params: Dict[str, Any] = {}
+
+        if isinstance(assistant_id, str) and assistant_id and not assistant_id.startswith("__legacy_model_"):
+            assistant = await AssistantConfigService().get_assistant(assistant_id)
+            if assistant:
+                system_prompt = assistant.system_prompt
+                model_id = assistant.model_id or model_id
+                generation_params = self._extract_generation_params(assistant)
+
+        param_overrides = session.get("param_overrides")
+        if isinstance(param_overrides, dict):
+            override_model_id = param_overrides.get("model_id")
+            if isinstance(override_model_id, str) and override_model_id.strip():
+                model_id = override_model_id.strip()
+            for key in self._PARAM_KEYS:
+                if key in param_overrides and param_overrides[key] is not None:
+                    generation_params[key] = param_overrides[key]
+
+        resolved_model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+        return _ResolvedRuntimeConfig(
+            model_id=resolved_model_id,
+            system_prompt=system_prompt,
+            generation_params=generation_params,
+        )
+
+    def _extract_generation_params(self, assistant_obj: Any) -> Dict[str, Any]:
+        params: Dict[str, Any] = {}
+        for key in self._PARAM_KEYS:
+            value = getattr(assistant_obj, key, None)
+            if value is not None:
+                params[key] = value
+        return params
 
     def _validate_and_normalize_inputs(
         self,

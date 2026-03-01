@@ -53,6 +53,7 @@ export const WorkflowsModule: React.FC = () => {
     }
     return enabledWorkflows[0] ?? null;
   }, [enabledWorkflows, selectedWorkflow]);
+  const isSelectedSystemWorkflow = Boolean(selectedWorkflow?.is_system);
 
   const [draftName, setDraftName] = React.useState('');
   const [draftDescription, setDraftDescription] = React.useState('');
@@ -100,6 +101,11 @@ export const WorkflowsModule: React.FC = () => {
   };
 
   const handleDelete = async (workflowId: string) => {
+    const target = workflows.find((item) => item.id === workflowId);
+    if (target?.is_system) {
+      setParseError(t('errors.systemReadonly'));
+      return;
+    }
     const confirmed = window.confirm(t('deleteConfirm'));
     if (!confirmed) {
       return;
@@ -139,6 +145,10 @@ export const WorkflowsModule: React.FC = () => {
 
   const handleSave = async () => {
     if (!selectedWorkflow) {
+      return;
+    }
+    if (selectedWorkflow.is_system) {
+      setParseError(t('errors.systemReadonly'));
       return;
     }
     const parsedDsl = parseDsl();
@@ -311,6 +321,7 @@ export const WorkflowsModule: React.FC = () => {
                     name={draftName}
                     description={draftDescription}
                     enabled={draftEnabled}
+                    disabled={isSelectedSystemWorkflow}
                     onNameChange={setDraftName}
                     onDescriptionChange={setDraftDescription}
                     onEnabledChange={setDraftEnabled}
@@ -320,6 +331,7 @@ export const WorkflowsModule: React.FC = () => {
                   value={dslText}
                   parseError={parseError}
                   saving={saving}
+                  readOnly={isSelectedSystemWorkflow}
                   onChange={(value) => {
                     setDslText(value);
                     if (parseError) {

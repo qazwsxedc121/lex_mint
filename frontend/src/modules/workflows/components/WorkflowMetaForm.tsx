@@ -5,6 +5,7 @@ interface WorkflowMetaFormProps {
   name: string;
   description: string;
   enabled: boolean;
+  disabled?: boolean;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onEnabledChange: (value: boolean) => void;
@@ -14,6 +15,7 @@ export const WorkflowMetaForm: React.FC<WorkflowMetaFormProps> = ({
   name,
   description,
   enabled,
+  disabled = false,
   onNameChange,
   onDescriptionChange,
   onEnabledChange,
@@ -27,6 +29,7 @@ export const WorkflowMetaForm: React.FC<WorkflowMetaFormProps> = ({
         <input
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
+          disabled={disabled}
           className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
           placeholder={t('meta.namePlaceholder')}
         />
@@ -37,6 +40,7 @@ export const WorkflowMetaForm: React.FC<WorkflowMetaFormProps> = ({
         <input
           value={description}
           onChange={(event) => onDescriptionChange(event.target.value)}
+          disabled={disabled}
           className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
           placeholder={t('meta.descriptionPlaceholder')}
         />
@@ -47,11 +51,12 @@ export const WorkflowMetaForm: React.FC<WorkflowMetaFormProps> = ({
         <button
           type="button"
           onClick={() => onEnabledChange(!enabled)}
+          disabled={disabled}
           className={`w-full rounded-md border px-3 py-2 text-sm font-medium ${
             enabled
               ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300'
               : 'border-gray-300 bg-gray-100 text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-          }`}
+          } disabled:opacity-60 disabled:cursor-not-allowed`}
         >
           {enabled ? t('meta.enabled') : t('meta.disabled')}
         </button>

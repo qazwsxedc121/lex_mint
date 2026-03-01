@@ -89,3 +89,20 @@ async def test_workflow_run_history_service_keeps_latest_n(temp_config_dir):
     assert runs[0].run_id == "run_4"
     assert runs[1].run_id == "run_3"
     assert runs[2].run_id == "run_2"
+
+
+@pytest.mark.asyncio
+async def test_workflow_config_service_ensures_system_workflows(temp_config_dir):
+    config_path = Path(temp_config_dir) / "workflows_config.yaml"
+    service = WorkflowConfigService(config_path=config_path)
+
+    await service.ensure_system_workflows()
+    workflows = await service.get_workflows()
+
+    inline_rewrite = next(
+        (workflow for workflow in workflows if workflow.id == service.INLINE_REWRITE_WORKFLOW_ID),
+        None,
+    )
+    assert inline_rewrite is not None
+    assert inline_rewrite.is_system is True
+    assert inline_rewrite.scenario == "editor_rewrite"

@@ -118,18 +118,6 @@ export interface FlowEvent {
   payload: Record<string, unknown>;
 }
 
-export interface EditorRewriteRequest {
-  sessionId: string;
-  selectedText: string;
-  instruction?: string;
-  contextBefore?: string;
-  contextAfter?: string;
-  filePath?: string;
-  language?: string;
-  contextType?: 'project';
-  projectId: string;
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -790,101 +778,21 @@ export async function translateText(
 }
 
 /**
- * Stream inline rewrite text for the project editor.
- */
-export async function streamEditorRewrite(
-  request: EditorRewriteRequest,
-  onChunk: (chunk: string) => void,
-  onComplete: () => void,
-  onError: (error: string) => void,
-  abortControllerRef?: MutableRefObject<AbortController | null>
-): Promise<void> {
-  const controller = new AbortController();
-  if (abortControllerRef) {
-    abortControllerRef.current = controller;
-  }
-
-  try {
-    const response = await fetch(`${API_BASE}/api/editor/rewrite`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: request.sessionId,
-        selected_text: request.selectedText,
-        instruction: request.instruction,
-        context_before: request.contextBefore || '',
-        context_after: request.contextAfter || '',
-        file_path: request.filePath,
-        language: request.language,
-        context_type: request.contextType || 'project',
-        project_id: request.projectId,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (!flowEvent) {
-            onError('Invalid rewrite stream payload: missing flow_event');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_error') {
-            onError(asString(flowEvent.payload.error) || 'Inline rewrite stream error');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_ended') {
-            onComplete();
-            return;
-          }
-
-          if (flowEvent.event_type === 'text_delta') {
-            const textChunk = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
-            if (textChunk) {
-              onChunk(textChunk);
-            }
-          }
-        } catch {
-          continue;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log('Inline rewrite aborted by user');
-      return;
-    }
-    throw error;
-  } finally {
-    if (abortControllerRef) {
-      abortControllerRef.current = null;
-    }
-  }
-}
-
-/**
  * Run a workflow and consume flow_event SSE stream.
  */
+export interface WorkflowRunStreamOptions {
+  sessionId?: string;
+  contextType?: 'workflow' | 'chat' | 'project';
+  projectId?: string;
+  streamMode?: 'default' | 'editor_rewrite';
+}
+
 export async function runWorkflowStream(
   workflowId: string,
   inputs: Record<string, unknown>,
   callbacks: WorkflowRunCallbacks,
-  abortControllerRef?: MutableRefObject<AbortController | null>
+  abortControllerRef?: MutableRefObject<AbortController | null>,
+  options?: WorkflowRunStreamOptions,
 ): Promise<void> {
   const controller = new AbortController();
   if (abortControllerRef) {
@@ -895,7 +803,13 @@ export async function runWorkflowStream(
     const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/run/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs }),
+      body: JSON.stringify({
+        inputs,
+        session_id: options?.sessionId,
+        context_type: options?.contextType || 'workflow',
+        project_id: options?.projectId,
+        stream_mode: options?.streamMode || 'default',
+      }),
       signal: controller.signal,
     });
 

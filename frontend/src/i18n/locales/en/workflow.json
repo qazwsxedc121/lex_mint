@@ -23,6 +23,7 @@
     "title": "Workflows",
     "loading": "Loading...",
     "empty": "No workflows yet",
+    "system": "System",
     "statusOn": "ON",
     "statusOff": "OFF"
   },
@@ -114,6 +115,7 @@
     "parseNodesArray": "nodes must be an array",
     "parseEntryNode": "entry_node_id must be a non-empty string",
     "parseInvalidJson": "Invalid JSON",
+    "systemReadonly": "System workflows are read-only.",
     "runStreamInvalidPayload": "Invalid workflow stream payload: missing flow_event",
     "runFailed": "Workflow run failed",
     "runRequestFailed": "Failed to run workflow"

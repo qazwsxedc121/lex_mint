@@ -7,6 +7,7 @@ interface WorkflowEditorProps {
   value: string;
   parseError: string | null;
   saving: boolean;
+  readOnly?: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
 }
@@ -15,6 +16,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
   value,
   parseError,
   saving,
+  readOnly = false,
   onChange,
   onSave,
 }) => {
@@ -30,7 +32,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
         <button
           type="button"
           onClick={onSave}
-          disabled={saving || !!parseError}
+          disabled={saving || !!parseError || readOnly}
           className="rounded-md px-3 py-1.5 text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60"
         >
           {saving ? t('actions.saving') : t('actions.save')}
@@ -42,7 +44,9 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
           value={value}
           height="380px"
           extensions={[json()]}
-          onChange={onChange}
+          onChange={readOnly ? () => undefined : onChange}
+          editable={!readOnly}
+          readOnly={readOnly}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLine: true,

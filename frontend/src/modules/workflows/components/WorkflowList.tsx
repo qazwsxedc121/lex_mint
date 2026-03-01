@@ -71,13 +71,20 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{workflow.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${workflow.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
-                      {workflow.enabled ? t('list.statusOn') : t('list.statusOff')}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      {workflow.is_system && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                          {t('list.system')}
+                        </span>
+                      )}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${workflow.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+                        {workflow.enabled ? t('list.statusOn') : t('list.statusOff')}
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-1 flex items-center justify-between gap-2">
                     <span className="truncate text-xs text-gray-500 dark:text-gray-400">{workflow.id}</span>
-                    {editable && (
+                    {editable && !workflow.is_system && (
                       <button
                         type="button"
                         onClick={(event) => {
