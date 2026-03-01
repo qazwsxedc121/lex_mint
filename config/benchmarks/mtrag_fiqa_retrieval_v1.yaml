@@ -16,5 +16,6 @@ benchmark:
     - hybrid
   score_threshold: 0.0
   bm25_min_term_coverage: 0.0
+  benchmark_strict: true
   max_cases: null
   runtime_model_id: null

@@ -111,6 +111,19 @@ class RagService:
         return diversified
 
     @staticmethod
+    def _collapse_to_best_per_doc(results: List[RagResult]) -> List[RagResult]:
+        """Collapse chunk results so each document contributes only its best-ranked chunk."""
+        seen_docs = set()
+        collapsed: List[RagResult] = []
+        for item in results:
+            doc_key = RagService._doc_identity(item)
+            if doc_key in seen_docs:
+                continue
+            seen_docs.add(doc_key)
+            collapsed.append(item)
+        return collapsed
+
+    @staticmethod
     def _long_context_reorder(results: List[RagResult]) -> List[RagResult]:
         """
         Reorder so top-ranked chunks appear near both prompt edges:
@@ -393,6 +406,8 @@ class RagService:
         vector_recall_k = int(diagnostics.get("vector_recall_k", recall_k) or recall_k)
         bm25_recall_k = int(diagnostics.get("bm25_recall_k", recall_k) or recall_k)
         bm25_min_term_coverage = float(diagnostics.get("bm25_min_term_coverage", 0.0) or 0.0)
+        bm25_doc_collapse_enabled = bool(diagnostics.get("bm25_doc_collapse_enabled", False))
+        bm25_collapsed_count = int(diagnostics.get("bm25_collapsed_count", 0) or 0)
         fusion_top_k = int(diagnostics.get("fusion_top_k", top_k) or top_k)
         fusion_strategy = str(diagnostics.get("fusion_strategy", "rrf") or "rrf")
         rrf_k = int(diagnostics.get("rrf_k", 60) or 60)
@@ -435,6 +450,7 @@ class RagService:
         retrieval_query_planner_reason = str(
             diagnostics.get("retrieval_query_planner_reason", "") or ""
         )
+        benchmark_strict_mode = bool(diagnostics.get("benchmark_strict_mode", False))
 
         def _trim_query(text: str, max_len: int = 180) -> str:
             normalized = " ".join(text.split())
@@ -477,6 +493,8 @@ class RagService:
             "vector_recall_k": vector_recall_k,
             "bm25_recall_k": bm25_recall_k,
             "bm25_min_term_coverage": bm25_min_term_coverage,
+            "bm25_doc_collapse_enabled": bm25_doc_collapse_enabled,
+            "bm25_collapsed_count": bm25_collapsed_count,
             "fusion_top_k": fusion_top_k,
             "fusion_strategy": fusion_strategy,
             "rrf_k": rrf_k,
@@ -499,6 +517,7 @@ class RagService:
             "retrieval_query_planner_model_id": retrieval_query_planner_model_id,
             "retrieval_query_planner_fallback": retrieval_query_planner_fallback,
             "retrieval_query_planner_reason": retrieval_query_planner_reason,
+            "benchmark_strict_mode": benchmark_strict_mode,
             "query_original": _trim_query(query_original),
             "query_effective": _trim_query(query_effective),
             "rerank_enabled": rerank_enabled,
@@ -593,6 +612,7 @@ class RagService:
         runtime_model_id: Optional[str] = None,
         _skip_query_transform: bool = False,
         _skip_crag_gate: bool = False,
+        _benchmark_strict: bool = False,
     ) -> Tuple[List[RagResult], Dict[str, Any]]:
         """
         Retrieve relevant chunks from knowledge bases.
@@ -625,6 +645,9 @@ class RagService:
             getattr(config.retrieval, "bm25_min_term_coverage", 0.35) or 0.0
         )
         bm25_min_term_coverage = max(0.0, min(1.0, bm25_min_term_coverage))
+        bm25_doc_collapse_enabled = bool(
+            getattr(config.retrieval, "bm25_doc_collapse_enabled", True)
+        )
         vector_recall_k = max(effective_top_k, vector_recall_k)
         bm25_recall_k = max(effective_top_k, bm25_recall_k)
         fusion_top_k = int(
@@ -714,6 +737,17 @@ class RagService:
         rerank_api_key = str(getattr(config.retrieval, "rerank_api_key", "") or "")
         rerank_timeout_seconds = int(getattr(config.retrieval, "rerank_timeout_seconds", 20) or 20)
         rerank_weight = float(getattr(config.retrieval, "rerank_weight", 0.7) or 0.0)
+        benchmark_strict_mode = bool(_benchmark_strict)
+        if benchmark_strict_mode:
+            retrieval_query_planner_enabled = False
+            query_transform_enabled = False
+            query_transform_mode = "none"
+            query_transform_crag_enabled = False
+            rerank_enabled = False
+            reorder_strategy = "none"
+            context_neighbor_window = 0
+            context_neighbor_max_total = 0
+
         vector_backend = str(getattr(config.storage, "vector_store_backend", "chroma") or "chroma").lower()
         if vector_backend not in {"chroma", "sqlite_vec"}:
             vector_backend = "chroma"
@@ -822,9 +856,10 @@ class RagService:
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
         logger.info(
-            "[RAG] retrieve start: query='%s', original_query='%s', query_transform=%s/%s applied=%s model=%s, planner enabled=%s applied=%s fallback=%s reason=%s model=%s queries=%s, kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, bm25_min_term_coverage=%.2f, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
+            "[RAG] retrieve start: query='%s', original_query='%s', strict=%s, query_transform=%s/%s applied=%s model=%s, planner enabled=%s applied=%s fallback=%s reason=%s model=%s queries=%s, kb_ids=%s, mode=%s, top_k=%s, vector_recall_k=%s, bm25_recall_k=%s, bm25_min_term_coverage=%.2f, bm25_doc_collapse=%s, fusion_top_k=%s, threshold=%s, max_per_doc=%s, reorder=%s, rerank_enabled=%s, rerank_model=%s, rerank_weight=%.2f, vector_backend=%s, provider=%s, model=%s, base_url=%s",
             short_query,
             short_original_query,
+            benchmark_strict_mode,
             query_transform_enabled,
             query_transform_mode,
             query_transform_applied,
@@ -841,6 +876,7 @@ class RagService:
             vector_recall_k,
             bm25_recall_k,
             bm25_min_term_coverage,
+            bm25_doc_collapse_enabled,
             fusion_top_k,
             effective_threshold,
             configured_max_per_doc,
@@ -1037,15 +1073,21 @@ class RagService:
         bm25_results.sort(key=lambda r: r.score, reverse=True)
         deduped_vector_results = self._deduplicate_results(vector_results)
         deduped_bm25_results = self._deduplicate_results(bm25_results)
+        collapsed_bm25_results = (
+            self._collapse_to_best_per_doc(deduped_bm25_results)
+            if bm25_doc_collapse_enabled
+            else deduped_bm25_results
+        )
+        bm25_collapsed_count = max(0, len(deduped_bm25_results) - len(collapsed_bm25_results))
 
         if retrieval_mode == "vector":
             candidate_results = deduped_vector_results
         elif retrieval_mode == "bm25":
-            candidate_results = deduped_bm25_results
+            candidate_results = collapsed_bm25_results
         else:
             candidate_results = self._fuse_results_rrf(
                 vector_results=deduped_vector_results,
-                bm25_results=deduped_bm25_results,
+                bm25_results=collapsed_bm25_results,
                 vector_weight=vector_weight,
                 bm25_weight=bm25_weight,
                 rrf_k=rrf_k,
@@ -1100,6 +1142,8 @@ class RagService:
             "vector_recall_k": vector_recall_k,
             "bm25_recall_k": bm25_recall_k,
             "bm25_min_term_coverage": bm25_min_term_coverage,
+            "bm25_doc_collapse_enabled": bm25_doc_collapse_enabled,
+            "bm25_collapsed_count": bm25_collapsed_count,
             "fusion_top_k": fusion_top_k,
             "fusion_strategy": fusion_strategy,
             "rrf_k": rrf_k,
@@ -1140,6 +1184,7 @@ class RagService:
             "retrieval_query_planner_model_id": retrieval_query_planner_resolved_model,
             "retrieval_query_planner_fallback": retrieval_query_planner_fallback,
             "retrieval_query_planner_reason": retrieval_query_planner_reason,
+            "benchmark_strict_mode": benchmark_strict_mode,
             "searched_kb_count": searched_kb_count,
             "requested_kb_count": len(kb_ids),
             "best_score": best_score,

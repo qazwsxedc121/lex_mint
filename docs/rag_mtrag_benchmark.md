@@ -48,6 +48,8 @@ Smoke import:
 Default config:
 
 - `config/benchmarks/mtrag_fiqa_retrieval_v1.yaml`
+- `benchmark_strict: true` uses a strict retrieval profile for comparability:
+  disables query transform/planner/rerank/neighbor expansion and forces `reorder_strategy=none`.
 
 Run:
 

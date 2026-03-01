@@ -275,6 +275,93 @@ def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
     assert diagnostics["bm25_min_term_coverage"] == pytest.approx(0.35)
 
 
+def test_retrieve_bm25_collapses_to_best_chunk_per_doc(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="none",
+        retrieval_mode="bm25",
+        bm25_recall_k=10,
+    )
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    def fake_search_bm25_collection(*, kb_id, query, top_k, min_term_coverage):
+        _ = kb_id, query, top_k, min_term_coverage
+        return [
+            RagResult("bm25-a0", 0.99, "kb_a", "doc_a", "a.md", 0),
+            RagResult("bm25-a1", 0.98, "kb_a", "doc_a", "a.md", 1),
+            RagResult("bm25-b0", 0.97, "kb_a", "doc_b", "b.md", 0),
+        ]
+
+    monkeypatch.setattr(service, "_search_bm25_collection", fake_search_bm25_collection)
+
+    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("query", ["kb_a"]))
+
+    assert [item.doc_id for item in results] == ["doc_a", "doc_b"]
+    assert diagnostics["bm25_doc_collapse_enabled"] is True
+    assert diagnostics["bm25_collapsed_count"] == 1
+
+
+def test_retrieve_benchmark_strict_disables_post_processing(monkeypatch):
+    service = _build_service(
+        top_k=3,
+        score_threshold=0.0,
+        recall_k=10,
+        max_per_doc=3,
+        reorder_strategy="long_context",
+        retrieval_mode="bm25",
+        bm25_recall_k=10,
+    )
+    service.rag_config_service.config.retrieval.query_transform_enabled = True
+    service.rag_config_service.config.retrieval.retrieval_query_planner_enabled = True
+    service.rag_config_service.config.retrieval.rerank_enabled = True
+    service.rag_config_service.config.retrieval.context_neighbor_window = 2
+    service.rag_config_service.config.retrieval.context_neighbor_max_total = 24
+
+    monkeypatch.setattr(
+        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        _FakeKnowledgeBaseService,
+    )
+
+    async def _unexpected_transform(**kwargs):
+        _ = kwargs
+        raise AssertionError("query transform should not run in benchmark strict mode")
+
+    async def _unexpected_plan(**kwargs):
+        _ = kwargs
+        raise AssertionError("query planner should not run in benchmark strict mode")
+
+    service.query_transform_service = SimpleNamespace(transform_query=_unexpected_transform)
+    service.retrieval_query_planner_service = SimpleNamespace(plan_queries=_unexpected_plan)
+
+    def fake_search_bm25_collection(*, kb_id, query, top_k, min_term_coverage):
+        _ = kb_id, query, top_k, min_term_coverage
+        return [
+            RagResult("bm25-a0", 0.99, "kb_a", "doc_a", "a.md", 0),
+            RagResult("bm25-b0", 0.98, "kb_a", "doc_b", "b.md", 0),
+            RagResult("bm25-c0", 0.97, "kb_a", "doc_c", "c.md", 0),
+        ]
+
+    monkeypatch.setattr(service, "_search_bm25_collection", fake_search_bm25_collection)
+
+    _, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics("query", ["kb_a"], _benchmark_strict=True)
+    )
+
+    assert diagnostics["benchmark_strict_mode"] is True
+    assert diagnostics["query_transform_enabled"] is False
+    assert diagnostics["retrieval_query_planner_enabled"] is False
+    assert diagnostics["rerank_enabled"] is False
+    assert diagnostics["reorder_strategy"] == "none"
+    assert diagnostics["context_neighbor_window"] == 0
+    assert diagnostics["context_neighbor_max_total"] == 0
+
+
 def test_search_collection_dispatches_to_sqlite_vec(monkeypatch):
     service = _build_service(
         top_k=3,

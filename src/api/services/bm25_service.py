@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 class Bm25Service:
     """Service for chunk-level BM25 indexing and retrieval."""
     _punct_only_re = re.compile(r"[\W_]+")
+    _cjk_re = re.compile(r"[\u3400-\u9fff]")
+    _english_token_re = re.compile(r"[a-z0-9]+(?:['-][a-z0-9]+)?")
+    # Keep disabled by default; lexical score remains standard BM25 unless explicitly tuned.
+    _english_soft_coverage_weight = 0.0
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
@@ -77,16 +81,31 @@ class Bm25Service:
         return pattern.findall(text.lower())
 
     @classmethod
+    def _tokenize_english_text(cls, text: str) -> List[str]:
+        raw = (text or "").strip().lower()
+        if not raw:
+            return []
+        return [tok for tok in cls._english_token_re.findall(raw) if tok]
+
+    @classmethod
+    def _looks_cjk_text(cls, text: str) -> bool:
+        return bool(cls._cjk_re.search(text or ""))
+
+    @classmethod
     def tokenize_text(cls, text: str) -> List[str]:
         raw = (text or "").strip()
         if not raw:
             return []
-        try:
-            jieba = importlib.import_module("jieba")
-
-            tokens = [tok.strip().lower() for tok in jieba.lcut_for_search(raw) if tok and tok.strip()]
-        except Exception:
-            tokens = cls._fallback_tokenize(raw)
+        if cls._looks_cjk_text(raw):
+            try:
+                jieba = importlib.import_module("jieba")
+                tokens = [tok.strip().lower() for tok in jieba.lcut_for_search(raw) if tok and tok.strip()]
+            except Exception:
+                tokens = cls._fallback_tokenize(raw)
+        else:
+            tokens = cls._tokenize_english_text(raw)
+            if not tokens:
+                tokens = cls._fallback_tokenize(raw)
 
         cleaned: List[str] = []
         for tok in tokens:
@@ -286,9 +305,19 @@ class Bm25Service:
 
         safe_top_k = max(1, int(top_k))
         safe_min_term_coverage = max(0.0, min(1.0, float(min_term_coverage or 0.0)))
+        query_terms = self._significant_query_terms(query)
+        is_english_query = bool(query_terms) and not self._looks_cjk_text(query)
+        use_soft_coverage_rerank = (
+            safe_min_term_coverage <= 0.0
+            and is_english_query
+            and len(query_terms) >= 2
+            and self._english_soft_coverage_weight > 0.0
+        )
         fetch_k = safe_top_k
         if safe_min_term_coverage > 0:
             fetch_k = min(max(safe_top_k * 5, safe_top_k), 1000)
+        elif use_soft_coverage_rerank:
+            fetch_k = min(max(safe_top_k * 8, 80), 1000)
 
         with self._connect() as conn:
             rows = conn.execute(
@@ -316,7 +345,6 @@ class Bm25Service:
 
         filtered_rows: List[tuple[sqlite3.Row, float, int]] = []
         if safe_min_term_coverage > 0:
-            query_terms = self._significant_query_terms(query)
             for row in rows:
                 coverage, matched_count = self._calculate_term_coverage(
                     query_terms,
@@ -327,6 +355,13 @@ class Bm25Service:
                 filtered_rows.append((row, coverage, matched_count))
                 if len(filtered_rows) >= safe_top_k:
                     break
+        elif use_soft_coverage_rerank:
+            for row in rows:
+                coverage, matched_count = self._calculate_term_coverage(
+                    query_terms,
+                    str(row["tokenized"] or ""),
+                )
+                filtered_rows.append((row, coverage, matched_count))
         else:
             filtered_rows = [(row, 1.0, 0) for row in rows[:safe_top_k]]
 
@@ -341,8 +376,26 @@ class Bm25Service:
         else:
             normalized = [(max_score - val) / (max_score - min_score) for val in raw_scores]
 
-        items: List[Dict[str, Any]] = []
+        coverage_weight = self._english_soft_coverage_weight if use_soft_coverage_rerank else 0.0
+        bm25_weight = 1.0 - coverage_weight
+        scored_rows: List[tuple[sqlite3.Row, float, int, float]] = []
         for index, (row, coverage, matched_count) in enumerate(filtered_rows):
+            score = (bm25_weight * float(normalized[index])) + (coverage_weight * float(coverage))
+            scored_rows.append((row, coverage, matched_count, score))
+
+        scored_rows.sort(
+            key=lambda item: (
+                item[3],
+                item[2],
+                item[1],
+                -float(item[0]["bm25_score"]),
+            ),
+            reverse=True,
+        )
+        scored_rows = scored_rows[:safe_top_k]
+
+        items: List[Dict[str, Any]] = []
+        for row, coverage, matched_count, score in scored_rows:
             items.append(
                 {
                     "chunk_id": str(row["chunk_id"]),
@@ -351,7 +404,7 @@ class Bm25Service:
                     "filename": str(row["filename"]),
                     "chunk_index": int(row["chunk_index"]),
                     "content": str(row["content"]),
-                    "score": float(normalized[index]),
+                    "score": float(score),
                     "bm25_score": float(row["bm25_score"]),
                     "term_coverage": float(coverage),
                     "matched_query_terms": int(matched_count),

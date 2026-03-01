@@ -352,6 +352,7 @@ async def _evaluate_mode(
     score_threshold_override: Optional[float],
     bm25_min_term_coverage_override: Optional[float],
     runtime_model_id: Optional[str],
+    benchmark_strict: bool,
 ) -> Dict[str, Any]:
     service = RagService()
     retrieval_cfg = service.rag_config_service.config.retrieval
@@ -391,6 +392,7 @@ async def _evaluate_mode(
                 top_k=local_top_k,
                 score_threshold=local_threshold,
                 runtime_model_id=runtime_model_id,
+                _benchmark_strict=benchmark_strict,
             )
             row = _evaluate_case(case, results, local_top_k)
             row.update(
@@ -476,6 +478,14 @@ def parse_args() -> argparse.Namespace:
             "Useful when query transform model is set to auto."
         ),
     )
+    parser.add_argument(
+        "--benchmark-strict",
+        action="store_true",
+        help=(
+            "Enable strict retrieval-only profile during evaluation "
+            "(disables query transform/planner/rerank/reorder/neighbor expansion)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -508,6 +518,7 @@ async def _main() -> None:
             score_threshold_override=args.score_threshold,
             bm25_min_term_coverage_override=args.bm25_min_term_coverage,
             runtime_model_id=args.runtime_model_id,
+            benchmark_strict=bool(args.benchmark_strict),
         )
         mode_outputs.append(mode_result)
         (output_dir / f"mode_{mode}_cases.json").write_text(
@@ -529,6 +540,14 @@ async def _main() -> None:
             "description": raw_dataset.get("description", ""),
             "path": str(dataset_path),
             "case_count": len(cases),
+        },
+        "run_options": {
+            "benchmark_strict": bool(args.benchmark_strict),
+            "modes": modes,
+            "top_k_override": args.top_k,
+            "score_threshold_override": args.score_threshold,
+            "bm25_min_term_coverage_override": args.bm25_min_term_coverage,
+            "runtime_model_id": args.runtime_model_id,
         },
         "summaries": summaries,
     }
