@@ -43,7 +43,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   }, [isOpen]);
 
   return (
-    <div className="border-b border-gray-300 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800">
+    <div className="relative z-30 border-b border-gray-300 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800">
       <div className="flex gap-2">
         {/* Project Dropdown */}
         <div className="relative flex-1">
@@ -62,7 +62,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 
           {/* Dropdown Menu */}
           {isOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-10 max-h-64 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-40 max-h-64 overflow-y-auto">
               {projects.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-center">
                   {t('selector.noProjects')}

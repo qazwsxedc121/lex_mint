@@ -61,4 +61,62 @@ test.describe('Projects smoke', () => {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test('can search project text and open matched file', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lex-mint-e2e-project-'));
+    const projectName = `e2e-project-search-${Date.now()}`;
+    const topFileName = 'README.e2e.md';
+    const searchToken = `needle-project-search-${Date.now()}`;
+    let projectId = '';
+
+    fs.writeFileSync(path.join(tempRoot, topFileName), '# Projects Search Smoke\n', 'utf-8');
+    fs.mkdirSync(path.join(tempRoot, 'src'));
+    fs.writeFileSync(path.join(tempRoot, 'src', 'app.py'), `print("${searchToken}")\n`, 'utf-8');
+
+    try {
+      const createRes = await api.post('/api/projects', {
+        data: {
+          name: projectName,
+          root_path: tempRoot,
+          description: 'e2e projects text search',
+        },
+      });
+      expect(createRes.ok()).toBeTruthy();
+
+      const created = await createRes.json();
+      projectId = created.id;
+      expect(projectId).toMatch(/^proj_[a-f0-9]{12}$/);
+
+      await page.goto('/projects');
+      await expect(page.locator('[data-name="projects-module-root"]')).toBeVisible();
+
+      const projectCard = page.getByRole('button', { name: new RegExp(projectName) });
+      await expect(projectCard).toBeVisible();
+      await projectCard.click();
+
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+      await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
+      await expect(page.locator('[data-name="file-tree"]')).toBeVisible();
+
+      const textSearchInput = page.locator('[data-name="file-tree-text-search-input"]');
+      await expect(textSearchInput).toBeVisible();
+      await textSearchInput.fill(searchToken);
+
+      const resultItem = page.locator('[data-name="file-tree-text-search-result-item"]').first();
+      await expect(resultItem).toBeVisible({ timeout: 10000 });
+      await expect(resultItem).toContainText('src/app.py');
+      await resultItem.click();
+
+      await expect(page.locator('[data-name="file-viewer-breadcrumb-row"]')).toContainText('src');
+      await expect(page.locator('[data-name="file-viewer-breadcrumb-row"]')).toContainText('app.py');
+      await expect(page.locator('.cm-content')).toContainText(searchToken);
+    } finally {
+      if (projectId) {
+        await api.delete(`/api/projects/${projectId}`);
+      }
+      await api.dispose();
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
