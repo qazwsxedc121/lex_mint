@@ -11,6 +11,7 @@ import {
   ArrowsPointingOutIcon,
   HashtagIcon,
   ArrowUpOnSquareIcon,
+  CloudArrowUpIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { ChatToggleButton } from './ChatToggleButton';
@@ -243,18 +244,21 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
         {/* Group 4: Chat Toggle */}
         <div className="flex items-center gap-1 border-r border-gray-300 dark:border-gray-600 pr-3 mr-2">
-          <label
-            title={t('editor.agentSend.autoSaveHelp')}
-            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+          <button
+            type="button"
+            title={`${t('editor.agentSend.autoSaveLabel')} - ${t('editor.agentSend.autoSaveHelp')}`}
+            onClick={() => onToggleAutoSaveBeforeAgentSend(!autoSaveBeforeAgentSend)}
+            aria-label={t('editor.agentSend.autoSaveLabel')}
+            aria-pressed={autoSaveBeforeAgentSend}
+            data-name="editor-auto-save-before-send-toggle"
+            className={`p-1.5 rounded ${
+              autoSaveBeforeAgentSend
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
           >
-            <input
-              type="checkbox"
-              checked={autoSaveBeforeAgentSend}
-              onChange={(e) => onToggleAutoSaveBeforeAgentSend(e.target.checked)}
-              className="h-3 w-3"
-            />
-            <span className="text-[11px] whitespace-nowrap">{t('editor.agentSend.autoSaveLabel')}</span>
-          </label>
+            <CloudArrowUpIcon className="h-4 w-4" />
+          </button>
           <button
             title={inlineRewriteTitle}
             onClick={onInlineRewrite}
