@@ -29,6 +29,7 @@ const AGENT_AUTO_SAVE_BEFORE_SEND_KEY = 'project-agent-auto-save-before-send';
 const THINK_BLOCK_REGEX = /<think>[\s\S]*?<\/think>/g;
 const DEFAULT_INLINE_REWRITE_WORKFLOW_ID = 'wf_inline_rewrite_default';
 const PRIMARY_REWRITE_INPUT_KEYS = new Set(['input', 'text', 'selected_text']);
+const AUTO_SLICE_KEY_PATTERN = /^(head|tail)_(line|char|percent)_(\d+)$/i;
 const LEGACY_AUTO_REWRITE_INPUT_KEYS = new Set([
   ...PRIMARY_REWRITE_INPUT_KEYS,
   'context_before',
@@ -39,14 +40,74 @@ const LEGACY_AUTO_REWRITE_INPUT_KEYS = new Set([
   'session_id',
   'selection_start',
   'selection_end',
+  'source_mode',
 ]);
 
+const normalizeAutoKey = (key: string): string => key.replace(/^_+/, '').toLowerCase();
+const isSelectionInputKey = (key: string): boolean => PRIMARY_REWRITE_INPUT_KEYS.has(normalizeAutoKey(key));
+const isSliceAutoKey = (key: string): boolean => {
+  const normalizedKey = normalizeAutoKey(key);
+  return normalizedKey === 'full_text' || AUTO_SLICE_KEY_PATTERN.test(normalizedKey);
+};
 const isAutoRewriteInputKey = (key: string): boolean =>
-  key.startsWith('_') || LEGACY_AUTO_REWRITE_INPUT_KEYS.has(key.toLowerCase());
+  key.startsWith('_') || LEGACY_AUTO_REWRITE_INPUT_KEYS.has(key.toLowerCase()) || isSliceAutoKey(key);
+
+type RewriteSourceMode = 'selection' | 'empty' | 'full_file';
+
+const assignAutoValueWithAliases = (target: Record<string, unknown>, key: string, value: unknown) => {
+  const normalizedKey = normalizeAutoKey(key);
+  target[normalizedKey] = value;
+  target[`_${normalizedKey}`] = value;
+};
+
+const buildSlicedAutoValue = (fullText: string, key: string): string | null => {
+  const normalizedKey = normalizeAutoKey(key);
+  if (normalizedKey === 'full_text') {
+    return fullText;
+  }
+
+  const match = normalizedKey.match(AUTO_SLICE_KEY_PATTERN);
+  if (!match) {
+    return null;
+  }
+
+  const [, directionRaw, unitRaw, amountRaw] = match;
+  const direction = directionRaw.toLowerCase() as 'head' | 'tail';
+  const unit = unitRaw.toLowerCase() as 'line' | 'char' | 'percent';
+  const parsedAmount = Number(amountRaw);
+  if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+    return null;
+  }
+
+  if (unit === 'line') {
+    const lines = fullText.split('\n');
+    const take = Math.max(0, Math.floor(parsedAmount));
+    const sliced = direction === 'head'
+      ? lines.slice(0, take)
+      : lines.slice(Math.max(lines.length - take, 0));
+    return sliced.join('\n');
+  }
+
+  if (unit === 'char') {
+    const take = Math.max(0, Math.floor(parsedAmount));
+    if (direction === 'head') {
+      return fullText.slice(0, take);
+    }
+    return fullText.slice(Math.max(fullText.length - take, 0));
+  }
+
+  const boundedPercent = Math.min(100, Math.max(0, Math.floor(parsedAmount)));
+  const take = Math.ceil(fullText.length * (boundedPercent / 100));
+  if (direction === 'head') {
+    return fullText.slice(0, take);
+  }
+  return fullText.slice(Math.max(fullText.length - take, 0));
+};
 
 interface RewriteSelectionSnapshot {
   from: number;
   to: number;
+  sourceMode: RewriteSourceMode;
   selectedText: string;
   contextBefore: string;
   contextAfter: string;
@@ -173,10 +234,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInsertingToChat, setIsInsertingToChat] = useState(false);
   const [refreshingProject, setRefreshingProject] = useState(false);
-  const [hasSelection, setHasSelection] = useState(false);
   const [inlineRewriteOpen, setInlineRewriteOpen] = useState(false);
   const [inlineRewriteStreaming, setInlineRewriteStreaming] = useState(false);
   const [inlineRewriteError, setInlineRewriteError] = useState<string | null>(null);
+  const [inlineRewriteNoSelectionPromptOpen, setInlineRewriteNoSelectionPromptOpen] = useState(false);
   const [inlineRewriteInputs, setInlineRewriteInputs] = useState<Record<string, unknown>>({});
   const [inlineRewriteSourceText, setInlineRewriteSourceText] = useState('');
   const [inlineRewritePreview, setInlineRewritePreview] = useState('');
@@ -250,10 +311,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setSaveConflict(null);
       setConflictBusy(false);
       setSaveSuccess(false);
-      setHasSelection(false);
       setInlineRewriteOpen(false);
       setInlineRewriteStreaming(false);
       setInlineRewriteError(null);
+      setInlineRewriteNoSelectionPromptOpen(false);
       setInlineRewriteInputs({});
       setInlineRewriteSourceText('');
       setInlineRewritePreview('');
@@ -352,6 +413,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     return {
       from: selection.from,
       to: selection.to,
+      sourceMode: 'selection',
       selectedText,
       contextBefore,
       contextAfter,
@@ -359,6 +421,52 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       language: getLanguageTag(content.path),
     };
   }, [content]);
+
+  const getInlineRewriteSnapshotForNoSelection = useCallback(
+    (sourceMode: Exclude<RewriteSourceMode, 'selection'>): RewriteSelectionSnapshot | null => {
+      if (!content || !editorViewRef.current) {
+        return null;
+      }
+
+      const view = editorViewRef.current;
+      const docText = view.state.doc.toString();
+      const docLength = view.state.doc.length;
+      const cursor = view.state.selection.main.head;
+
+      if (sourceMode === 'full_file') {
+        return {
+          from: 0,
+          to: docLength,
+          sourceMode,
+          selectedText: docText,
+          contextBefore: '',
+          contextAfter: '',
+          filePath: content.path,
+          language: getLanguageTag(content.path),
+        };
+      }
+
+      const contextBefore = view.state.doc.sliceString(
+        Math.max(0, cursor - INLINE_REWRITE_CONTEXT_CHARS),
+        cursor
+      );
+      const contextAfter = view.state.doc.sliceString(
+        cursor,
+        Math.min(view.state.doc.length, cursor + INLINE_REWRITE_CONTEXT_CHARS)
+      );
+      return {
+        from: cursor,
+        to: cursor,
+        sourceMode,
+        selectedText: '',
+        contextBefore,
+        contextAfter,
+        filePath: content.path,
+        language: getLanguageTag(content.path),
+      };
+    },
+    [content]
+  );
 
   const rewriteWorkflowOptions = useMemo(
     () =>
@@ -397,30 +505,44 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   }, []);
 
   const buildInlineRewriteAutoInputs = useCallback(
-    (snapshot: RewriteSelectionSnapshot, sessionId?: string | null): Record<string, unknown> => {
-      const baseValues: Record<string, unknown> = {
-        input: snapshot.selectedText,
-        text: snapshot.selectedText,
-        selected_text: snapshot.selectedText,
-        context_before: snapshot.contextBefore,
-        context_after: snapshot.contextAfter,
-        file_path: snapshot.filePath,
-        language: snapshot.language,
-        selection_start: snapshot.from,
-        selection_end: snapshot.to,
-      };
+    (
+      workflow: Workflow,
+      snapshot: RewriteSelectionSnapshot,
+      fullText: string,
+      sessionId?: string | null
+    ): Record<string, unknown> => {
+      const autoValues: Record<string, unknown> = {};
+
+      assignAutoValueWithAliases(autoValues, 'input', snapshot.selectedText);
+      assignAutoValueWithAliases(autoValues, 'text', snapshot.selectedText);
+      assignAutoValueWithAliases(autoValues, 'selected_text', snapshot.selectedText);
+      assignAutoValueWithAliases(autoValues, 'context_before', snapshot.contextBefore);
+      assignAutoValueWithAliases(autoValues, 'context_after', snapshot.contextAfter);
+      assignAutoValueWithAliases(autoValues, 'file_path', snapshot.filePath);
+      assignAutoValueWithAliases(autoValues, 'language', snapshot.language);
+      assignAutoValueWithAliases(autoValues, 'selection_start', snapshot.from);
+      assignAutoValueWithAliases(autoValues, 'selection_end', snapshot.to);
+      assignAutoValueWithAliases(autoValues, 'source_mode', snapshot.sourceMode);
+      assignAutoValueWithAliases(autoValues, 'full_text', fullText);
       if (projectId) {
-        baseValues.project_id = projectId;
+        assignAutoValueWithAliases(autoValues, 'project_id', projectId);
       }
       if (sessionId) {
-        baseValues.session_id = sessionId;
+        assignAutoValueWithAliases(autoValues, 'session_id', sessionId);
       }
 
-      const withAliases: Record<string, unknown> = { ...baseValues };
-      for (const [key, value] of Object.entries(baseValues)) {
-        withAliases[`_${key}`] = value;
+      for (const inputDef of workflow.input_schema) {
+        if (!isSliceAutoKey(inputDef.key)) {
+          continue;
+        }
+        const slicedValue = buildSlicedAutoValue(fullText, inputDef.key);
+        if (slicedValue === null) {
+          continue;
+        }
+        assignAutoValueWithAliases(autoValues, inputDef.key, slicedValue);
       }
-      return withAliases;
+
+      return autoValues;
     },
     [projectId]
   );
@@ -489,14 +611,21 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     });
   }, []);
 
+  const workflowRequiresSelection = useCallback((workflow: Workflow): boolean => {
+    return workflow.input_schema.some(
+      (inputDef) => inputDef.required && isSelectionInputKey(inputDef.key)
+    );
+  }, []);
+
   const buildInlineRewriteRunInputs = useCallback(
     (
       workflow: Workflow,
       snapshot: RewriteSelectionSnapshot,
+      fullText: string,
       sessionId?: string | null
     ): { inputs: Record<string, unknown>; error?: string } => {
-      const autoInputs = buildInlineRewriteAutoInputs(snapshot, sessionId);
-      const runInputs: Record<string, unknown> = { ...autoInputs, ...inlineRewriteInputs };
+      const autoInputs = buildInlineRewriteAutoInputs(workflow, snapshot, fullText, sessionId);
+      const runInputs: Record<string, unknown> = { ...inlineRewriteInputs, ...autoInputs };
 
       for (const inputDef of workflow.input_schema) {
         let value = runInputs[inputDef.key];
@@ -551,25 +680,18 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     const snapshot = getInlineRewriteSelectionSnapshot();
     setInlineRewriteOpen(true);
     setInlineRewriteError(null);
-
-    if (!snapshot) {
-      setInlineRewriteSourceText('');
-      setInlineRewritePreview('');
-      setInlineRewriteError(t('inlineRewrite.selectTextFirst'));
-      return;
-    }
+    setInlineRewriteNoSelectionPromptOpen(false);
 
     if (activeRewriteWorkflow) {
       const defaults = buildInlineRewriteDefaultInputs(activeRewriteWorkflow);
       setInlineRewriteInputs(defaults);
     }
 
-    setInlineRewriteSourceText(snapshot.selectedText);
+    setInlineRewriteSourceText(snapshot?.selectedText || '');
     setInlineRewritePreview('');
   }, [
     ensureInlineRewriteWorkflowsLoaded,
     getInlineRewriteSelectionSnapshot,
-    t,
     activeRewriteWorkflow,
     buildInlineRewriteDefaultInputs,
   ]);
@@ -584,11 +706,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     handleStopInlineRewrite();
     setInlineRewriteOpen(false);
     setInlineRewriteError(null);
+    setInlineRewriteNoSelectionPromptOpen(false);
     setInlineRewritePreview('');
     rewriteSelectionRef.current = null;
   }, [handleStopInlineRewrite]);
 
-  const handleStartInlineRewrite = useCallback(async () => {
+  const handleStartInlineRewrite = useCallback(async (noSelectionMode: 'ask' | 'empty' | 'full_file' = 'ask') => {
     if (inlineRewriteStreaming || !content) {
       return;
     }
@@ -610,11 +733,20 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return;
     }
 
-    const snapshot = getInlineRewriteSelectionSnapshot();
+    let snapshot = getInlineRewriteSelectionSnapshot();
     if (!snapshot) {
-      setInlineRewriteOpen(true);
-      setInlineRewriteError(t('inlineRewrite.selectTextFirst'));
-      return;
+      const requiresSelection = workflowRequiresSelection(workflowToRun);
+      if (requiresSelection && noSelectionMode === 'ask') {
+        setInlineRewriteNoSelectionPromptOpen(true);
+        setInlineRewriteError(null);
+        return;
+      }
+      const resolvedNoSelectionMode = noSelectionMode === 'full_file' ? 'full_file' : 'empty';
+      snapshot = getInlineRewriteSnapshotForNoSelection(resolvedNoSelectionMode);
+      if (!snapshot) {
+        setInlineRewriteError(t('inlineRewrite.selectionMissing'));
+        return;
+      }
     }
 
     const sessionId = await ensureInlineRewriteSession();
@@ -622,13 +754,15 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return;
     }
 
+    const currentFullText = editorViewRef.current?.state.doc.toString() ?? value;
     rewriteSelectionRef.current = snapshot;
     setInlineRewriteSourceText(snapshot.selectedText);
     setInlineRewritePreview('');
     setInlineRewriteError(null);
+    setInlineRewriteNoSelectionPromptOpen(false);
     setInlineRewriteStreaming(true);
 
-    const prepared = buildInlineRewriteRunInputs(workflowToRun, snapshot, sessionId);
+    const prepared = buildInlineRewriteRunInputs(workflowToRun, snapshot, currentFullText, sessionId);
     if (prepared.error) {
       setInlineRewriteStreaming(false);
       setInlineRewriteError(prepared.error);
@@ -672,11 +806,26 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     ensureInlineRewriteWorkflowsLoaded,
     inlineRewriteWorkflowId,
     getInlineRewriteSelectionSnapshot,
+    workflowRequiresSelection,
+    getInlineRewriteSnapshotForNoSelection,
     t,
     ensureInlineRewriteSession,
+    value,
     buildInlineRewriteRunInputs,
     projectId,
   ]);
+
+  const handleNoSelectionRunEmpty = useCallback(() => {
+    void handleStartInlineRewrite('empty');
+  }, [handleStartInlineRewrite]);
+
+  const handleNoSelectionRunFullFile = useCallback(() => {
+    void handleStartInlineRewrite('full_file');
+  }, [handleStartInlineRewrite]);
+
+  const handleNoSelectionRunCancel = useCallback(() => {
+    setInlineRewriteNoSelectionPromptOpen(false);
+  }, []);
 
   const handleAcceptInlineRewrite = useCallback(() => {
     if (!editorViewRef.current) {
@@ -1177,7 +1326,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           line: line.number,
           col: pos - line.from + 1
         });
-        setHasSelection(!update.state.selection.main.empty);
       }
     }),
   []);
@@ -1218,7 +1366,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const onEditorCreate = useCallback((view: EditorView) => {
     editorViewRef.current = view;
     updateUndoRedoState();
-    setHasSelection(!view.state.selection.main.empty);
 
     // Notify parent immediately when editor is ready
     if (onEditorReady) {
@@ -1245,9 +1392,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     ? 'Inserting to chat...'
     : 'Insert selection or file to chat';
   const refreshTitle = refreshingProject ? t('fileViewer.refreshing') : t('fileViewer.refresh');
-  const inlineRewriteTitle = hasSelection
-    ? t('inlineRewrite.button')
-    : t('inlineRewrite.selectTextFirst');
+  const inlineRewriteTitle = t('inlineRewrite.button');
 
   const renderBreadcrumbBar = (filePath?: string) => (
     <div data-name="file-viewer-breadcrumb-bar" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
@@ -1368,7 +1513,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         insertToChatDisabled={!content || isInsertingToChat}
         insertToChatTitle={insertToChatTitle}
         onInlineRewrite={handleOpenInlineRewrite}
-        inlineRewriteDisabled={!content || !hasSelection || inlineRewriteStreaming}
+        inlineRewriteDisabled={!content || inlineRewriteStreaming}
         inlineRewriteTitle={inlineRewriteTitle}
       />
 
@@ -1387,6 +1532,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onInputChange={handleInlineRewriteInputChange}
         onGenerate={handleStartInlineRewrite}
         onStop={handleStopInlineRewrite}
+        showNoSelectionPrompt={inlineRewriteNoSelectionPromptOpen}
+        onNoSelectionRunEmpty={handleNoSelectionRunEmpty}
+        onNoSelectionRunFullFile={handleNoSelectionRunFullFile}
+        onNoSelectionRunCancel={handleNoSelectionRunCancel}
         onAccept={handleAcceptInlineRewrite}
         onReject={handleCloseInlineRewrite}
         onClose={handleCloseInlineRewrite}

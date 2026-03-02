@@ -44,6 +44,29 @@
   - `session_id` / `_session_id`
   - `selection_start` / `_selection_start`
   - `selection_end` / `_selection_end`
+  - `source_mode` / `_source_mode`（`selection` / `full_file` / `empty`）
+
+## 全文/head/tail 自动注入
+
+除上面的固定参数外，还支持通过特殊键名自动切片注入（推荐使用 `_` 前缀）：
+
+- `_full_text`
+- `_(head|tail)_(line|char|percent)_(N)`
+  - 示例：`_tail_percent_50`、`_tail_line_50`、`_tail_char_50`
+
+说明：
+
+- 切片数据源是当前文件全文。
+- `line`：按行切片；`char`：按字符切片；`percent`：按全文比例切片。
+- 历史写法（无 `_` 前缀）如 `tail_percent_50` 也会自动注入。
+
+## 无选区运行行为
+
+- 内联改写支持在无选区时运行工作流。
+- 若工作流包含必填选区类参数（`input` / `text` / `selected_text` 及下划线别名），会弹出三选一：
+  - 空文本运行（`_source_mode=empty`）
+  - 使用全文（`_source_mode=full_file`）
+  - 取消
 
 ## 推荐写法
 

@@ -28,6 +28,10 @@ interface InlineRewritePanelProps {
   onInputChange: (key: string, value: unknown) => void;
   onGenerate: () => void;
   onStop: () => void;
+  showNoSelectionPrompt: boolean;
+  onNoSelectionRunEmpty: () => void;
+  onNoSelectionRunFullFile: () => void;
+  onNoSelectionRunCancel: () => void;
   onAccept: () => void;
   onReject: () => void;
   onClose: () => void;
@@ -127,6 +131,10 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   onInputChange,
   onGenerate,
   onStop,
+  showNoSelectionPrompt,
+  onNoSelectionRunEmpty,
+  onNoSelectionRunFullFile,
+  onNoSelectionRunCancel,
   onAccept,
   onReject,
   onClose,
@@ -275,12 +283,52 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
         </div>
       )}
 
+      {showNoSelectionPrompt && (
+        <div
+          data-name="inline-rewrite-no-selection-dialog"
+          className="rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 space-y-2"
+        >
+          <div className="text-xs font-medium text-amber-900 dark:text-amber-200">
+            {t('inlineRewrite.noSelectionPromptTitle')}
+          </div>
+          <div className="text-xs text-amber-800 dark:text-amber-300">
+            {t('inlineRewrite.noSelectionPromptDescription')}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-name="inline-rewrite-no-selection-empty"
+              onClick={onNoSelectionRunEmpty}
+              className="px-3 py-1.5 rounded text-xs font-medium border border-gray-300 dark:border-gray-600 hover:bg-white/80 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
+            >
+              {t('inlineRewrite.noSelectionRunEmpty')}
+            </button>
+            <button
+              type="button"
+              data-name="inline-rewrite-no-selection-full"
+              onClick={onNoSelectionRunFullFile}
+              className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {t('inlineRewrite.noSelectionRunFullFile')}
+            </button>
+            <button
+              type="button"
+              data-name="inline-rewrite-no-selection-cancel"
+              onClick={onNoSelectionRunCancel}
+              className="px-3 py-1.5 rounded text-xs font-medium border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              {t('inlineRewrite.noSelectionRunCancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {!isStreaming ? (
           <button
             type="button"
             data-name="inline-rewrite-generate"
-            onClick={onGenerate}
+            onClick={() => onGenerate()}
             disabled={!canGenerate}
             className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed"
           >
@@ -290,7 +338,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
           <button
             type="button"
             data-name="inline-rewrite-stop"
-            onClick={onStop}
+            onClick={() => onStop()}
             className="px-3 py-1.5 rounded text-xs font-medium border border-amber-500 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
           >
             {t('inlineRewrite.stop')}
@@ -299,7 +347,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
         <button
           type="button"
           data-name="inline-rewrite-accept"
-          onClick={onAccept}
+          onClick={() => onAccept()}
           disabled={isStreaming || !hasRewriteResult}
           className="px-3 py-1.5 rounded text-xs font-medium bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed"
         >
@@ -308,7 +356,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
         <button
           type="button"
           data-name="inline-rewrite-reject"
-          onClick={onReject}
+          onClick={() => onReject()}
           className="px-3 py-1.5 rounded text-xs font-medium border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
         >
           {t('inlineRewrite.reject')}

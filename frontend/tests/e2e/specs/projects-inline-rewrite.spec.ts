@@ -197,6 +197,105 @@ test.describe('Projects inline rewrite', () => {
     }
   });
 
+  test('when no text is selected and workflow requires selection, show options and support full-file run', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    let projectId = '';
+    let tempRoot = '';
+
+    try {
+      const created = await createTempProject(api);
+      projectId = created.projectId;
+      tempRoot = created.tempRoot;
+
+      let rewritePayload: Record<string, unknown> | null = null;
+      await page.route('**/api/workflows/*/run/stream', async (route) => {
+        const request = route.request();
+        rewritePayload = request.postDataJSON() as Record<string, unknown>;
+
+        const streamId = 'rewrite-stream-no-selection';
+        const now = Date.now();
+        const ssePayloads = [
+          {
+            flow_event: {
+              event_id: 'evt-n1',
+              seq: 1,
+              ts: now,
+              stream_id: streamId,
+              event_type: 'stream_started',
+              stage: 'transport',
+              payload: { context_type: 'project' },
+            },
+          },
+          {
+            flow_event: {
+              event_id: 'evt-n2',
+              seq: 2,
+              ts: now + 1,
+              stream_id: streamId,
+              event_type: 'text_delta',
+              stage: 'content',
+              payload: { text: 'Rewrite from full-file mode.\n' },
+            },
+          },
+          {
+            flow_event: {
+              event_id: 'evt-n3',
+              seq: 3,
+              ts: now + 2,
+              stream_id: streamId,
+              event_type: 'stream_ended',
+              stage: 'transport',
+              payload: { done: true },
+            },
+          },
+        ];
+        const body = ssePayloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join('');
+
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+          body,
+        });
+      });
+
+      await page.goto(`/projects/${projectId}`);
+      await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
+      const topFileNode = page.locator('[data-name="file-tree"]').getByText(created.topFileName, { exact: true });
+      await expect(topFileNode).toBeVisible();
+      await topFileNode.click();
+
+      await page.locator('.cm-content').click();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('Control+K');
+
+      await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
+      await page.locator('[data-name="inline-rewrite-workflow"]').selectOption('wf_inline_rewrite_default');
+      await page.locator('[data-name="inline-rewrite-generate"]').click();
+      await expect(page.locator('[data-name="inline-rewrite-no-selection-dialog"]')).toBeVisible();
+      await page.locator('[data-name="inline-rewrite-no-selection-full"]').click();
+
+      await expect(page.locator('[data-name="inline-rewrite-preview"]')).toContainText(
+        'Rewrite from full-file mode.'
+      );
+      await expect.poll(() => rewritePayload).not.toBeNull();
+
+      const inputs = rewritePayload?.inputs as Record<string, unknown> | undefined;
+      expect(inputs?._source_mode).toBe('full_file');
+      expect(inputs?._selected_text).toContain('# Inline Rewrite');
+      expect(inputs?._selected_text).toContain('This sentence should be rewritten.');
+      expect(inputs?._full_text).toContain('This sentence should be rewritten.');
+    } finally {
+      if (projectId && tempRoot) {
+        await cleanupProject(api, projectId, tempRoot);
+      }
+      await api.dispose();
+    }
+  });
+
   test('create editor rewrite workflow in workflows page and use it in projects', async ({ page }) => {
     const api = await pwRequest.newContext({ baseURL: API_BASE });
     let projectId = '';
