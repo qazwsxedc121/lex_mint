@@ -31,6 +31,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('editor.title')}</h3>
         <button
           type="button"
+          data-name="workflow-editor-save"
           onClick={onSave}
           disabled={saving || !!parseError || readOnly}
           className="rounded-md px-3 py-1.5 text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60"

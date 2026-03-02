@@ -24,6 +24,7 @@ const buildMvpWorkflow = (): WorkflowCreate => ({
   name: i18n.t('workflow:defaults.newWorkflowName'),
   description: i18n.t('workflow:defaults.newWorkflowDescription'),
   enabled: true,
+  scenario: 'general',
   input_schema: [
     { key: 'input', type: 'string', required: true, description: 'Main input text' },
   ],

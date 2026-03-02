@@ -32,6 +32,9 @@
     "namePlaceholder": "Workflow name",
     "description": "Description",
     "descriptionPlaceholder": "What this workflow does",
+    "scenario": "Scenario",
+    "scenarioGeneral": "General",
+    "scenarioEditorRewrite": "Inline Rewrite (Projects)",
     "status": "Status",
     "enabled": "Enabled",
     "disabled": "Disabled"

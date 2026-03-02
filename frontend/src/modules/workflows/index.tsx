@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { runWorkflowStream } from '../../services/api';
-import type { Workflow, WorkflowFlowEvent } from '../../types/workflow';
+import type { Workflow, WorkflowFlowEvent, WorkflowScenario } from '../../types/workflow';
 import { useWorkflows } from './hooks/useWorkflows';
 import { WorkflowList } from './components/WorkflowList';
 import { WorkflowMetaForm } from './components/WorkflowMetaForm';
@@ -58,6 +58,7 @@ export const WorkflowsModule: React.FC = () => {
   const [draftName, setDraftName] = React.useState('');
   const [draftDescription, setDraftDescription] = React.useState('');
   const [draftEnabled, setDraftEnabled] = React.useState(true);
+  const [draftScenario, setDraftScenario] = React.useState<WorkflowScenario>('general');
   const [dslText, setDslText] = React.useState('');
   const [parseError, setParseError] = React.useState<string | null>(null);
   const [runError, setRunError] = React.useState<string | null>(null);
@@ -76,6 +77,7 @@ export const WorkflowsModule: React.FC = () => {
       setDraftName('');
       setDraftDescription('');
       setDraftEnabled(true);
+      setDraftScenario('general');
       setDslText('');
       setParseError(null);
       return;
@@ -83,6 +85,7 @@ export const WorkflowsModule: React.FC = () => {
     setDraftName(selectedWorkflow.name);
     setDraftDescription(selectedWorkflow.description || '');
     setDraftEnabled(selectedWorkflow.enabled);
+    setDraftScenario(selectedWorkflow.scenario);
     setDslText(stringifyDsl(selectedWorkflow));
     setParseError(null);
   }, [selectedWorkflow]);
@@ -159,6 +162,7 @@ export const WorkflowsModule: React.FC = () => {
       name: draftName,
       description: draftDescription || null,
       enabled: draftEnabled,
+      scenario: draftScenario,
       input_schema: parsedDsl.input_schema,
       entry_node_id: parsedDsl.entry_node_id,
       nodes: parsedDsl.nodes,
@@ -321,10 +325,12 @@ export const WorkflowsModule: React.FC = () => {
                     name={draftName}
                     description={draftDescription}
                     enabled={draftEnabled}
+                    scenario={draftScenario}
                     disabled={isSelectedSystemWorkflow}
                     onNameChange={setDraftName}
                     onDescriptionChange={setDraftDescription}
                     onEnabledChange={setDraftEnabled}
+                    onScenarioChange={setDraftScenario}
                   />
                 </section>
                 <WorkflowEditor

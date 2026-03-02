@@ -35,6 +35,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
         {editable && (
           <button
             type="button"
+            data-name="workflow-list-create"
             onClick={onCreate}
             disabled={saving}
             className="rounded-md px-2 py-1 text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60"

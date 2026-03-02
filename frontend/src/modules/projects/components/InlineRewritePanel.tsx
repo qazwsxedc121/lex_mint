@@ -4,8 +4,7 @@
 
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-
-export type RewritePreset = 'clarity' | 'concise' | 'professional' | 'grammar';
+import type { WorkflowInputDef } from '../../../types/workflow';
 
 type DiffType = 'same' | 'add' | 'remove';
 
@@ -23,11 +22,10 @@ interface InlineRewritePanelProps {
   workflowOptions: Array<{ id: string; name: string }>;
   selectedWorkflowId: string;
   workflowLoading: boolean;
-  preset: RewritePreset;
-  customInstruction: string;
+  workflowInputs: WorkflowInputDef[];
+  inputValues: Record<string, unknown>;
   onWorkflowChange: (workflowId: string) => void;
-  onPresetChange: (preset: RewritePreset) => void;
-  onCustomInstructionChange: (value: string) => void;
+  onInputChange: (key: string, value: unknown) => void;
   onGenerate: () => void;
   onStop: () => void;
   onAccept: () => void;
@@ -123,11 +121,10 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   workflowOptions,
   selectedWorkflowId,
   workflowLoading,
-  preset,
-  customInstruction,
+  workflowInputs,
+  inputValues,
   onWorkflowChange,
-  onPresetChange,
-  onCustomInstructionChange,
+  onInputChange,
   onGenerate,
   onStop,
   onAccept,
@@ -189,38 +186,88 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
         </select>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2">
-        <label className="text-xs text-gray-600 dark:text-gray-400 self-center" htmlFor="inline-rewrite-preset">
-          {t('inlineRewrite.presetLabel')}
-        </label>
-        <select
-          id="inline-rewrite-preset"
-          data-name="inline-rewrite-preset"
-          value={preset}
-          onChange={(event) => onPresetChange(event.target.value as RewritePreset)}
-          className="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        >
-          <option value="clarity">{t('inlineRewrite.preset.clarity')}</option>
-          <option value="concise">{t('inlineRewrite.preset.concise')}</option>
-          <option value="professional">{t('inlineRewrite.preset.professional')}</option>
-          <option value="grammar">{t('inlineRewrite.preset.grammar')}</option>
-        </select>
-      </div>
+      {workflowInputs.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2" data-name="inline-rewrite-workflow-inputs">
+          <div className="text-xs text-gray-600 dark:text-gray-400 self-start pt-2">
+            {t('inlineRewrite.workflowInputsLabel')}
+          </div>
+          <div className="space-y-2">
+            {workflowInputs.map((field) => {
+              const rawValue = inputValues[field.key];
+              const keyLabel = field.required
+                ? `${field.key} (${t('inlineRewrite.required')})`
+                : field.key;
+              const inputName = `inline-rewrite-input-${field.key}`;
 
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2">
-        <label className="text-xs text-gray-600 dark:text-gray-400 pt-2" htmlFor="inline-rewrite-instruction">
-          {t('inlineRewrite.customInstructionLabel')}
-        </label>
-        <textarea
-          id="inline-rewrite-instruction"
-          data-name="inline-rewrite-instruction"
-          value={customInstruction}
-          onChange={(event) => onCustomInstructionChange(event.target.value)}
-          rows={2}
-          placeholder={t('inlineRewrite.customInstructionPlaceholder')}
-          className="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        />
-      </div>
+              if (field.type === 'boolean') {
+                const selectValue = rawValue === true ? 'true' : rawValue === false ? 'false' : '';
+                return (
+                  <label key={field.key} className="block space-y-1" htmlFor={inputName}>
+                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                    <select
+                      id={inputName}
+                      data-name={inputName}
+                      value={selectValue}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          onInputChange(field.key, undefined);
+                          return;
+                        }
+                        onInputChange(field.key, value === 'true');
+                      }}
+                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">{t('inlineRewrite.booleanUnset')}</option>
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </label>
+                );
+              }
+
+              if (field.type === 'number') {
+                const inputValue = typeof rawValue === 'number' ? String(rawValue) : '';
+                return (
+                  <label key={field.key} className="block space-y-1" htmlFor={inputName}>
+                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                    <input
+                      id={inputName}
+                      data-name={inputName}
+                      type="number"
+                      value={inputValue}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value.trim()) {
+                          onInputChange(field.key, undefined);
+                          return;
+                        }
+                        onInputChange(field.key, Number(value));
+                      }}
+                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    />
+                  </label>
+                );
+              }
+
+              const stringValue = typeof rawValue === 'string' ? rawValue : '';
+              return (
+                <label key={field.key} className="block space-y-1" htmlFor={inputName}>
+                  <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                  <textarea
+                    id={inputName}
+                    data-name={inputName}
+                    rows={2}
+                    value={stringValue}
+                    onChange={(event) => onInputChange(field.key, event.target.value)}
+                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded px-2 py-1.5">

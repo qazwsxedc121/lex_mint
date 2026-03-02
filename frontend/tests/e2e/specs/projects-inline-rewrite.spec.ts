@@ -63,41 +63,6 @@ async function cleanupProject(api: APIRequestContext, projectId: string, tempRoo
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
-async function createInlineRewriteWorkflow(api: APIRequestContext) {
-  const nonce = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const workflowName = `e2e-inline-rewrite-workflow-${nonce}`;
-  const response = await api.post('/api/workflows', {
-    data: {
-      name: workflowName,
-      description: 'e2e custom rewrite workflow',
-      enabled: true,
-      scenario: 'editor_rewrite',
-      input_schema: [
-        { key: 'selected_text', type: 'string', required: true },
-        { key: 'instruction', type: 'string', required: false, default: '' },
-      ],
-      entry_node_id: 'start_1',
-      nodes: [
-        { id: 'start_1', type: 'start', next_id: 'llm_1' },
-        {
-          id: 'llm_1',
-          type: 'llm',
-          prompt_template: 'Rewrite: {{inputs.selected_text}}\nInstruction: {{inputs.instruction}}',
-          output_key: 'rewritten',
-          next_id: 'end_1',
-        },
-        { id: 'end_1', type: 'end', result_template: '{{ctx.rewritten}}' },
-      ],
-    },
-  });
-
-  expect(response.ok()).toBeTruthy();
-  const created = await response.json();
-  const workflowId = created?.id as string;
-  expect(workflowId).toMatch(/^wf_[a-z0-9]{12}$/);
-  return { workflowId, workflowName };
-}
-
 async function cleanupWorkflow(api: APIRequestContext, workflowId: string) {
   if (!workflowId) {
     return;
@@ -203,7 +168,6 @@ test.describe('Projects inline rewrite', () => {
       await page.keyboard.press('Control+K');
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
-      await page.locator('[data-name="inline-rewrite-instruction"]').fill('Keep markdown heading unchanged.');
       await page.locator('[data-name="inline-rewrite-generate"]').click();
 
       const createSessionReq = await createSessionReqPromise;
@@ -233,7 +197,7 @@ test.describe('Projects inline rewrite', () => {
     }
   });
 
-  test('select custom rewrite workflow and send workflow-scoped run request', async ({ page }) => {
+  test('create editor rewrite workflow in workflows page and use it in projects', async ({ page }) => {
     const api = await pwRequest.newContext({ baseURL: API_BASE });
     let projectId = '';
     let tempRoot = '';
@@ -245,9 +209,46 @@ test.describe('Projects inline rewrite', () => {
       projectId = created.projectId;
       tempRoot = created.tempRoot;
 
-      const customWorkflow = await createInlineRewriteWorkflow(api);
-      customWorkflowId = customWorkflow.workflowId;
-      customWorkflowName = customWorkflow.workflowName;
+      const nonce = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+      customWorkflowName = `e2e-inline-rewrite-ui-${nonce}`;
+
+      await page.goto('/workflows');
+      await expect(page.locator('[data-name="workflows-module"]')).toBeVisible();
+
+      const createWorkflowResponsePromise = page.waitForResponse((response) => {
+        if (response.request().method() !== 'POST') return false;
+        return new URL(response.url()).pathname === '/api/workflows';
+      });
+      await page.locator('[data-name="workflow-list-create"]').click();
+
+      const createWorkflowResponse = await createWorkflowResponsePromise;
+      expect(createWorkflowResponse.ok()).toBeTruthy();
+      const createWorkflowBody = await createWorkflowResponse.json();
+      customWorkflowId = createWorkflowBody?.id as string;
+      expect(customWorkflowId).toMatch(/^wf_[a-z0-9]{12}$/);
+
+      await page.locator('[data-name="workflow-meta-name"]').fill(customWorkflowName);
+      await page.locator('[data-name="workflow-meta-description"]').fill('e2e custom rewrite workflow from UI');
+      await page.locator('[data-name="workflow-meta-scenario"]').selectOption('editor_rewrite');
+      await expect(page.locator('[data-name="workflow-meta-scenario"]')).toHaveValue('editor_rewrite');
+
+      const updateWorkflowResponsePromise = page.waitForResponse((response) => {
+        if (response.request().method() !== 'PUT') return false;
+        return new URL(response.url()).pathname === `/api/workflows/${customWorkflowId}`;
+      });
+      await page.locator('[data-name="workflow-editor-save"]').click();
+      const updateWorkflowResponse = await updateWorkflowResponsePromise;
+      expect(updateWorkflowResponse.ok()).toBeTruthy();
+      await expect
+        .poll(async () => {
+          const workflowRes = await api.get(`/api/workflows/${customWorkflowId}`);
+          if (!workflowRes.ok()) {
+            return 'missing';
+          }
+          const workflow = await workflowRes.json();
+          return workflow?.scenario ?? '';
+        })
+        .toBe('editor_rewrite');
 
       let runRequestUrl = '';
       let runPayload: Record<string, unknown> | null = null;
@@ -306,14 +307,8 @@ test.describe('Projects inline rewrite', () => {
         });
       });
 
-      await page.goto('/projects');
-      await expect(page.locator('[data-name="projects-module-root"]')).toBeVisible();
-
-      const projectCard = page.getByRole('button', { name: new RegExp(created.projectName) });
-      await expect(projectCard).toBeVisible();
-      await projectCard.click();
-
-      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+      await page.goto(`/projects/${projectId}`);
+      await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
       const topFileNode = page.locator('[data-name="file-tree"]').getByText(created.topFileName, { exact: true });
       await expect(topFileNode).toBeVisible();
       await topFileNode.click();
@@ -323,9 +318,14 @@ test.describe('Projects inline rewrite', () => {
       await page.keyboard.press('Control+K');
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
-      await expect(page.locator('[data-name="inline-rewrite-workflow"]')).toContainText(customWorkflowName);
+      await expect
+        .poll(async () =>
+          page.locator('[data-name="inline-rewrite-workflow"]').evaluate((element) =>
+            Array.from((element as HTMLSelectElement).options).map((opt) => opt.value)
+          )
+        )
+        .toContain(customWorkflowId);
       await page.locator('[data-name="inline-rewrite-workflow"]').selectOption(customWorkflowId);
-      await page.locator('[data-name="inline-rewrite-instruction"]').fill('Use custom workflow');
       await page.locator('[data-name="inline-rewrite-generate"]').click();
 
       await expect(page.locator('[data-name="inline-rewrite-preview"]')).toContainText(
@@ -338,8 +338,8 @@ test.describe('Projects inline rewrite', () => {
       expect(runPayload?.project_id).toBe(projectId);
       expect(runPayload?.stream_mode).toBe('editor_rewrite');
       const inputs = runPayload?.inputs as Record<string, unknown> | undefined;
+      expect(inputs?.input).toContain('This sentence should be rewritten.');
       expect(inputs?.selected_text).toContain('This sentence should be rewritten.');
-      expect(inputs?.instruction).toContain('Use custom workflow');
     } finally {
       if (customWorkflowId) {
         await cleanupWorkflow(api, customWorkflowId);

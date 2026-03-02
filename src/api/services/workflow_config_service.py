@@ -18,7 +18,7 @@ class WorkflowConfigService:
     """CRUD helpers for persisted workflow definitions."""
 
     INLINE_REWRITE_WORKFLOW_ID = "wf_inline_rewrite_default"
-    INLINE_REWRITE_TEMPLATE_VERSION = 1
+    INLINE_REWRITE_TEMPLATE_VERSION = 2
 
     _locks: dict[str, asyncio.Lock] = {}
     _locks_guard = asyncio.Lock()
@@ -63,11 +63,11 @@ class WorkflowConfigService:
         inline_rewrite_prompt = (
             "Task: Rewrite only the selected text using the instruction and surrounding context.\n"
             "Instruction: {{inputs.instruction}}\n"
-            "File: {{inputs.file_path}}\n"
-            "Language: {{inputs.language}}\n\n"
-            "<context_before>\n{{inputs.context_before}}\n</context_before>\n\n"
-            "<selected_text>\n{{inputs.selected_text}}\n</selected_text>\n\n"
-            "<context_after>\n{{inputs.context_after}}\n</context_after>\n\n"
+            "File: {{inputs._file_path}}\n"
+            "Language: {{inputs._language}}\n\n"
+            "<context_before>\n{{inputs._context_before}}\n</context_before>\n\n"
+            "<selected_text>\n{{inputs._selected_text}}\n</selected_text>\n\n"
+            "<context_after>\n{{inputs._context_after}}\n</context_after>\n\n"
             "Return only the rewritten selected text.\n"
             "Do not output explanations, markdown fences, headings, or commentary."
         )
@@ -81,17 +81,17 @@ class WorkflowConfigService:
                 is_system=True,
                 template_version=self.INLINE_REWRITE_TEMPLATE_VERSION,
                 input_schema=[
-                    WorkflowInputDef(key="selected_text", type="string", required=True),
+                    WorkflowInputDef(key="_selected_text", type="string", required=True),
                     WorkflowInputDef(
                         key="instruction",
                         type="string",
                         required=False,
                         default="Improve clarity while preserving meaning and style.",
                     ),
-                    WorkflowInputDef(key="context_before", type="string", required=False, default=""),
-                    WorkflowInputDef(key="context_after", type="string", required=False, default=""),
-                    WorkflowInputDef(key="file_path", type="string", required=False, default="(unknown)"),
-                    WorkflowInputDef(key="language", type="string", required=False, default="(unknown)"),
+                    WorkflowInputDef(key="_context_before", type="string", required=False, default=""),
+                    WorkflowInputDef(key="_context_after", type="string", required=False, default=""),
+                    WorkflowInputDef(key="_file_path", type="string", required=False, default="(unknown)"),
+                    WorkflowInputDef(key="_language", type="string", required=False, default="(unknown)"),
                 ],
                 entry_node_id="start_1",
                 nodes=[

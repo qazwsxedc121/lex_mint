@@ -32,6 +32,9 @@
     "namePlaceholder": "工作流名称",
     "description": "描述",
     "descriptionPlaceholder": "这个工作流的用途",
+    "scenario": "场景",
+    "scenarioGeneral": "通用",
+    "scenarioEditorRewrite": "内联改写（项目编辑器）",
     "status": "状态",
     "enabled": "已启用",
     "disabled": "已禁用"

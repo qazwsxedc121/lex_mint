@@ -16,25 +16,33 @@ import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { openSearchPanel, search } from '@codemirror/search';
 import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import type { FileContent } from '../../../types/project';
-import type { Workflow } from '../../../types/workflow';
+import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
 import { Breadcrumb } from './Breadcrumb';
 import { listWorkflows, readFile, runWorkflowStream, writeFile } from '../../../services/api';
 import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
 import { InlineRewritePanel } from './InlineRewritePanel';
-import type { RewritePreset } from './InlineRewritePanel';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
 const INLINE_REWRITE_CONTEXT_CHARS = 1200;
 const AGENT_AUTO_SAVE_BEFORE_SEND_KEY = 'project-agent-auto-save-before-send';
 const THINK_BLOCK_REGEX = /<think>[\s\S]*?<\/think>/g;
 const DEFAULT_INLINE_REWRITE_WORKFLOW_ID = 'wf_inline_rewrite_default';
-const REWRITE_PRESET_INSTRUCTIONS: Record<RewritePreset, string> = {
-  clarity: 'Improve clarity and readability while preserving the original meaning.',
-  concise: 'Make the text more concise while preserving key meaning and facts.',
-  professional: 'Rewrite in a professional and polished tone while keeping intent.',
-  grammar: 'Fix grammar, spelling, and punctuation while preserving style and meaning.',
-};
+const PRIMARY_REWRITE_INPUT_KEYS = new Set(['input', 'text', 'selected_text']);
+const LEGACY_AUTO_REWRITE_INPUT_KEYS = new Set([
+  ...PRIMARY_REWRITE_INPUT_KEYS,
+  'context_before',
+  'context_after',
+  'file_path',
+  'language',
+  'project_id',
+  'session_id',
+  'selection_start',
+  'selection_end',
+]);
+
+const isAutoRewriteInputKey = (key: string): boolean =>
+  key.startsWith('_') || LEGACY_AUTO_REWRITE_INPUT_KEYS.has(key.toLowerCase());
 
 interface RewriteSelectionSnapshot {
   from: number;
@@ -169,8 +177,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [inlineRewriteOpen, setInlineRewriteOpen] = useState(false);
   const [inlineRewriteStreaming, setInlineRewriteStreaming] = useState(false);
   const [inlineRewriteError, setInlineRewriteError] = useState<string | null>(null);
-  const [inlineRewritePreset, setInlineRewritePreset] = useState<RewritePreset>('clarity');
-  const [inlineRewriteInstruction, setInlineRewriteInstruction] = useState('');
+  const [inlineRewriteInputs, setInlineRewriteInputs] = useState<Record<string, unknown>>({});
   const [inlineRewriteSourceText, setInlineRewriteSourceText] = useState('');
   const [inlineRewritePreview, setInlineRewritePreview] = useState('');
   const [inlineRewriteWorkflowId, setInlineRewriteWorkflowId] = useState(DEFAULT_INLINE_REWRITE_WORKFLOW_ID);
@@ -247,6 +254,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setInlineRewriteOpen(false);
       setInlineRewriteStreaming(false);
       setInlineRewriteError(null);
+      setInlineRewriteInputs({});
       setInlineRewriteSourceText('');
       setInlineRewritePreview('');
       rewriteSelectionRef.current = null;
@@ -357,6 +365,65 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       inlineRewriteWorkflows.filter((workflow) => workflow.enabled && workflow.scenario === 'editor_rewrite'),
     [inlineRewriteWorkflows]
   );
+  const activeRewriteWorkflow = useMemo(() => {
+    if (rewriteWorkflowOptions.length === 0) {
+      return null;
+    }
+    return (
+      rewriteWorkflowOptions.find((workflow) => workflow.id === inlineRewriteWorkflowId) ||
+      rewriteWorkflowOptions[0]
+    );
+  }, [inlineRewriteWorkflowId, rewriteWorkflowOptions]);
+  const inlineRewriteWorkflowInputs = useMemo(() => {
+    if (!activeRewriteWorkflow) {
+      return [] as WorkflowInputDef[];
+    }
+    return activeRewriteWorkflow.input_schema.filter(
+      (inputDef) => !isAutoRewriteInputKey(inputDef.key)
+    );
+  }, [activeRewriteWorkflow]);
+
+  const buildInlineRewriteDefaultInputs = useCallback((workflow: Workflow): Record<string, unknown> => {
+    const defaults: Record<string, unknown> = {};
+    for (const inputDef of workflow.input_schema) {
+      if (isAutoRewriteInputKey(inputDef.key)) {
+        continue;
+      }
+      if (inputDef.default !== undefined) {
+        defaults[inputDef.key] = inputDef.default;
+      }
+    }
+    return defaults;
+  }, []);
+
+  const buildInlineRewriteAutoInputs = useCallback(
+    (snapshot: RewriteSelectionSnapshot, sessionId?: string | null): Record<string, unknown> => {
+      const baseValues: Record<string, unknown> = {
+        input: snapshot.selectedText,
+        text: snapshot.selectedText,
+        selected_text: snapshot.selectedText,
+        context_before: snapshot.contextBefore,
+        context_after: snapshot.contextAfter,
+        file_path: snapshot.filePath,
+        language: snapshot.language,
+        selection_start: snapshot.from,
+        selection_end: snapshot.to,
+      };
+      if (projectId) {
+        baseValues.project_id = projectId;
+      }
+      if (sessionId) {
+        baseValues.session_id = sessionId;
+      }
+
+      const withAliases: Record<string, unknown> = { ...baseValues };
+      for (const [key, value] of Object.entries(baseValues)) {
+        withAliases[`_${key}`] = value;
+      }
+      return withAliases;
+    },
+    [projectId]
+  );
 
   const ensureInlineRewriteWorkflowsLoaded = useCallback(async (): Promise<Workflow[]> => {
     if (inlineRewriteWorkflowsLoading) {
@@ -396,14 +463,88 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
   }, [inlineRewriteWorkflowsLoading, rewriteWorkflowOptions, t]);
 
-  const buildInlineRewriteInstruction = useCallback(() => {
-    const presetInstruction = REWRITE_PRESET_INSTRUCTIONS[inlineRewritePreset];
-    const customInstruction = inlineRewriteInstruction.trim();
-    if (!customInstruction) {
-      return presetInstruction;
+  useEffect(() => {
+    if (!activeRewriteWorkflow) {
+      setInlineRewriteInputs({});
+      return;
     }
-    return `${presetInstruction}\n${customInstruction}`;
-  }, [inlineRewriteInstruction, inlineRewritePreset]);
+    setInlineRewriteInputs(buildInlineRewriteDefaultInputs(activeRewriteWorkflow));
+  }, [activeRewriteWorkflow, buildInlineRewriteDefaultInputs]);
+
+  const handleInlineRewriteWorkflowChange = useCallback((workflowId: string) => {
+    setInlineRewriteWorkflowId(workflowId);
+    setInlineRewriteError(null);
+    setInlineRewritePreview('');
+  }, []);
+
+  const handleInlineRewriteInputChange = useCallback((key: string, value: unknown) => {
+    setInlineRewriteInputs((previous) => {
+      const next = { ...previous };
+      if (value === undefined) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      return next;
+    });
+  }, []);
+
+  const buildInlineRewriteRunInputs = useCallback(
+    (
+      workflow: Workflow,
+      snapshot: RewriteSelectionSnapshot,
+      sessionId?: string | null
+    ): { inputs: Record<string, unknown>; error?: string } => {
+      const autoInputs = buildInlineRewriteAutoInputs(snapshot, sessionId);
+      const runInputs: Record<string, unknown> = { ...autoInputs, ...inlineRewriteInputs };
+
+      for (const inputDef of workflow.input_schema) {
+        let value = runInputs[inputDef.key];
+        if (value === undefined && inputDef.default !== undefined) {
+          value = inputDef.default;
+        }
+
+        if (value === undefined || value === null || (inputDef.type !== 'string' && value === '')) {
+          if (inputDef.required) {
+            return {
+              inputs: runInputs,
+              error: t('inlineRewrite.missingRequiredInput', { key: inputDef.key }),
+            };
+          }
+          continue;
+        }
+
+        if (inputDef.type === 'string') {
+          runInputs[inputDef.key] = typeof value === 'string' ? value : String(value);
+          continue;
+        }
+
+        if (inputDef.type === 'number') {
+          if (typeof value !== 'number' || Number.isNaN(value)) {
+            return {
+              inputs: runInputs,
+              error: t('inlineRewrite.invalidNumberInput', { key: inputDef.key }),
+            };
+          }
+          runInputs[inputDef.key] = value;
+          continue;
+        }
+
+        if (inputDef.type === 'boolean') {
+          if (typeof value !== 'boolean') {
+            return {
+              inputs: runInputs,
+              error: t('inlineRewrite.invalidBooleanInput', { key: inputDef.key }),
+            };
+          }
+          runInputs[inputDef.key] = value;
+        }
+      }
+
+      return { inputs: runInputs };
+    },
+    [buildInlineRewriteAutoInputs, inlineRewriteInputs, t]
+  );
 
   const handleOpenInlineRewrite = useCallback(() => {
     void ensureInlineRewriteWorkflowsLoaded();
@@ -418,9 +559,20 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return;
     }
 
+    if (activeRewriteWorkflow) {
+      const defaults = buildInlineRewriteDefaultInputs(activeRewriteWorkflow);
+      setInlineRewriteInputs(defaults);
+    }
+
     setInlineRewriteSourceText(snapshot.selectedText);
     setInlineRewritePreview('');
-  }, [ensureInlineRewriteWorkflowsLoaded, getInlineRewriteSelectionSnapshot, t]);
+  }, [
+    ensureInlineRewriteWorkflowsLoaded,
+    getInlineRewriteSelectionSnapshot,
+    t,
+    activeRewriteWorkflow,
+    buildInlineRewriteDefaultInputs,
+  ]);
 
   const handleStopInlineRewrite = useCallback(() => {
     inlineRewriteAbortRef.current?.abort();
@@ -450,9 +602,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setInlineRewriteError(t('inlineRewrite.noWorkflows'));
       return;
     }
-    const activeRewriteWorkflow =
+    const workflowToRun =
       availableWorkflows.find((workflow) => workflow.id === inlineRewriteWorkflowId) || availableWorkflows[0];
-    if (!activeRewriteWorkflow) {
+    if (!workflowToRun) {
       setInlineRewriteOpen(true);
       setInlineRewriteError(t('inlineRewrite.noWorkflows'));
       return;
@@ -476,17 +628,17 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setInlineRewriteError(null);
     setInlineRewriteStreaming(true);
 
+    const prepared = buildInlineRewriteRunInputs(workflowToRun, snapshot, sessionId);
+    if (prepared.error) {
+      setInlineRewriteStreaming(false);
+      setInlineRewriteError(prepared.error);
+      return;
+    }
+
     try {
       await runWorkflowStream(
-        activeRewriteWorkflow.id,
-        {
-          selected_text: snapshot.selectedText,
-          instruction: buildInlineRewriteInstruction(),
-          context_before: snapshot.contextBefore,
-          context_after: snapshot.contextAfter,
-          file_path: snapshot.filePath,
-          language: snapshot.language,
-        },
+        workflowToRun.id,
+        prepared.inputs,
         {
           onChunk: (chunk) => {
             setInlineRewritePreview((prev) => prev + chunk);
@@ -522,7 +674,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     getInlineRewriteSelectionSnapshot,
     t,
     ensureInlineRewriteSession,
-    buildInlineRewriteInstruction,
+    buildInlineRewriteRunInputs,
     projectId,
   ]);
 
@@ -1229,11 +1381,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         workflowOptions={rewriteWorkflowOptions.map((workflow) => ({ id: workflow.id, name: workflow.name }))}
         selectedWorkflowId={inlineRewriteWorkflowId}
         workflowLoading={inlineRewriteWorkflowsLoading}
-        preset={inlineRewritePreset}
-        customInstruction={inlineRewriteInstruction}
-        onWorkflowChange={setInlineRewriteWorkflowId}
-        onPresetChange={setInlineRewritePreset}
-        onCustomInstructionChange={setInlineRewriteInstruction}
+        workflowInputs={inlineRewriteWorkflowInputs}
+        inputValues={inlineRewriteInputs}
+        onWorkflowChange={handleInlineRewriteWorkflowChange}
+        onInputChange={handleInlineRewriteInputChange}
         onGenerate={handleStartInlineRewrite}
         onStop={handleStopInlineRewrite}
         onAccept={handleAcceptInlineRewrite}
