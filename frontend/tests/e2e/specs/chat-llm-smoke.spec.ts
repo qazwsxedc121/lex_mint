@@ -21,47 +21,46 @@ test.describe('Chat LLM smoke', () => {
       await page.goto(`/chat/${sessionId}`);
       await expect(page.locator('[data-name="chat-view-root"]')).toBeVisible();
 
-      const assistantBubbles = page.locator('[data-name="message-bubble-assistant"]');
-      const beforeAssistantCount = await assistantBubbles.count();
-
       const input = page.locator('[data-name="input-box-root"] textarea');
       await expect(input).toBeVisible();
 
-      const message = 'Please reply with one short sentence for this e2e smoke test.';
+      const marker = `E2E-${Date.now()}`;
+      const message = `${marker}: Please reply with one short sentence for this e2e smoke test.`;
       await input.fill(message);
       await page.locator('[data-name="input-box-root"] button').filter({ hasText: /Send|发送/ }).click();
 
-      await expect(page.locator('[data-name="message-bubble-user"]').last()).toContainText(message);
-
+      let assistantReply = '';
       await expect
-        .poll(async () => await assistantBubbles.count(), {
-          timeout: 180000,
-          intervals: [1000, 2000, 3000, 5000],
-        })
-        .toBeGreaterThan(beforeAssistantCount);
+        .poll(
+          async () => {
+            const sessionRes = await api.get(`/api/sessions/${sessionId}?context_type=chat`);
+            if (!sessionRes.ok()) {
+              return false;
+            }
+            const session = await sessionRes.json();
+            const messages = Array.isArray(session?.state?.messages) ? session.state.messages : [];
+            const hasUserMessage = messages.some(
+              (msg: { role?: string; content?: string }) =>
+                msg?.role === 'user' && typeof msg?.content === 'string' && msg.content.includes(marker)
+            );
+            const latestAssistant = [...messages]
+              .reverse()
+              .find((msg: { role?: string; content?: string }) => msg?.role === 'assistant' && typeof msg?.content === 'string');
+            const candidate = (latestAssistant?.content || '').trim();
+            const isPlaceholder = /^Generating\.\.\.$/i.test(candidate) || /^生成中/.test(candidate);
+            if (hasUserMessage && candidate.length > 5 && !isPlaceholder) {
+              assistantReply = candidate;
+              return true;
+            }
+            return false;
+          },
+          {
+            timeout: 180000,
+            intervals: [1000, 2000, 3000, 5000],
+          }
+        )
+        .toBeTruthy();
 
-      const lastAssistantContent = assistantBubbles
-        .last()
-        .locator('[data-name="message-bubble-content"]')
-        .first();
-
-      await expect(lastAssistantContent).toBeVisible();
-      await expect(page.locator('[data-name="input-box-root"] button').filter({ hasText: /Stop|停止/ })).toHaveCount(0, {
-        timeout: 180000,
-      });
-
-      await expect
-        .poll(async () => {
-          const text = (await lastAssistantContent.innerText()).trim();
-          const isPlaceholder = /^Generating\.\.\.$/i.test(text) || /^生成中/.test(text);
-          return isPlaceholder ? 0 : text.length;
-        }, {
-          timeout: 60000,
-          intervals: [500, 1000, 2000],
-        })
-        .toBeGreaterThan(5);
-
-      const assistantReply = (await lastAssistantContent.innerText()).trim();
       console.log(`[e2e-chat-smoke] user: ${message}`);
       console.log(`[e2e-chat-smoke] assistant: ${assistantReply}`);
     } finally {

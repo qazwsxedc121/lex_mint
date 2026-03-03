@@ -7,6 +7,7 @@ if (!process.env.API_PORT) {
   throw new Error('API_PORT is required for e2e tests.');
 }
 const API_BASE = `http://127.0.0.1:${process.env.API_PORT}`;
+const MODIFIER_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function createTempProject(api: APIRequestContext) {
   const nonce = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
@@ -164,10 +165,11 @@ test.describe('Projects inline rewrite', () => {
       });
 
       await page.locator('.cm-content').click();
-      await page.keyboard.press('Control+A');
-      await page.keyboard.press('Control+K');
+      await page.keyboard.press(`${MODIFIER_KEY}+A`);
+      await page.keyboard.press(`${MODIFIER_KEY}+K`);
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
+      await expect(page.locator('[data-name="inline-rewrite-no-selection-dialog"]')).toHaveCount(0);
       await page.locator('[data-name="inline-rewrite-generate"]').click();
 
       const createSessionReq = await createSessionReqPromise;
@@ -270,7 +272,7 @@ test.describe('Projects inline rewrite', () => {
 
       await page.locator('.cm-content').click();
       await page.keyboard.press('ArrowRight');
-      await page.keyboard.press('Control+K');
+      await page.keyboard.press(`${MODIFIER_KEY}+K`);
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
       await page.locator('[data-name="inline-rewrite-workflow"]').selectOption('wf_inline_rewrite_default');
@@ -413,10 +415,11 @@ test.describe('Projects inline rewrite', () => {
       await topFileNode.click();
 
       await page.locator('.cm-content').click();
-      await page.keyboard.press('Control+A');
-      await page.keyboard.press('Control+K');
+      await page.keyboard.press(`${MODIFIER_KEY}+A`);
+      await page.keyboard.press(`${MODIFIER_KEY}+K`);
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
+      await expect(page.locator('[data-name="inline-rewrite-no-selection-dialog"]')).toHaveCount(0);
       await expect
         .poll(async () =>
           page.locator('[data-name="inline-rewrite-workflow"]').evaluate((element) =>
