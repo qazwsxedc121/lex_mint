@@ -188,6 +188,7 @@ export async function createSession(
   temporary: boolean = false,
   groupAssistants?: string[],
   groupMode?: 'round_robin' | 'committee',
+  groupSettings?: Record<string, unknown>,
   targetType?: 'assistant' | 'model'
 ): Promise<string> {
   const body: {
@@ -197,6 +198,7 @@ export async function createSession(
     temporary?: boolean;
     group_assistants?: string[];
     group_mode?: 'round_robin' | 'committee';
+    group_settings?: Record<string, unknown>;
   } = {};
   if (targetType) {
     body.target_type = targetType;
@@ -212,6 +214,9 @@ export async function createSession(
   if (groupAssistants && groupAssistants.length >= 2) {
     body.group_assistants = groupAssistants;
     body.group_mode = groupMode || 'round_robin';
+    if (groupSettings && Object.keys(groupSettings).length > 0) {
+      body.group_settings = groupSettings;
+    }
   }
 
   // Build query params

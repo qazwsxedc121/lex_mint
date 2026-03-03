@@ -50,6 +50,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
   const [models, setModels] = useState<Model[]>([]);
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [groupMode, setGroupMode] = useState<GroupChatMode>('round_robin');
+  const [committeeSupervisorId, setCommitteeSupervisorId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [toastError, setToastError] = useState<string | null>(null);
 
@@ -57,6 +58,7 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     if (!open) return;
     setSelectedParticipantIds([]);
     setGroupMode('round_robin');
+    setCommitteeSupervisorId('');
     setToastError(null);
     Promise.all([api.listAssistants(), listModels()])
       .then(([assistantList, modelList]) => {
@@ -80,6 +82,16 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     const timer = window.setTimeout(() => setToastError(null), 3600);
     return () => window.clearTimeout(timer);
   }, [toastError]);
+
+  useEffect(() => {
+    if (groupMode !== 'committee') return;
+    setCommitteeSupervisorId((prev) => {
+      if (prev && selectedParticipantIds.includes(prev)) {
+        return prev;
+      }
+      return selectedParticipantIds[0] || '';
+    });
+  }, [groupMode, selectedParticipantIds]);
 
   const participantNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -114,7 +126,19 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     if (selectedParticipantIds.length < 2) return;
     setLoading(true);
     try {
-      const sessionId = await api.createGroupSession(selectedParticipantIds, groupMode);
+      const groupSettings = (
+        groupMode === 'committee' &&
+        committeeSupervisorId &&
+        selectedParticipantIds.includes(committeeSupervisorId)
+      )
+        ? {
+            version: 1,
+            committee: {
+              supervisor_id: committeeSupervisorId,
+            },
+          }
+        : undefined;
+      const sessionId = await api.createGroupSession(selectedParticipantIds, groupMode, groupSettings);
       onCreated(sessionId);
       onClose();
     } catch (err: unknown) {
@@ -198,6 +222,48 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
             {t('groupChat.selectHint')}
           </p>
+          {groupMode === 'committee' && selectedParticipantIds.length > 0 && (
+            <div
+              data-name="group-chat-modal-committee-roles"
+              className="mb-3 rounded-md border border-sky-200 bg-sky-50/60 p-2.5 dark:border-sky-800 dark:bg-slate-900/60"
+            >
+              <p className="text-xs font-medium text-sky-800 dark:text-sky-200">
+                {t('groupChat.committeeRolesTitle')}
+              </p>
+              <p className="mt-1 text-[11px] text-sky-700/90 dark:text-sky-300/90">
+                {t('groupChat.committeeRolesHint')}
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {selectedParticipantIds.map((participantId) => {
+                  const participantName = participantNameMap.get(participantId) || `AI-${participantId.slice(0, 4)}`;
+                  const isSupervisor = committeeSupervisorId === participantId;
+                  return (
+                    <label
+                      key={participantId}
+                      className="flex cursor-pointer items-center justify-between rounded-md border border-sky-100 bg-white/90 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800/80"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <input
+                          type="radio"
+                          name="group-chat-committee-supervisor"
+                          checked={isSupervisor}
+                          onChange={() => setCommitteeSupervisorId(participantId)}
+                        />
+                        <span className="truncate text-gray-800 dark:text-gray-100">{participantName}</span>
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        isSupervisor
+                          ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-700/70 dark:text-gray-300'
+                      }`}>
+                        {isSupervisor ? t('groupChat.roleSupervisor') : t('groupChat.roleParticipant')}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Assistants</p>

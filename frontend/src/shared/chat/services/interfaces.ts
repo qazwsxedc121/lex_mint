@@ -32,7 +32,11 @@ export interface ChatAPI {
     temporary?: boolean,
     targetType?: 'assistant' | 'model'
   ): Promise<string>;
-  createGroupSession(groupAssistants: string[], mode?: GroupChatMode): Promise<string>;
+  createGroupSession(
+    groupAssistants: string[],
+    mode?: GroupChatMode,
+    groupSettings?: Record<string, unknown>
+  ): Promise<string>;
   listSessions(): Promise<Session[]>;
   deleteSession(sessionId: string): Promise<void>;
   saveTemporarySession(sessionId: string): Promise<void>;
