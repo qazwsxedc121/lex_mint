@@ -711,6 +711,14 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     rewriteSelectionRef.current = null;
   }, [handleStopInlineRewrite]);
 
+  const handleToggleInlineRewrite = useCallback(() => {
+    if (inlineRewriteOpen) {
+      handleCloseInlineRewrite();
+      return;
+    }
+    handleOpenInlineRewrite();
+  }, [inlineRewriteOpen, handleCloseInlineRewrite, handleOpenInlineRewrite]);
+
   const handleStartInlineRewrite = useCallback(async (noSelectionMode: 'ask' | 'empty' | 'full_file' = 'ask') => {
     if (inlineRewriteStreaming || !content) {
       return;
@@ -1236,17 +1244,17 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
 
-  // Ctrl/Cmd+K handler for opening inline rewrite panel
+  // Ctrl/Cmd+K handler for toggling inline rewrite panel
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        handleOpenInlineRewrite();
+        handleToggleInlineRewrite();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleOpenInlineRewrite]);
+  }, [handleToggleInlineRewrite]);
 
   useEffect(() => {
     const handler = (rawEvent: Event) => {
@@ -1512,7 +1520,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onInsertToChat={handleInsertToChat}
         insertToChatDisabled={!content || isInsertingToChat}
         insertToChatTitle={insertToChatTitle}
-        onInlineRewrite={handleOpenInlineRewrite}
+        onInlineRewrite={handleToggleInlineRewrite}
         inlineRewriteDisabled={!content || inlineRewriteStreaming}
         inlineRewriteTitle={inlineRewriteTitle}
       />
