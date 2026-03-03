@@ -9,8 +9,8 @@ import pytest
 from fastapi import HTTPException
 
 from src.api.routers import chat as chat_router
-from src.api.routers import editor as editor_router
 from src.api.routers import translation as translation_router
+from src.api.routers import workflows as workflows_router
 from src.api.services.flow_stream_runtime import FlowStreamRuntime
 
 
@@ -236,23 +236,46 @@ async def test_translate_contract_flow_event_only(monkeypatch):
     assert events[2]["payload"]["text"] == "ni hao"
 
 
-@pytest.mark.asyncio
-async def test_editor_rewrite_contract_flow_event_only():
-    class _FakeRewriteService:
-        async def stream_rewrite(self, **_kwargs):
-            yield "rewritten"
-            yield " text"
+class _FakeWorkflow:
+    enabled = True
 
-    request = editor_router.RewriteRequest(
+
+class _FakeWorkflowConfigService:
+    async def get_workflow(self, _workflow_id: str):
+        return _FakeWorkflow()
+
+
+class _FakeWorkflowExecutionService:
+    def __init__(self):
+        self.calls: List[Dict[str, Any]] = []
+
+    async def execute_stream(self, workflow, inputs, **kwargs):
+        self.calls.append({"workflow": workflow, "inputs": inputs, **kwargs})
+        yield {"type": "text_delta", "text": "rewritten"}
+        yield {"type": "text_delta", "text": " text"}
+
+
+@pytest.mark.asyncio
+async def test_workflow_editor_rewrite_contract_flow_event_only():
+    execution_service = _FakeWorkflowExecutionService()
+    request = workflows_router.WorkflowRunRequest(
         session_id="session-editor-1",
-        selected_text="source text",
-        context_before="before",
-        context_after="after",
         context_type="project",
         project_id="proj-1",
+        stream_mode="editor_rewrite",
+        inputs={
+            "_selected_text": "source text",
+            "_context_before": "before",
+            "_context_after": "after",
+        },
     )
 
-    response = await editor_router.rewrite_text(request=request, rewrite_service=_FakeRewriteService())
+    response = await workflows_router.run_workflow_stream(
+        workflow_id="wf_inline_rewrite_default",
+        request=request,
+        service=_FakeWorkflowConfigService(),
+        execution_service=execution_service,
+    )
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
     _assert_seq_strictly_increasing(events)
@@ -262,19 +285,25 @@ async def test_editor_rewrite_contract_flow_event_only():
     assert events[0]["payload"]["context_type"] == "project"
     assert events[1]["payload"]["text"] == "rewritten"
     assert events[2]["payload"]["text"] == " text"
+    assert len(execution_service.calls) == 1
+    assert execution_service.calls[0]["stream_mode"] == "editor_rewrite"
+    assert execution_service.calls[0]["context_type"] == "project"
+    assert execution_service.calls[0]["project_id"] == "proj-1"
 
 
 @pytest.mark.asyncio
-async def test_editor_rewrite_requires_project_context():
+async def test_workflow_stream_requires_project_id_for_project_context():
     with pytest.raises(HTTPException) as exc_info:
-        await editor_router.rewrite_text(
-            request=editor_router.RewriteRequest(
+        await workflows_router.run_workflow_stream(
+            workflow_id="wf_inline_rewrite_default",
+            request=workflows_router.WorkflowRunRequest(
                 session_id="session-editor-2",
-                selected_text="source text",
-                context_type="chat",
-                project_id="proj-1",
+                context_type="project",
+                stream_mode="editor_rewrite",
+                inputs={"_selected_text": "source text"},
             ),
-            rewrite_service=object(),  # type: ignore[arg-type]
+            service=_FakeWorkflowConfigService(),
+            execution_service=_FakeWorkflowExecutionService(),
         )
 
     assert exc_info.value.status_code == 400
