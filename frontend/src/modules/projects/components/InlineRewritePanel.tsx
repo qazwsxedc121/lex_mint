@@ -4,7 +4,9 @@
 
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { WorkflowInputDef } from '../../../types/workflow';
+import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
+import { WorkflowLauncherList } from '../../../shared/workflow-launcher/WorkflowLauncherList';
+import type { LauncherRecentItem, LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
 
 type DiffType = 'same' | 'add' | 'remove';
 
@@ -19,12 +21,16 @@ interface InlineRewritePanelProps {
   sourceText: string;
   rewrittenText: string;
   error: string | null;
-  workflowOptions: Array<{ id: string; name: string }>;
+  workflows: Workflow[];
   selectedWorkflowId: string;
   workflowLoading: boolean;
   workflowInputs: WorkflowInputDef[];
   inputValues: Record<string, unknown>;
+  favorites: Set<string>;
+  recents: LauncherRecentItem[];
+  recommendationContext: LauncherRecommendationContext;
   onWorkflowChange: (workflowId: string) => void;
+  onToggleFavorite: (workflowId: string) => void;
   onInputChange: (key: string, value: unknown) => void;
   onGenerate: () => void;
   onStop: () => void;
@@ -35,6 +41,7 @@ interface InlineRewritePanelProps {
   onAccept: () => void;
   onReject: () => void;
   onClose: () => void;
+  onOpenWorkflows: () => void;
 }
 
 function splitLines(value: string): string[] {
@@ -122,12 +129,16 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   sourceText,
   rewrittenText,
   error,
-  workflowOptions,
+  workflows,
   selectedWorkflowId,
   workflowLoading,
   workflowInputs,
   inputValues,
+  favorites,
+  recents,
+  recommendationContext,
   onWorkflowChange,
+  onToggleFavorite,
   onInputChange,
   onGenerate,
   onStop,
@@ -138,15 +149,15 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   onAccept,
   onReject,
   onClose,
+  onOpenWorkflows,
 }) => {
   const { t } = useTranslation('projects');
-
   const diffLines = useMemo(
     () => buildLineDiff(sourceText, rewrittenText),
     [sourceText, rewrittenText]
   );
   const hasRewriteResult = rewrittenText.length > 0;
-  const canGenerate = workflowOptions.length > 0 && !workflowLoading;
+  const canGenerate = workflows.length > 0 && !workflowLoading;
 
   if (!isOpen) {
     return null;
@@ -157,41 +168,73 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
       data-name="inline-rewrite-panel"
       className="border-b border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 space-y-3"
     >
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-          {t('inlineRewrite.title')}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          {t('common:close')}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2">
-        <label className="text-xs text-gray-600 dark:text-gray-400 self-center" htmlFor="inline-rewrite-workflow">
-          {t('inlineRewrite.workflowLabel')}
-        </label>
-        <select
-          id="inline-rewrite-workflow"
-          data-name="inline-rewrite-workflow"
-          value={selectedWorkflowId}
-          onChange={(event) => onWorkflowChange(event.target.value)}
-          disabled={workflowLoading || workflowOptions.length === 0}
-          className="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-500"
-        >
-          {workflowOptions.length === 0 ? (
-            <option value="">{workflowLoading ? t('inlineRewrite.loadingWorkflows') : t('inlineRewrite.noWorkflows')}</option>
-          ) : (
-            workflowOptions.map((workflow) => (
-              <option key={workflow.id} value={workflow.id}>
-                {workflow.name}
+      <div data-name="workflow-launcher-panel" className="space-y-3">
+      <div className="space-y-2">
+        {/* Keep legacy selector in DOM for backward compatibility. */}
+        <div className="sr-only">
+          <label className="text-xs text-gray-600 dark:text-gray-400 self-center" htmlFor="inline-rewrite-workflow">
+            {t('inlineRewrite.workflowLabel')}
+          </label>
+          <select
+            id="inline-rewrite-workflow"
+            data-name="inline-rewrite-workflow"
+            value={selectedWorkflowId}
+            onChange={(event) => onWorkflowChange(event.target.value)}
+            disabled={workflowLoading || workflows.length === 0 || isStreaming}
+            className="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-500"
+          >
+            {workflows.length === 0 ? (
+              <option value="">
+                {workflowLoading ? t('inlineRewrite.loadingWorkflows') : t('inlineRewrite.noWorkflows')}
               </option>
-            ))
+            ) : (
+              workflows.map((workflow) => (
+                <option key={workflow.id} value={workflow.id}>
+                  {workflow.name}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+
+        <WorkflowLauncherList
+          workflows={workflows}
+          selectedWorkflowId={selectedWorkflowId || null}
+          loading={workflowLoading}
+          selectionLocked={isStreaming}
+          namespace="projects"
+          compact
+          showSearch
+          maxWidthClassName="max-w-full xl:max-w-[920px]"
+          headerActions={(
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {t('common:close')}
+            </button>
           )}
-        </select>
+          favorites={favorites}
+          recents={recents}
+          recommendationContext={recommendationContext}
+          onSelect={onWorkflowChange}
+          onToggleFavorite={onToggleFavorite}
+          emptyMessage={t('inlineRewrite.noWorkflows')}
+        />
+
+        {!workflowLoading && workflows.length === 0 && (
+          <div className="rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-3">
+            <div className="text-xs text-gray-600 dark:text-gray-300">{t('workflowLauncher.emptyHint')}</div>
+            <button
+              type="button"
+              onClick={onOpenWorkflows}
+              className="mt-2 px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {t('workflowLauncher.openWorkflows')}
+            </button>
+          </div>
+        )}
       </div>
 
       {workflowInputs.length > 0 && (
@@ -406,6 +449,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

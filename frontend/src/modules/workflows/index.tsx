@@ -10,6 +10,7 @@ import { WorkflowRunner } from './components/WorkflowRunner';
 import { RunHistoryPanel } from './components/RunHistoryPanel';
 import { WorkflowTemplateGallery } from './components/WorkflowTemplateGallery';
 import { WORKFLOW_TEMPLATE_PRESETS } from './templates';
+import { useWorkflowLauncherStorage } from '../../shared/workflow-launcher/storage';
 
 const stringifyDsl = (workflow: Workflow): string => {
   return JSON.stringify(
@@ -25,6 +26,7 @@ const stringifyDsl = (workflow: Workflow): string => {
 
 export const WorkflowsModule: React.FC = () => {
   const { t } = useTranslation('workflow');
+  const { favoritesSet: launcherFavorites, recents: launcherRecents, toggleFavorite: toggleLauncherFavorite, addRecent: addLauncherRecent } = useWorkflowLauncherStorage();
   const {
     workflows,
     selectedWorkflowId,
@@ -169,7 +171,7 @@ export const WorkflowsModule: React.FC = () => {
     });
   };
 
-  const handleRun = async (workflowId: string, inputs: Record<string, unknown>) => {
+  const handleRun = React.useCallback(async (workflowId: string, inputs: Record<string, unknown>) => {
     const workflow = workflows.find((item) => item.id === workflowId) ?? null;
     if (!workflow) {
       return;
@@ -216,6 +218,7 @@ export const WorkflowsModule: React.FC = () => {
             setRunError(message);
           },
           onComplete: () => {
+            addLauncherRecent(workflow.id);
             void (async () => {
               const latestRuns = await refreshRuns(workflow.id);
               if (!hasFinalOutputRef.current) {
@@ -239,7 +242,7 @@ export const WorkflowsModule: React.FC = () => {
       setRunning(false);
       void refreshRuns(workflow.id);
     }
-  };
+  }, [addLauncherRecent, refreshRuns, t, workflows]);
 
   const handleStop = () => {
     abortControllerRef.current?.abort();
@@ -307,7 +310,10 @@ export const WorkflowsModule: React.FC = () => {
                     loading={loading}
                     saving={saving}
                     editable
+                    favorites={launcherFavorites}
+                    recents={launcherRecents}
                     onSelect={setSelectedWorkflowId}
+                    onToggleFavorite={toggleLauncherFavorite}
                     onCreate={handleCreate}
                     onDelete={handleDelete}
                   />
@@ -356,8 +362,12 @@ export const WorkflowsModule: React.FC = () => {
                   selectedWorkflowId={playgroundWorkflow?.id ?? null}
                   loading={loading}
                   saving={saving}
+                  selectionLocked={running}
                   editable={false}
+                  favorites={launcherFavorites}
+                  recents={launcherRecents}
                   onSelect={setSelectedWorkflowId}
+                  onToggleFavorite={toggleLauncherFavorite}
                   onCreate={handleCreate}
                   onDelete={handleDelete}
                 />
@@ -396,7 +406,10 @@ export const WorkflowsModule: React.FC = () => {
                   loading={loading}
                   saving={saving}
                   editable={false}
+                  favorites={launcherFavorites}
+                  recents={launcherRecents}
                   onSelect={setSelectedWorkflowId}
+                  onToggleFavorite={toggleLauncherFavorite}
                   onCreate={handleCreate}
                   onDelete={handleDelete}
                 />

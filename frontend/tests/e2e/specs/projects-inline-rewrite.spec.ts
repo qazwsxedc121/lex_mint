@@ -169,6 +169,17 @@ test.describe('Projects inline rewrite', () => {
       await page.keyboard.press(`${MODIFIER_KEY}+K`);
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
+      await expect(page.locator('[data-name="workflow-launcher-panel"]')).toBeVisible();
+      await expect(page.locator('[data-name="workflow-launcher-tabs"]')).toBeVisible();
+      await expect(page.locator('[data-name="workflow-launcher-tab-all"]')).toBeVisible();
+      await expect(page.locator('[data-name="workflow-launcher-item-wf_inline_rewrite_default"]')).toBeVisible();
+      await page.locator('[data-name="workflow-launcher-favorite-wf_inline_rewrite_default"]').click();
+      await page.locator('[data-name="workflow-launcher-tab-favorites"]').click();
+      await expect(page.locator('[data-name="workflow-launcher-section-favorites"]')).toBeVisible();
+      await page.locator('[data-name="editor-inline-rewrite-button"]').click();
+      await expect(page.locator('[data-name="inline-rewrite-panel"]')).toHaveCount(0);
+      await page.locator('[data-name="editor-inline-rewrite-button"]').click();
+      await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
       await expect(page.locator('[data-name="inline-rewrite-no-selection-dialog"]')).toHaveCount(0);
       await page.locator('[data-name="inline-rewrite-generate"]').click();
 
@@ -191,6 +202,9 @@ test.describe('Projects inline rewrite', () => {
       await page.locator('[data-name="inline-rewrite-accept"]').click();
       await expect(page.locator('.cm-content')).toContainText('Rewritten line for inline rewrite.');
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toHaveCount(0);
+      await page.keyboard.press(`${MODIFIER_KEY}+K`);
+      await page.locator('[data-name="workflow-launcher-tab-recent"]').click();
+      await expect(page.locator('[data-name="workflow-launcher-section-recent"]')).toBeVisible();
     } finally {
       if (projectId && tempRoot) {
         await cleanupProject(api, projectId, tempRoot);
@@ -275,7 +289,8 @@ test.describe('Projects inline rewrite', () => {
       await page.keyboard.press(`${MODIFIER_KEY}+K`);
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
-      await page.locator('[data-name="inline-rewrite-workflow"]').selectOption('wf_inline_rewrite_default');
+      await page.locator('[data-name="workflow-launcher-tab-all"]').click();
+      await page.locator('[data-name="workflow-launcher-item-wf_inline_rewrite_default"]').click();
       await page.locator('[data-name="inline-rewrite-generate"]').click();
       await expect(page.locator('[data-name="inline-rewrite-no-selection-dialog"]')).toBeVisible();
       await page.locator('[data-name="inline-rewrite-no-selection-full"]').click();
@@ -328,6 +343,7 @@ test.describe('Projects inline rewrite', () => {
       customWorkflowId = createWorkflowBody?.id as string;
       expect(customWorkflowId).toMatch(/^wf_[a-z0-9]{12}$/);
 
+      await page.locator(`[data-name="workflow-launcher-item-${customWorkflowId}"]`).click();
       await page.locator('[data-name="workflow-meta-name"]').fill(customWorkflowName);
       await page.locator('[data-name="workflow-meta-description"]').fill('e2e custom rewrite workflow from UI');
       await page.locator('[data-name="workflow-meta-scenario"]').selectOption('editor_rewrite');
@@ -420,14 +436,9 @@ test.describe('Projects inline rewrite', () => {
 
       await expect(page.locator('[data-name="inline-rewrite-panel"]')).toBeVisible();
       await expect(page.locator('[data-name="inline-rewrite-no-selection-dialog"]')).toHaveCount(0);
-      await expect
-        .poll(async () =>
-          page.locator('[data-name="inline-rewrite-workflow"]').evaluate((element) =>
-            Array.from((element as HTMLSelectElement).options).map((opt) => opt.value)
-          )
-        )
-        .toContain(customWorkflowId);
-      await page.locator('[data-name="inline-rewrite-workflow"]').selectOption(customWorkflowId);
+      await page.locator('[data-name="workflow-launcher-tab-all"]').click();
+      await expect(page.locator(`[data-name="workflow-launcher-item-${customWorkflowId}"]`)).toBeVisible();
+      await page.locator(`[data-name="workflow-launcher-item-${customWorkflowId}"]`).click();
       await page.locator('[data-name="inline-rewrite-generate"]').click();
 
       await expect(page.locator('[data-name="inline-rewrite-preview"]')).toContainText(

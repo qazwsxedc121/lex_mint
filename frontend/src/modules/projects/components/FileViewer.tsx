@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -22,6 +23,8 @@ import { listWorkflows, readFile, runWorkflowStream, writeFile } from '../../../
 import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
 import { InlineRewritePanel } from './InlineRewritePanel';
+import { useWorkflowLauncherStorage } from '../../../shared/workflow-launcher/storage';
+import type { LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
 const INLINE_REWRITE_CONTEXT_CHARS = 1200;
@@ -224,6 +227,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   onRegisterBeforeAgentSend,
 }) => {
   const { t } = useTranslation('projects');
+  const navigate = useNavigate();
   const [value, setValue] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [originalHash, setOriginalHash] = useState<string | null>(null);
@@ -250,6 +254,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
+  const { favoritesSet: launcherFavorites, recents: launcherRecents, toggleFavorite: toggleLauncherFavorite, addRecent: addLauncherRecent } = useWorkflowLauncherStorage();
 
   // Editor view reference
   const editorViewRef = useRef<EditorView | null>(null);
@@ -490,6 +495,15 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       (inputDef) => !isAutoRewriteInputKey(inputDef.key)
     );
   }, [activeRewriteWorkflow]);
+  const inlineRewriteRecommendationContext = useMemo<LauncherRecommendationContext>(
+    () => ({
+      module: 'projects',
+      requiredScenario: 'editor_rewrite',
+      filePath: content?.path,
+      hasSelection: Boolean(inlineRewriteSourceText.trim()),
+    }),
+    [content?.path, inlineRewriteSourceText]
+  );
 
   const buildInlineRewriteDefaultInputs = useCallback((workflow: Workflow): Record<string, unknown> => {
     const defaults: Record<string, unknown> = {};
@@ -594,10 +608,13 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   }, [activeRewriteWorkflow, buildInlineRewriteDefaultInputs]);
 
   const handleInlineRewriteWorkflowChange = useCallback((workflowId: string) => {
+    if (inlineRewriteStreaming) {
+      return;
+    }
     setInlineRewriteWorkflowId(workflowId);
     setInlineRewriteError(null);
     setInlineRewritePreview('');
-  }, []);
+  }, [inlineRewriteStreaming]);
 
   const handleInlineRewriteInputChange = useCallback((key: string, value: unknown) => {
     setInlineRewriteInputs((previous) => {
@@ -719,6 +736,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     handleOpenInlineRewrite();
   }, [inlineRewriteOpen, handleCloseInlineRewrite, handleOpenInlineRewrite]);
 
+  const handleOpenWorkflowsPage = useCallback(() => {
+    navigate('/workflows');
+  }, [navigate]);
+
   const handleStartInlineRewrite = useCallback(async (noSelectionMode: 'ask' | 'empty' | 'full_file' = 'ask') => {
     if (inlineRewriteStreaming || !content) {
       return;
@@ -787,6 +808,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           },
           onComplete: () => {
             setInlineRewriteStreaming(false);
+            addLauncherRecent(workflowToRun.id);
           },
           onError: (errorMessage) => {
             setInlineRewriteStreaming(false);
@@ -821,6 +843,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     value,
     buildInlineRewriteRunInputs,
     projectId,
+    addLauncherRecent,
   ]);
 
   const handleNoSelectionRunEmpty = useCallback(() => {
@@ -1531,12 +1554,16 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         sourceText={inlineRewriteSourceText}
         rewrittenText={inlineRewritePreview}
         error={inlineRewriteError}
-        workflowOptions={rewriteWorkflowOptions.map((workflow) => ({ id: workflow.id, name: workflow.name }))}
+        workflows={rewriteWorkflowOptions}
         selectedWorkflowId={inlineRewriteWorkflowId}
         workflowLoading={inlineRewriteWorkflowsLoading}
         workflowInputs={inlineRewriteWorkflowInputs}
         inputValues={inlineRewriteInputs}
+        favorites={launcherFavorites}
+        recents={launcherRecents}
+        recommendationContext={inlineRewriteRecommendationContext}
         onWorkflowChange={handleInlineRewriteWorkflowChange}
+        onToggleFavorite={toggleLauncherFavorite}
         onInputChange={handleInlineRewriteInputChange}
         onGenerate={handleStartInlineRewrite}
         onStop={handleStopInlineRewrite}
@@ -1547,6 +1574,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onAccept={handleAcceptInlineRewrite}
         onReject={handleCloseInlineRewrite}
         onClose={handleCloseInlineRewrite}
+        onOpenWorkflows={handleOpenWorkflowsPage}
       />
 
       {/* Editor */}
