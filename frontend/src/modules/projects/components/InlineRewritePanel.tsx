@@ -2,11 +2,14 @@
  * InlineRewritePanel - Rewrite selected editor content with streaming preview and diff.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FolderOpenIcon } from '@heroicons/react/24/outline';
+import { readFile } from '../../../services/api';
 import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
 import { WorkflowLauncherList } from '../../../shared/workflow-launcher/WorkflowLauncherList';
 import type { LauncherRecentItem, LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
+import { FilePickerDialog } from './FilePickerDialog';
 
 type DiffType = 'same' | 'add' | 'remove';
 
@@ -16,6 +19,8 @@ interface DiffLine {
 }
 
 interface InlineRewritePanelProps {
+  projectId: string;
+  currentFilePath?: string | null;
   isOpen: boolean;
   isStreaming: boolean;
   sourceText: string;
@@ -43,6 +48,22 @@ interface InlineRewritePanelProps {
   onClose: () => void;
   onOpenWorkflows: () => void;
 }
+
+const isIdentifierLikeField = (fieldKey: string): boolean => {
+  const normalized = fieldKey.trim().toLowerCase();
+  return normalized === 'id' || normalized.endsWith('_id');
+};
+
+const canInsertFileForInput = (field: WorkflowInputDef): boolean => {
+  if (field.type !== 'string') {
+    return false;
+  }
+  if (typeof field.allow_file_insert === 'boolean') {
+    return field.allow_file_insert;
+  }
+  // Backward-compatible safety for old schemas without explicit allow_file_insert.
+  return !isIdentifierLikeField(field.key);
+};
 
 function splitLines(value: string): string[] {
   return value.split('\n');
@@ -124,6 +145,8 @@ function diffLinePrefix(type: DiffType): string {
 }
 
 export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
+  projectId,
+  currentFilePath = null,
   isOpen,
   isStreaming,
   sourceText,
@@ -152,12 +175,67 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   onOpenWorkflows,
 }) => {
   const { t } = useTranslation('projects');
+  const [pickerFieldKey, setPickerFieldKey] = useState<string | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [loadingFieldKey, setLoadingFieldKey] = useState<string | null>(null);
   const diffLines = useMemo(
     () => buildLineDiff(sourceText, rewrittenText),
     [sourceText, rewrittenText]
   );
   const hasRewriteResult = rewrittenText.length > 0;
   const canGenerate = workflows.length > 0 && !workflowLoading;
+  const activeFieldLoading = useMemo(
+    () => Boolean(loadingFieldKey && pickerFieldKey === loadingFieldKey),
+    [loadingFieldKey, pickerFieldKey]
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPickerFieldKey(null);
+      setPickerError(null);
+      setLoadingFieldKey(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!pickerFieldKey) {
+      return;
+    }
+    if (!workflowInputs.some((field) => field.key === pickerFieldKey)) {
+      setPickerFieldKey(null);
+      setPickerError(null);
+      setLoadingFieldKey(null);
+    }
+  }, [pickerFieldKey, workflowInputs]);
+
+  const handleToggleFilePicker = (fieldKey: string) => {
+    if (pickerFieldKey === fieldKey) {
+      setPickerFieldKey(null);
+      setPickerError(null);
+      return;
+    }
+    setPickerFieldKey(fieldKey);
+    setPickerError(null);
+  };
+
+  const handleSelectFileForInput = async (filePath: string) => {
+    if (!projectId || !pickerFieldKey) {
+      return;
+    }
+    const targetFieldKey = pickerFieldKey;
+    setLoadingFieldKey(targetFieldKey);
+    setPickerError(null);
+    try {
+      const fileData = await readFile(projectId, filePath);
+      onInputChange(targetFieldKey, fileData.content);
+      setPickerFieldKey(null);
+    } catch (error) {
+      console.error('Failed to load inline rewrite input file:', error);
+      setPickerError(t('projectWorkflow.loadFileFailed'));
+    } finally {
+      setLoadingFieldKey(null);
+    }
+  };
 
   if (!isOpen) {
     return null;
@@ -238,8 +316,11 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
       </div>
 
       {workflowInputs.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2" data-name="inline-rewrite-workflow-inputs">
-          <div className="text-xs text-gray-600 dark:text-gray-400 self-start pt-2">
+        <div
+          data-name="inline-rewrite-workflow-inputs"
+          className="relative rounded border border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/30 px-3 pb-3 pt-4"
+        >
+          <div className="absolute -top-2 left-3 px-1 text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900">
             {t('inlineRewrite.workflowInputsLabel')}
           </div>
           <div className="space-y-2">
@@ -253,8 +334,10 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
               if (field.type === 'boolean') {
                 const selectValue = rawValue === true ? 'true' : rawValue === false ? 'false' : '';
                 return (
-                  <label key={field.key} className="block space-y-1" htmlFor={inputName}>
-                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                  <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)] items-center gap-2">
+                    <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300">
+                      {keyLabel}
+                    </label>
                     <select
                       id={inputName}
                       data-name={inputName}
@@ -273,15 +356,17 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
                       <option value="true">true</option>
                       <option value="false">false</option>
                     </select>
-                  </label>
+                  </div>
                 );
               }
 
               if (field.type === 'number') {
                 const inputValue = typeof rawValue === 'number' ? String(rawValue) : '';
                 return (
-                  <label key={field.key} className="block space-y-1" htmlFor={inputName}>
-                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                  <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)] items-center gap-2">
+                    <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300">
+                      {keyLabel}
+                    </label>
                     <input
                       id={inputName}
                       data-name={inputName}
@@ -297,26 +382,51 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
                       }}
                       className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     />
-                  </label>
+                  </div>
                 );
               }
 
               const stringValue = typeof rawValue === 'string' ? rawValue : '';
+              const canInsertFromFile = canInsertFileForInput(field);
               return (
-                <label key={field.key} className="block space-y-1" htmlFor={inputName}>
-                  <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)_auto] items-start gap-2">
+                  <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300 lg:pt-1.5">
+                    {keyLabel}
+                  </label>
                   <textarea
                     id={inputName}
                     data-name={inputName}
                     rows={2}
                     value={stringValue}
                     onChange={(event) => onInputChange(field.key, event.target.value)}
-                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    className="w-full min-w-0 text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
-                </label>
+                  {canInsertFromFile ? (
+                    <div className="flex shrink-0 items-start gap-1 lg:pt-0.5">
+                      <button
+                        type="button"
+                        data-name={`inline-rewrite-insert-file-${field.key}`}
+                        disabled={isStreaming || activeFieldLoading}
+                        onClick={() => handleToggleFilePicker(field.key)}
+                        title={loadingFieldKey === field.key ? t('projectWorkflow.loadingFile') : t('projectWorkflow.insertFromFile')}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-100 dark:disabled:bg-gray-800/60 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        <FolderOpenIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="hidden lg:block" />
+                  )}
+                </div>
               );
             })}
           </div>
+        </div>
+      )}
+
+      {pickerError && (
+        <div className="text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded px-2 py-1.5">
+          {pickerError}
         </div>
       )}
 
@@ -450,6 +560,17 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
         </div>
       )}
       </div>
+
+      <FilePickerDialog
+        projectId={projectId}
+        isOpen={Boolean(pickerFieldKey)}
+        title={pickerFieldKey ? `${t('projectWorkflow.insertFromFile')} (${pickerFieldKey})` : t('projectWorkflow.insertFromFile')}
+        selectedPath={currentFilePath}
+        onClose={() => setPickerFieldKey(null)}
+        onSelect={(filePath) => {
+          void handleSelectFileForInput(filePath);
+        }}
+      />
     </div>
   );
 };

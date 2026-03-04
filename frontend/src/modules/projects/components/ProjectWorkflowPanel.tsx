@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DocumentIcon } from '@heroicons/react/24/outline';
+import { FolderOpenIcon } from '@heroicons/react/24/outline';
 import { readFile } from '../../../services/api';
 import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
 import { WorkflowLauncherList } from '../../../shared/workflow-launcher/WorkflowLauncherList';
 import type { LauncherRecentItem, LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
-import { useFileSearch } from '../hooks/useFileSearch';
+import { FilePickerDialog } from './FilePickerDialog';
 
 const isIdentifierLikeField = (fieldKey: string): boolean => {
   const normalized = fieldKey.trim().toLowerCase();
@@ -80,13 +80,8 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
 }) => {
   const { t } = useTranslation('projects');
   const [pickerFieldKey, setPickerFieldKey] = useState<string | null>(null);
-  const [pickerQuery, setPickerQuery] = useState('');
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [loadingFieldKey, setLoadingFieldKey] = useState<string | null>(null);
-  const { results: fileSearchResults, loading: fileSearchLoading, setQuery: setFileSearchQuery } = useFileSearch(
-    projectId,
-    currentFilePath
-  );
   const canRun = workflows.length > 0 && !workflowLoading;
   const activeFieldLoading = useMemo(
     () => Boolean(loadingFieldKey && pickerFieldKey === loadingFieldKey),
@@ -94,13 +89,8 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
   );
 
   useEffect(() => {
-    setFileSearchQuery(pickerFieldKey ? pickerQuery : '');
-  }, [pickerFieldKey, pickerQuery, setFileSearchQuery]);
-
-  useEffect(() => {
     if (!isOpen) {
       setPickerFieldKey(null);
-      setPickerQuery('');
       setPickerError(null);
       setLoadingFieldKey(null);
     }
@@ -112,7 +102,6 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
     }
     if (!workflowInputs.some((field) => field.key === pickerFieldKey)) {
       setPickerFieldKey(null);
-      setPickerQuery('');
       setPickerError(null);
       setLoadingFieldKey(null);
     }
@@ -121,26 +110,24 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
   const handleToggleFilePicker = (fieldKey: string) => {
     if (pickerFieldKey === fieldKey) {
       setPickerFieldKey(null);
-      setPickerQuery('');
       setPickerError(null);
       return;
     }
     setPickerFieldKey(fieldKey);
-    setPickerQuery('');
     setPickerError(null);
   };
 
-  const handleSelectFileForInput = async (fieldKey: string, filePath: string) => {
-    if (!projectId) {
+  const handleSelectFileForInput = async (filePath: string) => {
+    if (!projectId || !pickerFieldKey) {
       return;
     }
-    setLoadingFieldKey(fieldKey);
+    const targetFieldKey = pickerFieldKey;
+    setLoadingFieldKey(targetFieldKey);
     setPickerError(null);
     try {
       const fileData = await readFile(projectId, filePath);
-      onInputChange(fieldKey, fileData.content);
+      onInputChange(targetFieldKey, fileData.content);
       setPickerFieldKey(null);
-      setPickerQuery('');
     } catch (error) {
       console.error('Failed to load workflow input file:', error);
       setPickerError(t('projectWorkflow.loadFileFailed'));
@@ -200,8 +187,11 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
       </div>
 
       {workflowInputs.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2" data-name="project-workflow-inputs">
-          <div className="text-xs text-gray-600 dark:text-gray-400 self-start pt-2">
+        <div
+          data-name="project-workflow-inputs"
+          className="relative rounded border border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/30 px-3 pb-3 pt-4"
+        >
+          <div className="absolute -top-2 left-3 px-1 text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900">
             {t('projectWorkflow.workflowInputsLabel')}
           </div>
           <div className="space-y-2">
@@ -215,8 +205,10 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
               if (field.type === 'boolean') {
                 const selectValue = rawValue === true ? 'true' : rawValue === false ? 'false' : '';
                 return (
-                  <label key={field.key} className="block space-y-1" htmlFor={inputName}>
-                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                  <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)] items-center gap-2">
+                    <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300">
+                      {keyLabel}
+                    </label>
                     <select
                       id={inputName}
                       data-name={inputName}
@@ -235,15 +227,17 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
                       <option value="true">true</option>
                       <option value="false">false</option>
                     </select>
-                  </label>
+                  </div>
                 );
               }
 
               if (field.type === 'number') {
                 const inputValue = typeof rawValue === 'number' ? String(rawValue) : '';
                 return (
-                  <label key={field.key} className="block space-y-1" htmlFor={inputName}>
-                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
+                  <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)] items-center gap-2">
+                    <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300">
+                      {keyLabel}
+                    </label>
                     <input
                       id={inputName}
                       data-name={inputName}
@@ -259,107 +253,51 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
                       }}
                       className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     />
-                  </label>
+                  </div>
                 );
               }
 
               const stringValue = typeof rawValue === 'string' ? rawValue : '';
               const canInsertFromFile = canInsertFileForInput(field);
               return (
-                <label key={field.key} className="block space-y-1" htmlFor={inputName}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
-                    {canInsertFromFile && (
-                      <button
-                        type="button"
-                        data-name={`project-workflow-insert-file-${field.key}`}
-                        disabled={isRunning || activeFieldLoading}
-                        onClick={() => handleToggleFilePicker(field.key)}
-                        className="px-2 py-1 text-[11px] rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:bg-gray-100 dark:disabled:bg-gray-800/60 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {loadingFieldKey === field.key
-                          ? t('projectWorkflow.loadingFile')
-                          : t('projectWorkflow.insertFromFile')}
-                      </button>
-                    )}
-                  </div>
+                <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)_auto] items-start gap-2">
+                  <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300 lg:pt-1.5">
+                    {keyLabel}
+                  </label>
                   <textarea
                     id={inputName}
                     data-name={inputName}
                     rows={2}
                     value={stringValue}
                     onChange={(event) => onInputChange(field.key, event.target.value)}
-                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    className="w-full min-w-0 text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
-                  {canInsertFromFile && pickerFieldKey === field.key && (
-                    <div
-                      data-name={`project-workflow-file-picker-${field.key}`}
-                      className="rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/70 p-2 space-y-2"
-                    >
-                      <div className="flex gap-2">
-                        <input
-                          data-name={`project-workflow-file-query-${field.key}`}
-                          value={pickerQuery}
-                          onChange={(event) => setPickerQuery(event.target.value)}
-                          placeholder={t('projectWorkflow.fileSearchPlaceholder')}
-                          className="flex-1 text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-                        />
-                        <button
-                          type="button"
-                          data-name={`project-workflow-file-picker-close-${field.key}`}
-                          onClick={() => handleToggleFilePicker(field.key)}
-                          className="px-2 py-1 text-[11px] rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                        >
-                          {t('common:close')}
-                        </button>
-                      </div>
-
-                      {pickerError && (
-                        <div className="text-xs text-red-700 dark:text-red-300">
-                          {pickerError}
-                        </div>
-                      )}
-
-                      {fileSearchLoading ? (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 px-1">
-                          {t('projectWorkflow.fileSearchLoading')}
-                        </div>
-                      ) : fileSearchResults.length === 0 ? (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 px-1">
-                          {t('projectWorkflow.fileSearchNoResults')}
-                        </div>
-                      ) : (
-                        <div className="max-h-44 overflow-y-auto rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40">
-                          {fileSearchResults.map((result) => (
-                            <button
-                              key={result.path}
-                              type="button"
-                              data-name={`project-workflow-file-result-${field.key}-${result.path}`}
-                              disabled={activeFieldLoading}
-                              onClick={() => void handleSelectFileForInput(field.key, result.path)}
-                              className="w-full text-left px-2 py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-100 dark:hover:bg-gray-700/60 disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                              <div className="flex items-start gap-2">
-                                <DocumentIcon className="w-4 h-4 mt-0.5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                                <div className="min-w-0">
-                                  <div className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">
-                                    {result.name}
-                                  </div>
-                                  <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                                    {result.path}
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                  {canInsertFromFile ? (
+                    <div className="flex shrink-0 items-start gap-1 lg:pt-0.5">
+                      <button
+                        type="button"
+                        data-name={`project-workflow-insert-file-${field.key}`}
+                        disabled={isRunning || activeFieldLoading}
+                        onClick={() => handleToggleFilePicker(field.key)}
+                        title={loadingFieldKey === field.key ? t('projectWorkflow.loadingFile') : t('projectWorkflow.insertFromFile')}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-100 dark:disabled:bg-gray-800/60 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        <FolderOpenIcon className="h-4 w-4" />
+                      </button>
                     </div>
+                  ) : (
+                    <div className="hidden lg:block" />
                   )}
-                </label>
+                </div>
               );
             })}
           </div>
+        </div>
+      )}
+
+      {pickerError && (
+        <div className="text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded px-2 py-1.5">
+          {pickerError}
         </div>
       )}
 
@@ -429,6 +367,17 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
           {output || (isRunning ? t('projectWorkflow.running') : t('projectWorkflow.emptyOutput'))}
         </pre>
       </div>
+
+      <FilePickerDialog
+        projectId={projectId}
+        isOpen={Boolean(pickerFieldKey)}
+        title={pickerFieldKey ? `${t('projectWorkflow.insertFromFile')} (${pickerFieldKey})` : t('projectWorkflow.insertFromFile')}
+        selectedPath={currentFilePath}
+        onClose={() => setPickerFieldKey(null)}
+        onSelect={(filePath) => {
+          void handleSelectFileForInput(filePath);
+        }}
+      />
     </div>
   );
 };

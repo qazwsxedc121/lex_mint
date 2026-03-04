@@ -1939,6 +1939,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       />
 
       <InlineRewritePanel
+        projectId={projectId}
+        currentFilePath={content?.path || null}
         isOpen={inlineRewriteOpen}
         isStreaming={inlineRewriteStreaming}
         sourceText={inlineRewriteSourceText}
