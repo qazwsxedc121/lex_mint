@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderOpenIcon } from '@heroicons/react/24/outline';
+import { DocumentIcon, FolderOpenIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { readFile } from '../../../services/api';
 import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
 import { WorkflowLauncherList } from '../../../shared/workflow-launcher/WorkflowLauncherList';
@@ -47,6 +47,10 @@ interface InlineRewritePanelProps {
   onReject: () => void;
   onClose: () => void;
   onOpenWorkflows: () => void;
+}
+
+interface FileBackedInputMeta {
+  path: string;
 }
 
 const isIdentifierLikeField = (fieldKey: string): boolean => {
@@ -178,6 +182,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
   const [pickerFieldKey, setPickerFieldKey] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [loadingFieldKey, setLoadingFieldKey] = useState<string | null>(null);
+  const [fileBackedInputs, setFileBackedInputs] = useState<Record<string, FileBackedInputMeta>>({});
   const diffLines = useMemo(
     () => buildLineDiff(sourceText, rewrittenText),
     [sourceText, rewrittenText]
@@ -194,6 +199,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
       setPickerFieldKey(null);
       setPickerError(null);
       setLoadingFieldKey(null);
+      setFileBackedInputs({});
     }
   }, [isOpen]);
 
@@ -207,6 +213,22 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
       setLoadingFieldKey(null);
     }
   }, [pickerFieldKey, workflowInputs]);
+
+  useEffect(() => {
+    const validKeys = new Set(workflowInputs.map((field) => field.key));
+    setFileBackedInputs((previous) => {
+      let changed = false;
+      const next: Record<string, FileBackedInputMeta> = {};
+      Object.entries(previous).forEach(([key, metadata]) => {
+        if (validKeys.has(key)) {
+          next[key] = metadata;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : previous;
+    });
+  }, [workflowInputs]);
 
   const handleToggleFilePicker = (fieldKey: string) => {
     if (pickerFieldKey === fieldKey) {
@@ -228,6 +250,12 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
     try {
       const fileData = await readFile(projectId, filePath);
       onInputChange(targetFieldKey, fileData.content);
+      setFileBackedInputs((previous) => ({
+        ...previous,
+        [targetFieldKey]: {
+          path: filePath,
+        },
+      }));
       setPickerFieldKey(null);
     } catch (error) {
       console.error('Failed to load inline rewrite input file:', error);
@@ -330,6 +358,7 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
                 ? `${field.key} (${t('inlineRewrite.required')})`
                 : field.key;
               const inputName = `inline-rewrite-input-${field.key}`;
+              const fileBackedMeta = fileBackedInputs[field.key];
 
               if (field.type === 'boolean') {
                 const selectValue = rawValue === true ? 'true' : rawValue === false ? 'false' : '';
@@ -393,14 +422,57 @@ export const InlineRewritePanel: React.FC<InlineRewritePanelProps> = ({
                   <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300 lg:pt-1.5">
                     {keyLabel}
                   </label>
-                  <textarea
-                    id={inputName}
-                    data-name={inputName}
-                    rows={2}
-                    value={stringValue}
-                    onChange={(event) => onInputChange(field.key, event.target.value)}
-                    className="w-full min-w-0 text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                  />
+                  {fileBackedMeta ? (
+                    <div className="w-full min-w-0 rounded border border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-900/20 px-2 py-1.5">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <DocumentIcon className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-300 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-blue-800 dark:text-blue-200">
+                            {t('projectWorkflow.insertFromFile')}
+                          </div>
+                          <div className="text-[11px] text-blue-700/90 dark:text-blue-300 truncate">
+                            {fileBackedMeta.path}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          data-name={`inline-rewrite-file-widget-clear-${field.key}`}
+                          onClick={() => {
+                            setFileBackedInputs((previous) => {
+                              if (!previous[field.key]) {
+                                return previous;
+                              }
+                              const next = { ...previous };
+                              delete next[field.key];
+                              return next;
+                            });
+                          }}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-blue-200 dark:border-blue-700 bg-white/80 dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-white dark:hover:bg-gray-700"
+                          title={t('common:close')}
+                        >
+                          <XMarkIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <textarea
+                      id={inputName}
+                      data-name={inputName}
+                      rows={2}
+                      value={stringValue}
+                      onChange={(event) => {
+                        onInputChange(field.key, event.target.value);
+                        if (fileBackedInputs[field.key]) {
+                          setFileBackedInputs((previous) => {
+                            const next = { ...previous };
+                            delete next[field.key];
+                            return next;
+                          });
+                        }
+                      }}
+                      className="w-full min-w-0 text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    />
+                  )}
                   {canInsertFromFile ? (
                     <div className="flex shrink-0 items-start gap-1 lg:pt-0.5">
                       <button
