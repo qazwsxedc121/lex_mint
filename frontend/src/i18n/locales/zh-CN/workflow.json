@@ -16,6 +16,10 @@
     "playground": "体验",
     "history": "运行记录"
   },
+  "builderEditorTab": {
+    "visual": "可视化（Beta）",
+    "json": "JSON"
+  },
   "playground": {
     "noEnabledWorkflows": "当前没有可运行的工作流，请先在编辑页启用一个工作流。"
   },
@@ -55,6 +59,31 @@
   },
   "editor": {
     "title": "工作流 DSL（JSON）"
+  },
+  "visual": {
+    "title": "可视化图谱",
+    "beta": "beta",
+    "empty": "没有可预览的有效节点。",
+    "parseError": "无法渲染可视化图谱：{{reason}}",
+    "parseErrorReason": {
+      "invalidJson": "JSON 格式无效",
+      "invalidRoot": "顶层必须是对象",
+      "missingNodes": "nodes 必须是数组",
+      "missingEntryNodeId": "entry_node_id 必须是非空字符串",
+      "noValidNodes": "工作流中没有有效节点"
+    },
+    "issuesTitle": "图谱诊断",
+    "issue": {
+      "levelError": "错误",
+      "levelWarn": "警告",
+      "duplicateNodeId": "节点 ID 重复：{{nodeId}}。",
+      "missingTargetNode": "节点 {{sourceId}} 指向了不存在的节点 {{targetId}}。",
+      "missingTargetNodeWithLabel": "节点 {{sourceId}} 指向了不存在的节点 {{targetId}}（{{label}} 分支）。",
+      "missingEntryNode": "entry_node_id 指向了不存在的节点 {{entryNodeId}}。",
+      "orphanNode": "节点 {{nodeId}} 无法从 entry_node_id 到达。",
+      "unknownNodeType": "节点 {{nodeId}} 使用了不支持的类型 {{nodeType}}。",
+      "invalidNodeShape": "第 {{index}} 个节点结构无效。"
+    }
   },
   "runner": {
     "title": "运行",

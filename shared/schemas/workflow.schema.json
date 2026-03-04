@@ -1,0 +1,1831 @@
+{
+  "$id": "https://lex-mint.local/schemas/workflow.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Generated from src.api.models.workflow. Do not edit manually.",
+  "schemas": {
+    "Workflow": {
+      "$defs": {
+        "ArtifactNode": {
+          "description": "Workflow artifact node (write rendered content to a project file).",
+          "properties": {
+            "content_template": {
+              "default": "{{ctx.last_output}}",
+              "title": "Content Template",
+              "type": "string"
+            },
+            "file_path_template": {
+              "title": "File Path Template",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "type": {
+              "const": "artifact",
+              "title": "Type",
+              "type": "string"
+            },
+            "write_mode": {
+              "default": "overwrite",
+              "enum": [
+                "create",
+                "overwrite"
+              ],
+              "title": "Write Mode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "file_path_template",
+            "next_id"
+          ],
+          "title": "ArtifactNode",
+          "type": "object"
+        },
+        "ConditionNode": {
+          "description": "Workflow condition node.",
+          "properties": {
+            "expression": {
+              "title": "Expression",
+              "type": "string"
+            },
+            "false_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "False Next Id",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "true_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "True Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "condition",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "expression",
+            "true_next_id",
+            "false_next_id"
+          ],
+          "title": "ConditionNode",
+          "type": "object"
+        },
+        "EndNode": {
+          "description": "Workflow end node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "result_template": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result Template"
+            },
+            "type": {
+              "const": "end",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "title": "EndNode",
+          "type": "object"
+        },
+        "LlmNode": {
+          "description": "Workflow LLM node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "max_tokens": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Tokens"
+            },
+            "model_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model Id"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "prompt_template": {
+              "title": "Prompt Template",
+              "type": "string"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "System Prompt"
+            },
+            "temperature": {
+              "anyOf": [
+                {
+                  "maximum": 2.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Temperature"
+            },
+            "type": {
+              "const": "llm",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "prompt_template",
+            "next_id"
+          ],
+          "title": "LlmNode",
+          "type": "object"
+        },
+        "StartNode": {
+          "description": "Workflow start node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "start",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "next_id"
+          ],
+          "title": "StartNode",
+          "type": "object"
+        },
+        "WorkflowInputDef": {
+          "description": "Input schema entry for one workflow parameter.",
+          "properties": {
+            "allow_file_insert": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Allow File Insert"
+            },
+            "default": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Description"
+            },
+            "key": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Key",
+              "type": "string"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "maximum": 200000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Pattern"
+            },
+            "required": {
+              "default": false,
+              "title": "Required",
+              "type": "boolean"
+            },
+            "type": {
+              "default": "string",
+              "enum": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key"
+          ],
+          "title": "WorkflowInputDef",
+          "type": "object"
+        }
+      },
+      "description": "Persisted workflow.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "entry_node_id": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Entry Node Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "input_schema": {
+          "items": {
+            "$ref": "#/$defs/WorkflowInputDef"
+          },
+          "title": "Input Schema",
+          "type": "array"
+        },
+        "is_system": {
+          "default": false,
+          "title": "Is System",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "artifact": "#/$defs/ArtifactNode",
+                "condition": "#/$defs/ConditionNode",
+                "end": "#/$defs/EndNode",
+                "llm": "#/$defs/LlmNode",
+                "start": "#/$defs/StartNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/StartNode"
+              },
+              {
+                "$ref": "#/$defs/LlmNode"
+              },
+              {
+                "$ref": "#/$defs/ConditionNode"
+              },
+              {
+                "$ref": "#/$defs/ArtifactNode"
+              },
+              {
+                "$ref": "#/$defs/EndNode"
+              }
+            ]
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "scenario": {
+          "default": "general",
+          "enum": [
+            "general",
+            "editor_rewrite",
+            "project_pipeline"
+          ],
+          "title": "Scenario",
+          "type": "string"
+        },
+        "template_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Version"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "entry_node_id",
+        "id",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "Workflow",
+      "type": "object"
+    },
+    "WorkflowCreate": {
+      "$defs": {
+        "ArtifactNode": {
+          "description": "Workflow artifact node (write rendered content to a project file).",
+          "properties": {
+            "content_template": {
+              "default": "{{ctx.last_output}}",
+              "title": "Content Template",
+              "type": "string"
+            },
+            "file_path_template": {
+              "title": "File Path Template",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "type": {
+              "const": "artifact",
+              "title": "Type",
+              "type": "string"
+            },
+            "write_mode": {
+              "default": "overwrite",
+              "enum": [
+                "create",
+                "overwrite"
+              ],
+              "title": "Write Mode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "file_path_template",
+            "next_id"
+          ],
+          "title": "ArtifactNode",
+          "type": "object"
+        },
+        "ConditionNode": {
+          "description": "Workflow condition node.",
+          "properties": {
+            "expression": {
+              "title": "Expression",
+              "type": "string"
+            },
+            "false_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "False Next Id",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "true_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "True Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "condition",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "expression",
+            "true_next_id",
+            "false_next_id"
+          ],
+          "title": "ConditionNode",
+          "type": "object"
+        },
+        "EndNode": {
+          "description": "Workflow end node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "result_template": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result Template"
+            },
+            "type": {
+              "const": "end",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "title": "EndNode",
+          "type": "object"
+        },
+        "LlmNode": {
+          "description": "Workflow LLM node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "max_tokens": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Tokens"
+            },
+            "model_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model Id"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "prompt_template": {
+              "title": "Prompt Template",
+              "type": "string"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "System Prompt"
+            },
+            "temperature": {
+              "anyOf": [
+                {
+                  "maximum": 2.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Temperature"
+            },
+            "type": {
+              "const": "llm",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "prompt_template",
+            "next_id"
+          ],
+          "title": "LlmNode",
+          "type": "object"
+        },
+        "StartNode": {
+          "description": "Workflow start node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "start",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "next_id"
+          ],
+          "title": "StartNode",
+          "type": "object"
+        },
+        "WorkflowInputDef": {
+          "description": "Input schema entry for one workflow parameter.",
+          "properties": {
+            "allow_file_insert": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Allow File Insert"
+            },
+            "default": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Description"
+            },
+            "key": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Key",
+              "type": "string"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "maximum": 200000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Pattern"
+            },
+            "required": {
+              "default": false,
+              "title": "Required",
+              "type": "boolean"
+            },
+            "type": {
+              "default": "string",
+              "enum": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key"
+          ],
+          "title": "WorkflowInputDef",
+          "type": "object"
+        }
+      },
+      "description": "Workflow create request model.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "entry_node_id": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Entry Node Id",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "input_schema": {
+          "items": {
+            "$ref": "#/$defs/WorkflowInputDef"
+          },
+          "title": "Input Schema",
+          "type": "array"
+        },
+        "is_system": {
+          "default": false,
+          "title": "Is System",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "artifact": "#/$defs/ArtifactNode",
+                "condition": "#/$defs/ConditionNode",
+                "end": "#/$defs/EndNode",
+                "llm": "#/$defs/LlmNode",
+                "start": "#/$defs/StartNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/StartNode"
+              },
+              {
+                "$ref": "#/$defs/LlmNode"
+              },
+              {
+                "$ref": "#/$defs/ConditionNode"
+              },
+              {
+                "$ref": "#/$defs/ArtifactNode"
+              },
+              {
+                "$ref": "#/$defs/EndNode"
+              }
+            ]
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "scenario": {
+          "default": "general",
+          "enum": [
+            "general",
+            "editor_rewrite",
+            "project_pipeline"
+          ],
+          "title": "Scenario",
+          "type": "string"
+        },
+        "template_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Version"
+        }
+      },
+      "required": [
+        "name",
+        "entry_node_id"
+      ],
+      "title": "WorkflowCreate",
+      "type": "object"
+    },
+    "WorkflowInputDef": {
+      "description": "Input schema entry for one workflow parameter.",
+      "properties": {
+        "allow_file_insert": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allow File Insert"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "key": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Key",
+          "type": "string"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "maximum": 200000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pattern"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "default": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "WorkflowInputDef",
+      "type": "object"
+    },
+    "WorkflowNode": {
+      "$defs": {
+        "ArtifactNode": {
+          "description": "Workflow artifact node (write rendered content to a project file).",
+          "properties": {
+            "content_template": {
+              "default": "{{ctx.last_output}}",
+              "title": "Content Template",
+              "type": "string"
+            },
+            "file_path_template": {
+              "title": "File Path Template",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "type": {
+              "const": "artifact",
+              "title": "Type",
+              "type": "string"
+            },
+            "write_mode": {
+              "default": "overwrite",
+              "enum": [
+                "create",
+                "overwrite"
+              ],
+              "title": "Write Mode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "file_path_template",
+            "next_id"
+          ],
+          "title": "ArtifactNode",
+          "type": "object"
+        },
+        "ConditionNode": {
+          "description": "Workflow condition node.",
+          "properties": {
+            "expression": {
+              "title": "Expression",
+              "type": "string"
+            },
+            "false_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "False Next Id",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "true_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "True Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "condition",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "expression",
+            "true_next_id",
+            "false_next_id"
+          ],
+          "title": "ConditionNode",
+          "type": "object"
+        },
+        "EndNode": {
+          "description": "Workflow end node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "result_template": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result Template"
+            },
+            "type": {
+              "const": "end",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "title": "EndNode",
+          "type": "object"
+        },
+        "LlmNode": {
+          "description": "Workflow LLM node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "max_tokens": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Tokens"
+            },
+            "model_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model Id"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "prompt_template": {
+              "title": "Prompt Template",
+              "type": "string"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "System Prompt"
+            },
+            "temperature": {
+              "anyOf": [
+                {
+                  "maximum": 2.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Temperature"
+            },
+            "type": {
+              "const": "llm",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "prompt_template",
+            "next_id"
+          ],
+          "title": "LlmNode",
+          "type": "object"
+        },
+        "StartNode": {
+          "description": "Workflow start node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "start",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "next_id"
+          ],
+          "title": "StartNode",
+          "type": "object"
+        }
+      },
+      "discriminator": {
+        "mapping": {
+          "artifact": "#/$defs/ArtifactNode",
+          "condition": "#/$defs/ConditionNode",
+          "end": "#/$defs/EndNode",
+          "llm": "#/$defs/LlmNode",
+          "start": "#/$defs/StartNode"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StartNode"
+        },
+        {
+          "$ref": "#/$defs/LlmNode"
+        },
+        {
+          "$ref": "#/$defs/ConditionNode"
+        },
+        {
+          "$ref": "#/$defs/ArtifactNode"
+        },
+        {
+          "$ref": "#/$defs/EndNode"
+        }
+      ]
+    },
+    "WorkflowUpdate": {
+      "$defs": {
+        "ArtifactNode": {
+          "description": "Workflow artifact node (write rendered content to a project file).",
+          "properties": {
+            "content_template": {
+              "default": "{{ctx.last_output}}",
+              "title": "Content Template",
+              "type": "string"
+            },
+            "file_path_template": {
+              "title": "File Path Template",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "type": {
+              "const": "artifact",
+              "title": "Type",
+              "type": "string"
+            },
+            "write_mode": {
+              "default": "overwrite",
+              "enum": [
+                "create",
+                "overwrite"
+              ],
+              "title": "Write Mode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "file_path_template",
+            "next_id"
+          ],
+          "title": "ArtifactNode",
+          "type": "object"
+        },
+        "ConditionNode": {
+          "description": "Workflow condition node.",
+          "properties": {
+            "expression": {
+              "title": "Expression",
+              "type": "string"
+            },
+            "false_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "False Next Id",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "true_next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "True Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "condition",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "expression",
+            "true_next_id",
+            "false_next_id"
+          ],
+          "title": "ConditionNode",
+          "type": "object"
+        },
+        "EndNode": {
+          "description": "Workflow end node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "result_template": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result Template"
+            },
+            "type": {
+              "const": "end",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "title": "EndNode",
+          "type": "object"
+        },
+        "LlmNode": {
+          "description": "Workflow LLM node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "max_tokens": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Tokens"
+            },
+            "model_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model Id"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "output_key": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Key"
+            },
+            "prompt_template": {
+              "title": "Prompt Template",
+              "type": "string"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "System Prompt"
+            },
+            "temperature": {
+              "anyOf": [
+                {
+                  "maximum": 2.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Temperature"
+            },
+            "type": {
+              "const": "llm",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "prompt_template",
+            "next_id"
+          ],
+          "title": "LlmNode",
+          "type": "object"
+        },
+        "StartNode": {
+          "description": "Workflow start node.",
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "next_id": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Next Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "start",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "next_id"
+          ],
+          "title": "StartNode",
+          "type": "object"
+        },
+        "WorkflowInputDef": {
+          "description": "Input schema entry for one workflow parameter.",
+          "properties": {
+            "allow_file_insert": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Allow File Insert"
+            },
+            "default": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Description"
+            },
+            "key": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "title": "Key",
+              "type": "string"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "maximum": 200000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Pattern"
+            },
+            "required": {
+              "default": false,
+              "title": "Required",
+              "type": "boolean"
+            },
+            "type": {
+              "default": "string",
+              "enum": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key"
+          ],
+          "title": "WorkflowInputDef",
+          "type": "object"
+        }
+      },
+      "description": "Workflow update request model.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enabled"
+        },
+        "entry_node_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Node Id"
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/WorkflowInputDef"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Schema"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "nodes": {
+          "anyOf": [
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "artifact": "#/$defs/ArtifactNode",
+                    "condition": "#/$defs/ConditionNode",
+                    "end": "#/$defs/EndNode",
+                    "llm": "#/$defs/LlmNode",
+                    "start": "#/$defs/StartNode"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/StartNode"
+                  },
+                  {
+                    "$ref": "#/$defs/LlmNode"
+                  },
+                  {
+                    "$ref": "#/$defs/ConditionNode"
+                  },
+                  {
+                    "$ref": "#/$defs/ArtifactNode"
+                  },
+                  {
+                    "$ref": "#/$defs/EndNode"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nodes"
+        },
+        "scenario": {
+          "anyOf": [
+            {
+              "enum": [
+                "general",
+                "editor_rewrite",
+                "project_pipeline"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scenario"
+        }
+      },
+      "title": "WorkflowUpdate",
+      "type": "object"
+    }
+  },
+  "title": "Lex Mint Workflow Schema Bundle"
+}

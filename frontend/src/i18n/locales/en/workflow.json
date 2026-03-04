@@ -16,6 +16,10 @@
     "playground": "Playground",
     "history": "Run History"
   },
+  "builderEditorTab": {
+    "visual": "Visual (Beta)",
+    "json": "JSON"
+  },
   "playground": {
     "noEnabledWorkflows": "No runnable workflows. Enable one in Builder first."
   },
@@ -55,6 +59,31 @@
   },
   "editor": {
     "title": "Workflow DSL (JSON)"
+  },
+  "visual": {
+    "title": "Visual Graph",
+    "beta": "beta",
+    "empty": "No valid nodes to preview.",
+    "parseError": "Cannot render visual graph: {{reason}}",
+    "parseErrorReason": {
+      "invalidJson": "JSON is invalid",
+      "invalidRoot": "top-level value must be an object",
+      "missingNodes": "nodes must be an array",
+      "missingEntryNodeId": "entry_node_id must be a non-empty string",
+      "noValidNodes": "workflow has no valid nodes"
+    },
+    "issuesTitle": "Graph diagnostics",
+    "issue": {
+      "levelError": "Error",
+      "levelWarn": "Warning",
+      "duplicateNodeId": "Duplicate node id: {{nodeId}}.",
+      "missingTargetNode": "Node {{sourceId}} points to missing node {{targetId}}.",
+      "missingTargetNodeWithLabel": "Node {{sourceId}} points to missing node {{targetId}} ({{label}} branch).",
+      "missingEntryNode": "entry_node_id points to missing node {{entryNodeId}}.",
+      "orphanNode": "Node {{nodeId}} is unreachable from entry_node_id.",
+      "unknownNodeType": "Node {{nodeId}} uses unsupported type {{nodeType}}.",
+      "invalidNodeShape": "Node at index {{index}} has invalid shape."
+    }
   },
   "runner": {
     "title": "Run",

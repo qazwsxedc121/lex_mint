@@ -6,6 +6,7 @@ import { useWorkflows } from './hooks/useWorkflows';
 import { WorkflowList } from './components/WorkflowList';
 import { WorkflowMetaForm } from './components/WorkflowMetaForm';
 import { WorkflowEditor } from './components/WorkflowEditor';
+import { WorkflowVisualPanel } from './components/WorkflowVisualPanel';
 import { WorkflowRunner } from './components/WorkflowRunner';
 import { RunHistoryPanel } from './components/RunHistoryPanel';
 import { WorkflowTemplateGallery } from './components/WorkflowTemplateGallery';
@@ -70,6 +71,7 @@ export const WorkflowsModule: React.FC = () => {
   const [outputMode, setOutputMode] = React.useState<'live' | 'final'>('live');
   const [streamEvents, setStreamEvents] = React.useState<WorkflowFlowEvent[]>([]);
   const [activeView, setActiveView] = React.useState<'builder' | 'playground' | 'history'>('builder');
+  const [builderEditorTab, setBuilderEditorTab] = React.useState<'visual' | 'json'>('visual');
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const liveOutputRef = React.useRef('');
@@ -355,19 +357,53 @@ export const WorkflowsModule: React.FC = () => {
                     onScenarioChange={setDraftScenario}
                   />
                 </section>
-                <WorkflowEditor
-                  value={dslText}
-                  parseError={parseError}
-                  saving={saving}
-                  readOnly={isSelectedSystemWorkflow}
-                  onChange={(value) => {
-                    setDslText(value);
-                    if (parseError) {
-                      setParseError(null);
-                    }
-                  }}
-                  onSave={handleSave}
-                />
+
+                <div className="space-y-3" data-name="workflows-builder-editors">
+                  <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1">
+                    <button
+                      type="button"
+                      data-name="workflow-builder-tab-visual"
+                      onClick={() => setBuilderEditorTab('visual')}
+                      className={`rounded-md px-3 py-1.5 text-sm ${
+                        builderEditorTab === 'visual'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {t('builderEditorTab.visual')}
+                    </button>
+                    <button
+                      type="button"
+                      data-name="workflow-builder-tab-json"
+                      onClick={() => setBuilderEditorTab('json')}
+                      className={`rounded-md px-3 py-1.5 text-sm ${
+                        builderEditorTab === 'json'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {t('builderEditorTab.json')}
+                    </button>
+                  </div>
+
+                  {builderEditorTab === 'visual' ? (
+                    <WorkflowVisualPanel dslText={dslText} />
+                  ) : (
+                    <WorkflowEditor
+                      value={dslText}
+                      parseError={parseError}
+                      saving={saving}
+                      readOnly={isSelectedSystemWorkflow}
+                      onChange={(value) => {
+                        setDslText(value);
+                        if (parseError) {
+                          setParseError(null);
+                        }
+                      }}
+                      onSave={handleSave}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           ) : activeView === 'playground' ? (
