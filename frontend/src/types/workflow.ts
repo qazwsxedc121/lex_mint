@@ -7,6 +7,9 @@ export interface WorkflowInputDef {
   required?: boolean;
   default?: string | number | boolean;
   description?: string | null;
+  allow_file_insert?: boolean | null;
+  max_length?: number | null;
+  pattern?: string | null;
 }
 
 export interface StartNode {
@@ -105,6 +108,7 @@ export interface WorkflowRunRecord {
 }
 
 export interface WorkflowRunCallbacks {
+  onRunCreated?: (runId: string) => void;
   onEvent?: (event: WorkflowFlowEvent) => void;
   onChunk?: (chunk: string, event: WorkflowFlowEvent) => void;
   onComplete?: () => void;

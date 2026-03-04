@@ -165,6 +165,70 @@ def _artifact_workflow() -> Workflow:
     )
 
 
+def _chapter_artifact_workflow() -> Workflow:
+    now = datetime.now(timezone.utc)
+    return Workflow(
+        id="wf_chapter_artifact_runtime",
+        name="Chapter Artifact Runtime",
+        enabled=True,
+        scenario="project_pipeline",
+        input_schema=[WorkflowInputDef(key="chapter_id", type="string", required=True)],
+        entry_node_id="start_1",
+        nodes=[
+            StartNode(id="start_1", type="start", next_id="llm_1"),
+            LlmNode(id="llm_1", type="llm", prompt_template="draft", output_key="draft_doc", next_id="artifact_1"),
+            ArtifactNode(
+                id="artifact_1",
+                type="artifact",
+                file_path_template="novel/04_chapters/{{inputs.chapter_id}}_plan.md",
+                content_template="{{ctx.draft_doc}}",
+                write_mode="overwrite",
+                output_key="artifact_result",
+                next_id="end_1",
+            ),
+            EndNode(id="end_1", type="end", result_template="{{ctx.last_artifact.file_path}}"),
+        ],
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _chapter_artifact_workflow_with_guard() -> Workflow:
+    now = datetime.now(timezone.utc)
+    return Workflow(
+        id="wf_chapter_artifact_guard",
+        name="Chapter Artifact Guard",
+        enabled=True,
+        scenario="project_pipeline",
+        input_schema=[
+            WorkflowInputDef(
+                key="chapter_id",
+                type="string",
+                required=True,
+                max_length=64,
+                pattern=r'^[^\\/:*?"<>|\r\n]{1,64}$',
+            )
+        ],
+        entry_node_id="start_1",
+        nodes=[
+            StartNode(id="start_1", type="start", next_id="llm_1"),
+            LlmNode(id="llm_1", type="llm", prompt_template="draft", output_key="draft_doc", next_id="artifact_1"),
+            ArtifactNode(
+                id="artifact_1",
+                type="artifact",
+                file_path_template="novel/04_chapters/{{inputs.chapter_id}}_plan.md",
+                content_template="{{ctx.draft_doc}}",
+                write_mode="overwrite",
+                output_key="artifact_result",
+                next_id="end_1",
+            ),
+            EndNode(id="end_1", type="end", result_template="{{ctx.last_artifact.file_path}}"),
+        ],
+        created_at=now,
+        updated_at=now,
+    )
+
+
 @pytest.mark.asyncio
 async def test_workflow_execution_service_success(temp_config_dir):
     history_dir = Path(temp_config_dir) / "workflow_runs"
@@ -336,3 +400,63 @@ async def test_workflow_execution_service_artifact_node_writes_project_file(temp
     runs = await history_service.list_runs(workflow.id)
     assert len(runs) == 1
     assert runs[0].status == "success"
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_artifact_path_rejects_document_content(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    project_service = _FakeProjectService()
+    workflow = _chapter_artifact_workflow()
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=_fake_llm_stream,
+        project_service=project_service,  # type: ignore[arg-type]
+        max_steps=10,
+    )
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"chapter_id": "---\nartifact_type: charter\n"},
+        run_id="run_invalid_artifact_path",
+        context_type="project",
+        project_id="proj-1",
+        write_mode="overwrite",
+    ):
+        events.append(event)
+
+    assert events[-1]["type"] == "stream_error"
+    assert "invalid path characters" in str(events[-1]["error"])
+    assert project_service.files == {}
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_input_feature_rejects_invalid_chapter_id(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    project_service = _FakeProjectService()
+    workflow = _chapter_artifact_workflow_with_guard()
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=_fake_llm_stream,
+        project_service=project_service,  # type: ignore[arg-type]
+        max_steps=10,
+    )
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"chapter_id": "---\nartifact_type: charter\n"},
+        run_id="run_invalid_chapter_id",
+        context_type="project",
+        project_id="proj-1",
+        write_mode="overwrite",
+    ):
+        events.append(event)
+
+    assert events[-1]["type"] == "stream_error"
+    assert "format is invalid" in str(events[-1]["error"])
+    assert project_service.files == {}

@@ -27,7 +27,8 @@ class WorkflowConfigService:
 
     INLINE_REWRITE_WORKFLOW_ID = "wf_inline_rewrite_default"
     INLINE_REWRITE_TEMPLATE_VERSION = 2
-    NOVEL_TEMPLATE_VERSION = 1
+    NOVEL_TEMPLATE_VERSION = 2
+    CHAPTER_ID_PATTERN = r'^[^\\/:*?"<>|\r\n]{1,64}$'
 
     _locks: dict[str, asyncio.Lock] = {}
     _locks_guard = asyncio.Lock()
@@ -388,7 +389,15 @@ class WorkflowConfigService:
                 is_system=True,
                 template_version=self.NOVEL_TEMPLATE_VERSION,
                 input_schema=[
-                    WorkflowInputDef(key="chapter_id", type="string", required=True),
+                    WorkflowInputDef(
+                        key="chapter_id",
+                        type="string",
+                        required=True,
+                        allow_file_insert=False,
+                        max_length=64,
+                        pattern=self.CHAPTER_ID_PATTERN,
+                        description="Short chapter identifier, for example: ch01",
+                    ),
                     WorkflowInputDef(key="plot_text", type="string", required=True),
                     WorkflowInputDef(key="characters_text", type="string", required=True),
                     WorkflowInputDef(key="world_text", type="string", required=True),
@@ -455,7 +464,15 @@ class WorkflowConfigService:
                 is_system=True,
                 template_version=self.NOVEL_TEMPLATE_VERSION,
                 input_schema=[
-                    WorkflowInputDef(key="chapter_id", type="string", required=True),
+                    WorkflowInputDef(
+                        key="chapter_id",
+                        type="string",
+                        required=True,
+                        allow_file_insert=False,
+                        max_length=64,
+                        pattern=self.CHAPTER_ID_PATTERN,
+                        description="Short chapter identifier, for example: ch01",
+                    ),
                     WorkflowInputDef(key="chapter_plan_text", type="string", required=True),
                     WorkflowInputDef(
                         key="style_guide",
@@ -517,7 +534,15 @@ class WorkflowConfigService:
                 is_system=True,
                 template_version=self.NOVEL_TEMPLATE_VERSION,
                 input_schema=[
-                    WorkflowInputDef(key="chapter_id", type="string", required=True),
+                    WorkflowInputDef(
+                        key="chapter_id",
+                        type="string",
+                        required=True,
+                        allow_file_insert=False,
+                        max_length=64,
+                        pattern=self.CHAPTER_ID_PATTERN,
+                        description="Short chapter identifier, for example: ch01",
+                    ),
                     WorkflowInputDef(key="chapter_draft_text", type="string", required=True),
                     WorkflowInputDef(key="world_text", type="string", required=True),
                     WorkflowInputDef(key="characters_text", type="string", required=True),
@@ -589,7 +614,15 @@ class WorkflowConfigService:
                 is_system=True,
                 template_version=self.NOVEL_TEMPLATE_VERSION,
                 input_schema=[
-                    WorkflowInputDef(key="chapter_id", type="string", required=True),
+                    WorkflowInputDef(
+                        key="chapter_id",
+                        type="string",
+                        required=True,
+                        allow_file_insert=False,
+                        max_length=64,
+                        pattern=self.CHAPTER_ID_PATTERN,
+                        description="Short chapter identifier, for example: ch01",
+                    ),
                     WorkflowInputDef(key="chapter_draft_text", type="string", required=True),
                     WorkflowInputDef(
                         key="style_profile",

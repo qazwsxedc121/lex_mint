@@ -12,22 +12,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from ..models.async_run import AsyncRunRecord
 from ..models.workflow import Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
+from ..services.async_run_provider import get_async_run_service
+from ..services.async_run_service import AsyncRunService
 from ..services.flow_event_emitter import FlowEventEmitter
 from ..services.flow_event_types import (
-    LEGACY_EVENT,
     STREAM_ERROR,
-    WORKFLOW_ARTIFACT_WRITTEN,
-    WORKFLOW_CONDITION_EVALUATED,
-    WORKFLOW_NODE_FINISHED,
-    WORKFLOW_NODE_STARTED,
-    WORKFLOW_OUTPUT_REPORTED,
-    WORKFLOW_RUN_FINISHED,
-    WORKFLOW_RUN_STARTED,
 )
-from ..services.flow_events import FlowEventStage
 from ..services.workflow_config_service import WorkflowConfigService
 from ..services.workflow_execution_service import WorkflowExecutionService
+from ..services.workflow_flow_event_mapper import map_workflow_event_to_flow_payload
 from ..services.workflow_run_history_service import WorkflowRunHistoryService
 
 logger = logging.getLogger(__name__)
@@ -65,121 +60,21 @@ def get_workflow_execution_service() -> WorkflowExecutionService:
     return _workflow_execution_service
 
 
-def _map_workflow_event_to_flow_payload(
-    emitter: FlowEventEmitter,
-    event: Dict[str, Any],
-) -> Dict[str, Any]:
-    event_type = str(event.get("type") or "")
-
-    if event_type == "workflow_run_started":
-        return emitter.emit(
-            event_type=WORKFLOW_RUN_STARTED,
-            stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-            },
+def _validate_workflow_run_request(workflow: Workflow, request: WorkflowRunRequest) -> None:
+    if not workflow.enabled:
+        raise HTTPException(status_code=409, detail="Workflow is disabled")
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required when context_type is 'project'")
+    if request.artifact_target_path and request.context_type != "project":
+        raise HTTPException(
+            status_code=400,
+            detail="artifact_target_path requires context_type='project'",
         )
-
-    if event_type == "workflow_node_started":
-        return emitter.emit(
-            event_type=WORKFLOW_NODE_STARTED,
-            stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "node_type": event.get("node_type"),
-            },
+    if request.write_mode and request.context_type != "project":
+        raise HTTPException(
+            status_code=400,
+            detail="write_mode requires context_type='project'",
         )
-
-    if event_type == "text_delta":
-        return emitter.emit_text_delta(
-            str(event.get("text") or ""),
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-            },
-        )
-
-    if event_type == "workflow_condition_evaluated":
-        return emitter.emit(
-            event_type=WORKFLOW_CONDITION_EVALUATED,
-            stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "expression": event.get("expression"),
-                "result": event.get("result"),
-            },
-        )
-
-    if event_type == "workflow_node_finished":
-        return emitter.emit(
-            event_type=WORKFLOW_NODE_FINISHED,
-            stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "node_type": event.get("node_type"),
-                "result": event.get("result"),
-                "output_key": event.get("output_key"),
-                "output": event.get("output"),
-                "usage": event.get("usage"),
-            },
-        )
-
-    if event_type == "workflow_output_reported":
-        return emitter.emit(
-            event_type=WORKFLOW_OUTPUT_REPORTED,
-            stage=FlowEventStage.META,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "output": event.get("output"),
-            },
-        )
-
-    if event_type == "workflow_artifact_written":
-        return emitter.emit(
-            event_type=WORKFLOW_ARTIFACT_WRITTEN,
-            stage=FlowEventStage.META,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "file_path": event.get("file_path"),
-                "write_mode": event.get("write_mode"),
-                "written": event.get("written"),
-                "output_key": event.get("output_key"),
-                "content_hash": event.get("content_hash"),
-            },
-        )
-
-    if event_type == "workflow_run_finished":
-        return emitter.emit(
-            event_type=WORKFLOW_RUN_FINISHED,
-            stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "status": event.get("status"),
-                "output": event.get("output"),
-            },
-        )
-
-    if event_type == "stream_error":
-        return emitter.emit_error(str(event.get("error") or "workflow stream error"))
-
-    return emitter.emit(
-        event_type=LEGACY_EVENT,
-        stage=FlowEventStage.META,
-        payload={"legacy_type": event_type, "data": event},
-    )
 
 
 @router.get("", response_model=List[Workflow])
@@ -287,20 +182,7 @@ async def run_workflow_stream(
     workflow = await service.get_workflow(workflow_id)
     if workflow is None:
         raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
-    if not workflow.enabled:
-        raise HTTPException(status_code=409, detail="Workflow is disabled")
-    if request.context_type == "project" and not request.project_id:
-        raise HTTPException(status_code=400, detail="project_id is required when context_type is 'project'")
-    if request.artifact_target_path and request.context_type != "project":
-        raise HTTPException(
-            status_code=400,
-            detail="artifact_target_path requires context_type='project'",
-        )
-    if request.write_mode and request.context_type != "project":
-        raise HTTPException(
-            status_code=400,
-            detail="write_mode requires context_type='project'",
-        )
+    _validate_workflow_run_request(workflow, request)
 
     run_id = str(uuid.uuid4())
     emitter = FlowEventEmitter(stream_id=run_id, conversation_id=workflow_id, default_turn_id=run_id)
@@ -320,7 +202,7 @@ async def run_workflow_stream(
             artifact_target_path=request.artifact_target_path,
             write_mode=request.write_mode,
         ):
-            payload = _map_workflow_event_to_flow_payload(emitter, event)
+            payload = map_workflow_event_to_flow_payload(emitter, event)
             yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
 
             flow_event = payload.get("flow_event")
@@ -346,6 +228,33 @@ async def run_workflow_stream(
             "Connection": "keep-alive",
         },
     )
+
+
+@router.post("/{workflow_id}/runs", response_model=AsyncRunRecord, status_code=201)
+async def create_workflow_run(
+    workflow_id: str,
+    request: WorkflowRunRequest,
+    service: WorkflowConfigService = Depends(get_workflow_config_service),
+    run_service: AsyncRunService = Depends(get_async_run_service),
+):
+    workflow = await service.get_workflow(workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+    _validate_workflow_run_request(workflow, request)
+
+    try:
+        return await run_service.create_workflow_run(
+            workflow_id=workflow_id,
+            inputs=request.inputs,
+            session_id=request.session_id,
+            context_type=request.context_type,
+            project_id=request.project_id,
+            stream_mode=request.stream_mode,
+            artifact_target_path=request.artifact_target_path,
+            write_mode=request.write_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{workflow_id}/runs", response_model=List[WorkflowRunRecord])

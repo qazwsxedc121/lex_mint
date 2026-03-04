@@ -29,6 +29,7 @@ from .routers import (
     projects,
     prompt_templates,
     rag_config,
+    runs,
     search_config,
     sessions,
     title_generation,
@@ -80,6 +81,7 @@ app.include_router(prompt_templates.router)
 app.include_router(folders.router)
 app.include_router(memory.router)
 app.include_router(workflows.router)
+app.include_router(runs.router)
 
 logger.info("=" * 80)
 logger.info("FastAPI Application Started")

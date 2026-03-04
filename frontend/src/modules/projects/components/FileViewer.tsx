@@ -19,7 +19,7 @@ import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@h
 import type { FileContent } from '../../../types/project';
 import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
 import { Breadcrumb } from './Breadcrumb';
-import { listWorkflows, readFile, runWorkflowStream, writeFile } from '../../../services/api';
+import { cancelAsyncRun, listWorkflows, readFile, runWorkflowStream, writeFile } from '../../../services/api';
 import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
 import { InlineRewritePanel } from './InlineRewritePanel';
@@ -254,9 +254,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [projectWorkflowError, setProjectWorkflowError] = useState<string | null>(null);
   const [projectWorkflowInputs, setProjectWorkflowInputs] = useState<Record<string, unknown>>({});
   const [projectWorkflowOutput, setProjectWorkflowOutput] = useState('');
+  const [projectWorkflowRunId, setProjectWorkflowRunId] = useState<string | null>(null);
   const [projectWorkflowId, setProjectWorkflowId] = useState('');
   const [projectWorkflowArtifactPath, setProjectWorkflowArtifactPath] = useState('');
   const [projectWorkflowWriteMode, setProjectWorkflowWriteMode] = useState<'none' | 'create' | 'overwrite'>('overwrite');
+  const [inlineRewriteRunId, setInlineRewriteRunId] = useState<string | null>(null);
   const [autoSaveBeforeAgentSend, setAutoSaveBeforeAgentSend] = useState<boolean>(() => {
     return localStorage.getItem(AGENT_AUTO_SAVE_BEFORE_SEND_KEY) === 'true';
   });
@@ -343,6 +345,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setProjectWorkflowError(null);
     setProjectWorkflowInputs({});
     setProjectWorkflowOutput('');
+    setProjectWorkflowRunId(null);
+    setInlineRewriteRunId(null);
     setProjectWorkflowArtifactPath('');
     projectWorkflowAbortRef.current?.abort();
     projectWorkflowAbortRef.current = null;
@@ -780,7 +784,32 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         }
 
         if (inputDef.type === 'string') {
-          runInputs[inputDef.key] = typeof value === 'string' ? value : String(value);
+          const stringValue = typeof value === 'string' ? value : String(value);
+          if (typeof inputDef.max_length === 'number' && stringValue.length > inputDef.max_length) {
+            return {
+              inputs: runInputs,
+              error: `${inputDef.key} exceeds max length (${inputDef.max_length})`,
+            };
+          }
+          if (typeof inputDef.pattern === 'string' && inputDef.pattern.trim()) {
+            let matchesPattern = false;
+            try {
+              const regex = new RegExp(inputDef.pattern);
+              matchesPattern = regex.test(stringValue);
+            } catch {
+              return {
+                inputs: runInputs,
+                error: `${inputDef.key} has invalid pattern config`,
+              };
+            }
+            if (!matchesPattern) {
+              return {
+                inputs: runInputs,
+                error: `${inputDef.key} format is invalid`,
+              };
+            }
+          }
+          runInputs[inputDef.key] = stringValue;
           continue;
         }
 
@@ -831,7 +860,32 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         }
 
         if (inputDef.type === 'string') {
-          runInputs[inputDef.key] = typeof value === 'string' ? value : String(value);
+          const stringValue = typeof value === 'string' ? value : String(value);
+          if (typeof inputDef.max_length === 'number' && stringValue.length > inputDef.max_length) {
+            return {
+              inputs: runInputs,
+              error: `${inputDef.key} exceeds max length (${inputDef.max_length})`,
+            };
+          }
+          if (typeof inputDef.pattern === 'string' && inputDef.pattern.trim()) {
+            let matchesPattern = false;
+            try {
+              const regex = new RegExp(inputDef.pattern);
+              matchesPattern = regex.test(stringValue);
+            } catch {
+              return {
+                inputs: runInputs,
+                error: `${inputDef.key} has invalid pattern config`,
+              };
+            }
+            if (!matchesPattern) {
+              return {
+                inputs: runInputs,
+                error: `${inputDef.key} format is invalid`,
+              };
+            }
+          }
+          runInputs[inputDef.key] = stringValue;
           continue;
         }
 
@@ -902,12 +956,28 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     inlineRewriteAbortRef.current?.abort();
     inlineRewriteAbortRef.current = null;
     setInlineRewriteStreaming(false);
-  }, []);
+    const runId = inlineRewriteRunId;
+    setInlineRewriteRunId(null);
+    if (!runId) {
+      return;
+    }
+    void cancelAsyncRun(runId).catch(() => {
+      // Ignore cancel errors when run already finished.
+    });
+  }, [inlineRewriteRunId]);
   const handleStopProjectWorkflow = useCallback(() => {
     projectWorkflowAbortRef.current?.abort();
     projectWorkflowAbortRef.current = null;
     setProjectWorkflowRunning(false);
-  }, []);
+    const runId = projectWorkflowRunId;
+    setProjectWorkflowRunId(null);
+    if (!runId) {
+      return;
+    }
+    void cancelAsyncRun(runId).catch(() => {
+      // Ignore cancel errors when run already finished.
+    });
+  }, [projectWorkflowRunId]);
 
   const handleCloseInlineRewrite = useCallback(() => {
     handleStopInlineRewrite();
@@ -974,6 +1044,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setProjectWorkflowRunning(true);
     setProjectWorkflowError(null);
     setProjectWorkflowOutput('');
+    setProjectWorkflowRunId(null);
 
     const normalizedArtifactPath = projectWorkflowArtifactPath.trim();
     try {
@@ -981,6 +1052,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         workflowToRun.id,
         prepared.inputs,
         {
+          onRunCreated: (runId) => {
+            setProjectWorkflowRunId(runId);
+          },
           onEvent: (event) => {
             if (event.event_type === 'workflow_artifact_written') {
               const writtenPath = event.payload.file_path;
@@ -1003,10 +1077,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           },
           onComplete: () => {
             setProjectWorkflowRunning(false);
+            setProjectWorkflowRunId(null);
             addLauncherRecent(workflowToRun.id);
           },
           onError: (errorMessage) => {
             setProjectWorkflowRunning(false);
+            setProjectWorkflowRunId(null);
             setProjectWorkflowError(errorMessage);
           },
         },
@@ -1022,6 +1098,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       );
     } catch (err) {
       console.error('Project workflow request failed:', err);
+      setProjectWorkflowRunId(null);
       setProjectWorkflowError(err instanceof Error ? err.message : t('projectWorkflow.requestFailed'));
     } finally {
       setProjectWorkflowRunning(false);
@@ -1091,6 +1168,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setInlineRewriteError(null);
     setInlineRewriteNoSelectionPromptOpen(false);
     setInlineRewriteStreaming(true);
+    setInlineRewriteRunId(null);
 
     const prepared = buildInlineRewriteRunInputs(workflowToRun, snapshot, currentFullText, sessionId);
     if (prepared.error) {
@@ -1104,15 +1182,20 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         workflowToRun.id,
         prepared.inputs,
         {
+          onRunCreated: (runId) => {
+            setInlineRewriteRunId(runId);
+          },
           onChunk: (chunk) => {
             setInlineRewritePreview((prev) => prev + chunk);
           },
           onComplete: () => {
             setInlineRewriteStreaming(false);
+            setInlineRewriteRunId(null);
             addLauncherRecent(workflowToRun.id);
           },
           onError: (errorMessage) => {
             setInlineRewriteStreaming(false);
+            setInlineRewriteRunId(null);
             setInlineRewriteError(errorMessage);
           },
         },
@@ -1126,6 +1209,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       );
     } catch (err) {
       console.error('Inline rewrite request failed:', err);
+      setInlineRewriteRunId(null);
       setInlineRewriteError(err instanceof Error ? err.message : t('inlineRewrite.requestFailed'));
     } finally {
       setInlineRewriteStreaming(false);

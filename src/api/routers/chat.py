@@ -37,6 +37,7 @@ from ..services.flow_stream_runtime import (
     FlowStreamNotFoundError,
     FlowStreamRuntime,
 )
+from ..services.flow_stream_runtime_provider import get_flow_stream_runtime
 from ..models.search import SearchSource
 from ..config import settings
 
@@ -148,18 +149,6 @@ def get_agent_service() -> AgentService:
 def get_file_service() -> FileService:
     """Dependency injection for FileService."""
     return FileService(settings.attachments_dir, settings.max_file_size_mb)
-
-
-_flow_stream_runtime = FlowStreamRuntime(
-    ttl_seconds=settings.flow_stream_ttl_seconds,
-    max_events_per_stream=settings.flow_stream_max_events,
-    max_active_streams=settings.flow_stream_max_active,
-)
-
-
-def get_flow_stream_runtime() -> FlowStreamRuntime:
-    """Dependency injection for in-memory FlowEvent replay runtime."""
-    return _flow_stream_runtime
 
 
 def _is_terminal_payload(payload: Dict[str, Any]) -> bool:

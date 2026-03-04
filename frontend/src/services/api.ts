@@ -794,6 +794,127 @@ export interface WorkflowRunStreamOptions {
   writeMode?: 'none' | 'create' | 'overwrite';
 }
 
+export type AsyncRunKind = 'workflow' | 'chat';
+export type AsyncRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface AsyncRunRecord {
+  run_id: string;
+  stream_id: string;
+  kind: AsyncRunKind;
+  status: AsyncRunStatus;
+  context_type: 'workflow' | 'chat' | 'project';
+  project_id?: string | null;
+  session_id?: string | null;
+  workflow_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  request_payload: Record<string, unknown>;
+  result_summary: Record<string, unknown>;
+  error?: string | null;
+  last_event_id?: string | null;
+  last_seq: number;
+}
+
+export interface ListAsyncRunsOptions {
+  limit?: number;
+  kind?: AsyncRunKind;
+  status?: AsyncRunStatus;
+  contextType?: 'workflow' | 'chat' | 'project';
+  projectId?: string;
+  sessionId?: string;
+  workflowId?: string;
+}
+
+interface AsyncRunListResponse {
+  runs: AsyncRunRecord[];
+}
+
+function extractErrorDetail(payload: unknown): string | null {
+  const data = asRecord(payload);
+  if (!data) {
+    return null;
+  }
+  const detail = data.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+  const detailRecord = asRecord(detail);
+  const detailMessage = detailRecord ? asString(detailRecord.message) : undefined;
+  if (detailMessage && detailMessage.trim()) {
+    return detailMessage;
+  }
+  return null;
+}
+
+async function getResponseErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.json();
+    return extractErrorDetail(payload) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function createAsyncRun(payload: {
+  kind: AsyncRunKind;
+  workflow_id?: string;
+  inputs?: Record<string, unknown>;
+  session_id?: string;
+  context_type?: 'workflow' | 'chat' | 'project';
+  project_id?: string;
+  stream_mode?: 'default' | 'editor_rewrite';
+  artifact_target_path?: string;
+  write_mode?: 'none' | 'create' | 'overwrite';
+}): Promise<AsyncRunRecord> {
+  const response = await api.post<AsyncRunRecord>('/api/runs', payload);
+  return response.data;
+}
+
+export async function createWorkflowRun(
+  workflowId: string,
+  inputs: Record<string, unknown>,
+  options?: WorkflowRunStreamOptions,
+): Promise<AsyncRunRecord> {
+  return createAsyncRun({
+    kind: 'workflow',
+    workflow_id: workflowId,
+    inputs,
+    session_id: options?.sessionId,
+    context_type: options?.contextType || 'workflow',
+    project_id: options?.projectId,
+    stream_mode: options?.streamMode || 'default',
+    artifact_target_path: options?.artifactTargetPath,
+    write_mode: options?.writeMode,
+  });
+}
+
+export async function listAsyncRuns(options?: ListAsyncRunsOptions): Promise<AsyncRunRecord[]> {
+  const response = await api.get<AsyncRunListResponse>('/api/runs', {
+    params: {
+      limit: options?.limit ?? 50,
+      kind: options?.kind,
+      status: options?.status,
+      context_type: options?.contextType,
+      project_id: options?.projectId,
+      session_id: options?.sessionId,
+      workflow_id: options?.workflowId,
+    },
+  });
+  return response.data.runs;
+}
+
+export async function getAsyncRun(runId: string): Promise<AsyncRunRecord> {
+  const response = await api.get<AsyncRunRecord>(`/api/runs/${runId}`);
+  return response.data;
+}
+
+export async function cancelAsyncRun(runId: string): Promise<AsyncRunRecord> {
+  const response = await api.post<AsyncRunRecord>(`/api/runs/${runId}/cancel`);
+  return response.data;
+}
+
 export async function runWorkflowStream(
   workflowId: string,
   inputs: Record<string, unknown>,
@@ -807,67 +928,124 @@ export async function runWorkflowStream(
   }
 
   try {
-    const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/run/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inputs,
-        session_id: options?.sessionId,
-        context_type: options?.contextType || 'workflow',
-        project_id: options?.projectId,
-        stream_mode: options?.streamMode || 'default',
-        artifact_target_path: options?.artifactTargetPath,
-        write_mode: options?.writeMode,
-      }),
+    const run = await createWorkflowRun(workflowId, inputs, options);
+    callbacks.onRunCreated?.(run.run_id);
+
+    let lastEventId: string | undefined;
+    let resumeAttempts = 0;
+    const resumeDelaysMs = [500, 1500];
+
+    const consumeResponse = async (response: Response): Promise<'done' | 'disconnected'> => {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+      try {
+        try {
+          for await (const dataStr of iterateSSEData(reader)) {
+            try {
+              const data = JSON.parse(dataStr);
+              const flowEvent = parseFlowEvent(data.flow_event);
+              if (!flowEvent) {
+                callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
+                return 'done';
+              }
+
+              lastEventId = flowEvent.event_id;
+              const workflowEvent = flowEvent as WorkflowFlowEvent;
+              callbacks.onEvent?.(workflowEvent);
+
+              if (workflowEvent.event_type === 'stream_error') {
+                callbacks.onError?.(asString(workflowEvent.payload.error) || i18n.t('workflow:errors.runFailed'));
+                return 'done';
+              }
+
+              if (workflowEvent.event_type === 'text_delta') {
+                const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
+                if (textChunk) {
+                  callbacks.onChunk?.(textChunk, workflowEvent);
+                }
+                continue;
+              }
+
+              if (workflowEvent.event_type === 'stream_ended') {
+                callbacks.onComplete?.();
+                return 'done';
+              }
+            } catch {
+              continue;
+            }
+          }
+          return 'disconnected';
+        } catch (streamError: unknown) {
+          if (streamError instanceof Error && streamError.name === 'AbortError') {
+            throw streamError;
+          }
+          return 'disconnected';
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    };
+
+    let response = await fetch(`${API_BASE}/api/runs/${run.run_id}/stream`, {
+      method: 'GET',
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || `HTTP error! status: ${response.status}`);
+      const message = await getResponseErrorMessage(
+        response,
+        `Failed to open workflow stream: ${response.status}`
+      );
+      throw new Error(message);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (!flowEvent) {
-            callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
-            return;
-          }
-
-          const workflowEvent = flowEvent as WorkflowFlowEvent;
-          callbacks.onEvent?.(workflowEvent);
-
-          if (workflowEvent.event_type === 'stream_error') {
-            callbacks.onError?.(asString(workflowEvent.payload.error) || i18n.t('workflow:errors.runFailed'));
-            return;
-          }
-
-          if (workflowEvent.event_type === 'text_delta') {
-            const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
-            if (textChunk) {
-              callbacks.onChunk?.(textChunk, workflowEvent);
-            }
-            continue;
-          }
-
-          if (workflowEvent.event_type === 'stream_ended') {
-            callbacks.onComplete?.();
-            return;
-          }
-        } catch {
-          continue;
-        }
+    while (true) {
+      const status = await consumeResponse(response);
+      if (status === 'done') {
+        return;
       }
-    } finally {
-      reader.releaseLock();
+
+      if (!lastEventId) {
+        callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
+        return;
+      }
+
+      if (resumeAttempts >= resumeDelaysMs.length) {
+        callbacks.onError?.('Workflow stream disconnected and resume retries were exhausted.');
+        return;
+      }
+
+      await sleep(resumeDelaysMs[resumeAttempts]);
+      resumeAttempts += 1;
+
+      response = await fetch(`${API_BASE}/api/runs/${run.run_id}/stream/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_event_id: lastEventId }),
+        signal: controller.signal,
+      });
+
+      if (response.status === 410) {
+        callbacks.onError?.('Workflow stream resume cursor expired. Please run again.');
+        return;
+      }
+      if (response.status === 404) {
+        callbacks.onError?.('Workflow stream not found.');
+        return;
+      }
+      if (response.status === 409) {
+        callbacks.onError?.('Workflow stream context mismatch. Please run again.');
+        return;
+      }
+      if (!response.ok) {
+        const message = await getResponseErrorMessage(
+          response,
+          `Workflow resume stream failed: ${response.status}`
+        );
+        throw new Error(message);
+      }
     }
   } catch (error: unknown) {
     if (error instanceof Error && error.name === 'AbortError') {

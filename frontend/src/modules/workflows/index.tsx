@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { runWorkflowStream } from '../../services/api';
+import { cancelAsyncRun, runWorkflowStream } from '../../services/api';
 import type { Workflow, WorkflowFlowEvent, WorkflowScenario } from '../../types/workflow';
 import { useWorkflows } from './hooks/useWorkflows';
 import { WorkflowList } from './components/WorkflowList';
@@ -70,6 +70,7 @@ export const WorkflowsModule: React.FC = () => {
   const [outputMode, setOutputMode] = React.useState<'live' | 'final'>('live');
   const [streamEvents, setStreamEvents] = React.useState<WorkflowFlowEvent[]>([]);
   const [activeView, setActiveView] = React.useState<'builder' | 'playground' | 'history'>('builder');
+  const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const liveOutputRef = React.useRef('');
   const hasFinalOutputRef = React.useRef(false);
@@ -185,11 +186,15 @@ export const WorkflowsModule: React.FC = () => {
     hasFinalOutputRef.current = false;
     setStreamEvents([]);
     setRunning(true);
+    setActiveRunId(null);
     try {
       await runWorkflowStream(
         workflow.id,
         inputs,
         {
+          onRunCreated: (runId) => {
+            setActiveRunId(runId);
+          },
           onEvent: (event) => {
             if (event.event_type === 'workflow_output_reported' || event.event_type === 'workflow_run_finished') {
               const finalOutput = event.payload.output;
@@ -216,9 +221,11 @@ export const WorkflowsModule: React.FC = () => {
           },
           onError: (message) => {
             setRunError(message);
+            setActiveRunId(null);
           },
           onComplete: () => {
             addLauncherRecent(workflow.id);
+            setActiveRunId(null);
             void (async () => {
               const latestRuns = await refreshRuns(workflow.id);
               if (!hasFinalOutputRef.current) {
@@ -238,16 +245,25 @@ export const WorkflowsModule: React.FC = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.runRequestFailed');
       setRunError(message);
+      setActiveRunId(null);
     } finally {
       setRunning(false);
       void refreshRuns(workflow.id);
     }
   }, [addLauncherRecent, refreshRuns, t, workflows]);
 
-  const handleStop = () => {
+  const handleStop = React.useCallback(() => {
     abortControllerRef.current?.abort();
     setRunning(false);
-  };
+    const runId = activeRunId;
+    setActiveRunId(null);
+    if (!runId) {
+      return;
+    }
+    void cancelAsyncRun(runId).catch(() => {
+      // Run may already be terminal when stop is pressed.
+    });
+  }, [activeRunId]);
 
   return (
     <div className="flex flex-1 bg-gray-100 dark:bg-gray-900" data-name="workflows-module">

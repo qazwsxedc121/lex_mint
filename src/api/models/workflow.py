@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -19,6 +20,9 @@ class WorkflowInputDef(BaseModel):
     required: bool = False
     default: Optional[Union[str, int, float, bool]] = None
     description: Optional[str] = None
+    allow_file_insert: Optional[bool] = None
+    max_length: Optional[int] = Field(default=None, ge=1, le=200000)
+    pattern: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_default_type(self) -> "WorkflowInputDef":
@@ -36,6 +40,29 @@ class WorkflowInputDef(BaseModel):
 
         if self.type == "boolean" and not isinstance(self.default, bool):
             raise ValueError(f"Input '{self.key}' default must be a boolean")
+
+        if self.type != "string":
+            if self.max_length is not None:
+                raise ValueError(f"Input '{self.key}' max_length is only valid for string inputs")
+            if self.pattern is not None:
+                raise ValueError(f"Input '{self.key}' pattern is only valid for string inputs")
+
+        if self.type == "string" and isinstance(self.default, str):
+            if self.max_length is not None and len(self.default) > self.max_length:
+                raise ValueError(
+                    f"Input '{self.key}' default exceeds max_length ({self.max_length})"
+                )
+            if self.pattern:
+                try:
+                    compiled = re.compile(self.pattern)
+                except re.error as exc:
+                    raise ValueError(
+                        f"Input '{self.key}' has invalid pattern: {exc}"
+                    ) from exc
+                if not compiled.fullmatch(self.default):
+                    raise ValueError(
+                        f"Input '{self.key}' default does not match pattern"
+                    )
 
         return self
 

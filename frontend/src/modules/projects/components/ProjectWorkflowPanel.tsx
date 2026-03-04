@@ -7,6 +7,22 @@ import { WorkflowLauncherList } from '../../../shared/workflow-launcher/Workflow
 import type { LauncherRecentItem, LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
 import { useFileSearch } from '../hooks/useFileSearch';
 
+const isIdentifierLikeField = (fieldKey: string): boolean => {
+  const normalized = fieldKey.trim().toLowerCase();
+  return normalized === 'id' || normalized.endsWith('_id');
+};
+
+const canInsertFileForInput = (field: WorkflowInputDef): boolean => {
+  if (field.type !== 'string') {
+    return false;
+  }
+  if (typeof field.allow_file_insert === 'boolean') {
+    return field.allow_file_insert;
+  }
+  // Backward-compatible safety for old schemas without explicit allow_file_insert.
+  return !isIdentifierLikeField(field.key);
+};
+
 interface ProjectWorkflowPanelProps {
   projectId: string;
   currentFilePath?: string | null;
@@ -248,21 +264,24 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
               }
 
               const stringValue = typeof rawValue === 'string' ? rawValue : '';
+              const canInsertFromFile = canInsertFileForInput(field);
               return (
                 <label key={field.key} className="block space-y-1" htmlFor={inputName}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-gray-700 dark:text-gray-300">{keyLabel}</div>
-                    <button
-                      type="button"
-                      data-name={`project-workflow-insert-file-${field.key}`}
-                      disabled={isRunning || activeFieldLoading}
-                      onClick={() => handleToggleFilePicker(field.key)}
-                      className="px-2 py-1 text-[11px] rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:bg-gray-100 dark:disabled:bg-gray-800/60 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {loadingFieldKey === field.key
-                        ? t('projectWorkflow.loadingFile')
-                        : t('projectWorkflow.insertFromFile')}
-                    </button>
+                    {canInsertFromFile && (
+                      <button
+                        type="button"
+                        data-name={`project-workflow-insert-file-${field.key}`}
+                        disabled={isRunning || activeFieldLoading}
+                        onClick={() => handleToggleFilePicker(field.key)}
+                        className="px-2 py-1 text-[11px] rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:bg-gray-100 dark:disabled:bg-gray-800/60 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {loadingFieldKey === field.key
+                          ? t('projectWorkflow.loadingFile')
+                          : t('projectWorkflow.insertFromFile')}
+                      </button>
+                    )}
                   </div>
                   <textarea
                     id={inputName}
@@ -272,7 +291,7 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
                     onChange={(event) => onInputChange(field.key, event.target.value)}
                     className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
-                  {pickerFieldKey === field.key && (
+                  {canInsertFromFile && pickerFieldKey === field.key && (
                     <div
                       data-name={`project-workflow-file-picker-${field.key}`}
                       className="rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/70 p-2 space-y-2"

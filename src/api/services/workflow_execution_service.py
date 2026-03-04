@@ -28,6 +28,8 @@ from .workflow_run_history_service import WorkflowRunHistoryService
 
 
 _TEMPLATE_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")
+_WINDOWS_DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
+_INVALID_ARTIFACT_PATH_CHAR_RE = re.compile(r'[\x00-\x1f<>:"|?*]')
 
 
 @dataclass(frozen=True)
@@ -454,8 +456,10 @@ class WorkflowExecutionService:
                         (artifact_target_path or "").strip()
                         or self._render_template(node.file_path_template, template_context).strip()
                     )
-                    if not artifact_file_path:
-                        raise ValueError(f"Artifact node '{node.id}' produced empty file path")
+                    artifact_file_path = self._validate_artifact_file_path(
+                        artifact_file_path,
+                        node_id=node.id,
+                    )
 
                     node_write_mode = write_mode or node.write_mode
                     if node_write_mode not in {"none", "create", "overwrite"}:
@@ -618,6 +622,20 @@ class WorkflowExecutionService:
             if input_def.type == "string":
                 if not isinstance(value, str):
                     raise ValueError(f"Input '{input_def.key}' must be a string")
+                if input_def.max_length is not None and len(value) > input_def.max_length:
+                    raise ValueError(
+                        f"Input '{input_def.key}' exceeds max length ({input_def.max_length})"
+                    )
+                if input_def.pattern:
+                    try:
+                        if re.fullmatch(input_def.pattern, value) is None:
+                            raise ValueError(
+                                f"Input '{input_def.key}' format is invalid"
+                            )
+                    except re.error as exc:
+                        raise ValueError(
+                            f"Input '{input_def.key}' has invalid pattern config: {exc}"
+                        ) from exc
                 normalized[input_def.key] = value
                 continue
 
@@ -665,3 +683,36 @@ class WorkflowExecutionService:
             if "path does not exist" in message or "file not found" in message:
                 return False
             raise
+
+    def _validate_artifact_file_path(self, raw_path: str, *, node_id: str) -> str:
+        normalized_path = raw_path.replace("\\", "/").strip()
+        if not normalized_path:
+            raise ValueError(f"Artifact node '{node_id}' produced empty file path")
+        if normalized_path.startswith("/") or _WINDOWS_DRIVE_PREFIX.match(normalized_path):
+            raise ValueError(
+                f"Artifact node '{node_id}' path must be project-relative: {normalized_path}"
+            )
+        if _INVALID_ARTIFACT_PATH_CHAR_RE.search(normalized_path):
+            raise ValueError(
+                f"Artifact node '{node_id}' produced invalid path characters. "
+                "Check file_path_template or inputs (for example, chapter_id should be short text)."
+            )
+        if len(normalized_path) > 240:
+            raise ValueError(
+                f"Artifact node '{node_id}' produced an overlong path ({len(normalized_path)} chars)"
+            )
+
+        parts = [part for part in normalized_path.split("/") if part]
+        if not parts:
+            raise ValueError(f"Artifact node '{node_id}' produced empty file path")
+        for part in parts:
+            if part in {".", ".."}:
+                raise ValueError(
+                    f"Artifact node '{node_id}' produced unsafe path segment '{part}'"
+                )
+            if part.endswith(" ") or part.endswith("."):
+                raise ValueError(
+                    f"Artifact node '{node_id}' path segment cannot end with dot or space: '{part}'"
+                )
+
+        return "/".join(parts)
