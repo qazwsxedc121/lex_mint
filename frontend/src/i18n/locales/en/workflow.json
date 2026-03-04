@@ -48,6 +48,7 @@
     "scenario": "Scenario",
     "scenarioGeneral": "General",
     "scenarioEditorRewrite": "Inline Rewrite (Projects)",
+    "scenarioProjectPipeline": "Project Pipeline (Artifact Write)",
     "status": "Status",
     "enabled": "Enabled",
     "disabled": "Disabled"
@@ -77,6 +78,7 @@
       "workflowNodeStarted": "Node started:",
       "workflowNodeFinished": "Node finished:",
       "workflowConditionEvaluated": "Condition evaluated",
+      "workflowArtifactWritten": "Artifact written",
       "workflowRunFinished": "Workflow finished",
       "streamError": "Run failed"
     }

@@ -106,3 +106,11 @@ async def test_workflow_config_service_ensures_system_workflows(temp_config_dir)
     assert inline_rewrite is not None
     assert inline_rewrite.is_system is True
     assert inline_rewrite.scenario == "editor_rewrite"
+
+    novel_charter = next(
+        (workflow for workflow in workflows if workflow.id == "wf_novel_charter_v1"),
+        None,
+    )
+    assert novel_charter is not None
+    assert novel_charter.is_system is True
+    assert novel_charter.scenario == "project_pipeline"

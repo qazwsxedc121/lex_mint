@@ -42,6 +42,7 @@ WORKFLOW_NODE_STARTED: Final[str] = "workflow_node_started"
 WORKFLOW_NODE_FINISHED: Final[str] = "workflow_node_finished"
 WORKFLOW_CONDITION_EVALUATED: Final[str] = "workflow_condition_evaluated"
 WORKFLOW_OUTPUT_REPORTED: Final[str] = "workflow_output_reported"
+WORKFLOW_ARTIFACT_WRITTEN: Final[str] = "workflow_artifact_written"
 WORKFLOW_RUN_FINISHED: Final[str] = "workflow_run_finished"
 
 TERMINAL_EVENT_TYPES: Final[FrozenSet[str]] = frozenset(

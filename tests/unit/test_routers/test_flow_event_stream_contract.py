@@ -307,3 +307,21 @@ async def test_workflow_stream_requires_project_id_for_project_context():
         )
 
     assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_workflow_stream_write_mode_requires_project_context():
+    with pytest.raises(HTTPException) as exc_info:
+        await workflows_router.run_workflow_stream(
+            workflow_id="wf_inline_rewrite_default",
+            request=workflows_router.WorkflowRunRequest(
+                session_id="session-editor-3",
+                context_type="workflow",
+                write_mode="overwrite",
+                inputs={"_selected_text": "source text"},
+            ),
+            service=_FakeWorkflowConfigService(),
+            execution_service=_FakeWorkflowExecutionService(),
+        )
+
+    assert exc_info.value.status_code == 400

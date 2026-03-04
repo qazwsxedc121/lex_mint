@@ -1,5 +1,5 @@
-export type WorkflowNodeType = 'start' | 'llm' | 'condition' | 'end';
-export type WorkflowScenario = 'general' | 'editor_rewrite';
+export type WorkflowNodeType = 'start' | 'llm' | 'condition' | 'artifact' | 'end';
+export type WorkflowScenario = 'general' | 'editor_rewrite' | 'project_pipeline';
 
 export interface WorkflowInputDef {
   key: string;
@@ -41,7 +41,17 @@ export interface EndNode {
   result_template?: string | null;
 }
 
-export type WorkflowNode = StartNode | LlmNode | ConditionNode | EndNode;
+export interface ArtifactNode {
+  id: string;
+  type: 'artifact';
+  file_path_template: string;
+  content_template: string;
+  write_mode?: 'create' | 'overwrite';
+  output_key?: string | null;
+  next_id: string;
+}
+
+export type WorkflowNode = StartNode | LlmNode | ConditionNode | ArtifactNode | EndNode;
 
 export interface Workflow {
   id: string;

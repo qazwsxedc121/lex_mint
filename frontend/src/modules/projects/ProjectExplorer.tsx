@@ -116,6 +116,24 @@ export const ProjectExplorer: React.FC = () => {
     return () => window.removeEventListener('project-file-updated', onFileUpdated);
   }, [projectId, selectedFilePath, refreshContent]);
 
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
+    const onTreeUpdated = (rawEvent: Event) => {
+      const event = rawEvent as CustomEvent<{ projectId?: string }>;
+      const eventProjectId = event.detail?.projectId;
+      if (eventProjectId && eventProjectId !== projectId) {
+        return;
+      }
+      void refreshTree();
+    };
+
+    window.addEventListener('project-tree-updated', onTreeUpdated as EventListener);
+    return () => window.removeEventListener('project-tree-updated', onTreeUpdated as EventListener);
+  }, [projectId, refreshTree]);
+
   const handleRefreshProject = useCallback(async () => {
     await refreshTree();
     await refreshContent();

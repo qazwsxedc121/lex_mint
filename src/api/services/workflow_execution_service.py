@@ -6,14 +6,23 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Union
 
 from src.agents.simple_llm import call_llm_stream
 
 from ..config import settings
-from ..models.workflow import ConditionNode, EndNode, LlmNode, StartNode, Workflow, WorkflowRunRecord
+from ..models.workflow import (
+    ArtifactNode,
+    ConditionNode,
+    EndNode,
+    LlmNode,
+    StartNode,
+    Workflow,
+    WorkflowRunRecord,
+)
 from .assistant_config_service import AssistantConfigService
 from .conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from .project_service import ProjectService
 from .think_tag_filter import ThinkTagStreamFilter
 from .workflow_run_history_service import WorkflowRunHistoryService
 
@@ -207,11 +216,13 @@ class WorkflowExecutionService:
             Callable[..., AsyncIterator[Union[str, Dict[str, Any]]]]
         ] = None,
         storage: Optional[ConversationStorage] = None,
+        project_service: Optional[ProjectService] = None,
         max_steps: int = 100,
     ):
         self.history_service = history_service or WorkflowRunHistoryService()
         self.llm_stream_fn = llm_stream_fn or call_llm_stream
         self.storage = storage or create_storage_with_project_resolver(settings.conversations_dir)
+        self.project_service = project_service or ProjectService()
         self.max_steps = max(1, int(max_steps))
 
     async def execute_stream(
@@ -224,6 +235,8 @@ class WorkflowExecutionService:
         context_type: str = "workflow",
         project_id: Optional[str] = None,
         stream_mode: str = "default",
+        artifact_target_path: Optional[str] = None,
+        write_mode: Optional[Literal["none", "create", "overwrite"]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Execute a workflow and stream runtime events."""
         run_identifier = run_id or str(uuid.uuid4())
@@ -241,6 +254,13 @@ class WorkflowExecutionService:
                 project_id=project_id,
             )
             normalized_inputs = self._validate_and_normalize_inputs(workflow, inputs or {})
+            ctx = {
+                "run_id": run_identifier,
+                "workflow_id": workflow.id,
+                "started_at": started_at.isoformat(),
+                "context_type": context_type,
+                "project_id": project_id or "",
+            }
             node_map = {node.id: node for node in workflow.nodes}
             current_id = workflow.entry_node_id
             step_count = 0
@@ -424,6 +444,84 @@ class WorkflowExecutionService:
                     }
                     break
 
+                if isinstance(node, ArtifactNode):
+                    if not project_id or context_type != "project":
+                        raise ValueError(
+                            "Artifact node requires project context (context_type='project' and project_id)"
+                        )
+
+                    artifact_file_path = (
+                        (artifact_target_path or "").strip()
+                        or self._render_template(node.file_path_template, template_context).strip()
+                    )
+                    if not artifact_file_path:
+                        raise ValueError(f"Artifact node '{node.id}' produced empty file path")
+
+                    node_write_mode = write_mode or node.write_mode
+                    if node_write_mode not in {"none", "create", "overwrite"}:
+                        raise ValueError(
+                            f"Unsupported write mode '{node_write_mode}' for artifact node '{node.id}'"
+                        )
+
+                    artifact_content = self._render_template(node.content_template, template_context)
+                    artifact_payload: Dict[str, Any] = {
+                        "file_path": artifact_file_path,
+                        "write_mode": node_write_mode,
+                        "bytes": len(artifact_content.encode("utf-8")),
+                    }
+
+                    if node_write_mode == "none":
+                        artifact_payload["written"] = False
+                    else:
+                        if node_write_mode == "create":
+                            if await self._project_file_exists(project_id, artifact_file_path):
+                                raise ValueError(
+                                    f"Artifact path already exists: {artifact_file_path}"
+                                )
+
+                        written_file = await self.project_service.write_file(
+                            project_id,
+                            artifact_file_path,
+                            artifact_content,
+                        )
+                        artifact_payload.update(
+                            {
+                                "written": True,
+                                "content_hash": written_file.content_hash,
+                                "encoding": written_file.encoding,
+                                "size": written_file.size,
+                            }
+                        )
+
+                    output_key = node.output_key or f"node_{node.id}_artifact"
+                    ctx[output_key] = artifact_payload
+                    ctx["last_artifact"] = artifact_payload
+                    ctx["last_output"] = artifact_content
+                    output_text = artifact_content
+
+                    yield {
+                        "type": "workflow_artifact_written",
+                        "workflow_id": workflow.id,
+                        "run_id": run_identifier,
+                        "node_id": node.id,
+                        "file_path": artifact_file_path,
+                        "write_mode": node_write_mode,
+                        "written": artifact_payload.get("written", False),
+                        "output_key": output_key,
+                        "content_hash": artifact_payload.get("content_hash"),
+                    }
+                    yield {
+                        "type": "workflow_node_finished",
+                        "workflow_id": workflow.id,
+                        "run_id": run_identifier,
+                        "node_id": node.id,
+                        "node_type": node.type,
+                        "output_key": output_key,
+                        "artifact": artifact_payload,
+                    }
+                    current_id = node.next_id
+                    continue
+
                 raise ValueError(f"Unsupported node type '{node.type}'")
 
         except Exception as exc:
@@ -557,3 +655,13 @@ class WorkflowExecutionService:
             return str(value)
 
         return _TEMPLATE_PATTERN.sub(repl, template)
+
+    async def _project_file_exists(self, project_id: str, relative_path: str) -> bool:
+        try:
+            await self.project_service.read_file(project_id, relative_path)
+            return True
+        except ValueError as exc:
+            message = str(exc).lower()
+            if "path does not exist" in message or "file not found" in message:
+                return False
+            raise

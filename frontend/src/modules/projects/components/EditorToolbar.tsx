@@ -12,6 +12,7 @@ import {
   HashtagIcon,
   ArrowUpOnSquareIcon,
   CloudArrowUpIcon,
+  DocumentTextIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { ChatToggleButton } from './ChatToggleButton';
@@ -64,6 +65,11 @@ interface EditorToolbarProps {
   onInlineRewrite: () => void;
   inlineRewriteDisabled: boolean;
   inlineRewriteTitle: string;
+
+  // Project workflow
+  onProjectWorkflow: () => void;
+  projectWorkflowDisabled: boolean;
+  projectWorkflowTitle: string;
 }
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
@@ -101,6 +107,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onInlineRewrite,
   inlineRewriteDisabled,
   inlineRewriteTitle,
+  onProjectWorkflow,
+  projectWorkflowDisabled,
+  projectWorkflowTitle,
 }) => {
   const { t } = useTranslation('projects');
 
@@ -271,6 +280,19 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
             }`}
           >
             <SparklesIcon className="h-4 w-4" />
+          </button>
+          <button
+            title={projectWorkflowTitle}
+            onClick={onProjectWorkflow}
+            disabled={projectWorkflowDisabled}
+            data-name="editor-project-workflow-button"
+            className={`p-1.5 rounded ${
+              projectWorkflowDisabled
+                ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            <DocumentTextIcon className="h-4 w-4" />
           </button>
           <button
             title={insertToChatTitle}

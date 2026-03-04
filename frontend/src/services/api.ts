@@ -790,6 +790,8 @@ export interface WorkflowRunStreamOptions {
   contextType?: 'workflow' | 'chat' | 'project';
   projectId?: string;
   streamMode?: 'default' | 'editor_rewrite';
+  artifactTargetPath?: string;
+  writeMode?: 'none' | 'create' | 'overwrite';
 }
 
 export async function runWorkflowStream(
@@ -814,6 +816,8 @@ export async function runWorkflowStream(
         context_type: options?.contextType || 'workflow',
         project_id: options?.projectId,
         stream_mode: options?.streamMode || 'default',
+        artifact_target_path: options?.artifactTargetPath,
+        write_mode: options?.writeMode,
       }),
       signal: controller.signal,
     });

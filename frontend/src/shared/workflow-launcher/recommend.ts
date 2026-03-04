@@ -79,8 +79,13 @@ export const recommendWorkflows = ({
 
       if (context.requiredScenario && workflow.scenario !== context.requiredScenario) {
         score -= 200;
-      } else if (context.module === 'projects' && workflow.scenario === 'editor_rewrite') {
-        score += 40;
+      } else if (context.module === 'projects') {
+        if (workflow.scenario === 'editor_rewrite') {
+          score += 40;
+        }
+        if (workflow.scenario === 'project_pipeline') {
+          score += 35;
+        }
       }
 
       score += keywordScore(workflow, ext);

@@ -96,8 +96,36 @@ class EndNode(BaseModel):
     result_template: Optional[str] = None
 
 
+class ArtifactNode(BaseModel):
+    """Workflow artifact node (write rendered content to a project file)."""
+
+    id: str = Field(..., pattern=_KEY_PATTERN)
+    type: Literal["artifact"]
+    file_path_template: str
+    content_template: str = "{{ctx.last_output}}"
+    write_mode: Literal["create", "overwrite"] = "overwrite"
+    output_key: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
+    next_id: str = Field(..., pattern=_KEY_PATTERN)
+
+    @field_validator("file_path_template")
+    @classmethod
+    def validate_file_path_template(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Artifact node file_path_template cannot be empty")
+        return stripped
+
+    @field_validator("content_template")
+    @classmethod
+    def validate_content_template(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Artifact node content_template cannot be empty")
+        return stripped
+
+
 WorkflowNode = Annotated[
-    Union[StartNode, LlmNode, ConditionNode, EndNode],
+    Union[StartNode, LlmNode, ConditionNode, ArtifactNode, EndNode],
     Field(discriminator="type"),
 ]
 
@@ -108,7 +136,7 @@ class WorkflowBase(BaseModel):
     name: str
     description: Optional[str] = None
     enabled: bool = True
-    scenario: Literal["general", "editor_rewrite"] = "general"
+    scenario: Literal["general", "editor_rewrite", "project_pipeline"] = "general"
     is_system: bool = False
     template_version: Optional[int] = Field(default=None, ge=1)
     input_schema: List[WorkflowInputDef] = Field(default_factory=list)
@@ -168,6 +196,8 @@ class WorkflowBase(BaseModel):
                 targets = [node.next_id]
             elif isinstance(node, ConditionNode):
                 targets = [node.true_next_id, node.false_next_id]
+            elif isinstance(node, ArtifactNode):
+                targets = [node.next_id]
 
             for target in targets:
                 if target not in node_ids:
@@ -204,7 +234,7 @@ class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[bool] = None
-    scenario: Optional[Literal["general", "editor_rewrite"]] = None
+    scenario: Optional[Literal["general", "editor_rewrite", "project_pipeline"]] = None
     input_schema: Optional[List[WorkflowInputDef]] = None
     entry_node_id: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
     nodes: Optional[List[WorkflowNode]] = None

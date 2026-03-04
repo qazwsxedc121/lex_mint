@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Dict, Union
 import pytest
 
 from src.api.models.workflow import (
+    ArtifactNode,
     ConditionNode,
     EndNode,
     LlmNode,
@@ -41,6 +42,39 @@ class _FakeStorage:
             }
         )
         return self.session_payload
+
+
+class _FakeProjectService:
+    def __init__(self):
+        self.files: Dict[tuple[str, str], str] = {}
+
+    async def read_file(self, project_id: str, relative_path: str):
+        key = (project_id, relative_path)
+        if key not in self.files:
+            raise ValueError(f"Path does not exist: {relative_path}")
+        content = self.files[key]
+        return SimpleNamespace(
+            content=content,
+            content_hash=f"hash-{len(content)}",
+            encoding="utf-8",
+            size=len(content),
+        )
+
+    async def write_file(
+        self,
+        project_id: str,
+        relative_path: str,
+        content: str,
+        encoding: str = "utf-8",
+    ):
+        key = (project_id, relative_path)
+        self.files[key] = content
+        return SimpleNamespace(
+            content=content,
+            content_hash=f"hash-{len(content)}",
+            encoding=encoding,
+            size=len(content),
+        )
 
 
 def _workflow_with_condition() -> Workflow:
@@ -97,6 +131,34 @@ def _simple_rewrite_workflow() -> Workflow:
             StartNode(id="start_1", type="start", next_id="llm_1"),
             LlmNode(id="llm_1", type="llm", prompt_template="{{inputs.selected_text}}", next_id="end_1"),
             EndNode(id="end_1", type="end", result_template="{{ctx.last_output}}"),
+        ],
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _artifact_workflow() -> Workflow:
+    now = datetime.now(timezone.utc)
+    return Workflow(
+        id="wf_artifact_runtime",
+        name="Artifact Runtime",
+        enabled=True,
+        scenario="project_pipeline",
+        input_schema=[WorkflowInputDef(key="language", type="string", required=False, default="zh-CN")],
+        entry_node_id="start_1",
+        nodes=[
+            StartNode(id="start_1", type="start", next_id="llm_1"),
+            LlmNode(id="llm_1", type="llm", prompt_template="draft", output_key="draft_doc", next_id="artifact_1"),
+            ArtifactNode(
+                id="artifact_1",
+                type="artifact",
+                file_path_template="novel/00_charter.md",
+                content_template="{{ctx.draft_doc}}",
+                write_mode="overwrite",
+                output_key="artifact_result",
+                next_id="end_1",
+            ),
+            EndNode(id="end_1", type="end", result_template="{{ctx.last_artifact.file_path}}"),
         ],
         created_at=now,
         updated_at=now,
@@ -237,3 +299,40 @@ async def test_workflow_execution_service_editor_rewrite_filters_think_and_uses_
     runs = await history_service.list_runs(workflow.id)
     assert len(runs) == 1
     assert runs[0].output == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_artifact_node_writes_project_file(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    project_service = _FakeProjectService()
+    workflow = _artifact_workflow()
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=_fake_llm_stream,
+        project_service=project_service,  # type: ignore[arg-type]
+        max_steps=10,
+    )
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"language": "zh-CN"},
+        run_id="run_artifact",
+        context_type="project",
+        project_id="proj-1",
+        write_mode="create",
+    ):
+        events.append(event)
+
+    artifact_event = next((event for event in events if event.get("type") == "workflow_artifact_written"), None)
+    assert artifact_event is not None
+    assert artifact_event["file_path"] == "novel/00_charter.md"
+    assert artifact_event["written"] is True
+
+    assert project_service.files[("proj-1", "novel/00_charter.md")] == "hello world"
+
+    runs = await history_service.list_runs(workflow.id)
+    assert len(runs) == 1
+    assert runs[0].status == "success"

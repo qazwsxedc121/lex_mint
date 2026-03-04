@@ -66,6 +66,10 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
           }
           case 'workflow_run_finished':
             return `${t('runner.event.workflowRunFinished')}`;
+          case 'workflow_artifact_written': {
+            const filePath = typeof payload.file_path === 'string' ? payload.file_path : '-';
+            return `${t('runner.event.workflowArtifactWritten')}: ${filePath}`;
+          }
           case 'stream_error': {
             const errorText = typeof payload.error === 'string' ? payload.error : t('errors.runFailed');
             return `${t('runner.event.streamError')}: ${errorText}`;

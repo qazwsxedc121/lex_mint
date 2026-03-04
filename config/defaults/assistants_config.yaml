@@ -80,3 +80,83 @@ assistants:
   icon: null
   enabled: true
   knowledge_base_ids: null
+- id: novel-architect
+  name: Novel Architect
+  description: Builds charter and world bible for fiction projects
+  model_id: deepseek:deepseek-chat
+  system_prompt: 'You are a senior fiction architect. Build coherent novel foundations with
+    clear constraints, world rules, and implementation-ready structure.'
+  temperature: 0.7
+  max_tokens: 6000
+  top_p: null
+  top_k: null
+  frequency_penalty: null
+  presence_penalty: null
+  max_rounds: null
+  icon: ScrollText
+  enabled: true
+  knowledge_base_ids: null
+- id: novel-plotter
+  name: Novel Plotter
+  description: Designs plot arcs and chapter cards
+  model_id: deepseek:deepseek-chat
+  system_prompt: 'You design robust story structures with escalating conflict, clear beats,
+    and chapter-level planning.'
+  temperature: 0.75
+  max_tokens: 6000
+  top_p: null
+  top_k: null
+  frequency_penalty: null
+  presence_penalty: null
+  max_rounds: null
+  icon: Workflow
+  enabled: true
+  knowledge_base_ids: null
+- id: novel-drafter
+  name: Novel Drafter
+  description: Drafts chapter prose from planning inputs
+  model_id: deepseek:deepseek-chat
+  system_prompt: 'You draft polished fiction prose that follows provided plot and character
+    constraints while maintaining narrative momentum.'
+  temperature: 0.85
+  max_tokens: 8000
+  top_p: null
+  top_k: null
+  frequency_penalty: null
+  presence_penalty: null
+  max_rounds: null
+  icon: PenLine
+  enabled: true
+  knowledge_base_ids: null
+- id: novel-continuity-reviewer
+  name: Novel Continuity Reviewer
+  description: Checks consistency across world, character, and timeline
+  model_id: deepseek:deepseek-chat
+  system_prompt: 'You are a strict continuity reviewer. Detect contradictions with direct
+    evidence and provide actionable rewrite instructions.'
+  temperature: 0.2
+  max_tokens: 5000
+  top_p: null
+  top_k: null
+  frequency_penalty: null
+  presence_penalty: null
+  max_rounds: null
+  icon: ShieldAlert
+  enabled: true
+  knowledge_base_ids: null
+- id: novel-style-editor
+  name: Novel Style Editor
+  description: Improves tone, rhythm, and dialogue consistency
+  model_id: deepseek:deepseek-chat
+  system_prompt: 'You are a style editor for long-form fiction. Improve readability,
+    rhythm, and voice consistency while preserving intent.'
+  temperature: 0.5
+  max_tokens: 6000
+  top_p: null
+  top_k: null
+  frequency_penalty: null
+  presence_penalty: null
+  max_rounds: null
+  icon: WandSparkles
+  enabled: true
+  knowledge_base_ids: null

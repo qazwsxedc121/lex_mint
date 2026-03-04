@@ -48,6 +48,7 @@
     "scenario": "场景",
     "scenarioGeneral": "通用",
     "scenarioEditorRewrite": "内联改写（项目编辑器）",
+    "scenarioProjectPipeline": "项目管线（产物写入）",
     "status": "状态",
     "enabled": "已启用",
     "disabled": "已禁用"
@@ -77,6 +78,7 @@
       "workflowNodeStarted": "节点开始：",
       "workflowNodeFinished": "节点结束：",
       "workflowConditionEvaluated": "条件计算",
+      "workflowArtifactWritten": "产物已写入",
       "workflowRunFinished": "工作流已结束",
       "streamError": "运行失败"
     }

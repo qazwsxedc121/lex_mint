@@ -17,6 +17,7 @@ from ..services.flow_event_emitter import FlowEventEmitter
 from ..services.flow_event_types import (
     LEGACY_EVENT,
     STREAM_ERROR,
+    WORKFLOW_ARTIFACT_WRITTEN,
     WORKFLOW_CONDITION_EVALUATED,
     WORKFLOW_NODE_FINISHED,
     WORKFLOW_NODE_STARTED,
@@ -48,6 +49,8 @@ class WorkflowRunRequest(BaseModel):
     context_type: Literal["workflow", "chat", "project"] = "workflow"
     project_id: Optional[str] = None
     stream_mode: Literal["default", "editor_rewrite"] = "default"
+    artifact_target_path: Optional[str] = None
+    write_mode: Optional[Literal["none", "create", "overwrite"]] = None
 
 
 def get_workflow_config_service() -> WorkflowConfigService:
@@ -138,6 +141,22 @@ def _map_workflow_event_to_flow_payload(
                 "run_id": event.get("run_id"),
                 "node_id": event.get("node_id"),
                 "output": event.get("output"),
+            },
+        )
+
+    if event_type == "workflow_artifact_written":
+        return emitter.emit(
+            event_type=WORKFLOW_ARTIFACT_WRITTEN,
+            stage=FlowEventStage.META,
+            payload={
+                "workflow_id": event.get("workflow_id"),
+                "run_id": event.get("run_id"),
+                "node_id": event.get("node_id"),
+                "file_path": event.get("file_path"),
+                "write_mode": event.get("write_mode"),
+                "written": event.get("written"),
+                "output_key": event.get("output_key"),
+                "content_hash": event.get("content_hash"),
             },
         )
 
@@ -272,6 +291,16 @@ async def run_workflow_stream(
         raise HTTPException(status_code=409, detail="Workflow is disabled")
     if request.context_type == "project" and not request.project_id:
         raise HTTPException(status_code=400, detail="project_id is required when context_type is 'project'")
+    if request.artifact_target_path and request.context_type != "project":
+        raise HTTPException(
+            status_code=400,
+            detail="artifact_target_path requires context_type='project'",
+        )
+    if request.write_mode and request.context_type != "project":
+        raise HTTPException(
+            status_code=400,
+            detail="write_mode requires context_type='project'",
+        )
 
     run_id = str(uuid.uuid4())
     emitter = FlowEventEmitter(stream_id=run_id, conversation_id=workflow_id, default_turn_id=run_id)
@@ -288,6 +317,8 @@ async def run_workflow_stream(
             context_type=request.context_type,
             project_id=request.project_id,
             stream_mode=request.stream_mode,
+            artifact_target_path=request.artifact_target_path,
+            write_mode=request.write_mode,
         ):
             payload = _map_workflow_event_to_flow_payload(emitter, event)
             yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"

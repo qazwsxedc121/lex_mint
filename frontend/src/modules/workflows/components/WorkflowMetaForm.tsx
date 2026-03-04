@@ -64,6 +64,7 @@ export const WorkflowMetaForm: React.FC<WorkflowMetaFormProps> = ({
         >
           <option value="general">{t('meta.scenarioGeneral')}</option>
           <option value="editor_rewrite">{t('meta.scenarioEditorRewrite')}</option>
+          <option value="project_pipeline">{t('meta.scenarioProjectPipeline')}</option>
         </select>
       </label>
 
