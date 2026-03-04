@@ -26,6 +26,8 @@ interface WorkflowLauncherListProps {
 }
 
 const SEARCH_DEBOUNCE_MS = 150;
+const COMPACT_LIST_MAX_HEIGHT_CLASS = 'max-h-64 sm:max-h-72';
+const DEFAULT_LIST_MAX_HEIGHT_CLASS = 'max-h-96';
 
 const buildSections = (
   workflows: Workflow[],
@@ -145,6 +147,9 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
 
   const noMatch = !loading && workflows.length > 0 && visibleWorkflows.length === 0;
   const isEmpty = !loading && workflows.length === 0;
+  const listClassName = compact
+    ? `space-y-1.5 overflow-y-auto overscroll-contain pr-1 ${COMPACT_LIST_MAX_HEIGHT_CLASS}`
+    : `space-y-1 overflow-y-auto overscroll-contain pr-1 ${DEFAULT_LIST_MAX_HEIGHT_CLASS}`;
 
   const renderTabs = () => (
     <div className="flex items-center gap-1 overflow-x-auto" data-name="workflow-launcher-tabs">
@@ -208,7 +213,7 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
               {currentSection.items.length === 0 ? (
                 <div className="text-xs text-gray-400 dark:text-gray-500">-</div>
               ) : (
-                <ul className={compact ? 'flex items-center gap-1.5 overflow-x-auto pb-1 pr-1' : 'space-y-1'}>
+                <ul className={listClassName}>
                   {currentSection.items.map((workflow) => {
                     const isSelected = workflow.id === selectedWorkflowId;
                     const isFavorite = favorites.has(workflow.id);
@@ -218,7 +223,7 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
                         <div
                           data-name={`workflow-launcher-item-${workflow.id}`}
                           className={`rounded-md border ${
-                            compact ? 'px-2 py-1.5 flex-shrink-0' : 'px-2.5 py-2'
+                            compact ? 'px-2 py-1.5' : 'px-2.5 py-2'
                           } ${
                             isSelected
                               ? 'border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/30'
