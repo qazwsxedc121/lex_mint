@@ -18,6 +18,7 @@
   },
   "builderEditorTab": {
     "visual": "Visual (Beta)",
+    "config": "Config",
     "json": "JSON"
   },
   "playground": {
@@ -58,7 +59,51 @@
     "disabled": "Disabled"
   },
   "editor": {
-    "title": "Workflow DSL (JSON)"
+    "title": "Workflow DSL (JSON)",
+    "nodesTitle": "Workflow Nodes DSL (JSON Array)",
+    "configTitle": "Workflow Config (JSON)"
+  },
+  "inputEditor": {
+    "title": "Workflow Inputs",
+    "add": "Add Input",
+    "remove": "Remove",
+    "empty": "No inputs yet. Add one to declare required runtime variables.",
+    "key": "Key",
+    "type": "Type",
+    "required": "Required",
+    "requiredOn": "Required",
+    "requiredOff": "Optional",
+    "default": "Default",
+    "defaultUnset": "No default",
+    "description": "Description"
+  },
+  "entryNodeEditor": {
+    "title": "Entry Node",
+    "label": "Start from node",
+    "placeholder": "Select entry node",
+    "noNodesHint": "No valid node ids found yet."
+  },
+  "nodeEditor": {
+    "title": "Workflow Nodes",
+    "add": "Add Node",
+    "remove": "Remove",
+    "empty": "No nodes yet. Add one to build the graph.",
+    "id": "Node ID",
+    "type": "Type",
+    "nextNode": "Next node",
+    "trueNextNode": "True branch next node",
+    "falseNextNode": "False branch next node",
+    "promptTemplate": "Prompt template",
+    "systemPrompt": "System prompt",
+    "modelId": "Model ID",
+    "outputKey": "Output key",
+    "temperature": "Temperature",
+    "maxTokens": "Max tokens",
+    "expression": "Condition expression",
+    "filePathTemplate": "Artifact file path template",
+    "contentTemplate": "Artifact content template",
+    "writeMode": "Write mode",
+    "resultTemplate": "Result template"
   },
   "visual": {
     "title": "Visual Graph",

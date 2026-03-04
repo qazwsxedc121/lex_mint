@@ -18,6 +18,7 @@
   },
   "builderEditorTab": {
     "visual": "可视化（Beta）",
+    "config": "配置",
     "json": "JSON"
   },
   "playground": {
@@ -58,7 +59,51 @@
     "disabled": "已禁用"
   },
   "editor": {
-    "title": "工作流 DSL（JSON）"
+    "title": "工作流 DSL（JSON）",
+    "nodesTitle": "节点 DSL（JSON 数组）",
+    "configTitle": "工作流配置（JSON）"
+  },
+  "inputEditor": {
+    "title": "工作流参数",
+    "add": "新增参数",
+    "remove": "删除",
+    "empty": "暂无参数，新增后可声明运行时输入变量。",
+    "key": "Key",
+    "type": "类型",
+    "required": "必填",
+    "requiredOn": "必填",
+    "requiredOff": "可选",
+    "default": "默认值",
+    "defaultUnset": "无默认值",
+    "description": "描述"
+  },
+  "entryNodeEditor": {
+    "title": "起始节点",
+    "label": "从节点开始",
+    "placeholder": "请选择起始节点",
+    "noNodesHint": "当前还没有可用的节点 ID。"
+  },
+  "nodeEditor": {
+    "title": "工作流节点",
+    "add": "新增节点",
+    "remove": "删除",
+    "empty": "暂无节点，请先新增节点构建图。",
+    "id": "节点 ID",
+    "type": "类型",
+    "nextNode": "下一个节点",
+    "trueNextNode": "True 分支下一个节点",
+    "falseNextNode": "False 分支下一个节点",
+    "promptTemplate": "提示词模板",
+    "systemPrompt": "系统提示词",
+    "modelId": "模型 ID",
+    "outputKey": "输出 Key",
+    "temperature": "温度",
+    "maxTokens": "最大输出 token",
+    "expression": "条件表达式",
+    "filePathTemplate": "产物文件路径模板",
+    "contentTemplate": "产物内容模板",
+    "writeMode": "写入模式",
+    "resultTemplate": "结果模板"
   },
   "visual": {
     "title": "可视化图谱",

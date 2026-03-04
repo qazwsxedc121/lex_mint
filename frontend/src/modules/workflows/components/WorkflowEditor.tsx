@@ -8,6 +8,8 @@ interface WorkflowEditorProps {
   parseError: string | null;
   saving: boolean;
   readOnly?: boolean;
+  title?: string;
+  showSaveButton?: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
 }
@@ -17,6 +19,8 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
   parseError,
   saving,
   readOnly = false,
+  title,
+  showSaveButton = true,
   onChange,
   onSave,
 }) => {
@@ -28,16 +32,20 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
       data-name="workflow-editor-panel"
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('editor.title')}</h3>
-        <button
-          type="button"
-          data-name="workflow-editor-save"
-          onClick={onSave}
-          disabled={saving || !!parseError || readOnly}
-          className="rounded-md px-3 py-1.5 text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60"
-        >
-          {saving ? t('actions.saving') : t('actions.save')}
-        </button>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {title || t('editor.title')}
+        </h3>
+        {showSaveButton ? (
+          <button
+            type="button"
+            data-name="workflow-editor-save"
+            onClick={onSave}
+            disabled={saving || !!parseError || readOnly}
+            className="rounded-md px-3 py-1.5 text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60"
+          >
+            {saving ? t('actions.saving') : t('actions.save')}
+          </button>
+        ) : null}
       </div>
 
       <div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">

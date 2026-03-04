@@ -1,19 +1,10 @@
-import { expect, request as pwRequest, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, request as pwRequest, test, type APIRequestContext } from '@playwright/test';
 
 if (!process.env.API_PORT) {
   throw new Error('API_PORT is required for e2e tests.');
 }
 
 const API_BASE = `http://127.0.0.1:${process.env.API_PORT}`;
-const MODIFIER_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
-
-const setEditorText = async (page: Page, text: string) => {
-  const content = page.locator('[data-name="workflow-editor-panel"] .cm-content');
-  await content.click();
-  await page.keyboard.press(`${MODIFIER_KEY}+A`);
-  await page.keyboard.type(text);
-};
-
 const createWorkflow = async (
   api: APIRequestContext,
   payload: Record<string, unknown>
@@ -103,16 +94,20 @@ test.describe('Workflows visual builder', () => {
         page.locator('[data-name="workflow-visual-panel"] .react-flow__edge-text').filter({ hasText: 'false' })
       ).toHaveCount(1);
 
-      await setEditorText(page, '{');
-      await expect(page.locator('[data-name="workflow-visual-parse-error"]')).toBeVisible();
+      await page.locator('[data-name="workflow-builder-tab-config"]').click();
+      await expect(page.locator('[data-name="workflow-input-schema-editor"]')).toBeVisible();
+      await expect(page.locator('[data-name="workflow-entry-node-select"]')).toBeVisible();
 
-      await setEditorText(page, JSON.stringify(conditionWorkflowPayload, null, 2));
-      await expect(page.locator('[data-name="workflow-visual-parse-error"]')).toHaveCount(0);
-      await expect(page.locator('[data-name="workflow-visual-node-condition_a"]')).toBeVisible();
+      await page.fill('[data-name="workflow-node-id-1"]', 'condition_renamed');
+      await page.fill('[data-name="workflow-node-true-next-1"]', 'end_a');
+      await page.fill('[data-name="workflow-node-false-next-1"]', 'end_b');
+      await page.locator('[data-name="workflow-entry-node-select"]').selectOption('start_a');
+      await page.locator('[data-name="workflow-builder-tab-visual"]').click();
+      await expect(page.locator('[data-name="workflow-visual-node-condition_renamed"]')).toBeVisible();
 
       await page.locator(`[data-name="workflow-launcher-item-${basicWorkflowId}"]`).click();
       await expect(page.locator('[data-name="workflow-visual-node-start_b"]')).toBeVisible();
-      await expect(page.locator('[data-name="workflow-visual-node-condition_a"]')).toHaveCount(0);
+      await expect(page.locator('[data-name="workflow-visual-node-condition_renamed"]')).toHaveCount(0);
     } finally {
       if (conditionWorkflowId) {
         await cleanupWorkflow(api, conditionWorkflowId);
