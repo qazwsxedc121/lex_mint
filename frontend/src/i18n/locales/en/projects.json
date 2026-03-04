@@ -104,6 +104,8 @@
   "fileViewer.refreshing": "Refreshing...",
   "fileViewer.refreshConfirmDiscard": "You have unsaved changes. Refreshing will discard them. Continue?",
   "fileViewer.refreshFailed": "Failed to refresh project files.",
+  "fileViewer.markdownModeEdit": "Markdown Text",
+  "fileViewer.markdownModePreview": "Markdown Preview",
 
   "editor.save": "Save (Ctrl+S)",
   "editor.saving": "Saving...",

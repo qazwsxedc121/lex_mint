@@ -5,6 +5,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -26,6 +30,11 @@ import { InlineRewritePanel } from './InlineRewritePanel';
 import { ProjectWorkflowPanel } from './ProjectWorkflowPanel';
 import { useWorkflowLauncherStorage } from '../../../shared/workflow-launcher/storage';
 import type { LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
+import { CodeBlock } from '../../../shared/chat/components/CodeBlock';
+import { MermaidBlock } from '../../../shared/chat/components/MermaidBlock';
+import { SvgBlock } from '../../../shared/chat/components/SvgBlock';
+import { normalizeMathDelimiters } from '../../../shared/chat/utils/markdownMath';
+import { extractSvgBlocks } from '../../../shared/chat/utils/svgMarkdown';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
 const INLINE_REWRITE_CONTEXT_CHARS = 1200;
@@ -194,6 +203,37 @@ const getLanguageTag = (path: string): string => {
   return languageMap[ext] || ext;
 };
 
+const isMarkdownFilePath = (path: string): boolean => {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  return ext === 'md' || ext === 'markdown';
+};
+
+const normalizeMarkdownFrontmatter = (text: string): string => {
+  const normalized = text.replace(/\r\n/g, '\n');
+  const match = normalized.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!match) {
+    return normalized;
+  }
+
+  const body = normalized.slice(match[0].length).replace(/^\s+/, '');
+  return `\`\`\`yaml\n${match[1].trim()}\n\`\`\`\n\n${body}`;
+};
+
+const normalizeMermaidSyntax = (text: string): string =>
+  text.replace(/```mermaid\s*\n([\s\S]*?)```/gi, (_match, code: string) => {
+    const normalizedCode = code
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .trimEnd();
+
+    return `\`\`\`mermaid\n${normalizedCode}\n\`\`\``;
+  });
+
+const prepareMarkdownForPreview = (text: string) =>
+  normalizeMathDelimiters(
+    extractSvgBlocks(normalizeMermaidSyntax(normalizeMarkdownFrontmatter(text)))
+  );
+
 const buildAttachmentFilename = (filePath: string, isSelection: boolean, startLine: number, endLine: number) => {
   const normalized = filePath.replace(/\\/g, '/');
   const baseName = normalized.split('/').pop() || 'context.txt';
@@ -229,6 +269,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 }) => {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
+  const [markdownViewMode, setMarkdownViewMode] = useState<'edit' | 'preview'>('edit');
   const [value, setValue] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [originalHash, setOriginalHash] = useState<string | null>(null);
@@ -324,6 +365,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setValue(content.content);
       setOriginalContent(content.content);
       setOriginalHash(content.content_hash || null);
+      setMarkdownViewMode('edit');
       setSaveError(null);
       setSaveConflict(null);
       setConflictBusy(false);
@@ -1793,7 +1835,56 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   // Get language extension (memoized to prevent re-creation)
   const filePath = content?.path ?? '';
+  const isMarkdownFile = useMemo(() => isMarkdownFilePath(filePath), [filePath]);
+  const showMarkdownPreview = isMarkdownFile && markdownViewMode === 'preview';
   const language = useMemo(() => getLanguageExtension(filePath), [filePath]);
+  const markdownPreviewComponents = useMemo(
+    () => ({
+      code({ inline, className, children, ...props }: any) {
+        const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
+        const languageName = match ? match[1].toLowerCase() : '';
+        const valueText = String(children).replace(/\n$/, '');
+        const isInline = typeof inline === 'boolean' ? inline : !className;
+
+        if (!isInline) {
+          if (languageName === 'mermaid') {
+            return <MermaidBlock value={valueText} />;
+          }
+          if (languageName === 'svg') {
+            return <SvgBlock value={valueText} />;
+          }
+          return <CodeBlock language={languageName || 'text'} value={valueText} />;
+        }
+
+        return (
+          <code
+            className="rounded bg-gray-100 px-1 py-0.5 text-[13px] text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      },
+      table({ children }: any) {
+        return (
+          <div className="my-4 overflow-x-auto rounded-lg border border-gray-300 dark:border-gray-600">
+            <table className="w-full min-w-[960px] border-collapse text-sm leading-6">{children}</table>
+          </div>
+        );
+      },
+      a({ href, children, ...props }: any) {
+        const isExternal = typeof href === 'string' && /^https?:\/\//i.test(href);
+        const externalProps = isExternal ? { target: '_blank', rel: 'noreferrer noopener' } : {};
+
+        return (
+          <a href={href} {...externalProps} {...props}>
+            {children}
+          </a>
+        );
+      },
+    }),
+    []
+  );
 
   // Build extensions array with conditional features (memoized to prevent re-creation)
   const extensions = useMemo(() => [
@@ -1917,6 +2008,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onToggleLineNumbers={setLineNumbers}
         fontSize={fontSize}
         onChangeFontSize={setFontSize}
+        isMarkdownFile={isMarkdownFile}
+        markdownViewMode={markdownViewMode}
+        onSetMarkdownViewMode={setMarkdownViewMode}
         autoSaveBeforeAgentSend={autoSaveBeforeAgentSend}
         onToggleAutoSaveBeforeAgentSend={setAutoSaveBeforeAgentSend}
         cursorPosition={cursorPosition}
@@ -1998,38 +2092,81 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
       {/* Editor */}
       <div className="flex-1 min-h-0 w-full min-w-0 overflow-hidden">
-        <CodeMirror
-          className="h-full"
-          value={value}
-          height="100%"
-          theme={isDarkMode ? 'dark' : 'light'}
-          extensions={extensions}
-          onChange={(val) => setValue(val)}
-          onCreateEditor={onEditorCreate}
-          basicSetup={{
-            lineNumbers: lineNumbers,
-            highlightActiveLineGutter: true,
-            highlightSpecialChars: true,
-            foldGutter: true,
-            drawSelection: true,
-            dropCursor: true,
-            allowMultipleSelections: true,
-            indentOnInput: true,
-            syntaxHighlighting: true,
-            bracketMatching: true,
-            closeBrackets: true,
-            autocompletion: true,
-            rectangularSelection: true,
-            crosshairCursor: true,
-            highlightActiveLine: true,
-            highlightSelectionMatches: true,
-            closeBracketsKeymap: true,
-            searchKeymap: true,
-            foldKeymap: true,
-            completionKeymap: true,
-            lintKeymap: true,
-          }}
-        />
+        <div className={showMarkdownPreview ? 'hidden h-full' : 'h-full'}>
+          <CodeMirror
+            className="h-full"
+            value={value}
+            height="100%"
+            theme={isDarkMode ? 'dark' : 'light'}
+            extensions={extensions}
+            onChange={(val) => setValue(val)}
+            onCreateEditor={onEditorCreate}
+            basicSetup={{
+              lineNumbers: lineNumbers,
+              highlightActiveLineGutter: true,
+              highlightSpecialChars: true,
+              foldGutter: true,
+              drawSelection: true,
+              dropCursor: true,
+              allowMultipleSelections: true,
+              indentOnInput: true,
+              syntaxHighlighting: true,
+              bracketMatching: true,
+              closeBrackets: true,
+              autocompletion: true,
+              rectangularSelection: true,
+              crosshairCursor: true,
+              highlightActiveLine: true,
+              highlightSelectionMatches: true,
+              closeBracketsKeymap: true,
+              searchKeymap: true,
+              foldKeymap: true,
+              completionKeymap: true,
+              lintKeymap: true,
+            }}
+          />
+        </div>
+        {showMarkdownPreview && (
+          <div
+            data-name="markdown-preview-pane"
+            className="h-full overflow-auto bg-gray-50 dark:bg-gray-950 px-5 py-4"
+          >
+            <div
+              className={`
+                mx-auto w-full max-w-5xl rounded-xl border border-gray-200 bg-white px-6 py-5 shadow-sm
+                dark:border-gray-700 dark:bg-gray-900
+                text-[15px] leading-8 text-gray-800 dark:text-gray-100 break-words
+                [&_h1:first-child]:mt-0 [&_h2:first-child]:mt-0 [&_h3:first-child]:mt-0
+                [&_h1]:mt-8 [&_h1]:mb-3 [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:border-b [&_h1]:border-gray-200 [&_h1]:pb-2 [&_h1]:dark:border-gray-700
+                [&_h2]:mt-7 [&_h2]:mb-3 [&_h2]:text-2xl [&_h2]:font-semibold
+                [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-xl [&_h3]:font-semibold
+                [&_p]:my-4 [&_p]:leading-8
+                [&_strong]:font-semibold
+                [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6
+                [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6
+                [&_li]:my-1.5
+                [&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:bg-gray-50 [&_blockquote]:px-3 [&_blockquote]:py-2 [&_blockquote]:text-gray-700 [&_blockquote]:dark:border-gray-600 [&_blockquote]:dark:bg-gray-800 [&_blockquote]:dark:text-gray-200
+                [&_hr]:my-6 [&_hr]:border-gray-200 [&_hr]:dark:border-gray-700
+                [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2 [&_a]:dark:text-blue-400
+                [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm
+                [&_thead]:bg-gray-100 [&_thead]:dark:bg-gray-800
+                [&_tbody_tr:nth-child(even)]:bg-gray-50 [&_tbody_tr:nth-child(even)]:dark:bg-gray-800/50
+                [&_th]:border [&_th]:border-gray-300 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:dark:border-gray-600
+                [&_td]:border [&_td]:border-gray-300 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:dark:border-gray-600
+                [&_pre]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-lg
+                [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-lg
+              `}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={markdownPreviewComponents}
+              >
+                {prepareMarkdownForPreview(value)}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

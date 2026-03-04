@@ -10,6 +10,8 @@ import {
   MagnifyingGlassIcon,
   ArrowsPointingOutIcon,
   HashtagIcon,
+  EyeIcon,
+  PencilSquareIcon,
   ArrowUpOnSquareIcon,
   CloudArrowUpIcon,
   DocumentTextIcon,
@@ -45,6 +47,9 @@ interface EditorToolbarProps {
   onToggleLineNumbers: (enabled: boolean) => void;
   fontSize: 'small' | 'medium' | 'large';
   onChangeFontSize: (size: 'small' | 'medium' | 'large') => void;
+  isMarkdownFile?: boolean;
+  markdownViewMode?: 'edit' | 'preview';
+  onSetMarkdownViewMode?: (mode: 'edit' | 'preview') => void;
   autoSaveBeforeAgentSend: boolean;
   onToggleAutoSaveBeforeAgentSend: (enabled: boolean) => void;
 
@@ -95,6 +100,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onToggleLineNumbers,
   fontSize,
   onChangeFontSize,
+  isMarkdownFile = false,
+  markdownViewMode = 'edit',
+  onSetMarkdownViewMode,
   autoSaveBeforeAgentSend,
   onToggleAutoSaveBeforeAgentSend,
   cursorPosition,
@@ -239,6 +247,43 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           >
             <HashtagIcon className="h-4 w-4" />
           </button>
+          {isMarkdownFile && onSetMarkdownViewMode && (
+            <div
+              className="inline-flex items-center overflow-hidden rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900"
+              role="group"
+              aria-label={t('fileViewer.markdownModePreview')}
+            >
+              <button
+                type="button"
+                title={t('fileViewer.markdownModeEdit')}
+                data-name="markdown-view-mode-edit"
+                onClick={() => onSetMarkdownViewMode('edit')}
+                aria-pressed={markdownViewMode === 'edit'}
+                className={`p-1.5 ${
+                  markdownViewMode === 'edit'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                }`}
+              >
+                <PencilSquareIcon className="h-4 w-4" />
+              </button>
+              <div className="h-5 w-px bg-gray-300 dark:bg-gray-600" />
+              <button
+                type="button"
+                title={t('fileViewer.markdownModePreview')}
+                data-name="markdown-view-mode-preview"
+                onClick={() => onSetMarkdownViewMode('preview')}
+                aria-pressed={markdownViewMode === 'preview'}
+                className={`p-1.5 ${
+                  markdownViewMode === 'preview'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                }`}
+              >
+                <EyeIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <select
             title={t('editor.fontSize')}
             value={fontSize}
