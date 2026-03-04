@@ -333,17 +333,20 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setInlineRewriteInputs({});
       setInlineRewriteSourceText('');
       setInlineRewritePreview('');
-      setProjectWorkflowOpen(false);
-      setProjectWorkflowRunning(false);
-      setProjectWorkflowError(null);
-      setProjectWorkflowInputs({});
-      setProjectWorkflowOutput('');
-      setProjectWorkflowArtifactPath('');
-      projectWorkflowAbortRef.current?.abort();
-      projectWorkflowAbortRef.current = null;
       rewriteSelectionRef.current = null;
     }
   }, [content]);
+
+  useEffect(() => {
+    setProjectWorkflowOpen(false);
+    setProjectWorkflowRunning(false);
+    setProjectWorkflowError(null);
+    setProjectWorkflowInputs({});
+    setProjectWorkflowOutput('');
+    setProjectWorkflowArtifactPath('');
+    projectWorkflowAbortRef.current?.abort();
+    projectWorkflowAbortRef.current = null;
+  }, [projectId]);
 
   // Check if content has unsaved changes
   const hasUnsavedChanges = value !== originalContent;
@@ -1616,6 +1619,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     return () => {
       inlineRewriteAbortRef.current?.abort();
       inlineRewriteAbortRef.current = null;
+      projectWorkflowAbortRef.current?.abort();
+      projectWorkflowAbortRef.current = null;
     };
   }, []);
 

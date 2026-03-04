@@ -72,6 +72,7 @@ models/**/*.gguf
 
 # Learn Projects
 learn_proj/
+test_proj/
 
 # Local temp workdirs
 .tmp/
