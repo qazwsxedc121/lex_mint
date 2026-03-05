@@ -229,6 +229,36 @@ def _chapter_artifact_workflow_with_guard() -> Workflow:
     )
 
 
+def _workflow_with_node_input() -> Workflow:
+    now = datetime.now(timezone.utc)
+    return Workflow(
+        id="wf_node_input",
+        name="Node Input Test",
+        enabled=True,
+        input_schema=[
+            WorkflowInputDef(key="target_node", type="node", required=True),
+        ],
+        entry_node_id="start_1",
+        nodes=[
+            StartNode(id="start_1", type="start", next_id="llm_1"),
+            LlmNode(
+                id="llm_1",
+                type="llm",
+                prompt_template="target={{inputs.target_node}}",
+                next_id="end_1",
+            ),
+            EndNode(id="end_1", type="end", result_template="{{ctx.last_output}}"),
+        ],
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_workflow_input_def_node_default_requires_node_id_pattern():
+    with pytest.raises(ValueError, match="node id pattern"):
+        WorkflowInputDef(key="target_node", type="node", default="bad-id")
+
+
 @pytest.mark.asyncio
 async def test_workflow_execution_service_success(temp_config_dir):
     history_dir = Path(temp_config_dir) / "workflow_runs"
@@ -280,6 +310,51 @@ async def test_workflow_execution_service_input_validation_error(temp_config_dir
     assert len(runs) == 1
     assert runs[0].status == "error"
     assert runs[0].run_id == "run_error"
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_accepts_node_input_type(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=_fake_llm_stream,
+        max_steps=20,
+    )
+    workflow = _workflow_with_node_input()
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"target_node": "end_1"},
+        run_id="run_node_input_ok",
+    ):
+        events.append(event)
+
+    assert events[-1]["type"] == "workflow_run_finished"
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_rejects_unknown_node_input(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=_fake_llm_stream,
+        max_steps=20,
+    )
+    workflow = _workflow_with_node_input()
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"target_node": "missing_node"},
+        run_id="run_node_input_error",
+    ):
+        events.append(event)
+
+    assert events[-1]["type"] == "stream_error"
+    assert "unknown node id" in str(events[-1]["error"])
 
 
 @pytest.mark.asyncio

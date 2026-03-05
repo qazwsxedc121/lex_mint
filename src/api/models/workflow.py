@@ -16,7 +16,7 @@ class WorkflowInputDef(BaseModel):
     """Input schema entry for one workflow parameter."""
 
     key: str = Field(..., pattern=_KEY_PATTERN)
-    type: Literal["string", "number", "boolean"] = "string"
+    type: Literal["string", "number", "boolean", "node"] = "string"
     required: bool = False
     default: Optional[Union[str, int, float, bool]] = None
     description: Optional[str] = None
@@ -40,6 +40,12 @@ class WorkflowInputDef(BaseModel):
 
         if self.type == "boolean" and not isinstance(self.default, bool):
             raise ValueError(f"Input '{self.key}' default must be a boolean")
+
+        if self.type == "node":
+            if not isinstance(self.default, str):
+                raise ValueError(f"Input '{self.key}' default must be a node id string")
+            if re.fullmatch(_KEY_PATTERN, self.default) is None:
+                raise ValueError(f"Input '{self.key}' default must match node id pattern")
 
         if self.type != "string":
             if self.max_length is not None:

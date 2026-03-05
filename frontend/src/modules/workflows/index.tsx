@@ -472,6 +472,7 @@ export const WorkflowsModule: React.FC = () => {
                     <div className="space-y-4">
                       <WorkflowInputSchemaEditor
                         inputs={draftInputSchema}
+                        nodeIdOptions={entryNodeOptions}
                         disabled={isSelectedSystemWorkflow}
                         onChange={(nextInputs) => {
                           setDraftInputSchema(nextInputs);
@@ -527,6 +528,19 @@ export const WorkflowsModule: React.FC = () => {
                       <WorkflowNodeListEditor
                         nodes={draftNodes}
                         disabled={isSelectedSystemWorkflow}
+                        onNodeIdRename={(fromNodeId, toNodeId) => {
+                          setDraftEntryNodeId((previous) =>
+                            previous === fromNodeId ? toNodeId : previous
+                          );
+                          setDraftInputSchema((previous) =>
+                            previous.map((inputDef) => {
+                              if (inputDef.type !== 'node' || inputDef.default !== fromNodeId) {
+                                return inputDef;
+                              }
+                              return { ...inputDef, default: toNodeId };
+                            })
+                          );
+                        }}
                         onChange={(nextNodes) => {
                           setDraftNodes(nextNodes);
                           if (parseError) {

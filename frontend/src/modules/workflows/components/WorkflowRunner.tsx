@@ -45,6 +45,22 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
   const updateInput = (key: string, value: unknown) => {
     setInputs((prev) => ({ ...prev, [key]: value }));
   };
+  const nodeIdOptions = React.useMemo(() => {
+    if (!workflow) {
+      return [] as string[];
+    }
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    workflow.nodes.forEach((node) => {
+      const nodeId = node.id.trim();
+      if (!nodeId || seen.has(nodeId)) {
+        return;
+      }
+      seen.add(nodeId);
+      ids.push(nodeId);
+    });
+    return ids;
+  }, [workflow]);
 
   const timelineEvents = React.useMemo(() => {
     return events
@@ -159,6 +175,22 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
                 >
                   <option value="true">{t('runner.boolTrue')}</option>
                   <option value="false">{t('runner.boolFalse')}</option>
+                </select>
+              ) : field.type === 'node' ? (
+                <select
+                  value={typeof inputs[field.key] === 'string' ? String(inputs[field.key]) : ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateInput(field.key, value || undefined);
+                  }}
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+                >
+                  <option value="">{t('nodeEditor.selectNodePlaceholder')}</option>
+                  {nodeIdOptions.map((nodeId) => (
+                    <option key={`workflow-runner-node-input-${field.key}-${nodeId}`} value={nodeId}>
+                      {nodeId}
+                    </option>
+                  ))}
                 </select>
               ) : (
                 <input

@@ -32,6 +32,7 @@ interface ProjectWorkflowPanelProps {
   selectedWorkflowId: string;
   workflowLoading: boolean;
   workflowInputs: WorkflowInputDef[];
+  workflowNodeIds?: string[];
   inputValues: Record<string, unknown>;
   artifactPath: string;
   writeMode: 'none' | 'create' | 'overwrite';
@@ -64,6 +65,7 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
   selectedWorkflowId,
   workflowLoading,
   workflowInputs,
+  workflowNodeIds = [],
   inputValues,
   artifactPath,
   writeMode,
@@ -282,6 +284,34 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
                       }}
                       className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     />
+                  </div>
+                );
+              }
+
+              if (field.type === 'node') {
+                const selectValue = typeof rawValue === 'string' ? rawValue : '';
+                return (
+                  <div key={field.key} className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)] items-center gap-2">
+                    <label htmlFor={inputName} className="text-xs text-gray-700 dark:text-gray-300">
+                      {keyLabel}
+                    </label>
+                    <select
+                      id={inputName}
+                      data-name={inputName}
+                      value={selectValue}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        onInputChange(field.key, value || undefined);
+                      }}
+                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">{t('workflow:nodeEditor.selectNodePlaceholder')}</option>
+                      {workflowNodeIds.map((nodeId) => (
+                        <option key={`project-workflow-node-input-${field.key}-${nodeId}`} value={nodeId}>
+                          {nodeId}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 );
               }

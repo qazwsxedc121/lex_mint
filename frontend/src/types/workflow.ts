@@ -3,7 +3,7 @@ export type WorkflowScenario = 'general' | 'editor_rewrite' | 'project_pipeline'
 
 export interface WorkflowInputDef {
   key: string;
-  type: 'string' | 'number' | 'boolean';
+  type: 'string' | 'number' | 'boolean' | 'node';
   required?: boolean;
   default?: string | number | boolean;
   description?: string | null;

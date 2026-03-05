@@ -14,6 +14,7 @@ interface WorkflowNodeListEditorProps {
   nodes: WorkflowNode[];
   disabled?: boolean;
   onChange: (nodes: WorkflowNode[]) => void;
+  onNodeIdRename?: (fromNodeId: string, toNodeId: string) => void;
 }
 
 const createDefaultNode = (type: WorkflowNodeType, seed: number): WorkflowNode => {
@@ -79,26 +80,111 @@ const toOptionalNumber = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const collectNodeIds = (nodes: WorkflowNode[]): string[] => {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  nodes.forEach((node) => {
+    const nodeId = node.id.trim();
+    if (!nodeId || seen.has(nodeId)) {
+      return;
+    }
+    seen.add(nodeId);
+    ids.push(nodeId);
+  });
+  return ids;
+};
+
+const withCurrentNodeIdOption = (options: string[], value: string): string[] => {
+  if (!value || options.includes(value)) {
+    return options;
+  }
+  return [...options, value];
+};
+
+const remapNodeReferences = (
+  nodes: WorkflowNode[],
+  fromNodeId: string,
+  toNodeId: string
+): WorkflowNode[] => {
+  const swap = (value: string): string => (value === fromNodeId ? toNodeId : value);
+  return nodes.map((node) => {
+    if (node.type === 'start') {
+      return { ...node, next_id: swap(node.next_id) };
+    }
+    if (node.type === 'llm') {
+      return { ...node, next_id: swap(node.next_id) };
+    }
+    if (node.type === 'condition') {
+      return {
+        ...node,
+        true_next_id: swap(node.true_next_id),
+        false_next_id: swap(node.false_next_id),
+      };
+    }
+    if (node.type === 'artifact') {
+      return { ...node, next_id: swap(node.next_id) };
+    }
+    return node;
+  });
+};
+
+const NodeIdSelect: React.FC<{
+  label: string;
+  dataName: string;
+  value: string;
+  disabled: boolean;
+  options: string[];
+  placeholder: string;
+  className?: string;
+  onChange: (value: string) => void;
+}> = ({ label, dataName, value, disabled, options, placeholder, className, onChange }) => {
+  const resolvedOptions = React.useMemo(
+    () => withCurrentNodeIdOption(options, value),
+    [options, value]
+  );
+
+  return (
+    <label className={className || 'space-y-1'}>
+      <span className="text-xs text-gray-600 dark:text-gray-300">{label}</span>
+      <select
+        data-name={dataName}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
+      >
+        <option value="">{placeholder}</option>
+        {resolvedOptions.map((option) => (
+          <option key={`${dataName}-${option}`} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+};
+
 const NodeTypeFields: React.FC<{
   node: WorkflowNode;
   index: number;
   disabled: boolean;
+  nodeIdOptions: string[];
   updateNode: (patch: Partial<WorkflowNode>) => void;
-}> = ({ node, index, disabled, updateNode }) => {
+}> = ({ node, index, disabled, nodeIdOptions, updateNode }) => {
   const { t } = useTranslation('workflow');
+  const selectPlaceholder = t('nodeEditor.selectNodePlaceholder');
 
   if (node.type === 'start') {
     return (
-      <label className="space-y-1">
-        <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.nextNode')}</span>
-        <input
-          data-name={`workflow-node-next-${index}`}
-          value={(node as StartNode).next_id}
-          disabled={disabled}
-          onChange={(event) => updateNode({ next_id: event.target.value })}
-          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
-        />
-      </label>
+      <NodeIdSelect
+        label={t('nodeEditor.nextNode')}
+        dataName={`workflow-node-next-${index}`}
+        value={(node as StartNode).next_id}
+        disabled={disabled}
+        options={nodeIdOptions}
+        placeholder={selectPlaceholder}
+        onChange={(value) => updateNode({ next_id: value })}
+      />
     );
   }
 
@@ -161,16 +247,16 @@ const NodeTypeFields: React.FC<{
               className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
             />
           </label>
-          <label className="space-y-1 lg:col-span-2">
-            <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.nextNode')}</span>
-            <input
-              data-name={`workflow-node-next-${index}`}
-              value={llmNode.next_id}
-              disabled={disabled}
-              onChange={(event) => updateNode({ next_id: event.target.value })}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
-            />
-          </label>
+          <NodeIdSelect
+            className="space-y-1 lg:col-span-2"
+            label={t('nodeEditor.nextNode')}
+            dataName={`workflow-node-next-${index}`}
+            value={llmNode.next_id}
+            disabled={disabled}
+            options={nodeIdOptions}
+            placeholder={selectPlaceholder}
+            onChange={(value) => updateNode({ next_id: value })}
+          />
         </div>
         <label className="space-y-1 block">
           <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.systemPrompt')}</span>
@@ -202,26 +288,24 @@ const NodeTypeFields: React.FC<{
           />
         </label>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-          <label className="space-y-1">
-            <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.trueNextNode')}</span>
-            <input
-              data-name={`workflow-node-true-next-${index}`}
-              value={conditionNode.true_next_id}
-              disabled={disabled}
-              onChange={(event) => updateNode({ true_next_id: event.target.value })}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.falseNextNode')}</span>
-            <input
-              data-name={`workflow-node-false-next-${index}`}
-              value={conditionNode.false_next_id}
-              disabled={disabled}
-              onChange={(event) => updateNode({ false_next_id: event.target.value })}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
-            />
-          </label>
+          <NodeIdSelect
+            label={t('nodeEditor.trueNextNode')}
+            dataName={`workflow-node-true-next-${index}`}
+            value={conditionNode.true_next_id}
+            disabled={disabled}
+            options={nodeIdOptions}
+            placeholder={selectPlaceholder}
+            onChange={(value) => updateNode({ true_next_id: value })}
+          />
+          <NodeIdSelect
+            label={t('nodeEditor.falseNextNode')}
+            dataName={`workflow-node-false-next-${index}`}
+            value={conditionNode.false_next_id}
+            disabled={disabled}
+            options={nodeIdOptions}
+            placeholder={selectPlaceholder}
+            onChange={(value) => updateNode({ false_next_id: value })}
+          />
         </div>
       </div>
     );
@@ -276,16 +360,15 @@ const NodeTypeFields: React.FC<{
               className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
             />
           </label>
-          <label className="space-y-1">
-            <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.nextNode')}</span>
-            <input
-              data-name={`workflow-node-next-${index}`}
-              value={artifactNode.next_id}
-              disabled={disabled}
-              onChange={(event) => updateNode({ next_id: event.target.value })}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
-            />
-          </label>
+          <NodeIdSelect
+            label={t('nodeEditor.nextNode')}
+            dataName={`workflow-node-next-${index}`}
+            value={artifactNode.next_id}
+            disabled={disabled}
+            options={nodeIdOptions}
+            placeholder={selectPlaceholder}
+            onChange={(value) => updateNode({ next_id: value })}
+          />
         </div>
       </div>
     );
@@ -311,9 +394,11 @@ export const WorkflowNodeListEditor: React.FC<WorkflowNodeListEditorProps> = ({
   nodes,
   disabled = false,
   onChange,
+  onNodeIdRename,
 }) => {
   const { t } = useTranslation('workflow');
   const [createType, setCreateType] = React.useState<WorkflowNodeType>('llm');
+  const nodeIdOptions = React.useMemo(() => collectNodeIds(nodes), [nodes]);
 
   const updateNodeAt = (index: number, nextNode: WorkflowNode) => {
     const next = [...nodes];
@@ -326,6 +411,27 @@ export const WorkflowNodeListEditor: React.FC<WorkflowNodeListEditorProps> = ({
 
   const removeNode = (index: number) => {
     onChange(nodes.filter((_, candidateIndex) => candidateIndex !== index));
+  };
+
+  const renameNodeIdAt = (index: number, nextNodeId: string) => {
+    const currentNode = nodes[index];
+    if (!currentNode) {
+      return;
+    }
+
+    const previousNodeId = currentNode.id;
+    const nextNodes = [...nodes];
+    nextNodes[index] = { ...currentNode, id: nextNodeId };
+
+    if (previousNodeId && nextNodeId && previousNodeId !== nextNodeId) {
+      onChange(remapNodeReferences(nextNodes, previousNodeId, nextNodeId));
+      if (onNodeIdRename) {
+        onNodeIdRename(previousNodeId, nextNodeId);
+      }
+      return;
+    }
+
+    onChange(nextNodes);
   };
 
   return (
@@ -380,7 +486,7 @@ export const WorkflowNodeListEditor: React.FC<WorkflowNodeListEditorProps> = ({
                     data-name={`workflow-node-id-${index}`}
                     value={node.id}
                     disabled={disabled}
-                    onChange={(event) => updateNodeAt(index, { ...node, id: event.target.value })}
+                    onChange={(event) => renameNodeIdAt(index, event.target.value)}
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
                   />
                 </label>
@@ -421,6 +527,7 @@ export const WorkflowNodeListEditor: React.FC<WorkflowNodeListEditorProps> = ({
                 node={node}
                 index={index}
                 disabled={disabled}
+                nodeIdOptions={nodeIdOptions}
                 updateNode={(patch) => updateNodeAt(index, { ...node, ...patch } as WorkflowNode)}
               />
             </div>

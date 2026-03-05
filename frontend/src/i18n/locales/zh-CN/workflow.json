@@ -90,6 +90,7 @@
     "empty": "暂无节点，请先新增节点构建图。",
     "id": "节点 ID",
     "type": "类型",
+    "selectNodePlaceholder": "请选择节点",
     "nextNode": "下一个节点",
     "trueNextNode": "True 分支下一个节点",
     "falseNextNode": "False 分支下一个节点",

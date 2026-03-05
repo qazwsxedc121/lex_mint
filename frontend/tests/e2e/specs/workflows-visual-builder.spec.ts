@@ -99,8 +99,8 @@ test.describe('Workflows visual builder', () => {
       await expect(page.locator('[data-name="workflow-entry-node-select"]')).toBeVisible();
 
       await page.fill('[data-name="workflow-node-id-1"]', 'condition_renamed');
-      await page.fill('[data-name="workflow-node-true-next-1"]', 'end_a');
-      await page.fill('[data-name="workflow-node-false-next-1"]', 'end_b');
+      await page.locator('[data-name="workflow-node-true-next-1"]').selectOption('end_a');
+      await page.locator('[data-name="workflow-node-false-next-1"]').selectOption('end_b');
       await page.locator('[data-name="workflow-entry-node-select"]').selectOption('start_a');
       await page.locator('[data-name="workflow-builder-tab-visual"]').click();
       await expect(page.locator('[data-name="workflow-visual-node-condition_renamed"]')).toBeVisible();
@@ -114,6 +114,70 @@ test.describe('Workflows visual builder', () => {
       }
       if (basicWorkflowId) {
         await cleanupWorkflow(api, basicWorkflowId);
+      }
+      await api.dispose();
+    }
+  });
+
+  test('node input type uses node dropdown and follows node id rename', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    let workflowId = '';
+
+    const workflowPayload = {
+      name: `e2e-node-input-${Date.now()}`,
+      description: 'node input type coverage',
+      enabled: true,
+      scenario: 'general',
+      input_schema: [{ key: 'target_node', type: 'node', required: true, default: 'end_b' }],
+      entry_node_id: 'start_a',
+      nodes: [
+        { id: 'start_a', type: 'start', next_id: 'llm_a' },
+        {
+          id: 'llm_a',
+          type: 'llm',
+          prompt_template: 'go {{inputs.target_node}}',
+          output_key: 'answer',
+          next_id: 'end_a',
+        },
+        { id: 'end_a', type: 'end', result_template: 'done-a' },
+        { id: 'end_b', type: 'end', result_template: 'done-b' },
+      ],
+    };
+
+    try {
+      workflowId = await createWorkflow(api, workflowPayload);
+
+      await page.goto('/workflows');
+      await expect(page.locator('[data-name="workflows-module"]')).toBeVisible();
+      await page.locator(`[data-name="workflow-launcher-item-${workflowId}"]`).click();
+
+      await page.locator('[data-name="workflow-builder-tab-config"]').click();
+      await expect(page.locator('[data-name="workflow-input-schema-type-0"]')).toHaveValue('node');
+      await expect(page.locator('[data-name="workflow-input-schema-default-0"]')).toHaveValue('end_b');
+
+      await page.fill('[data-name="workflow-node-id-3"]', 'end_renamed');
+      await expect(page.locator('[data-name="workflow-input-schema-default-0"]')).toHaveValue('end_renamed');
+      await Promise.all([
+        page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return (
+            url.pathname === `/api/workflows/${workflowId}` &&
+            response.request().method() === 'PUT' &&
+            response.ok()
+          );
+        }),
+        page.locator('[data-name="workflow-builder-save"]').click(),
+      ]);
+
+      await page.locator('[data-name="workflows-view-switch"] button').nth(1).click();
+      await expect(page.locator('[data-name="workflows-playground-layout"]')).toBeVisible();
+      await page.locator(`[data-name="workflow-launcher-item-${workflowId}"]`).click();
+      await expect(page.locator('[data-name="workflow-runner-inputs"] select').first()).toHaveValue('end_renamed');
+      await page.locator('[data-name="workflow-runner-inputs"] select').first().selectOption('end_a');
+      await expect(page.locator('[data-name="workflow-runner-inputs"] select').first()).toHaveValue('end_a');
+    } finally {
+      if (workflowId) {
+        await cleanupWorkflow(api, workflowId);
       }
       await api.dispose();
     }

@@ -28,6 +28,7 @@ from .workflow_run_history_service import WorkflowRunHistoryService
 
 
 _TEMPLATE_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")
+_NODE_ID_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _WINDOWS_DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
 _INVALID_ARTIFACT_PATH_CHAR_RE = re.compile(r'[\x00-\x1f<>:"|?*]')
 
@@ -611,6 +612,7 @@ class WorkflowExecutionService:
         raw_inputs: Dict[str, Any],
     ) -> Dict[str, Any]:
         normalized: Dict[str, Any] = {}
+        node_ids = {node.id for node in workflow.nodes}
 
         for input_def in workflow.input_schema:
             value = raw_inputs.get(input_def.key, input_def.default)
@@ -648,6 +650,18 @@ class WorkflowExecutionService:
             if input_def.type == "boolean":
                 if not isinstance(value, bool):
                     raise ValueError(f"Input '{input_def.key}' must be a boolean")
+                normalized[input_def.key] = value
+                continue
+
+            if input_def.type == "node":
+                if not isinstance(value, str):
+                    raise ValueError(f"Input '{input_def.key}' must be a node id string")
+                if _NODE_ID_PATTERN.fullmatch(value) is None:
+                    raise ValueError(f"Input '{input_def.key}' must match node id pattern")
+                if value not in node_ids:
+                    raise ValueError(
+                        f"Input '{input_def.key}' references unknown node id '{value}'"
+                    )
                 normalized[input_def.key] = value
                 continue
 

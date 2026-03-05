@@ -90,6 +90,7 @@
     "empty": "No nodes yet. Add one to build the graph.",
     "id": "Node ID",
     "type": "Type",
+    "selectNodePlaceholder": "Select node",
     "nextNode": "Next node",
     "trueNextNode": "True branch next node",
     "falseNextNode": "False branch next node",

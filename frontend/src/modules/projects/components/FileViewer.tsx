@@ -591,6 +591,38 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     () => activeProjectWorkflow?.input_schema || ([] as WorkflowInputDef[]),
     [activeProjectWorkflow]
   );
+  const inlineRewriteWorkflowNodeIds = useMemo(() => {
+    if (!activeRewriteWorkflow) {
+      return [] as string[];
+    }
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    activeRewriteWorkflow.nodes.forEach((node) => {
+      const nodeId = node.id.trim();
+      if (!nodeId || seen.has(nodeId)) {
+        return;
+      }
+      seen.add(nodeId);
+      ids.push(nodeId);
+    });
+    return ids;
+  }, [activeRewriteWorkflow]);
+  const projectWorkflowNodeIds = useMemo(() => {
+    if (!activeProjectWorkflow) {
+      return [] as string[];
+    }
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    activeProjectWorkflow.nodes.forEach((node) => {
+      const nodeId = node.id.trim();
+      if (!nodeId || seen.has(nodeId)) {
+        return;
+      }
+      seen.add(nodeId);
+      ids.push(nodeId);
+    });
+    return ids;
+  }, [activeProjectWorkflow]);
   const projectWorkflowRecommendationContext = useMemo<LauncherRecommendationContext>(
     () => ({
       module: 'projects',
@@ -874,6 +906,24 @@ export const FileViewer: React.FC<FileViewerProps> = ({
             };
           }
           runInputs[inputDef.key] = value;
+          continue;
+        }
+
+        if (inputDef.type === 'node') {
+          if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+            return {
+              inputs: runInputs,
+              error: t('inlineRewrite.invalidNodeInput', { key: inputDef.key }),
+            };
+          }
+          const hasTargetNode = workflow.nodes.some((node) => node.id === value);
+          if (!hasTargetNode) {
+            return {
+              inputs: runInputs,
+              error: t('inlineRewrite.invalidNodeInput', { key: inputDef.key }),
+            };
+          }
+          runInputs[inputDef.key] = value;
         }
       }
 
@@ -947,6 +997,24 @@ export const FileViewer: React.FC<FileViewerProps> = ({
             return {
               inputs: runInputs,
               error: t('projectWorkflow.invalidBooleanInput', { key: inputDef.key }),
+            };
+          }
+          runInputs[inputDef.key] = value;
+          continue;
+        }
+
+        if (inputDef.type === 'node') {
+          if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+            return {
+              inputs: runInputs,
+              error: t('projectWorkflow.invalidNodeInput', { key: inputDef.key }),
+            };
+          }
+          const hasTargetNode = workflow.nodes.some((node) => node.id === value);
+          if (!hasTargetNode) {
+            return {
+              inputs: runInputs,
+              error: t('projectWorkflow.invalidNodeInput', { key: inputDef.key }),
             };
           }
           runInputs[inputDef.key] = value;
@@ -2044,6 +2112,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         selectedWorkflowId={inlineRewriteWorkflowId}
         workflowLoading={inlineRewriteWorkflowsLoading}
         workflowInputs={inlineRewriteWorkflowInputs}
+        workflowNodeIds={inlineRewriteWorkflowNodeIds}
         inputValues={inlineRewriteInputs}
         favorites={launcherFavorites}
         recents={launcherRecents}
@@ -2071,6 +2140,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         selectedWorkflowId={projectWorkflowId}
         workflowLoading={inlineRewriteWorkflowsLoading}
         workflowInputs={projectWorkflowInputDefs}
+        workflowNodeIds={projectWorkflowNodeIds}
         inputValues={projectWorkflowInputs}
         artifactPath={projectWorkflowArtifactPath}
         writeMode={projectWorkflowWriteMode}

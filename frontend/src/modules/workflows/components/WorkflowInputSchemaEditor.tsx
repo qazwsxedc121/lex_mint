@@ -4,6 +4,7 @@ import type { WorkflowInputDef } from '../../../types/workflow';
 
 interface WorkflowInputSchemaEditorProps {
   inputs: WorkflowInputDef[];
+  nodeIdOptions?: string[];
   disabled?: boolean;
   onChange: (inputs: WorkflowInputDef[]) => void;
 }
@@ -28,11 +29,15 @@ const normalizeDefaultByType = (
   if (type === 'number') {
     return typeof value === 'number' ? value : undefined;
   }
-  return typeof value === 'boolean' ? value : undefined;
+  if (type === 'boolean') {
+    return typeof value === 'boolean' ? value : undefined;
+  }
+  return typeof value === 'string' ? value : undefined;
 };
 
 export const WorkflowInputSchemaEditor: React.FC<WorkflowInputSchemaEditorProps> = ({
   inputs,
+  nodeIdOptions = [],
   disabled = false,
   onChange,
 }) => {
@@ -84,8 +89,17 @@ export const WorkflowInputSchemaEditor: React.FC<WorkflowInputSchemaEditorProps>
         </div>
       ) : (
         <div className="space-y-3">
-          {inputs.map((inputDef, index) => (
-            <div
+          {inputs.map((inputDef, index) => {
+            const nodeDefaultOptions =
+              inputDef.type === 'node' &&
+              typeof inputDef.default === 'string' &&
+              inputDef.default &&
+              !nodeIdOptions.includes(inputDef.default)
+                ? [...nodeIdOptions, inputDef.default]
+                : nodeIdOptions;
+
+            return (
+              <div
               key={`workflow-input-schema-row-${index}`}
               data-name={`workflow-input-schema-row-${index}`}
               className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3 space-y-2"
@@ -117,6 +131,7 @@ export const WorkflowInputSchemaEditor: React.FC<WorkflowInputSchemaEditorProps>
                     <option value="string">string</option>
                     <option value="number">number</option>
                     <option value="boolean">boolean</option>
+                    <option value="node">node</option>
                   </select>
                 </label>
 
@@ -164,6 +179,28 @@ export const WorkflowInputSchemaEditor: React.FC<WorkflowInputSchemaEditorProps>
                       <option value="true">true</option>
                       <option value="false">false</option>
                     </select>
+                  ) : inputDef.type === 'node' ? (
+                    <select
+                      data-name={`workflow-input-schema-default-${index}`}
+                      value={typeof inputDef.default === 'string' ? inputDef.default : ''}
+                      disabled={disabled}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          updateInput(index, { default: undefined });
+                          return;
+                        }
+                        updateInput(index, { default: value });
+                      }}
+                      className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">{t('inputEditor.defaultUnset')}</option>
+                      {nodeDefaultOptions.map((nodeId) => (
+                        <option key={`workflow-input-default-node-${index}-${nodeId}`} value={nodeId}>
+                          {nodeId}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       data-name={`workflow-input-schema-default-${index}`}
@@ -210,7 +247,8 @@ export const WorkflowInputSchemaEditor: React.FC<WorkflowInputSchemaEditorProps>
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
