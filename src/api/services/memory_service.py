@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
+from ..paths import repo_root
 from .embedding_service import EmbeddingService
 from .memory_config_service import MemoryConfigService
 from .rag_config_service import RagConfigService
@@ -69,7 +70,7 @@ class MemoryService:
     def _resolve_persist_dir(self) -> Path:
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
         if not persist_dir.is_absolute():
-            persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+            persist_dir = repo_root() / persist_dir
         persist_dir.mkdir(parents=True, exist_ok=True)
         return persist_dir
 

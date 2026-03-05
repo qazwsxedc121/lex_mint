@@ -10,13 +10,23 @@ Layout (desired):
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 from pathlib import Path
+import sys
 from typing import Iterable, Optional
 
 
 @lru_cache(maxsize=1)
 def repo_root() -> Path:
-    # This file lives at src/api/paths.py -> parents: api/ -> src/ -> repo root
+    runtime_root = os.getenv("LEX_MINT_RUNTIME_ROOT", "").strip()
+    if runtime_root:
+        return Path(runtime_root).expanduser().resolve()
+
+    if getattr(sys, "frozen", False):
+        # PyInstaller/Nuitka runtime: place writable/runtime files next to the exe.
+        return Path(sys.executable).resolve().parent
+
+    # This file lives at src/api/paths.py -> parents: api/ -> src/ -> repo root.
     return Path(__file__).resolve().parents[2]
 
 

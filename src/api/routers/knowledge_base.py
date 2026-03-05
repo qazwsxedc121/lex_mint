@@ -21,6 +21,7 @@ from ..models.knowledge_base import (
 )
 from ..services.knowledge_base_service import KnowledgeBaseService
 from ..config import settings
+from ..paths import repo_root
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
@@ -322,7 +323,7 @@ async def list_chunks(
         else:
             persist_dir = Path(rag_config.config.storage.persist_directory)
             if not persist_dir.is_absolute():
-                persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+                persist_dir = repo_root() / persist_dir
 
             import chromadb
             client = chromadb.PersistentClient(path=str(persist_dir))

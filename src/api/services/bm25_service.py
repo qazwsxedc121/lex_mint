@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
+from ..paths import repo_root
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class Bm25Service:
 
         db_path_obj = Path(db_path)
         if not db_path_obj.is_absolute():
-            db_path_obj = Path(__file__).parent.parent.parent.parent / db_path_obj
+            db_path_obj = repo_root() / db_path_obj
         db_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         self.db_path = db_path_obj

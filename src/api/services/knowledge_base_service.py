@@ -399,7 +399,7 @@ class KnowledgeBaseService:
             else:
                 persist_dir = Path(rag_config.config.storage.persist_directory)
                 if not persist_dir.is_absolute():
-                    persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+                    persist_dir = repo_root() / persist_dir
 
                 import chromadb
                 client = chromadb.PersistentClient(path=str(persist_dir))
@@ -590,7 +590,7 @@ class KnowledgeBaseService:
             else:
                 persist_dir = Path(rag_config.config.storage.persist_directory)
                 if not persist_dir.is_absolute():
-                    persist_dir = Path(__file__).parent.parent.parent.parent / persist_dir
+                    persist_dir = repo_root() / persist_dir
 
                 import chromadb
                 client = chromadb.PersistentClient(path=str(persist_dir))

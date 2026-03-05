@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from src.providers.types import TokenUsage, CostInfo
+from ..paths import repo_root
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class PricingService:
             config_path: Path to models_config.yaml containing pricing info
         """
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "models_config.yaml"
+            config_path = repo_root() / "config" / "models_config.yaml"
         self.config_path = config_path
         self._pricing_cache: Optional[Dict[str, Any]] = None
 

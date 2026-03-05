@@ -16,6 +16,7 @@ setup_logging()
 import logging
 
 from .config import settings
+from .paths import repo_root
 from .routers import (
     assistants,
     chat,
@@ -144,7 +145,7 @@ async def startup_event():
         else:
             persist_dir = Path(rag_cfg.config.storage.persist_directory)
             if not persist_dir.is_absolute():
-                persist_dir = Path(__file__).parent.parent.parent / persist_dir
+                persist_dir = repo_root() / persist_dir
             persist_dir.mkdir(parents=True, exist_ok=True)
             logger.info("ChromaDB storage directory ready: %s", persist_dir)
     except Exception as e:
