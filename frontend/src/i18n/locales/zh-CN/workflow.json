@@ -97,6 +97,7 @@
     "promptTemplate": "提示词模板",
     "systemPrompt": "系统提示词",
     "modelId": "模型 ID",
+    "modelIdDefault": "使用会话/默认模型",
     "outputKey": "输出 Key",
     "temperature": "温度",
     "maxTokens": "最大输出 token",

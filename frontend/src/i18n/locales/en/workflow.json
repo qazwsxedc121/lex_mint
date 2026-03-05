@@ -97,6 +97,7 @@
     "promptTemplate": "Prompt template",
     "systemPrompt": "System prompt",
     "modelId": "Model ID",
+    "modelIdDefault": "Use session/default model",
     "outputKey": "Output key",
     "temperature": "Temperature",
     "maxTokens": "Max tokens",

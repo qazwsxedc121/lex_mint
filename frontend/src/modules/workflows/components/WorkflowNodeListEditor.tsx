@@ -10,8 +10,14 @@ import type {
   WorkflowNodeType,
 } from '../../../types/workflow';
 
+interface WorkflowModelOption {
+  modelId: string;
+  label: string;
+}
+
 interface WorkflowNodeListEditorProps {
   nodes: WorkflowNode[];
+  modelOptions?: WorkflowModelOption[];
   disabled?: boolean;
   onChange: (nodes: WorkflowNode[]) => void;
   onNodeIdRename?: (fromNodeId: string, toNodeId: string) => void;
@@ -169,8 +175,9 @@ const NodeTypeFields: React.FC<{
   index: number;
   disabled: boolean;
   nodeIdOptions: string[];
+  modelOptions: WorkflowModelOption[];
   updateNode: (patch: Partial<WorkflowNode>) => void;
-}> = ({ node, index, disabled, nodeIdOptions, updateNode }) => {
+}> = ({ node, index, disabled, nodeIdOptions, modelOptions, updateNode }) => {
   const { t } = useTranslation('workflow');
   const selectPlaceholder = t('nodeEditor.selectNodePlaceholder');
 
@@ -190,6 +197,14 @@ const NodeTypeFields: React.FC<{
 
   if (node.type === 'llm') {
     const llmNode = node as LlmNode;
+    const currentModelId = llmNode.model_id || '';
+    const hasCurrentModelOption = currentModelId
+      ? modelOptions.some((option) => option.modelId === currentModelId)
+      : true;
+    const modelSelectOptions = hasCurrentModelOption
+      ? modelOptions
+      : [{ modelId: currentModelId, label: currentModelId }, ...modelOptions];
+
     return (
       <div className="space-y-2">
         <label className="space-y-1 block">
@@ -206,13 +221,20 @@ const NodeTypeFields: React.FC<{
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
           <label className="space-y-1">
             <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.modelId')}</span>
-            <input
+            <select
               data-name={`workflow-node-model-id-${index}`}
               value={llmNode.model_id || ''}
               disabled={disabled}
               onChange={(event) => updateNode({ model_id: toOptionalString(event.target.value) })}
               className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
-            />
+            >
+              <option value="">{t('nodeEditor.modelIdDefault')}</option>
+              {modelSelectOptions.map((option) => (
+                <option key={`workflow-node-model-option-${index}-${option.modelId}`} value={option.modelId}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="space-y-1">
             <span className="text-xs text-gray-600 dark:text-gray-300">{t('nodeEditor.outputKey')}</span>
@@ -392,6 +414,7 @@ const NodeTypeFields: React.FC<{
 
 export const WorkflowNodeListEditor: React.FC<WorkflowNodeListEditorProps> = ({
   nodes,
+  modelOptions = [],
   disabled = false,
   onChange,
   onNodeIdRename,
@@ -528,6 +551,7 @@ export const WorkflowNodeListEditor: React.FC<WorkflowNodeListEditorProps> = ({
                 index={index}
                 disabled={disabled}
                 nodeIdOptions={nodeIdOptions}
+                modelOptions={modelOptions}
                 updateNode={(patch) => updateNodeAt(index, { ...node, ...patch } as WorkflowNode)}
               />
             </div>

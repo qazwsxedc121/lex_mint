@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { cancelAsyncRun, runWorkflowStream } from '../../services/api';
+import { cancelAsyncRun, listModels, runWorkflowStream } from '../../services/api';
+import type { Model } from '../../types/model';
 import type { Workflow, WorkflowFlowEvent, WorkflowScenario } from '../../types/workflow';
 import { useWorkflows } from './hooks/useWorkflows';
 import { WorkflowList } from './components/WorkflowList';
@@ -66,9 +67,28 @@ export const WorkflowsModule: React.FC = () => {
   const [activeView, setActiveView] = React.useState<'builder' | 'playground' | 'history'>('builder');
   const [builderEditorTab, setBuilderEditorTab] = React.useState<'visual' | 'config' | 'json'>('visual');
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
+  const [availableModels, setAvailableModels] = React.useState<Model[]>([]);
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const liveOutputRef = React.useRef('');
   const hasFinalOutputRef = React.useRef(false);
+
+  React.useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      try {
+        const models = await listModels();
+        if (disposed) {
+          return;
+        }
+        setAvailableModels(models.filter((model) => model.enabled));
+      } catch (err) {
+        console.error('Failed to load workflow model options:', err);
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!selectedWorkflow) {
@@ -227,6 +247,16 @@ export const WorkflowsModule: React.FC = () => {
       nodes: draftNodes,
     });
   }, [draftEntryNodeId, draftNodes]);
+  const modelOptions = React.useMemo(() => {
+    return availableModels.map((model) => {
+      const modelId = `${model.provider_id}:${model.id}`;
+      const modelLabel = model.name?.trim() ? model.name : modelId;
+      return {
+        modelId,
+        label: `${modelLabel} (${modelId})`,
+      };
+    });
+  }, [availableModels]);
 
   const handleRun = React.useCallback(async (workflowId: string, inputs: Record<string, unknown>) => {
     const workflow = workflows.find((item) => item.id === workflowId) ?? null;
@@ -527,6 +557,7 @@ export const WorkflowsModule: React.FC = () => {
 
                       <WorkflowNodeListEditor
                         nodes={draftNodes}
+                        modelOptions={modelOptions}
                         disabled={isSelectedSystemWorkflow}
                         onNodeIdRename={(fromNodeId, toNodeId) => {
                           setDraftEntryNodeId((previous) =>
