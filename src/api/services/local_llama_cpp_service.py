@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
 
-from ..paths import repo_root
+from ..paths import resolve_model_path
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +39,9 @@ class LocalLlamaCppService:
 
     @staticmethod
     def _resolve_model_path(model_path: str) -> Path:
-        candidate = Path(model_path).expanduser()
-        if not candidate.is_absolute():
-            candidate = repo_root() / candidate
-        return candidate
+        resolved = resolve_model_path(model_path)
+        logger.info("Resolved local GGUF model path: %s -> %s", model_path, resolved)
+        return resolved
 
     def _get_model(self):
         cache_key = (
@@ -165,3 +164,5 @@ class LocalLlamaCppService:
                 max_tokens=max_tokens,
             )
         )
+
+

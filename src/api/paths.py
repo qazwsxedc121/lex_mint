@@ -36,6 +36,10 @@ def is_packaged_runtime() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def lex_mint_home_dir() -> Path:
+    return Path.home() / ".lex_mint"
+
+
 def default_user_data_root() -> Path:
     local_appdata = os.getenv("LOCALAPPDATA", "").strip()
     if local_appdata:
@@ -56,8 +60,52 @@ def user_data_root() -> Path:
 def resolve_user_data_path(path: Path | str) -> Path:
     candidate = Path(path)
     if candidate.is_absolute():
-        return candidate
+        return candidate.expanduser().resolve()
     return user_data_root() / candidate
+
+
+def configured_models_root() -> Optional[Path]:
+    configured_root = os.getenv("LEX_MINT_MODELS_ROOT", "").strip()
+    if not configured_root:
+        return None
+    return Path(configured_root).expanduser().resolve()
+
+
+def appdata_models_root() -> Path:
+    return default_user_data_root() / "models"
+
+
+def install_models_root() -> Path:
+    return repo_root() / "models"
+
+
+def _normalize_model_relative_path(path: Path | str) -> Path:
+    candidate = Path(path)
+    parts = candidate.parts
+    if parts and parts[0].lower() == "models":
+        trimmed = Path(*parts[1:]) if len(parts) > 1 else Path()
+        return trimmed
+    return candidate
+
+
+def resolve_model_path(path: Path | str) -> Path:
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+
+    relative_candidate = _normalize_model_relative_path(candidate)
+    search_roots: list[Path] = []
+    configured_root = configured_models_root()
+    if configured_root is not None:
+        search_roots.append(configured_root)
+    search_roots.append(appdata_models_root())
+    search_roots.append(install_models_root())
+
+    resolved_candidates = [root / relative_candidate for root in search_roots]
+    existing = first_existing(resolved_candidates)
+    if existing is not None:
+        return existing
+    return resolved_candidates[0]
 
 
 def config_defaults_dir() -> Path:
@@ -90,10 +138,6 @@ def attachments_dir() -> Path:
 
 def logs_dir() -> Path:
     return user_data_root() / "logs"
-
-
-def lex_mint_home_dir() -> Path:
-    return Path.home() / ".lex_mint"
 
 
 def shared_keys_config_path() -> Path:
