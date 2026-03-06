@@ -21,7 +21,7 @@ from ..models.knowledge_base import (
 )
 from ..services.knowledge_base_service import KnowledgeBaseService
 from ..config import settings
-from ..paths import repo_root
+from ..paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
@@ -323,7 +323,7 @@ async def list_chunks(
         else:
             persist_dir = Path(rag_config.config.storage.persist_directory)
             if not persist_dir.is_absolute():
-                persist_dir = repo_root() / persist_dir
+                persist_dir = resolve_user_data_path(persist_dir)
 
             import chromadb
             client = chromadb.PersistentClient(path=str(persist_dir))
@@ -377,3 +377,5 @@ async def _process_document_async(kb_id: str, doc_id: str, filename: str, file_t
             await service.update_document_status(kb_id, doc_id, "error", error_message=str(e))
         except Exception as e2:
             logger.error(f"Failed to update document status to error: {e2}")
+
+

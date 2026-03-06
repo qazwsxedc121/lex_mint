@@ -1,10 +1,13 @@
 """Configuration management using pydantic-settings."""
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
-from pathlib import Path
-from typing import List, TYPE_CHECKING
 import os
+from pathlib import Path
+from typing import TYPE_CHECKING, List
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .paths import attachments_dir, conversations_dir, data_state_dir
 
 
 def _default_cors_origins() -> List[str]:
@@ -31,12 +34,12 @@ class Settings(BaseSettings):
     api_port: int
 
     # Storage Configuration
-    conversations_dir: Path = Path("conversations")
-    attachments_dir: Path = Path("attachments")
+    conversations_dir: Path = Field(default_factory=conversations_dir)
+    attachments_dir: Path = Field(default_factory=attachments_dir)
     max_file_size_mb: int = 10
 
     # Project Configuration
-    projects_config_path: Path = Path("data/state/projects_config.yaml")
+    projects_config_path: Path = Field(default_factory=lambda: data_state_dir() / "projects_config.yaml")
     projects_browse_roots: List[Path] = [Path(".")]
     max_file_read_size_mb: int = 10
     allowed_file_extensions: List[str] = [

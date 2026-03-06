@@ -16,7 +16,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Sequence
 
-from ..paths import repo_root
+from ..paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class SqliteVecService:
 
         db_path_obj = Path(db_path)
         if not db_path_obj.is_absolute():
-            db_path_obj = repo_root() / db_path_obj
+            db_path_obj = resolve_user_data_path(db_path_obj)
         db_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         self.db_path = db_path_obj
@@ -528,3 +528,5 @@ class SqliteVecService:
 
         ranked.sort(key=lambda item: float(item.get("score", 0.0) or 0.0), reverse=True)
         return ranked[:safe_top_k]
+
+

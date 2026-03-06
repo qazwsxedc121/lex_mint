@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 from dataclasses import dataclass
 
-from ..paths import repo_root
+from ..paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -1379,7 +1379,7 @@ class RagService:
 
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
         if not persist_dir.is_absolute():
-            persist_dir = repo_root() / persist_dir
+            persist_dir = resolve_user_data_path(persist_dir)
 
         collection_name = f"kb_{kb_id}"
 
@@ -1658,3 +1658,5 @@ class RagService:
             lines.append(f"Content: {content}")
 
         return "\n".join(lines)
+
+

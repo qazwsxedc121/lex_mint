@@ -17,7 +17,7 @@ from .logging_config import setup_logging
 setup_logging()
 
 from .config import settings
-from .paths import repo_root
+from .paths import repo_root, resolve_user_data_path
 from .routers import (
     assistants,
     chat,
@@ -179,7 +179,7 @@ async def startup_event():
         else:
             persist_dir = Path(rag_cfg.config.storage.persist_directory)
             if not persist_dir.is_absolute():
-                persist_dir = repo_root() / persist_dir
+                persist_dir = resolve_user_data_path(persist_dir)
             persist_dir.mkdir(parents=True, exist_ok=True)
             logger.info("ChromaDB storage directory ready: %s", persist_dir)
     except Exception as e:
@@ -211,3 +211,5 @@ async def packaged_frontend_routes(full_path: str):
         raise HTTPException(status_code=404, detail="Not Found")
 
     return _frontend_file_response(full_path)
+
+

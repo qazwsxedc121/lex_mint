@@ -1,4 +1,4 @@
-ï»¿"""Memory service backed by ChromaDB.
+"""Memory service backed by ChromaDB.
 
 Provides CRUD, retrieval and lightweight extraction utilities for global/assistant memory.
 """
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
-from ..paths import repo_root
+from ..paths import resolve_user_data_path
 from .embedding_service import EmbeddingService
 from .memory_config_service import MemoryConfigService
 from .rag_config_service import RagConfigService
@@ -70,7 +70,7 @@ class MemoryService:
     def _resolve_persist_dir(self) -> Path:
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
         if not persist_dir.is_absolute():
-            persist_dir = repo_root() / persist_dir
+            persist_dir = resolve_user_data_path(persist_dir)
         persist_dir.mkdir(parents=True, exist_ok=True)
         return persist_dir
 
@@ -742,7 +742,7 @@ class MemoryService:
         return header + "\n".join(lines), sources
 
     def extract_memory_candidates(self, text: str) -> List[Dict[str, Any]]:
-        # Extraction disabled â€” placeholder for future LLM-based extraction.
+        # Extraction disabled ¡ª placeholder for future LLM-based extraction.
         return []
 
     async def extract_and_persist_from_turn(
@@ -756,5 +756,7 @@ class MemoryService:
         source_message_id: Optional[str] = None,
         assistant_memory_enabled: bool = True,
     ) -> List[Dict[str, Any]]:
-        # Extraction disabled â€” placeholder for future LLM-based extraction.
+        # Extraction disabled ¡ª placeholder for future LLM-based extraction.
         return []
+
+

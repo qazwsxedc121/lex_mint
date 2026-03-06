@@ -30,12 +30,42 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def is_packaged_runtime() -> bool:
+    if os.getenv("LEX_MINT_PACKAGED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    return bool(getattr(sys, "frozen", False))
+
+
+def default_user_data_root() -> Path:
+    local_appdata = os.getenv("LOCALAPPDATA", "").strip()
+    if local_appdata:
+        return Path(local_appdata).expanduser().resolve() / "LexMint"
+    return lex_mint_home_dir() / "app"
+
+
+@lru_cache(maxsize=1)
+def user_data_root() -> Path:
+    configured_root = os.getenv("LEX_MINT_USER_DATA_ROOT", "").strip()
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+    if is_packaged_runtime():
+        return default_user_data_root()
+    return repo_root()
+
+
+def resolve_user_data_path(path: Path | str) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return user_data_root() / candidate
+
+
 def config_defaults_dir() -> Path:
     return repo_root() / "config" / "defaults"
 
 
 def config_local_dir() -> Path:
-    return repo_root() / "config" / "local"
+    return user_data_root() / "config" / "local"
 
 
 def local_keys_config_path() -> Path:
@@ -43,7 +73,23 @@ def local_keys_config_path() -> Path:
 
 
 def data_state_dir() -> Path:
-    return repo_root() / "data" / "state"
+    return user_data_root() / "data" / "state"
+
+
+def knowledge_bases_dir() -> Path:
+    return user_data_root() / "data" / "knowledge_bases"
+
+
+def conversations_dir() -> Path:
+    return user_data_root() / "conversations"
+
+
+def attachments_dir() -> Path:
+    return user_data_root() / "attachments"
+
+
+def logs_dir() -> Path:
+    return user_data_root() / "logs"
 
 
 def lex_mint_home_dir() -> Path:

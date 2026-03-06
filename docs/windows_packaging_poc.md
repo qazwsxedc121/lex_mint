@@ -40,9 +40,28 @@ Stop the service:
 .\stop_lex_mint.bat
 ```
 
+## Runtime Layout
+
+Immutable packaged files stay under the install/output directory:
+
+- `backend\`
+- `frontend\dist`
+- `config\defaults`
+- `shared\schemas`
+- `.env`
+
+Writable runtime data is stored under `%LOCALAPPDATA%\LexMint` in packaged mode:
+
+- `config\local`
+- `data\state`
+- `data\knowledge_bases`
+- `conversations`
+- `attachments`
+- `logs`
+
 ## Notes
 
-- Runtime root is set via `LEX_MINT_RUNTIME_ROOT`.
+- Runtime install root is set via `LEX_MINT_RUNTIME_ROOT`.
 - Packaged frontend hosting is enabled only when the packaging entrypoint sets `LEX_MINT_SERVE_FRONTEND=1`.
-- This is a first packaging PoC, not an installer yet.
-- Next step is to move writable runtime data to `%LOCALAPPDATA%\LexMint` for installer mode.
+- Packaged writable data defaults to `%LOCALAPPDATA%\LexMint` via `LEX_MINT_USER_DATA_ROOT`.
+- This is still a packaging PoC, not a full installer yet.

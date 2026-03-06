@@ -1,16 +1,19 @@
 """Centralized logging configuration module"""
 
+from datetime import datetime
 import logging
 import sys
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
-from datetime import datetime
+
+from .paths import logs_dir
 
 # Whether already initialized
 _initialized = False
 
+
 class TeeOutput:
     """Redirect stdout/stderr to both console and file"""
+
     def __init__(self, file_path, original_stream):
         self.file = None
         self.file_path = file_path
@@ -19,24 +22,22 @@ class TeeOutput:
 
     def open(self):
         """Open the log file"""
-        self.file = open(self.file_path, 'a', encoding='utf-8', buffering=1)  # Line buffered
+        self.file = open(self.file_path, 'a', encoding='utf-8', buffering=1)
 
     def write(self, message):
         """Write to both console and file"""
-        # Write to original stream (console)
         if self.original_stream:
             try:
                 self.original_stream.write(message)
                 self.original_stream.flush()
-            except:
+            except Exception:
                 pass
 
-        # Write to file
         if self.file and not self.file.closed:
             try:
                 self.file.write(message)
                 self.file.flush()
-            except:
+            except Exception:
                 pass
 
     def flush(self):
@@ -44,12 +45,12 @@ class TeeOutput:
         if self.original_stream:
             try:
                 self.original_stream.flush()
-            except:
+            except Exception:
                 pass
         if self.file and not self.file.closed:
             try:
                 self.file.flush()
-            except:
+            except Exception:
                 pass
 
     def close(self):
@@ -57,29 +58,27 @@ class TeeOutput:
         if self.file and not self.file.closed:
             self.file.close()
 
-def rotate_logs(logs_dir: Path, base_name: str = "server.log", keep_count: int = 3):
-    """Manually rotate log files (keep latest N files)"""
-    current_log = logs_dir / base_name
 
-    # If current log doesn't exist or is small, no need to rotate
+def rotate_logs(logs_directory: Path, base_name: str = "server.log", keep_count: int = 3):
+    """Manually rotate log files (keep latest N files)"""
+    current_log = logs_directory / base_name
+
     if not current_log.exists() or current_log.stat().st_size < 10 * 1024 * 1024:
         return
 
-    # Delete oldest backup
-    oldest = logs_dir / f"{base_name}.{keep_count}"
+    oldest = logs_directory / f"{base_name}.{keep_count}"
     if oldest.exists():
         oldest.unlink()
 
-    # Shift existing backups
-    for i in range(keep_count - 1, 0, -1):
-        old_file = logs_dir / f"{base_name}.{i}"
-        new_file = logs_dir / f"{base_name}.{i + 1}"
+    for index in range(keep_count - 1, 0, -1):
+        old_file = logs_directory / f"{base_name}.{index}"
+        new_file = logs_directory / f"{base_name}.{index + 1}"
         if old_file.exists():
             old_file.rename(new_file)
 
-    # Rename current to .1
-    backup_file = logs_dir / f"{base_name}.1"
+    backup_file = logs_directory / f"{base_name}.1"
     current_log.rename(backup_file)
+
 
 def setup_logging():
     """Configure application logging system and redirect stdout/stderr"""
@@ -88,23 +87,18 @@ def setup_logging():
     if _initialized:
         return
 
-    # Create logs directory
-    logs_dir = Path("logs")
-    logs_dir.mkdir(exist_ok=True)
+    logs_directory = logs_dir()
+    logs_directory.mkdir(parents=True, exist_ok=True)
 
-    # Rotate logs if needed
-    rotate_logs(logs_dir)
+    rotate_logs(logs_directory)
 
-    # Get log file path
-    log_file = logs_dir / "server.log"
+    log_file = logs_directory / "server.log"
 
-    # Write session separator
-    with open(log_file, 'a', encoding='utf-8') as f:
-        f.write("\n" + "=" * 100 + "\n")
-        f.write(f"Server started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("=" * 100 + "\n\n")
+    with open(log_file, 'a', encoding='utf-8') as file_handle:
+        file_handle.write("\n" + "=" * 100 + "\n")
+        file_handle.write(f"Server started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        file_handle.write("=" * 100 + "\n\n")
 
-    # Redirect stdout and stderr to both console and file
     stdout_tee = TeeOutput(log_file, sys.stdout)
     stderr_tee = TeeOutput(log_file, sys.stderr)
 
@@ -114,7 +108,6 @@ def setup_logging():
     sys.stdout = stdout_tee
     sys.stderr = stderr_tee
 
-    # Also configure Python logging system
     console_handler = logging.StreamHandler(stdout_tee)
     console_handler.setLevel(logging.INFO)
     console_formatter = logging.Formatter(
@@ -123,18 +116,15 @@ def setup_logging():
     )
     console_handler.setFormatter(console_formatter)
 
-    # Configure root logger
     logging.basicConfig(
         level=logging.INFO,
         handlers=[console_handler],
         force=True
     )
 
-    # Set log levels for specific modules
     logging.getLogger('src').setLevel(logging.INFO)
     logging.getLogger('llm_interactions').setLevel(logging.INFO)
 
-    # Reduce log level for third-party libraries
     logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
     logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
     logging.getLogger('uvicorn').setLevel(logging.WARNING)
@@ -146,5 +136,5 @@ def setup_logging():
     print("=" * 80)
     print("Logging system initialized")
     print(f"All output (stdout/stderr) will be saved to: {log_file.absolute()}")
-    print(f"Log rotation: max 10MB per file, keep 3 backups")
+    print("Log rotation: max 10MB per file, keep 3 backups")
     print("=" * 80)

@@ -11,7 +11,7 @@ import importlib
 from pathlib import Path
 from typing import Any, List, Optional
 
-from ..paths import repo_root
+from ..paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +347,7 @@ class DocumentProcessingService:
 
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
         if not persist_dir.is_absolute():
-            persist_dir = repo_root() / persist_dir
+            persist_dir = resolve_user_data_path(persist_dir)
         persist_dir.mkdir(parents=True, exist_ok=True)
 
         collection_name = f"kb_{kb_id}"
@@ -425,7 +425,7 @@ class DocumentProcessingService:
                         retry_delay = max(retry_delay, 5.0)
                     wait_seconds = min(max_delay, max(retry_delay, batch_delay, 0.5))
                     wait_seconds *= random.uniform(0.8, 1.2)
-                    max_label = "âˆž" if is_rate_limit or max_retries <= 0 else str(max_retries)
+                    max_label = "âˆ? if is_rate_limit or max_retries <= 0 else str(max_retries)
                     logger.warning(
                         f"Embedding batch {start + 1}-{end} failed "
                         f"(attempt {attempt}/{max_label}). Retrying in {wait_seconds:.2f}s: {e}"
@@ -584,3 +584,5 @@ class DocumentProcessingService:
             )
             if deleted:
                 logger.info(f"Removed {deleted} stale SQLite chunks for doc {doc_id} in kb_{kb_id}")
+
+

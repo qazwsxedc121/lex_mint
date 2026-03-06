@@ -19,6 +19,13 @@ def _runtime_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _default_user_data_root() -> Path:
+    local_appdata = os.getenv("LOCALAPPDATA", "").strip()
+    if local_appdata:
+        return Path(local_appdata).expanduser().resolve() / "LexMint"
+    return Path.home() / ".lex_mint" / "app"
+
+
 def _read_port(name: str, default: int) -> int:
     value = os.getenv(name, "").strip()
     if not value:
@@ -31,17 +38,22 @@ def _read_port(name: str, default: int) -> int:
 
 def main() -> None:
     runtime_root = _runtime_root()
-    os.environ.setdefault("LEX_MINT_RUNTIME_ROOT", str(runtime_root))
-    os.environ.setdefault("LEX_MINT_SERVE_FRONTEND", "1")
     os.chdir(runtime_root)
 
     load_dotenv(runtime_root / ".env", override=False)
 
+    os.environ.setdefault("LEX_MINT_RUNTIME_ROOT", str(runtime_root))
+    os.environ.setdefault("LEX_MINT_SERVE_FRONTEND", "1")
+    os.environ.setdefault("LEX_MINT_PACKAGED", "1")
+    os.environ.setdefault("LEX_MINT_USER_DATA_ROOT", str(_default_user_data_root()))
+
     api_host = os.getenv("API_HOST", "127.0.0.1").strip() or "127.0.0.1"
     api_port = _read_port("API_PORT", 18000)
     log_level = os.getenv("UVICORN_LOG_LEVEL", "info").strip() or "info"
+    user_data_root = Path(os.environ["LEX_MINT_USER_DATA_ROOT"]).resolve()
 
-    print(f"[lex_mint] runtime root: {runtime_root}")
+    print(f"[lex_mint] install root: {runtime_root}")
+    print(f"[lex_mint] user data root: {user_data_root}")
     print(f"[lex_mint] backend: http://{api_host}:{api_port}")
     print(f"[lex_mint] frontend served by backend: {runtime_root / 'frontend' / 'dist'}")
     uvicorn.run(

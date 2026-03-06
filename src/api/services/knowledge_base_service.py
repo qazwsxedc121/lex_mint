@@ -20,7 +20,7 @@ from ..models.knowledge_base import (
     KnowledgeBasesConfig,
 )
 
-from ..paths import data_state_dir, repo_root
+from ..paths import data_state_dir, knowledge_bases_dir, repo_root, resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class KnowledgeBaseService:
         if config_path is None:
             config_path = data_state_dir() / "knowledge_bases_config.yaml"
         if storage_dir is None:
-            preferred = repo_root() / "data" / "knowledge_bases"
+            preferred = knowledge_bases_dir()
             legacy = repo_root() / "knowledge_bases"
             if preferred.exists():
                 storage_dir = preferred
@@ -399,7 +399,7 @@ class KnowledgeBaseService:
             else:
                 persist_dir = Path(rag_config.config.storage.persist_directory)
                 if not persist_dir.is_absolute():
-                    persist_dir = repo_root() / persist_dir
+                    persist_dir = resolve_user_data_path(persist_dir)
 
                 import chromadb
                 client = chromadb.PersistentClient(path=str(persist_dir))
@@ -590,7 +590,7 @@ class KnowledgeBaseService:
             else:
                 persist_dir = Path(rag_config.config.storage.persist_directory)
                 if not persist_dir.is_absolute():
-                    persist_dir = repo_root() / persist_dir
+                    persist_dir = resolve_user_data_path(persist_dir)
 
                 import chromadb
                 client = chromadb.PersistentClient(path=str(persist_dir))
@@ -617,3 +617,6 @@ class KnowledgeBaseService:
         doc_dir = self.storage_dir / kb_id / "documents"
         doc_dir.mkdir(parents=True, exist_ok=True)
         return doc_dir / f"{doc_id}_{filename}"
+
+
+

@@ -78,12 +78,12 @@ Write-Host "[4/5] Building backend executable (PyInstaller)..."
 $outputRoot = Join-Path $repoRoot $OutputDir
 Write-Host "[5/5] Assembling portable package at $outputRoot..."
 Remove-Item -Recurse -Force $outputRoot -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $outputRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 $backendOut = Join-Path $outputRoot "backend"
 $frontendOut = Join-Path $outputRoot "frontend"
-New-Item -ItemType Directory -Path $backendOut | Out-Null
-New-Item -ItemType Directory -Path $frontendOut | Out-Null
+New-Item -ItemType Directory -Force -Path $backendOut | Out-Null
+New-Item -ItemType Directory -Force -Path $frontendOut | Out-Null
 
 Copy-Item -Recurse -Force (Join-Path $pyiDist "lex_mint_backend\*") $backendOut
 Copy-Item -Recurse -Force $frontendDist (Join-Path $frontendOut "dist")
@@ -92,13 +92,6 @@ Copy-Item -Recurse -Force (Join-Path $repoRoot "config\defaults") (Join-Path $ou
 Copy-Item -Recurse -Force (Join-Path $repoRoot "shared\schemas") (Join-Path $outputRoot "shared\schemas")
 Copy-Item -Force (Join-Path $repoRoot "scripts\packaging\windows\start_lex_mint.bat") $outputRoot
 Copy-Item -Force (Join-Path $repoRoot "scripts\packaging\windows\stop_lex_mint.bat") $outputRoot
-
-New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "config\local") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "data\state") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "data\chromadb") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "conversations") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "attachments") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "logs") | Out-Null
 
 $envContent = @"
 API_HOST=127.0.0.1
@@ -112,4 +105,7 @@ Write-Host ""
 Write-Host "Windows packaging PoC is ready."
 Write-Host "- Start: $outputRoot\start_lex_mint.bat"
 Write-Host "- Stop:  $outputRoot\stop_lex_mint.bat"
-Write-Host "- App:   http://127.0.0.1:$ApiPort"
+Write-Host "- App:   http://127.0.0.1:$ApiPort"`r`nWrite-Host "- User data: %LOCALAPPDATA%\\LexMint"
+
+
+
