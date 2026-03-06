@@ -58,9 +58,9 @@ $pyiSpec = Join-Path $buildRoot "pyinstaller\spec"
 
 Write-Host "[3/5] Cleaning previous build artifacts..."
 Remove-Item -Recurse -Force $buildRoot -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $pyiDist | Out-Null
-New-Item -ItemType Directory -Path $pyiWork | Out-Null
-New-Item -ItemType Directory -Path $pyiSpec | Out-Null
+New-Item -ItemType Directory -Force -Path $pyiDist | Out-Null
+New-Item -ItemType Directory -Force -Path $pyiWork | Out-Null
+New-Item -ItemType Directory -Force -Path $pyiSpec | Out-Null
 
 Write-Host "[4/5] Building backend executable (PyInstaller)..."
 & $venvPython -m PyInstaller `
@@ -105,7 +105,5 @@ Write-Host ""
 Write-Host "Windows packaging PoC is ready."
 Write-Host "- Start: $outputRoot\start_lex_mint.bat"
 Write-Host "- Stop:  $outputRoot\stop_lex_mint.bat"
-Write-Host "- App:   http://127.0.0.1:$ApiPort"`r`nWrite-Host "- User data: %LOCALAPPDATA%\\LexMint"
-
-
-
+Write-Host "- App:   http://127.0.0.1:$ApiPort"
+Write-Host "- User data: %LOCALAPPDATA%\LexMint"

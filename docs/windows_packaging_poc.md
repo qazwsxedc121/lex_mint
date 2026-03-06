@@ -1,14 +1,13 @@
-# Windows Packaging PoC (PyInstaller)
+# Windows Packaging PoC (PyInstaller + Inno Setup)
 
-This PoC builds a portable Windows folder with:
+This Windows delivery flow now supports two outputs:
 
-- `backend\lex_mint_backend.exe` (FastAPI backend)
-- `frontend\dist` (built frontend assets served by the backend)
-- `start_lex_mint.bat` / `stop_lex_mint.bat`
+- Portable folder: `dist\windows_poc`
+- Installer: `dist\installer\lex-mint-setup-<version>.exe`
 
-`Vite` is only used to build the frontend bundle. The packaged app does not run a Vite dev server or a second frontend process.
+The packaged app runs as a single backend process. `Vite` is only used to build the frontend bundle.
 
-## 1) Build
+## 1) Build Portable Package
 
 Run from repo root:
 
@@ -22,7 +21,25 @@ Optional custom API port and output path:
 ./scripts/build_windows.ps1 -ApiPort 18080 -OutputDir "dist\windows_poc_custom"
 ```
 
-## 2) Run packaged app
+## 2) Build Installer
+
+Prerequisite: install Inno Setup 6 so `ISCC.exe` is available.
+
+Then run:
+
+```powershell
+./scripts/build_windows_installer.ps1 -AppVersion 1.0.0
+```
+
+Optional flags:
+
+```powershell
+./scripts/build_windows_installer.ps1 -AppVersion 1.0.0 -SkipPyInstallerInstall
+./scripts/build_windows_installer.ps1 -AppVersion 1.0.0 -SkipPortableBuild
+./scripts/build_windows_installer.ps1 -IsccPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+```
+
+## 3) Run Portable Package
 
 ```powershell
 cd dist\windows_poc
@@ -59,9 +76,26 @@ Writable runtime data is stored under `%LOCALAPPDATA%\LexMint` in packaged mode:
 - `attachments`
 - `logs`
 
+Local GGUF models are resolved in this order:
+
+- Absolute path from config
+- `LEX_MINT_MODELS_ROOT`
+- `%LOCALAPPDATA%\LexMint\models`
+- `<install root>\models`
+
+## Installer Behavior
+
+The Inno Setup installer:
+
+- installs files to `Program Files\Lex Mint`
+- adds Start Menu shortcuts for start/stop/uninstall
+- optionally adds a desktop shortcut
+- can launch Lex Mint immediately after install
+- keeps `%LOCALAPPDATA%\LexMint` user data outside the install directory
+
 ## Notes
 
 - Runtime install root is set via `LEX_MINT_RUNTIME_ROOT`.
 - Packaged frontend hosting is enabled only when the packaging entrypoint sets `LEX_MINT_SERVE_FRONTEND=1`.
 - Packaged writable data defaults to `%LOCALAPPDATA%\LexMint` via `LEX_MINT_USER_DATA_ROOT`.
-- This is still a packaging PoC, not a full installer yet.
+- This is now installer-ready packaging, but updater logic is still a separate next step.
