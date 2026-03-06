@@ -1,3 +1,5 @@
+import { API_BASE } from '../../../services/apiBase';
+
 export interface FileReferencePreviewConfig {
   maxChars: number;
   maxLines: number;
@@ -111,12 +113,7 @@ export function subscribeFileReferencePreviewConfig(listener: () => void): () =>
 }
 
 async function fetchFileReferenceRuntimeConfig(): Promise<FileReferenceRuntimeConfig> {
-  const apiBase = import.meta.env.VITE_API_URL as string | undefined;
-  if (!apiBase) {
-    return runtimeConfig;
-  }
-
-  const response = await fetch(`${apiBase}/api/file-reference/config`);
+  const response = await fetch(`${API_BASE}/api/file-reference/config`);
   if (!response.ok) {
     throw new Error(`Failed to load file reference config: HTTP ${response.status}`);
   }
@@ -184,3 +181,7 @@ export function buildFileReferencePreview(
     truncated: hiddenChars > 0 || hiddenLines > 0,
   };
 }
+
+
+
+

@@ -6,13 +6,9 @@ import React from 'react';
 import { ConfigSettingsPage } from './components/config';
 import { fileReferenceConfig } from './config/fileReference.config';
 import { ensureFileReferencePreviewConfigLoaded } from '../../shared/chat/config/fileReferencePreview';
+import { API_BASE } from '../../services/apiBase';
 
 export const FileReferenceSettings: React.FC = () => {
-  const API_BASE = import.meta.env.VITE_API_URL;
-  if (!API_BASE) {
-    throw new Error('VITE_API_URL is not configured. Set API_PORT in the root .env file.');
-  }
-
   const apiClient = {
     get: async (url: string) => {
       const response = await fetch(`${API_BASE}${url}`);

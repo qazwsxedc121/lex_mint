@@ -8,8 +8,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, repoRoot, '')
   const explicitApiUrl = env.VITE_API_URL || process.env.VITE_API_URL
   const apiPort = env.API_PORT || process.env.API_PORT
-  const apiUrl = explicitApiUrl || (apiPort ? `http://localhost:${apiPort}` : '')
-  if (!apiUrl) {
+  const useRelativeApi = (env.VITE_USE_RELATIVE_API || process.env.VITE_USE_RELATIVE_API || '') === '1'
+  const apiUrl = useRelativeApi ? '' : explicitApiUrl || (apiPort ? `http://localhost:${apiPort}` : '')
+  if (!useRelativeApi && !apiUrl) {
     throw new Error('VITE_API_URL or API_PORT is required. Set one in the root .env file.')
   }
 
@@ -17,7 +18,8 @@ export default defineConfig(({ mode }) => {
     envDir: repoRoot,
     plugins: [react()],
     define: {
-      'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl)
+      'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+      'import.meta.env.VITE_USE_RELATIVE_API': JSON.stringify(useRelativeApi ? '1' : '0')
     }
   }
 })

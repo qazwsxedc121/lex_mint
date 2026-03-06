@@ -3,6 +3,7 @@
  */
 
 import axios from 'axios';
+import { API_BASE } from './apiBase';
 import i18n from '../i18n';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type {
@@ -41,11 +42,6 @@ import type {
   MemorySettingsUpdate,
   MemoryUpdateRequest,
 } from '../types/memory';
-
-const API_BASE = import.meta.env.VITE_API_URL;
-if (!API_BASE) {
-  throw new Error('VITE_API_URL is not configured. Set API_PORT in the root .env file.');
-}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -2941,3 +2937,4 @@ export async function updateSessionFolder(
 
   await api.put(`/api/sessions/${sessionId}/folder?${params.toString()}`, { folder_id: folderId });
 }
+

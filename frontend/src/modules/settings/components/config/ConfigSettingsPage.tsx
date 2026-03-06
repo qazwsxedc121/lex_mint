@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage, SettingsHelp } from '../common';
 import { ConfigForm } from './ConfigForm';
 import type { SimpleConfigSettingsConfig, ConfigContext } from '../../config/types';
+import { API_BASE } from '../../../../services/apiBase';
 
 interface ConfigSettingsPageProps {
   /** Page configuration */
@@ -47,11 +48,6 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   };
 
   // Default API client using fetch
-  const API_BASE = import.meta.env.VITE_API_URL;
-  if (!API_BASE) {
-    throw new Error('VITE_API_URL is not configured. Set API_PORT in the root .env file.');
-  }
-
   const defaultApiClient = useMemo(() => ({
     get: async (url: string) => {
       const response = await fetch(`${API_BASE}${url}`);
@@ -235,3 +231,4 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
     </div>
   );
 };
+

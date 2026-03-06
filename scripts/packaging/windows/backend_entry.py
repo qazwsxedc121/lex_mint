@@ -32,6 +32,7 @@ def _read_port(name: str, default: int) -> int:
 def main() -> None:
     runtime_root = _runtime_root()
     os.environ.setdefault("LEX_MINT_RUNTIME_ROOT", str(runtime_root))
+    os.environ.setdefault("LEX_MINT_SERVE_FRONTEND", "1")
     os.chdir(runtime_root)
 
     load_dotenv(runtime_root / ".env", override=False)
@@ -42,6 +43,7 @@ def main() -> None:
 
     print(f"[lex_mint] runtime root: {runtime_root}")
     print(f"[lex_mint] backend: http://{api_host}:{api_port}")
+    print(f"[lex_mint] frontend served by backend: {runtime_root / 'frontend' / 'dist'}")
     uvicorn.run(
         "src.api.main:app",
         host=api_host,
