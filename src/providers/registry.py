@@ -22,6 +22,7 @@ from .adapters import (
     BailianAdapter,
     SiliconFlowAdapter,
     KimiAdapter,
+    LocalGgufAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class AdapterRegistry:
         "bailian": BailianAdapter,
         "siliconflow": SiliconFlowAdapter,
         "kimi": KimiAdapter,
+        "local_gguf": LocalGgufAdapter,
     }
 
     # Mapping of API protocols to default adapter classes
@@ -57,6 +59,7 @@ class AdapterRegistry:
         ApiProtocol.ANTHROPIC: "anthropic",
         ApiProtocol.GEMINI: "gemini",
         ApiProtocol.OLLAMA: "ollama",
+        ApiProtocol.LOCAL_GGUF: "local_gguf",
     }
 
     @classmethod

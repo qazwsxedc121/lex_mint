@@ -122,7 +122,6 @@
   "memory.help.pitfallsItem1": "When scope is assistant, assistant id is required; create requests fail without it.",
   "memory.help.pitfallsItem2": "Pinned only affects priority; inactive memories are still excluded until reactivated.",
   "memory.help.pitfallsItem3": "Top K and threshold directly affect injection. Overly strict values can make memory appear empty.",
-
   "crud.confirmDelete": "Are you sure you want to delete \"{{name}}\"?",
   "crud.deletedSuccess": "{{item}} deleted successfully",
   "crud.defaultUpdated": "Default {{item}} updated",
@@ -140,25 +139,21 @@
   "crud.noItemsFound": "No {{items}} found",
   "crud.notFound": "{{item}} not found",
   "crud.editingItem": "Editing {{name}}",
-
   "config.failedToLoad": "Failed to load configuration",
   "config.savedSuccess": "Settings saved successfully!",
   "config.failedToSave": "Failed to save configuration",
   "config.loadingSettings": "Loading settings...",
   "config.saveSettings": "Save Settings",
-
   "formField.unknownType": "Unknown field type",
   "formField.clickToChooseIcon": "Click to choose an icon",
   "formField.searchIcons": "Search icons...",
   "formField.iconsFound": "{{count}} icons found",
   "formField.iconsAvailable": "{{count}} icons available",
   "formField.loadMore": "Load more ({{count}} remaining)",
-
   "developer.title": "Developer Settings",
   "developer.description": "Enable developer tools for inspecting chunking and RAG behavior",
   "developer.modeTitle": "Developer Mode",
   "developer.modeDescription": "Show developer tools in the main navigation and allow chunk inspection.",
-
   "knowledgeBase.updatedSuccess": "Knowledge base updated successfully",
   "knowledgeBase.loading": "Loading knowledge base...",
   "knowledgeBase.notFound": "Knowledge base not found",
@@ -174,7 +169,6 @@
   "knowledgeBase.help.pitfallsItem1": "Changing chunk settings does not rebuild old vectors automatically; stale chunks may still affect retrieval.",
   "knowledgeBase.help.pitfallsItem2": "Switching embedding model without reprocessing can reduce recall quality or produce unstable ranking.",
   "knowledgeBase.help.pitfallsItem3": "Disabled knowledge bases may remain in history but are excluded from live chat retrieval.",
-
   "documents.pending": "Pending",
   "documents.processing": "Processing",
   "documents.ready": "Ready",
@@ -220,14 +214,12 @@
   "documents.help.pitfallsItem1": "Reprocessing while a document is already processing often fails; wait for current job completion.",
   "documents.help.pitfallsItem2": "Deleting a document also removes its vector chunks; recovery requires re-upload and processing.",
   "documents.help.pitfallsItem3": "Repeated uploads with the same filename can hide version differences; use versioned filenames.",
-
   "configField.builtin": "Builtin",
   "configField.custom": "Custom",
   "configField.notSet": "Not set",
   "configField.on": "On",
   "configField.off": "Off",
   "configField.unlimited": "Unlimited",
-
   "assistants.title": "Assistant List",
   "assistants.description": "Configure assistants with models, temperatures, and sampling parameters",
   "assistants.itemName": "assistant",
@@ -274,7 +266,6 @@
   "assistants.field.memoryEnabled": "Enable assistant memory",
   "assistants.field.knowledgeBases": "Knowledge Bases",
   "assistants.field.knowledgeBases.help": "Select knowledge bases to use for RAG with this assistant",
-
   "models.title": "Model List",
   "models.description": "Manage language models from different providers",
   "models.itemName": "model",
@@ -315,7 +306,6 @@
   "models.help.pitfallsItem1": "chat_template values are model-level defaults, not global settings.",
   "models.help.pitfallsItem2": "Model ids must stay unique within the same provider, or update/delete targets may conflict.",
   "models.help.pitfallsItem3": "Disabling a model can break assistants or flows that still depend on that model.",
-
   "providers.title": "Provider List",
   "providers.description": "Built-in providers are preloaded; use Add only for custom providers.",
   "providers.itemName": "provider",
@@ -333,13 +323,14 @@
   "providers.field.advanced": "Advanced options",
   "providers.field.advanced.help": "Optional expert settings. Most users can keep defaults.",
   "providers.field.protocol": "Provider API family",
-  "providers.field.protocol.help": "How this endpoint is interpreted by the adapter (OpenAI-compatible / Anthropic / Gemini / Ollama).",
+  "providers.field.protocol.help": "How this endpoint is interpreted by the adapter (OpenAI-compatible / Anthropic / Gemini / Ollama / Local GGUF).",
   "providers.field.protocol.option.openai": "OpenAI-compatible",
   "providers.field.protocol.option.anthropic": "Anthropic native",
   "providers.field.protocol.option.gemini": "Gemini native",
   "providers.field.protocol.option.ollama": "Ollama native",
+  "providers.field.protocol.option.local_gguf": "Local GGUF",
   "providers.field.callMode": "Request API mode",
-  "providers.field.callMode.help": "Auto policy: OpenAI official -> Responses; Anthropic/Gemini/Ollama native -> Native; others -> Chat Completions. Responses fallback to Chat Completions is enabled by default.",
+  "providers.field.callMode.help": "Auto policy: OpenAI official -> Responses; Anthropic/Gemini/Ollama/Local GGUF native -> Native; others -> Chat Completions. Responses fallback to Chat Completions is enabled by default.",
   "providers.field.callMode.option.auto": "Auto (Recommended)",
   "providers.field.callMode.option.native": "Provider Native",
   "providers.field.callMode.option.chatCompletions": "OpenAI Chat Completions",
@@ -363,10 +354,8 @@
   "providers.help.pitfallsItem1": "Wrong protocol causes request format mismatches, often shown as 4xx or missing-field errors.",
   "providers.help.pitfallsItem2": "Incorrect base_url path (for example missing /v1) can break model listing and inference calls.",
   "providers.help.pitfallsItem3": "Disabling a provider will break model calls that still point to it.",
-
   "testConnection.success": "Connection successful!",
   "testConnection.failed": "Connection failed:",
-
   "knowledgeBases.title": "Knowledge Bases",
   "knowledgeBases.description": "Manage knowledge bases for RAG (Retrieval-Augmented Generation)",
   "knowledgeBases.itemName": "knowledge base",
@@ -393,7 +382,6 @@
   "knowledgeBases.field.chunkOverlap.placeholder": "e.g., 200",
   "knowledgeBases.field.chunkOverlap.help": "Override chunk overlap for this KB (leave empty to use global RAG config)",
   "knowledgeBases.field.enabled": "Enable this knowledge base",
-
   "promptTemplates.title": "Prompt Templates",
   "promptTemplates.description": "Manage reusable prompt templates for quick insertion.",
   "promptTemplates.itemName": "template",
@@ -464,7 +452,6 @@
   "promptTemplates.help.triggerItem2": "Aliases are optional alternatives. Separate by comma or newline.",
   "promptTemplates.help.variableTitle": "Variable placeholders",
   "promptTemplates.help.variableDesc": "Use {{name}} placeholders in content and define them in Variables. {{cursor}} sets cursor position after insertion.",
-
   "rag.title": "RAG Settings",
   "rag.description": "Configure Retrieval-Augmented Generation (embedding, chunking, and retrieval)",
   "rag.help.openTitle": "Open RAG setup guide",
@@ -584,7 +571,6 @@
   "rag.opt.presetBalanced.desc": "Good coverage, moderate cost",
   "rag.opt.presetDeep": "Deep",
   "rag.opt.presetDeep.desc": "Maximum recall, higher latency",
-
   "search.title": "Search Settings",
   "search.description": "Choose a search provider for the chat web search toggle",
   "search.field.provider": "Search Provider",
@@ -595,7 +581,6 @@
   "search.field.maxResults.help": "Maximum number of search results to return",
   "search.field.timeout": "Timeout (seconds)",
   "search.field.timeout.help": "Maximum time to wait for search results",
-
   "titleGen.title": "Title Generation Settings",
   "titleGen.description": "Configure automatic conversation title generation using a small language model",
   "titleGen.field.enabled": "Enable automatic title generation",
@@ -610,7 +595,6 @@
   "titleGen.field.promptTemplate": "Prompt Template",
   "titleGen.field.promptTemplate.placeholder": "Enter prompt template. Use {conversation_text} as placeholder for conversation content.",
   "titleGen.field.promptTemplate.help": "Use {conversation_text} as a placeholder for the actual conversation content",
-
   "webpage.title": "Webpage Settings",
   "webpage.description": "Configure webpage fetch and proxy settings",
   "webpage.field.enabled": "Enable webpage fetching",
@@ -632,7 +616,6 @@
   "webpage.field.diagnosticsEnabled": "Enable network diagnostics",
   "webpage.field.diagnosticsTimeout": "Diagnostics Timeout (seconds)",
   "webpage.field.diagnosticsTimeout.help": "Timeout for network diagnostics checks",
-
   "followup.title": "Follow-up Questions Settings",
   "followup.description": "Configure automatic follow-up question suggestions after each chat response",
   "followup.field.enabled": "Enable follow-up question suggestions",
@@ -647,7 +630,6 @@
   "followup.field.promptTemplate": "Prompt Template",
   "followup.field.promptTemplate.placeholder": "Enter prompt template. Use {count} and {conversation_text} as placeholders.",
   "followup.field.promptTemplate.help": "Use {count} for number of questions and {conversation_text} for conversation content",
-
   "compression.title": "Context Compression Settings",
   "compression.description": "Configure how conversation context is compressed (summarized) to free up the context window",
   "compression.help.openTitle": "Open compression setup guide",
@@ -724,7 +706,6 @@
   "compression.field.promptTemplate": "Summarization Prompt",
   "compression.field.promptTemplate.placeholder": "Enter summarization prompt. Use {formatted_messages} as placeholder for conversation content.",
   "compression.field.promptTemplate.help": "Use {formatted_messages} where the conversation text should be inserted",
-
   "fileReference.title": "File Reference Settings",
   "fileReference.description": "Configure @file preview and context injection limits for chat display and LLM input.",
   "fileReference.field.uiPreviewMaxChars": "UI Preview Max Characters",
@@ -741,7 +722,6 @@
   "fileReference.field.maxChunks.help": "Maximum number of representative chunks injected per referenced file.",
   "fileReference.field.totalBudgetChars": "Total Injection Budget (Chars)",
   "fileReference.field.totalBudgetChars.help": "Total character budget across all referenced files in a single message.",
-
   "translationConfig.title": "Translation Settings",
   "translationConfig.description": "Configure Q&A translation for translating LLM responses and user input",
   "translationConfig.help.openTitle": "Open translation setup guide",
@@ -784,7 +764,6 @@
   "translationConfig.field.promptTemplate": "Translation Prompt",
   "translationConfig.field.promptTemplate.placeholder": "Enter translation prompt. Use {text} and {target_language} as placeholders.",
   "translationConfig.field.promptTemplate.help": "Use {text} for the content to translate and {target_language} for the target language",
-
   "tts.title": "Text-to-Speech Settings",
   "tts.description": "Configure text-to-speech synthesis using Edge TTS (Microsoft neural voices)",
   "tts.field.enabled": "Enable TTS",

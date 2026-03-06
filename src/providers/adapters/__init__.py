@@ -15,6 +15,7 @@ from .gemini_adapter import GeminiAdapter
 from .bailian_adapter import BailianAdapter
 from .siliconflow_adapter import SiliconFlowAdapter
 from .kimi_adapter import KimiAdapter
+from .local_gguf_adapter import LocalGgufAdapter
 
 __all__ = [
     "OpenAIAdapter",
@@ -29,4 +30,5 @@ __all__ = [
     "BailianAdapter",
     "SiliconFlowAdapter",
     "KimiAdapter",
+    "LocalGgufAdapter",
 ]

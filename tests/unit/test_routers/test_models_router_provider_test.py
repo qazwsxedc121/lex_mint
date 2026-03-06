@@ -218,6 +218,57 @@ async def test_fetch_provider_models_for_kimi_returns_model_infos():
 
 
 @pytest.mark.asyncio
+async def test_builtin_provider_catalog_includes_local_gguf():
+    providers = await models_router.get_builtin_providers()
+    local_gguf = next(p for p in providers if p.id == "local_gguf")
+
+    assert local_gguf.supports_model_list is True
+    assert local_gguf.sdk_class == "local_gguf"
+    assert local_gguf.protocol == "local_gguf"
+
+
+@pytest.mark.asyncio
+async def test_fetch_provider_models_for_local_gguf_returns_results_without_api_key_prompt():
+    service = Mock()
+    provider = _provider(
+        provider_id="local_gguf",
+        protocol=ApiProtocol.LOCAL_GGUF,
+        base_url="local://gguf",
+    )
+    adapter = Mock()
+    adapter.fetch_models = AsyncMock(
+        return_value=[
+            {
+                "id": "llm/qwen3.gguf",
+                "name": "qwen3",
+                "tags": ["local", "gguf", "chat"],
+                "capabilities": {
+                    "context_length": 8192,
+                    "vision": False,
+                    "function_calling": False,
+                    "reasoning": False,
+                    "requires_interleaved_thinking": False,
+                    "streaming": True,
+                    "file_upload": False,
+                    "image_output": False,
+                },
+            }
+        ]
+    )
+
+    service.get_provider = AsyncMock(return_value=provider)
+    service.get_api_key = AsyncMock(return_value=None)
+    service.get_adapter_for_provider = Mock(return_value=adapter)
+    service.provider_requires_api_key = Mock(return_value=False)
+
+    result = await models_router.fetch_provider_models("local_gguf", service)
+
+    assert [item.id for item in result] == ["llm/qwen3.gguf"]
+    assert result[0].tags == ["local", "gguf", "chat"]
+    adapter.fetch_models.assert_awaited_once_with("local://gguf", "")
+
+
+@pytest.mark.asyncio
 async def test_fetch_provider_models_returns_400_when_no_key_and_empty_result():
     service = Mock()
     provider = _provider(

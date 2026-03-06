@@ -586,7 +586,7 @@ async def fetch_provider_models(
     adapter = service.get_adapter_for_provider(provider)
     try:
         models = await adapter.fetch_models(provider.base_url, api_key)
-        if not models and not api_key:
+        if not models and not api_key and service.provider_requires_api_key(provider):
             raise HTTPException(
                 status_code=400,
                 detail=f"No models found. Try configuring an API key for provider '{provider_id}'"

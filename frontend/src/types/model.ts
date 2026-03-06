@@ -3,7 +3,7 @@
  */
 
 // API Protocol types
-export type ApiProtocol = 'openai' | 'anthropic' | 'gemini' | 'ollama';
+export type ApiProtocol = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'local_gguf';
 
 // Provider call mode
 export type CallMode = 'auto' | 'native' | 'chat_completions' | 'responses';

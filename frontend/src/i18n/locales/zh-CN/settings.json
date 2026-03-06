@@ -122,7 +122,6 @@
   "memory.help.pitfallsItem1": "当作用域为助手时，必须选择 assistant id，否则创建会失败。",
   "memory.help.pitfallsItem2": "置顶只提高优先级；停用状态的记忆仍不会注入，需先重新激活。",
   "memory.help.pitfallsItem3": "Top K 和阈值会直接影响注入结果，设置过严会让聊天里看起来“没有记忆”。",
-
   "crud.confirmDelete": "确定要删除 \"{{name}}\" 吗？",
   "crud.deletedSuccess": "{{item}} 已删除",
   "crud.defaultUpdated": "默认 {{item}} 已更新",
@@ -140,25 +139,21 @@
   "crud.noItemsFound": "未找到 {{items}}",
   "crud.notFound": "{{item}} 未找到",
   "crud.editingItem": "正在编辑 {{name}}",
-
   "config.failedToLoad": "加载配置失败",
   "config.savedSuccess": "设置保存成功！",
   "config.failedToSave": "保存配置失败",
   "config.loadingSettings": "正在加载设置...",
   "config.saveSettings": "保存设置",
-
   "formField.unknownType": "未知字段类型",
   "formField.clickToChooseIcon": "点击选择图标",
   "formField.searchIcons": "搜索图标...",
   "formField.iconsFound": "找到 {{count}} 个图标",
   "formField.iconsAvailable": "共 {{count}} 个图标",
   "formField.loadMore": "加载更多（剩余 {{count}} 个）",
-
   "developer.title": "开发者设置",
   "developer.description": "启用开发者工具以检查分块和 RAG 行为",
   "developer.modeTitle": "开发者模式",
   "developer.modeDescription": "在主导航中显示开发者工具，并允许检查分块。",
-
   "knowledgeBase.updatedSuccess": "知识库已更新",
   "knowledgeBase.loading": "正在加载知识库...",
   "knowledgeBase.notFound": "未找到知识库",
@@ -174,7 +169,6 @@
   "knowledgeBase.help.pitfallsItem1": "分块大小和重叠改动不会自动重建旧数据，不重处理会导致检索结果混杂。",
   "knowledgeBase.help.pitfallsItem2": "embedding 模型切换后若不重建向量，可能出现召回质量下降或结果异常。",
   "knowledgeBase.help.pitfallsItem3": "知识库被停用后仍可见于历史配置，但聊天检索时不会再参与。",
-
   "documents.pending": "等待中",
   "documents.processing": "处理中",
   "documents.ready": "就绪",
@@ -220,14 +214,12 @@
   "documents.help.pitfallsItem1": "处理中状态再次触发重处理通常会失败，建议等待当前任务结束。",
   "documents.help.pitfallsItem2": "删除文档会同步删除向量分块，恢复需要重新上传并等待处理完成。",
   "documents.help.pitfallsItem3": "同名文件反复上传容易混淆版本，建议文件名带版本号或日期。",
-
   "configField.builtin": "内置",
   "configField.custom": "自定义",
   "configField.notSet": "未设置",
   "configField.on": "开启",
   "configField.off": "关闭",
   "configField.unlimited": "无限制",
-
   "assistants.title": "助手列表",
   "assistants.description": "配置助手的模型、温度和采样参数",
   "assistants.itemName": "助手",
@@ -274,7 +266,6 @@
   "assistants.field.memoryEnabled": "启用助手记忆",
   "assistants.field.knowledgeBases": "知识库",
   "assistants.field.knowledgeBases.help": "选择用于 RAG 检索的知识库",
-
   "models.title": "模型列表",
   "models.description": "管理不同服务商的语言模型",
   "models.itemName": "模型",
@@ -315,7 +306,6 @@
   "models.help.pitfallsItem1": "chat_template 参数是模型级默认值，不是全局参数，切换模型后会不同。",
   "models.help.pitfallsItem2": "同一 provider 下模型 id 不能重复，重复会导致更新/删除定位错误。",
   "models.help.pitfallsItem3": "关闭模型 enabled 后，依赖该模型的助手或配置可能无法正常调用。",
-
   "providers.title": "服务商列表",
   "providers.description": "内置服务商已预置；“添加”仅用于自定义服务商。",
   "providers.itemName": "服务商",
@@ -333,13 +323,13 @@
   "providers.field.advanced": "高级选项",
   "providers.field.advanced.help": "可选专家设置，普通使用保持默认即可。",
   "providers.field.protocol": "服务商 API 类型",
-  "providers.field.protocol.help": "用于告诉适配器该地址属于哪一类接口（OpenAI 兼容 / Anthropic / Gemini / Ollama）。",
+  "providers.field.protocol.help": "用于告诉适配器该地址属于哪一类接口（OpenAI 兼容 / Anthropic / Gemini / Ollama / 本地 GGUF）。",
   "providers.field.protocol.option.openai": "OpenAI 兼容",
   "providers.field.protocol.option.anthropic": "Anthropic 原生",
   "providers.field.protocol.option.gemini": "Gemini 原生",
   "providers.field.protocol.option.ollama": "Ollama 原生",
   "providers.field.callMode": "请求 API 模式",
-  "providers.field.callMode.help": "Auto 策略：OpenAI 官方优先 Responses；Anthropic/Gemini/Ollama 原生走 Native；其他默认 Chat Completions。Responses 默认开启失败兜底到 Chat Completions。",
+  "providers.field.callMode.help": "Auto 策略：OpenAI 官方优先 Responses；Anthropic/Gemini/Ollama/本地 GGUF 原生走 Native；其他默认 Chat Completions。Responses 默认开启失败兜底到 Chat Completions。",
   "providers.field.callMode.option.auto": "自动（推荐）",
   "providers.field.callMode.option.native": "服务商原生",
   "providers.field.callMode.option.chatCompletions": "OpenAI Chat Completions",
@@ -363,10 +353,8 @@
   "providers.help.pitfallsItem1": "协议选错会导致请求格式不匹配，常见报错是 4xx 或字段缺失。",
   "providers.help.pitfallsItem2": "base_url 末尾路径不正确（缺少 /v1 等）会导致模型列表和推理都失败。",
   "providers.help.pitfallsItem3": "服务商被禁用后，绑定该服务商的模型会在调用时失败。",
-
   "testConnection.success": "连接成功！",
   "testConnection.failed": "连接失败：",
-
   "knowledgeBases.title": "知识库",
   "knowledgeBases.description": "管理用于 RAG（检索增强生成）的知识库",
   "knowledgeBases.itemName": "知识库",
@@ -393,7 +381,6 @@
   "knowledgeBases.field.chunkOverlap.placeholder": "例如 200",
   "knowledgeBases.field.chunkOverlap.help": "覆盖此知识库的分块重叠（留空使用全局 RAG 配置）",
   "knowledgeBases.field.enabled": "启用此知识库",
-
   "promptTemplates.title": "提示词模板",
   "promptTemplates.description": "管理可复用的提示词模板以便快速插入。",
   "promptTemplates.itemName": "模板",
@@ -464,7 +451,6 @@
   "promptTemplates.help.triggerItem2": "别名是可选替代入口，支持逗号或换行分隔。",
   "promptTemplates.help.variableTitle": "变量占位符",
   "promptTemplates.help.variableDesc": "在内容中使用 {{name}} 占位符，并在“变量”中定义。{{cursor}} 可指定插入后光标位置。",
-
   "rag.title": "RAG 设置",
   "rag.description": "配置检索增强生成（嵌入、分块和检索）",
   "rag.help.openTitle": "打开 RAG 配置指南",
@@ -584,7 +570,6 @@
   "rag.opt.presetBalanced.desc": "覆盖面与开销兼顾",
   "rag.opt.presetDeep": "深度",
   "rag.opt.presetDeep.desc": "最大召回，延迟较高",
-
   "search.title": "搜索设置",
   "search.description": "选择聊天网页搜索切换的搜索服务商",
   "search.field.provider": "搜索服务商",
@@ -595,7 +580,6 @@
   "search.field.maxResults.help": "返回的最大搜索结果数",
   "search.field.timeout": "超时（秒）",
   "search.field.timeout.help": "等待搜索结果的最大时间",
-
   "titleGen.title": "标题生成设置",
   "titleGen.description": "配置使用小型语言模型自动生成对话标题",
   "titleGen.field.enabled": "启用自动标题生成",
@@ -610,7 +594,6 @@
   "titleGen.field.promptTemplate": "提示词模板",
   "titleGen.field.promptTemplate.placeholder": "输入提示词模板。使用 {conversation_text} 作为对话内容的占位符。",
   "titleGen.field.promptTemplate.help": "使用 {conversation_text} 作为实际对话内容的占位符",
-
   "webpage.title": "网页设置",
   "webpage.description": "配置网页抓取和代理设置",
   "webpage.field.enabled": "启用网页抓取",
@@ -632,7 +615,6 @@
   "webpage.field.diagnosticsEnabled": "启用网络诊断",
   "webpage.field.diagnosticsTimeout": "诊断超时（秒）",
   "webpage.field.diagnosticsTimeout.help": "网络诊断检查的超时时间",
-
   "followup.title": "后续问题设置",
   "followup.description": "配置每次聊天回复后的自动后续问题建议",
   "followup.field.enabled": "启用后续问题建议",
@@ -647,7 +629,6 @@
   "followup.field.promptTemplate": "提示词模板",
   "followup.field.promptTemplate.placeholder": "输入提示词模板。使用 {count} 和 {conversation_text} 作为占位符。",
   "followup.field.promptTemplate.help": "使用 {count} 表示问题数量，{conversation_text} 表示对话内容",
-
   "compression.title": "上下文压缩设置",
   "compression.description": "配置对话上下文的压缩（摘要）方式以释放上下文窗口",
   "compression.help.openTitle": "打开压缩配置指南",
@@ -724,7 +705,6 @@
   "compression.field.promptTemplate": "摘要提示词",
   "compression.field.promptTemplate.placeholder": "输入摘要提示词。使用 {formatted_messages} 作为对话内容的占位符。",
   "compression.field.promptTemplate.help": "使用 {formatted_messages} 插入对话文本",
-
   "fileReference.title": "文件引用设置",
   "fileReference.description": "配置 @file 在聊天中的预览展示与注入到 LLM 的上下文限制。",
   "fileReference.field.uiPreviewMaxChars": "界面预览最大字符数",
@@ -741,7 +721,6 @@
   "fileReference.field.maxChunks.help": "每个引用文件最多注入的代表性分块数量。",
   "fileReference.field.totalBudgetChars": "总注入预算（字符）",
   "fileReference.field.totalBudgetChars.help": "单条消息内，所有引用文件可注入内容的总字符预算。",
-
   "translationConfig.title": "翻译设置",
   "translationConfig.description": "配置问答翻译，用于翻译 LLM 回复和用户输入",
   "translationConfig.help.openTitle": "打开翻译配置指南",
@@ -784,7 +763,6 @@
   "translationConfig.field.promptTemplate": "翻译提示词",
   "translationConfig.field.promptTemplate.placeholder": "输入翻译提示词。使用 {text} 和 {target_language} 作为占位符。",
   "translationConfig.field.promptTemplate.help": "使用 {text} 表示要翻译的内容，{target_language} 表示目标语言",
-
   "tts.title": "文字转语音设置",
   "tts.description": "配置使用 Edge TTS（微软神经网络语音）的文字转语音合成",
   "tts.field.enabled": "启用 TTS",
@@ -798,5 +776,6 @@
   "tts.field.volume": "音量",
   "tts.field.volume.help": "音量调整（例如 +0%、+50%、-20%）",
   "tts.field.maxTextLength": "最大文本长度",
-  "tts.field.maxTextLength.help": "合成的最大字符数。超长文本将被截断。"
+  "tts.field.maxTextLength.help": "合成的最大字符数。超长文本将被截断。",
+  "providers.field.protocol.option.local_gguf": "本地 GGUF"
 }

@@ -218,6 +218,20 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         supports_model_list=True,
     ),
 
+    "local_gguf": ProviderDefinition(
+        id="local_gguf",
+        name="Local GGUF",
+        protocol=ApiProtocol.LOCAL_GGUF,
+        base_url="local://gguf",
+        sdk_class="local_gguf",
+        default_capabilities=ModelCapabilities(
+            context_length=8192,
+            streaming=True,
+        ),
+        supports_model_list=True,
+        auto_append_path=False,
+    ),
+
     "ollama": ProviderDefinition(
         id="ollama",
         name="Ollama",

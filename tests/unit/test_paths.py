@@ -2,6 +2,7 @@ from pathlib import Path
 
 from src.api.config import Settings
 from src.api import paths
+from src.api.services.local_llama_cpp_service import discover_local_gguf_models
 
 
 def test_user_data_root_defaults_to_repo_root_in_source_mode(monkeypatch):
@@ -86,3 +87,40 @@ def test_resolve_model_path_returns_absolute_path_unchanged(monkeypatch, tmp_pat
     absolute_model.write_text("z", encoding="utf-8")
 
     assert paths.resolve_model_path(str(absolute_model)) == absolute_model
+
+
+def test_discover_local_gguf_models_scans_priority_roots(monkeypatch, tmp_path):
+    explicit_root = tmp_path / "custom_models"
+    local_appdata = tmp_path / "localappdata"
+    install_root = tmp_path / "install_root"
+
+    monkeypatch.setenv("LEX_MINT_MODELS_ROOT", str(explicit_root))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    monkeypatch.setenv("LEX_MINT_RUNTIME_ROOT", str(install_root))
+    paths.repo_root.cache_clear()
+    paths.user_data_root.cache_clear()
+
+    explicit_model = explicit_root / "llm" / "alpha.gguf"
+    duplicate_appdata_model = local_appdata / "LexMint" / "models" / "llm" / "alpha.gguf"
+    appdata_model = local_appdata / "LexMint" / "models" / "llm" / "nested" / "beta.gguf"
+    install_model = install_root / "models" / "llm" / "gamma.gguf"
+
+    explicit_model.parent.mkdir(parents=True, exist_ok=True)
+    duplicate_appdata_model.parent.mkdir(parents=True, exist_ok=True)
+    appdata_model.parent.mkdir(parents=True, exist_ok=True)
+    install_model.parent.mkdir(parents=True, exist_ok=True)
+
+    explicit_model.write_text("explicit", encoding="utf-8")
+    duplicate_appdata_model.write_text("appdata-duplicate", encoding="utf-8")
+    appdata_model.write_text("appdata", encoding="utf-8")
+    install_model.write_text("install", encoding="utf-8")
+
+    discovered = discover_local_gguf_models()
+
+    assert [item["id"] for item in discovered] == [
+        "llm/alpha.gguf",
+        "llm/nested/beta.gguf",
+        "llm/gamma.gguf",
+    ]
+    assert [item["name"] for item in discovered] == ["alpha", "beta", "gamma"]
+    assert all(item["capabilities"]["streaming"] is True for item in discovered)
