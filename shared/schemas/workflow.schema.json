@@ -190,6 +190,34 @@
               "title": "Prompt Template",
               "type": "string"
             },
+            "retry_backoff_ms": {
+              "anyOf": [
+                {
+                  "maximum": 120000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Backoff Ms"
+            },
+            "retry_count": {
+              "anyOf": [
+                {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Count"
+            },
             "system_prompt": {
               "anyOf": [
                 {
@@ -215,6 +243,20 @@
               ],
               "default": null,
               "title": "Temperature"
+            },
+            "timeout_ms": {
+              "anyOf": [
+                {
+                  "maximum": 900000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timeout Ms"
             },
             "type": {
               "const": "llm",
@@ -670,6 +712,34 @@
               "title": "Prompt Template",
               "type": "string"
             },
+            "retry_backoff_ms": {
+              "anyOf": [
+                {
+                  "maximum": 120000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Backoff Ms"
+            },
+            "retry_count": {
+              "anyOf": [
+                {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Count"
+            },
             "system_prompt": {
               "anyOf": [
                 {
@@ -695,6 +765,20 @@
               ],
               "default": null,
               "title": "Temperature"
+            },
+            "timeout_ms": {
+              "anyOf": [
+                {
+                  "maximum": 900000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timeout Ms"
             },
             "type": {
               "const": "llm",
@@ -1247,6 +1331,34 @@
               "title": "Prompt Template",
               "type": "string"
             },
+            "retry_backoff_ms": {
+              "anyOf": [
+                {
+                  "maximum": 120000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Backoff Ms"
+            },
+            "retry_count": {
+              "anyOf": [
+                {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Count"
+            },
             "system_prompt": {
               "anyOf": [
                 {
@@ -1272,6 +1384,20 @@
               ],
               "default": null,
               "title": "Temperature"
+            },
+            "timeout_ms": {
+              "anyOf": [
+                {
+                  "maximum": 900000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timeout Ms"
             },
             "type": {
               "const": "llm",
@@ -1531,6 +1657,34 @@
               "title": "Prompt Template",
               "type": "string"
             },
+            "retry_backoff_ms": {
+              "anyOf": [
+                {
+                  "maximum": 120000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Backoff Ms"
+            },
+            "retry_count": {
+              "anyOf": [
+                {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Retry Count"
+            },
             "system_prompt": {
               "anyOf": [
                 {
@@ -1556,6 +1710,20 @@
               ],
               "default": null,
               "title": "Temperature"
+            },
+            "timeout_ms": {
+              "anyOf": [
+                {
+                  "maximum": 900000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timeout Ms"
             },
             "type": {
               "const": "llm",
