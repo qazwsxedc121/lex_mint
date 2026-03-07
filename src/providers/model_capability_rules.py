@@ -31,6 +31,19 @@ def _is_local_qwen3_model(normalized_model_id: str, normalized_provider_id: str)
     return "qwen3" in normalized_model_id
 
 
+def _is_openrouter_gemini_reasoning_model(
+    normalized_model_id: str,
+    normalized_provider_id: str,
+) -> bool:
+    if normalized_provider_id != "openrouter":
+        return False
+    if not normalized_model_id:
+        return False
+    if "image-preview" in normalized_model_id:
+        return False
+    return normalized_model_id.startswith("google/gemini-3") or "/gemini-3" in normalized_model_id
+
+
 def infer_requires_interleaved_thinking(
     model_id: str,
     provider_id: Optional[str] = None,
@@ -49,8 +62,11 @@ def infer_requires_interleaved_thinking(
     normalized_provider = _normalize_provider_id(provider_id)
     kimi_match = normalized.startswith("kimi-") or "/kimi-" in normalized
     deepseek_match = normalized.startswith("deepseek-") or "/deepseek-" in normalized
+    openrouter_gemini_reasoning_match = _is_openrouter_gemini_reasoning_model(normalized, normalized_provider)
 
     if normalized_provider in {"kimi", "deepseek"} and (kimi_match or deepseek_match):
+        return True
+    if openrouter_gemini_reasoning_match:
         return True
     if kimi_match or deepseek_match:
         return True
@@ -76,9 +92,12 @@ def infer_reasoning_support(
     kimi_match = normalized.startswith("kimi-") or "/kimi-" in normalized
     deepseek_match = normalized.startswith("deepseek-") or "/deepseek-" in normalized
     local_qwen3_match = _is_local_qwen3_model(normalized, normalized_provider)
+    openrouter_gemini_reasoning_match = _is_openrouter_gemini_reasoning_model(normalized, normalized_provider)
     if normalized_provider in {"kimi", "deepseek"} and (kimi_match or deepseek_match):
         return True
     if local_qwen3_match:
+        return True
+    if openrouter_gemini_reasoning_match:
         return True
     if kimi_match or deepseek_match:
         return True

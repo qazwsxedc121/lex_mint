@@ -25,6 +25,7 @@ def test_infer_reasoning_support_for_kimi_and_deepseek_variants():
     assert infer_reasoning_support("deepseek-chat") is True
     assert infer_reasoning_support("moonshotai/kimi-k2.5:free") is True
     assert infer_reasoning_support("llm/qwen3-0.6b-q8_0.gguf", provider_id="local_gguf") is True
+    assert infer_reasoning_support("google/gemini-3-flash-preview", provider_id="openrouter") is True
     assert infer_reasoning_support("gpt-4o-mini") is None
 
 
@@ -55,6 +56,14 @@ def test_infer_capability_overrides_provider_specific_controls():
         "high",
         "xhigh",
     ]
+
+    openrouter_gemini_overrides = infer_capability_overrides(
+        "google/gemini-3-flash-preview",
+        provider_id="openrouter",
+    )
+    assert openrouter_gemini_overrides["reasoning"] is True
+    assert openrouter_gemini_overrides["requires_interleaved_thinking"] is True
+    assert openrouter_gemini_overrides["reasoning_controls"]["mode"] == "enum"
 
     volcengine_overrides = infer_capability_overrides("doubao-seed-2-0-pro", provider_id="volcengine")
     assert volcengine_overrides["reasoning_controls"]["mode"] == "enum"

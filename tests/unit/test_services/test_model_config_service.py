@@ -4,7 +4,7 @@ import pytest
 import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, AsyncMock
 
 from src.api.services.model_config_service import ModelConfigService
 from src.api.models.model_config import Provider, Model, ModelsConfig
@@ -209,6 +209,95 @@ class TestModelConfigService:
             assert config.models[0].id == "deepseek-chat"
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_layered_bootstrap_ignores_defaults_model_catalog(self, monkeypatch, temp_config_dir):
+        """Layered runtime bootstrap should use generated minimal config instead of defaults catalogs."""
+        defaults_dir = temp_config_dir / "defaults"
+        local_dir = temp_config_dir / "local"
+        legacy_dir = temp_config_dir / "legacy"
+        defaults_dir.mkdir(parents=True, exist_ok=True)
+        local_dir.mkdir(parents=True, exist_ok=True)
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+
+        defaults_path = defaults_dir / "models_config.yaml"
+        defaults_payload = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "enabled": True,
+                },
+                {
+                    "id": "deepseek-reasoner",
+                    "name": "DeepSeek Reasoner",
+                    "provider_id": "deepseek",
+                    "enabled": False,
+                },
+            ],
+        }
+        with open(defaults_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(defaults_payload, f, allow_unicode=True, sort_keys=False)
+
+        monkeypatch.setattr("src.api.services.model_config_service.config_defaults_dir", lambda: defaults_dir)
+        monkeypatch.setattr("src.api.services.model_config_service.config_local_dir", lambda: local_dir)
+        monkeypatch.setattr("src.api.services.model_config_service.local_keys_config_path", lambda: local_dir / "keys_config.yaml")
+        monkeypatch.setattr("src.api.services.model_config_service.shared_keys_config_path", lambda: legacy_dir / "shared_keys_config.yaml")
+        monkeypatch.setattr("src.api.services.model_config_service.legacy_config_dir", lambda: legacy_dir)
+
+        service = ModelConfigService()
+        config = await service.load_config()
+
+        assert len(config.models) == 1
+        assert config.models[0].id == "deepseek-chat"
+        assert config.models[0].provider_id == "deepseek"
+
+    @pytest.mark.asyncio
+    async def test_test_provider_connection_logs_failures(self, temp_config_dir, monkeypatch, caplog):
+        """Failed provider connection tests should be recorded in backend logs."""
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        service = ModelConfigService(config_path, keys_path)
+
+        provider = Provider(
+            id="openrouter",
+            name="OpenRouter",
+            type=ProviderType.BUILTIN,
+            protocol=ApiProtocol.OPENAI,
+            base_url="https://openrouter.ai/api/v1",
+            enabled=True,
+            sdk_class="openrouter",
+        )
+        adapter = Mock()
+        adapter.test_connection = AsyncMock(return_value=(False, "Connection error: broken"))
+        monkeypatch.setattr("src.api.services.model_config_service.AdapterRegistry.get_for_provider", lambda _: adapter)
+
+        with caplog.at_level("ERROR"):
+            success, message = await service.test_provider_connection(
+                base_url=provider.base_url,
+                api_key="k",
+                model_id="google/gemini-3-flash-preview",
+                provider=provider,
+            )
+
+        assert success is False
+        assert message == "Connection error: broken"
+        assert "Provider connection test result" in caplog.text
+        assert "openrouter" in caplog.text
 
     @pytest.mark.asyncio
     async def test_load_config(self, temp_config_dir, sample_model_config):

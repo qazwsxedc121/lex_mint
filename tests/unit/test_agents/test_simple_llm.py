@@ -5,7 +5,7 @@ from unittest.mock import patch, Mock, AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage
 from types import SimpleNamespace
 
-from src.agents.simple_llm import call_llm, call_llm_stream
+from src.agents.simple_llm import call_llm, call_llm_stream, _build_reasoning_decision_payload
 from src.providers.types import TokenUsage
 
 
@@ -124,6 +124,38 @@ class TestCallLLM:
 
         # Verify error was logged
         mock_llm_logger.log_error.assert_called_once()
+
+
+def test_build_reasoning_decision_payload_contains_effective_adapter_args():
+    capabilities = SimpleNamespace(reasoning=True, requires_interleaved_thinking=True)
+    reasoning_controls = SimpleNamespace(
+        mode="enum",
+        param="reasoning.effort",
+        options=["minimal", "low", "medium", "high"],
+        disable_supported=True,
+    )
+
+    payload = _build_reasoning_decision_payload(
+        session_id="session-1",
+        provider_id="openrouter",
+        model_id="google/gemini-3-flash-preview",
+        call_mode="auto",
+        requested_reasoning_mode="high",
+        capabilities=capabilities,
+        reasoning_controls=reasoning_controls,
+        thinking_enabled=True,
+        disable_thinking=False,
+        effective_reasoning_option="high",
+        effective_reasoning_effort="high",
+    )
+
+    assert payload["requested_reasoning_mode"] == "high"
+    assert payload["capabilities_reasoning"] is True
+    assert payload["requires_interleaved_thinking"] is True
+    assert payload["reasoning_controls"]["param"] == "reasoning.effort"
+    assert payload["decision"]["thinking_enabled"] is True
+    assert payload["adapter_args"]["reasoning_option"] == "high"
+    assert payload["adapter_args"]["reasoning_effort"] == "high"
 
 
 class TestCallLLMStream:

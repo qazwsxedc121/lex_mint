@@ -416,7 +416,11 @@ interface InputBoxProps {
   assistantSelector?: React.ReactNode;
   supportsReasoning?: boolean;
   reasoningControls?: ReasoningControls | null;
+  reasoningEffort?: string;
+  onReasoningEffortChange?: (reasoningEffort: string) => void;
   supportsVision?: boolean;
+  useWebSearch?: boolean;
+  onUseWebSearchChange?: (enabled: boolean) => void;
   sessionId?: string;
   currentAssistantId?: string;
   paramOverrides?: ParamOverrides;
@@ -437,7 +441,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
   assistantSelector,
   supportsReasoning = false,
   reasoningControls = null,
+  reasoningEffort: controlledReasoningEffort,
+  onReasoningEffortChange,
   supportsVision = false,
+  useWebSearch: controlledUseWebSearch,
+  onUseWebSearchChange,
   sessionId,
   currentAssistantId: _currentAssistantId,
   paramOverrides,
@@ -448,9 +456,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const { t } = useTranslation('chat');
   const { registerComposer } = useChatComposer();
   const [input, setInput] = useState('');
-  const [reasoningEffort, setReasoningEffort] = useState('default');
+  const [uncontrolledReasoningEffort, setUncontrolledReasoningEffort] = useState('default');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
-  const [useWebSearch, setUseWebSearch] = useState(false);
+  const [uncontrolledUseWebSearch, setUncontrolledUseWebSearch] = useState(false);
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateMenuIndex, setTemplateMenuIndex] = useState(0);
@@ -489,6 +497,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const templateSearchInputRef = useRef<HTMLInputElement>(null);
   const translateInputMenuRef = useRef<HTMLDivElement>(null);
+  const reasoningEffort = controlledReasoningEffort ?? uncontrolledReasoningEffort;
+  const setReasoningEffort = onReasoningEffortChange ?? setUncontrolledReasoningEffort;
+  const useWebSearch = controlledUseWebSearch ?? uncontrolledUseWebSearch;
+  const setUseWebSearch = onUseWebSearchChange ?? setUncontrolledUseWebSearch;
 
   useEffect(() => {
     writeStoredTemplateIds(TEMPLATE_PINNED_STORAGE_KEY, pinnedTemplateIds);
@@ -1475,7 +1487,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         {/* Web search toggle */}
         <button
           type="button"
-          onClick={() => setUseWebSearch(prev => !prev)}
+          onClick={() => setUseWebSearch(!useWebSearch)}
           disabled={disabled || isStreaming}
           data-name="input-box-web-search-toggle"
           className={`${TOOLBAR_BTN} ${

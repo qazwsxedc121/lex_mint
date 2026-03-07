@@ -1,5 +1,7 @@
 """Tests for OpenRouterAdapter behavior."""
 
+import logging
+
 from src.providers.adapters.openrouter_adapter import OpenRouterAdapter
 
 
@@ -24,7 +26,7 @@ def test_create_llm_sets_openrouter_reasoning_effort(monkeypatch):
         reasoning_option="high",
     )
 
-    assert captured["extra_body"]["reasoning"] == {"effort": "high"}
+    assert captured["reasoning"] == {"effort": "high"}
 
 
 def test_create_llm_uses_interleaved_wrapper_when_required(monkeypatch):
@@ -80,3 +82,28 @@ def test_create_llm_falls_back_when_openrouter_package_missing(monkeypatch):
     )
 
     assert fallback_called["value"] is True
+
+
+def test_create_llm_does_not_emit_info_log_when_reasoning_disabled(monkeypatch, caplog):
+    captured = {}
+
+    class FakeChatOpenRouter:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "src.providers.adapters.openrouter_adapter.ChatOpenRouter",
+        FakeChatOpenRouter,
+    )
+
+    adapter = OpenRouterAdapter()
+    with caplog.at_level(logging.INFO, logger="src.providers.adapters.openrouter_adapter"):
+        adapter.create_llm(
+            model="google/gemini-3-flash-preview",
+            base_url="https://openrouter.ai/api/v1",
+            api_key="k",
+            disable_thinking=True,
+        )
+
+    assert captured["reasoning"] == {"enabled": False}
+    assert "OpenRouter reasoning mode set" not in caplog.text

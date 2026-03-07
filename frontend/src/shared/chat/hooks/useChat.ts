@@ -23,6 +23,8 @@ type SendMessageOptions = {
   fileReferences?: Array<{ path: string; project_id: string }>;
 };
 
+type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
+
 const TOOL_CALL_CACHE_STORAGE_KEY = 'lex-mint.tool-calls.cache.v1';
 const TOOL_CALL_CACHE_LIMIT = 300;
 
@@ -1268,7 +1270,7 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const regenerateMessage = async (messageId: string) => {
+  const regenerateMessage = async (messageId: string, options?: RegenerateMessageOptions) => {
     if (!sessionId || isProcessingRef.current) return;
 
     // Find message index by ID
@@ -1441,7 +1443,7 @@ export function useChat(sessionId: string | null) {
           setMessages(originalMessages);
         },
         abortControllerRef,
-        undefined,
+        options?.reasoningEffort,
         (usage: TokenUsage, cost?: CostInfo) => {
           if (runtimeIsGroupChat) {
             return;
@@ -1475,7 +1477,7 @@ export function useChat(sessionId: string | null) {
             { allowSingleFallback: true }
           );
         },
-        undefined,
+        options?.useWebSearch,
         undefined,
         (info: ContextInfo) => {
           setContextInfo(info);

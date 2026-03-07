@@ -276,6 +276,9 @@ try {
   }
 
   Write-Host "[1/4] Starting backend service..."
+  if ($mergeBackendLogs) {
+    $backendLogOffset = Get-FileLengthOrZero -Path $backendLogPath
+  }
   if ($isolateBackendConsole) {
     # On Windows, uvicorn --reload uses CTRL_C_EVENT during reload.
     # Running backend in the same console may broadcast that signal to Vite and kill frontend.
@@ -289,7 +292,6 @@ try {
   Write-Host "      Backend:  http://localhost:$apiPort (PID $($backendProcess.Id))"
   Start-Sleep -Seconds 2
   if ($mergeBackendLogs) {
-    $backendLogOffset = Get-FileLengthOrZero -Path $backendLogPath
     Write-Host "      Backend log merge: ON ($backendLogPath)"
   }
 
@@ -344,6 +346,10 @@ try {
       Write-Host ""
       if ($backendProcess.HasExited) {
         Write-Host "[WARN] Backend exited (PID $($backendProcess.Id), code $backendExitCode)"
+        if (Test-Path $backendLogPath) {
+          Write-Host "[INFO] Recent backend log lines:"
+          Get-Content -Path $backendLogPath -Tail 40 | ForEach-Object { Write-Host "[BE] $_" }
+        }
       }
       if ($frontendProcess.HasExited) {
         Write-Host "[WARN] Frontend exited (PID $($frontendProcess.Id), code $frontendExitCode)"

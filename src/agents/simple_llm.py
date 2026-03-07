@@ -131,6 +131,99 @@ def _trim_to_context_limit(
     return trimmed
 
 
+def _build_reasoning_decision_payload(
+    *,
+    session_id: str,
+    provider_id: str,
+    model_id: str,
+    call_mode: str,
+    requested_reasoning_mode: str,
+    capabilities: Any,
+    reasoning_controls: Any,
+    thinking_enabled: bool,
+    disable_thinking: bool,
+    effective_reasoning_option: Optional[str],
+    effective_reasoning_effort: Optional[str],
+) -> Dict[str, Any]:
+    def _coerce_bool(value: Any, default: bool = False) -> bool:
+        return value if isinstance(value, bool) else default
+
+    def _coerce_str(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        return value if isinstance(value, str) else None
+
+    raw_options = getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    options = [str(option) for option in raw_options] if isinstance(raw_options, list) else []
+    controls_mode = getattr(reasoning_controls, "mode", None) if reasoning_controls is not None else None
+    controls_param = getattr(reasoning_controls, "param", None) if reasoning_controls is not None else None
+    disable_supported = (
+        getattr(reasoning_controls, "disable_supported", None)
+        if reasoning_controls is not None
+        else None
+    )
+    requires_interleaved = _coerce_bool(getattr(capabilities, "requires_interleaved_thinking", False))
+
+    return {
+        "session_id": session_id,
+        "provider_id": provider_id,
+        "model_id": model_id,
+        "call_mode": call_mode,
+        "requested_reasoning_mode": requested_reasoning_mode or "default",
+        "capabilities_reasoning": _coerce_bool(getattr(capabilities, "reasoning", False)),
+        "requires_interleaved_thinking": requires_interleaved,
+        "reasoning_controls": {
+            "mode": _coerce_str(controls_mode),
+            "param": _coerce_str(controls_param),
+            "options": options,
+            "disable_supported": disable_supported if isinstance(disable_supported, bool) else None,
+        },
+        "decision": {
+            "thinking_enabled": thinking_enabled,
+            "disable_thinking": disable_thinking,
+            "effective_reasoning_option": effective_reasoning_option,
+            "effective_reasoning_effort": effective_reasoning_effort,
+        },
+        "adapter_args": {
+            "thinking_enabled": thinking_enabled,
+            "reasoning_option": effective_reasoning_option,
+            "reasoning_effort": effective_reasoning_effort,
+            "disable_thinking": disable_thinking,
+            "requires_interleaved_thinking": requires_interleaved,
+        },
+    }
+
+
+def _log_reasoning_decision(
+    *,
+    session_id: str,
+    provider_id: str,
+    model_id: str,
+    call_mode: str,
+    requested_reasoning_mode: str,
+    capabilities: Any,
+    reasoning_controls: Any,
+    thinking_enabled: bool,
+    disable_thinking: bool,
+    effective_reasoning_option: Optional[str],
+    effective_reasoning_effort: Optional[str],
+) -> None:
+    payload = _build_reasoning_decision_payload(
+        session_id=session_id,
+        provider_id=provider_id,
+        model_id=model_id,
+        call_mode=call_mode,
+        requested_reasoning_mode=requested_reasoning_mode,
+        capabilities=capabilities,
+        reasoning_controls=reasoning_controls,
+        thinking_enabled=thinking_enabled,
+        disable_thinking=disable_thinking,
+        effective_reasoning_option=effective_reasoning_option,
+        effective_reasoning_effort=effective_reasoning_effort,
+    )
+    logger.info("Reasoning decision: %s", json.dumps(payload, ensure_ascii=True, sort_keys=True))
+
+
 # Approximate tokens per character ratio (rough heuristic: ~4 chars per token)
 _APPROX_CHARS_PER_TOKEN = 4
 
@@ -549,6 +642,21 @@ async def call_llm_stream(
         presence_penalty=presence_penalty,
     )
 
+    actual_model_id = f"{provider_config.id}:{model_config.id}"
+    _log_reasoning_decision(
+        session_id=session_id,
+        provider_id=provider_config.id,
+        model_id=model_config.id,
+        call_mode=effective_call_mode.value,
+        requested_reasoning_mode=reasoning_mode,
+        capabilities=capabilities,
+        reasoning_controls=reasoning_controls,
+        thinking_enabled=thinking_enabled,
+        disable_thinking=disable_thinking,
+        effective_reasoning_option=effective_reasoning_option,
+        effective_reasoning_effort=effective_reasoning_effort,
+    )
+
     # Create LLM instance via adapter
     llm = adapter.create_llm(
         model=model_config.id,
@@ -564,8 +672,6 @@ async def call_llm_stream(
         disable_thinking=disable_thinking,
         **extra_params,
     )
-
-    actual_model_id = f"{provider_config.id}:{model_config.id}"
 
     print(f"[LLM] Preparing streaming call (model: {actual_model_id})")
     print(f"      Call mode: {effective_call_mode.value}")

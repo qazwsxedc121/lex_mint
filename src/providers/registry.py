@@ -4,7 +4,9 @@ Adapter Registry
 Maps providers to their SDK adapters without text matching.
 """
 import logging
-from typing import Type, Dict, Optional
+from typing import Type, Dict, Optional, Any, AsyncIterator, List
+
+from langchain_core.messages import BaseMessage
 
 from .base import BaseLLMAdapter
 from .types import ProviderConfig, ProviderType, ApiProtocol
@@ -16,6 +18,7 @@ from .adapters import (
     AnthropicAdapter,
     OllamaAdapter,
     LmStudioAdapter,
+    LMSTUDIO_IMPORT_ERROR,
     XAIAdapter,
     ZhipuAdapter,
     VolcEngineAdapter,
@@ -27,6 +30,68 @@ from .adapters import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class MissingDependencyAdapter(BaseLLMAdapter):
+    """Adapter placeholder used when an optional provider SDK is not installed."""
+
+    def __init__(self, *, sdk_type: str, dependency_name: str, import_error: Optional[Exception] = None):
+        self._sdk_type = sdk_type
+        self._dependency_name = dependency_name
+        self._import_error = import_error
+
+    def _message(self) -> str:
+        detail = f": {self._import_error}" if self._import_error else ""
+        return (
+            f"Optional dependency '{self._dependency_name}' is required for provider '{self._sdk_type}'"
+            f" but is not installed{detail}."
+        )
+
+    def _raise(self) -> None:
+        raise RuntimeError(self._message())
+
+    def create_llm(
+        self,
+        model: str,
+        base_url: str,
+        api_key: str,
+        temperature: float = 0.7,
+        streaming: bool = True,
+        thinking_enabled: bool = False,
+        **kwargs,
+    ) -> Any:
+        self._raise()
+
+    async def invoke(
+        self,
+        llm: Any,
+        messages: List[BaseMessage],
+        **kwargs,
+    ):
+        self._raise()
+
+    def stream(
+        self,
+        llm: Any,
+        messages: List[BaseMessage],
+        **kwargs,
+    ) -> AsyncIterator:
+        async def _missing_dependency_stream():
+            self._raise()
+            yield None
+
+        return _missing_dependency_stream()
+
+    async def fetch_models(self, base_url: str, api_key: str):
+        self._raise()
+
+    async def test_connection(
+        self,
+        base_url: str,
+        api_key: str,
+        model_id: Optional[str] = None,
+    ) -> tuple[bool, str]:
+        return False, self._message()
 
 
 class AdapterRegistry:
@@ -96,6 +161,14 @@ class AdapterRegistry:
         Returns:
             Adapter instance (defaults to OpenAIAdapter if not found)
         """
+        if sdk_type == "lmstudio" and LmStudioAdapter is None:
+            logger.warning("LM Studio adapter requested but optional dependency 'lmstudio' is not installed")
+            return MissingDependencyAdapter(
+                sdk_type="lmstudio",
+                dependency_name="lmstudio",
+                import_error=LMSTUDIO_IMPORT_ERROR,
+            )
+
         adapter_class = cls._adapters.get(sdk_type, OpenAIAdapter)
         return adapter_class()
 

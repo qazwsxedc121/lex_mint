@@ -46,7 +46,7 @@ class OpenRouterAdapter(OpenAIAdapter):
     Adapter for OpenRouter via langchain-openrouter.
 
     Keeps stream/invoke/model-discovery behavior from OpenAIAdapter, but uses
-    OpenRouter-native reasoning parameters in `extra_body.reasoning`.
+    OpenRouter-native reasoning parameters via the top-level `reasoning` field.
     """
 
     _DEFAULT_TEST_MODEL = "openai/gpt-4o-mini"
@@ -124,10 +124,16 @@ class OpenRouterAdapter(OpenAIAdapter):
             reasoning_effort=reasoning_effort,
         )
         if reasoning_payload:
-            extra_body["reasoning"] = reasoning_payload
-            logger.info("OpenRouter reasoning mode set for %s: %s", model, reasoning_payload)
+            llm_kwargs["reasoning"] = reasoning_payload
+            if reasoning_payload != {"enabled": False}:
+                logger.info("OpenRouter reasoning mode set for %s: %s", model, reasoning_payload)
+            else:
+                logger.debug("OpenRouter reasoning explicitly disabled for %s", model)
         if extra_body:
-            llm_kwargs["extra_body"] = extra_body
+            llm_kwargs["model_kwargs"] = {
+                **dict(llm_kwargs.get("model_kwargs") or {}),
+                **extra_body,
+            }
 
         for key in ("timeout", "max_retries", "max_tokens"):
             if key in kwargs:

@@ -74,6 +74,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const wasStreamingRef = useRef(false);
   const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
+  const [reasoningEffort, setReasoningEffort] = useState('default');
+  const [useWebSearch, setUseWebSearch] = useState(false);
   const [groupAssistantNameMap, setGroupAssistantNameMap] = useState<Record<string, string>>({});
   const [enabledAssistants, setEnabledAssistants] = useState<Assistant[]>([]);
   const [enabledModels, setEnabledModels] = useState<Model[]>([]);
@@ -880,7 +882,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         modelNameById={modelNameById}
         onEditMessage={editMessage}
         onSaveMessageOnly={saveMessageOnly}
-        onRegenerateMessage={regenerateMessage}
+        onRegenerateMessage={(messageId) => regenerateMessage(messageId, {
+          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+          useWebSearch,
+        })}
         onDeleteMessage={deleteMessage}
         onBranchMessage={handleBranchMessage}
         customMessageActions={customMessageActions}
@@ -935,6 +940,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         supportsReasoning={supportsReasoning}
         reasoningControls={reasoningControls}
         supportsVision={supportsVision}
+        reasoningEffort={reasoningEffort}
+        onReasoningEffortChange={setReasoningEffort}
+        useWebSearch={useWebSearch}
+        onUseWebSearchChange={setUseWebSearch}
         sessionId={currentSessionId}
         currentAssistantId={currentTargetType === 'assistant' ? currentAssistantId || undefined : undefined}
         paramOverrides={paramOverrides}

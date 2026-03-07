@@ -92,7 +92,6 @@ class ModelConfigService:
             if self._layered_models:
                 ensure_local_file(
                     local_path=self.config_path,
-                    defaults_path=self.defaults_path,
                     legacy_paths=self.legacy_models_paths,
                     initial_text=initial_text,
                 )
@@ -1020,11 +1019,31 @@ class ModelConfigService:
         else:
             adapter = AdapterRegistry.get("openai")
 
-        return await adapter.test_connection(
-            base_url=base_url,
-            api_key=api_key,
-            model_id=model_id,
+        try:
+            success, message = await adapter.test_connection(
+                base_url=base_url,
+                api_key=api_key,
+                model_id=model_id,
+            )
+        except Exception:
+            logger.exception(
+                "Provider connection test crashed: provider=%s base_url=%s model_id=%s",
+                getattr(provider, "id", None),
+                base_url,
+                model_id,
+            )
+            raise
+
+        log_fn = logger.info if success else logger.error
+        log_fn(
+            "Provider connection test result: provider=%s base_url=%s model_id=%s success=%s message=%s",
+            getattr(provider, "id", None),
+            base_url,
+            model_id,
+            success,
+            message,
         )
+        return success, message
 
     # ==================== Provider 抽象层支持 ====================
 

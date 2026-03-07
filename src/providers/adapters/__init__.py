@@ -8,7 +8,6 @@ from .openrouter_adapter import OpenRouterAdapter
 from .deepseek_adapter import DeepSeekAdapter
 from .anthropic_adapter import AnthropicAdapter
 from .ollama_adapter import OllamaAdapter
-from .lmstudio_adapter import LmStudioAdapter
 from .xai_adapter import XAIAdapter
 from .zhipu_adapter import ZhipuAdapter
 from .volcengine_adapter import VolcEngineAdapter
@@ -18,13 +17,22 @@ from .siliconflow_adapter import SiliconFlowAdapter
 from .kimi_adapter import KimiAdapter
 from .local_gguf_adapter import LocalGgufAdapter
 
+LMSTUDIO_IMPORT_ERROR = None
+try:
+    from .lmstudio_adapter import LmStudioAdapter
+except ModuleNotFoundError as exc:
+    if exc.name and exc.name.startswith("lmstudio"):
+        LmStudioAdapter = None
+        LMSTUDIO_IMPORT_ERROR = exc
+    else:
+        raise
+
 __all__ = [
     "OpenAIAdapter",
     "OpenRouterAdapter",
     "DeepSeekAdapter",
     "AnthropicAdapter",
     "OllamaAdapter",
-    "LmStudioAdapter",
     "XAIAdapter",
     "ZhipuAdapter",
     "VolcEngineAdapter",
@@ -34,3 +42,6 @@ __all__ = [
     "KimiAdapter",
     "LocalGgufAdapter",
 ]
+
+if LmStudioAdapter is not None:
+    __all__.append("LmStudioAdapter")
