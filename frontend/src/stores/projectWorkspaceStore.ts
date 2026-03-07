@@ -8,6 +8,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { ProjectWorkflowLaunchContext, ProjectWorkspaceTab } from '../modules/projects/workspace';
 
 interface ProjectWorkspaceState {
   // Current opened project ID
@@ -18,6 +19,12 @@ interface ProjectWorkspaceState {
 
   // Map of projectId -> sessionId for each project's last session
   projectSessionMap: Record<string, string>;
+
+  // Map of projectId -> last active workspace tab
+  projectTabMap: Record<string, ProjectWorkspaceTab>;
+
+  // One-shot launch context when jumping from files into project workflows
+  pendingWorkflowLaunchMap: Record<string, ProjectWorkflowLaunchContext>;
 
   // Chat sidebar visibility state
   chatSidebarOpen: boolean;
@@ -30,6 +37,10 @@ interface ProjectWorkspaceState {
   getCurrentFile: (projectId: string) => string | null;
   setProjectSession: (projectId: string, sessionId: string | null) => void;
   getProjectSession: (projectId: string) => string | null;
+  setProjectTab: (projectId: string, tab: ProjectWorkspaceTab) => void;
+  getProjectTab: (projectId: string) => ProjectWorkspaceTab;
+  queueWorkflowLaunch: (projectId: string, context: ProjectWorkflowLaunchContext) => void;
+  consumeWorkflowLaunch: (projectId: string) => ProjectWorkflowLaunchContext | null;
   toggleChatSidebar: () => void;
   setChatSidebarOpen: (open: boolean) => void;
   toggleFileTree: () => void;
@@ -41,6 +52,8 @@ const DEFAULT_WORKSPACE_STATE = {
   currentProjectId: null,
   projectFileMap: {},
   projectSessionMap: {},
+  projectTabMap: {},
+  pendingWorkflowLaunchMap: {},
   chatSidebarOpen: false,
   fileTreeOpen: true,
 };
@@ -86,6 +99,41 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
         return get().projectSessionMap[projectId] || null;
       },
 
+      setProjectTab: (projectId, tab) => {
+        set((state) => ({
+          projectTabMap: {
+            ...state.projectTabMap,
+            [projectId]: tab,
+          },
+        }));
+      },
+
+      getProjectTab: (projectId) => {
+        return get().projectTabMap[projectId] || 'project';
+      },
+
+      queueWorkflowLaunch: (projectId, context) => {
+        set((state) => ({
+          pendingWorkflowLaunchMap: {
+            ...state.pendingWorkflowLaunchMap,
+            [projectId]: context,
+          },
+        }));
+      },
+
+      consumeWorkflowLaunch: (projectId) => {
+        const context = get().pendingWorkflowLaunchMap[projectId] || null;
+        if (!context) {
+          return null;
+        }
+        set((state) => {
+          const next = { ...state.pendingWorkflowLaunchMap };
+          delete next[projectId];
+          return { pendingWorkflowLaunchMap: next };
+        });
+        return context;
+      },
+
       toggleChatSidebar: () => set((state) => ({
         chatSidebarOpen: !state.chatSidebarOpen
       })),
@@ -108,7 +156,15 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
     }),
     {
       name: 'project-workspace-storage', // localStorage key
-      version: 1, // Increment this to force clear old incompatible data
+      version: 2,
+      partialize: (state) => ({
+        currentProjectId: state.currentProjectId,
+        projectFileMap: state.projectFileMap,
+        projectSessionMap: state.projectSessionMap,
+        projectTabMap: state.projectTabMap,
+        chatSidebarOpen: state.chatSidebarOpen,
+        fileTreeOpen: state.fileTreeOpen,
+      }),
       migrate: (persistedState: unknown, version: number) => {
         // If old version or no version, return fresh state
         if (version < 1 || !persistedState || typeof persistedState !== 'object') {
@@ -120,6 +176,8 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
           currentProjectId: typeof state.currentProjectId === 'string' ? state.currentProjectId : null,
           projectFileMap: state.projectFileMap ?? {},
           projectSessionMap: state.projectSessionMap ?? {},
+          projectTabMap: state.projectTabMap ?? {},
+          pendingWorkflowLaunchMap: {},
           chatSidebarOpen: state.chatSidebarOpen ?? false,
           fileTreeOpen: state.fileTreeOpen ?? true,
         };

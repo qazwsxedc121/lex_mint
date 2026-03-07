@@ -27,13 +27,14 @@ import { cancelAsyncRun, listWorkflows, readFile, runWorkflowStream, writeFile }
 import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
 import { InlineRewritePanel } from './InlineRewritePanel';
-import { ProjectWorkflowPanel } from './ProjectWorkflowPanel';
 import { ProjectNotice } from './ProjectNotice';
 import { useEditorPreferences } from '../hooks/useEditorPreferences';
 import { useGlobalHotkey } from '../hooks/useGlobalHotkey';
 import { useProjectNotice } from '../hooks/useProjectNotice';
 import { useWorkflowLauncherStorage } from '../../../shared/workflow-launcher/storage';
 import type { LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
+import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
+import { getProjectWorkspacePath } from '../workspace';
 import { CodeBlock } from '../../../shared/chat/components/CodeBlock';
 import { MermaidBlock } from '../../../shared/chat/components/MermaidBlock';
 import { SvgBlock } from '../../../shared/chat/components/SvgBlock';
@@ -293,15 +294,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [inlineRewriteWorkflowId, setInlineRewriteWorkflowId] = useState(DEFAULT_INLINE_REWRITE_WORKFLOW_ID);
   const [inlineRewriteWorkflows, setInlineRewriteWorkflows] = useState<Workflow[]>([]);
   const [inlineRewriteWorkflowsLoading, setInlineRewriteWorkflowsLoading] = useState(false);
-  const [projectWorkflowOpen, setProjectWorkflowOpen] = useState(false);
-  const [projectWorkflowRunning, setProjectWorkflowRunning] = useState(false);
-  const [projectWorkflowError, setProjectWorkflowError] = useState<string | null>(null);
-  const [projectWorkflowInputs, setProjectWorkflowInputs] = useState<Record<string, unknown>>({});
-  const [projectWorkflowOutput, setProjectWorkflowOutput] = useState('');
-  const [projectWorkflowRunId, setProjectWorkflowRunId] = useState<string | null>(null);
-  const [projectWorkflowId, setProjectWorkflowId] = useState('');
-  const [projectWorkflowArtifactPath, setProjectWorkflowArtifactPath] = useState('');
-  const [projectWorkflowWriteMode, setProjectWorkflowWriteMode] = useState<'none' | 'create' | 'overwrite'>('overwrite');
   const [inlineRewriteRunId, setInlineRewriteRunId] = useState<string | null>(null);
   const {
     lineWrapping,
@@ -314,6 +306,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setAutoSaveBeforeAgentSend,
   } = useEditorPreferences();
   const { notice, showError: showNoticeError, clearNotice } = useProjectNotice();
+  const { queueWorkflowLaunch } = useProjectWorkspaceStore();
 
   const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
@@ -322,7 +315,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   // Editor view reference
   const editorViewRef = useRef<EditorView | null>(null);
   const inlineRewriteAbortRef = useRef<AbortController | null>(null);
-  const projectWorkflowAbortRef = useRef<AbortController | null>(null);
   const rewriteSelectionRef = useRef<RewriteSelectionSnapshot | null>(null);
   const pendingJumpRef = useRef<{ filePath: string; line: number } | null>(null);
 
@@ -356,16 +348,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   }, [content]);
 
   useEffect(() => {
-    setProjectWorkflowOpen(false);
-    setProjectWorkflowRunning(false);
-    setProjectWorkflowError(null);
-    setProjectWorkflowInputs({});
-    setProjectWorkflowOutput('');
-    setProjectWorkflowRunId(null);
     setInlineRewriteRunId(null);
-    setProjectWorkflowArtifactPath('');
-    projectWorkflowAbortRef.current?.abort();
-    projectWorkflowAbortRef.current = null;
   }, [projectId]);
 
   // Check if content has unsaved changes
@@ -545,26 +528,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }),
     [content?.path, inlineRewriteSourceText]
   );
-  const projectPipelineWorkflowOptions = useMemo(
-    () =>
-      inlineRewriteWorkflows.filter(
-        (workflow) => workflow.enabled && workflow.scenario === 'project_pipeline'
-      ),
-    [inlineRewriteWorkflows]
-  );
-  const activeProjectWorkflow = useMemo(() => {
-    if (projectPipelineWorkflowOptions.length === 0) {
-      return null;
-    }
-    return (
-      projectPipelineWorkflowOptions.find((workflow) => workflow.id === projectWorkflowId) ||
-      projectPipelineWorkflowOptions[0]
-    );
-  }, [projectPipelineWorkflowOptions, projectWorkflowId]);
-  const projectWorkflowInputDefs = useMemo(
-    () => activeProjectWorkflow?.input_schema || ([] as WorkflowInputDef[]),
-    [activeProjectWorkflow]
-  );
   const inlineRewriteWorkflowNodeIds = useMemo(() => {
     if (!activeRewriteWorkflow) {
       return [] as string[];
@@ -581,31 +544,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     });
     return ids;
   }, [activeRewriteWorkflow]);
-  const projectWorkflowNodeIds = useMemo(() => {
-    if (!activeProjectWorkflow) {
-      return [] as string[];
-    }
-    const seen = new Set<string>();
-    const ids: string[] = [];
-    activeProjectWorkflow.nodes.forEach((node) => {
-      const nodeId = node.id.trim();
-      if (!nodeId || seen.has(nodeId)) {
-        return;
-      }
-      seen.add(nodeId);
-      ids.push(nodeId);
-    });
-    return ids;
-  }, [activeProjectWorkflow]);
-  const projectWorkflowRecommendationContext = useMemo<LauncherRecommendationContext>(
-    () => ({
-      module: 'projects',
-      requiredScenario: 'project_pipeline',
-      filePath: content?.path,
-      hasSelection: Boolean(inlineRewriteSourceText.trim()),
-    }),
-    [content?.path, inlineRewriteSourceText]
-  );
 
   const buildInlineRewriteDefaultInputs = useCallback((workflow: Workflow): Record<string, unknown> => {
     const defaults: Record<string, unknown> = {};
@@ -619,16 +557,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
     return defaults;
   }, []);
-  const buildProjectWorkflowDefaultInputs = useCallback((workflow: Workflow): Record<string, unknown> => {
-    const defaults: Record<string, unknown> = {};
-    for (const inputDef of workflow.input_schema) {
-      if (inputDef.default !== undefined) {
-        defaults[inputDef.key] = inputDef.default;
-      }
-    }
-    return defaults;
-  }, []);
-
   const buildInlineRewriteAutoInputs = useCallback(
     (
       workflow: Workflow,
@@ -709,41 +637,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setInlineRewriteWorkflowsLoading(false);
     }
   }, [inlineRewriteWorkflowsLoading, rewriteWorkflowOptions, t]);
-  const ensureProjectPipelineWorkflowsLoaded = useCallback(async (): Promise<Workflow[]> => {
-    if (inlineRewriteWorkflowsLoading) {
-      return projectPipelineWorkflowOptions;
-    }
-
-    setInlineRewriteWorkflowsLoading(true);
-    try {
-      const workflows = await listWorkflows();
-      const pipelineWorkflows = workflows.filter(
-        (workflow) => workflow.enabled && workflow.scenario === 'project_pipeline'
-      );
-      setInlineRewriteWorkflows(workflows);
-
-      if (pipelineWorkflows.length === 0) {
-        setProjectWorkflowId('');
-        setProjectWorkflowError((previous) => previous || t('projectWorkflow.noWorkflows'));
-        return [];
-      }
-
-      setProjectWorkflowId((previous) => {
-        if (previous && pipelineWorkflows.some((workflow) => workflow.id === previous)) {
-          return previous;
-        }
-        return pipelineWorkflows[0].id;
-      });
-      return pipelineWorkflows;
-    } catch (err) {
-      console.error('Failed to load project pipeline workflows:', err);
-      setProjectWorkflowError(t('projectWorkflow.loadWorkflowsFailed'));
-      return [];
-    } finally {
-      setInlineRewriteWorkflowsLoading(false);
-    }
-  }, [inlineRewriteWorkflowsLoading, projectPipelineWorkflowOptions, t]);
-
   useEffect(() => {
     if (!activeRewriteWorkflow) {
       setInlineRewriteInputs({});
@@ -751,13 +644,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
     setInlineRewriteInputs(buildInlineRewriteDefaultInputs(activeRewriteWorkflow));
   }, [activeRewriteWorkflow, buildInlineRewriteDefaultInputs]);
-  useEffect(() => {
-    if (!activeProjectWorkflow) {
-      setProjectWorkflowInputs({});
-      return;
-    }
-    setProjectWorkflowInputs(buildProjectWorkflowDefaultInputs(activeProjectWorkflow));
-  }, [activeProjectWorkflow, buildProjectWorkflowDefaultInputs]);
 
   const handleInlineRewriteWorkflowChange = useCallback((workflowId: string) => {
     if (inlineRewriteStreaming) {
@@ -779,26 +665,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return next;
     });
   }, []);
-  const handleProjectWorkflowChange = useCallback((workflowId: string) => {
-    if (projectWorkflowRunning) {
-      return;
-    }
-    setProjectWorkflowId(workflowId);
-    setProjectWorkflowError(null);
-    setProjectWorkflowOutput('');
-  }, [projectWorkflowRunning]);
-  const handleProjectWorkflowInputChange = useCallback((key: string, value: unknown) => {
-    setProjectWorkflowInputs((previous) => {
-      const next = { ...previous };
-      if (value === undefined) {
-        delete next[key];
-      } else {
-        next[key] = value;
-      }
-      return next;
-    });
-  }, []);
-
   const workflowRequiresSelection = useCallback((workflow: Workflow): boolean => {
     return workflow.input_schema.some(
       (inputDef) => inputDef.required && isSelectionInputKey(inputDef.key)
@@ -905,105 +771,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     },
     [buildInlineRewriteAutoInputs, inlineRewriteInputs, t]
   );
-  const buildProjectWorkflowRunInputs = useCallback(
-    (workflow: Workflow): { inputs: Record<string, unknown>; error?: string } => {
-      const runInputs: Record<string, unknown> = { ...projectWorkflowInputs };
-
-      for (const inputDef of workflow.input_schema) {
-        let value = runInputs[inputDef.key];
-        if (value === undefined && inputDef.default !== undefined) {
-          value = inputDef.default;
-        }
-
-        if (value === undefined || value === null || (inputDef.type !== 'string' && value === '')) {
-          if (inputDef.required) {
-            return {
-              inputs: runInputs,
-              error: t('projectWorkflow.missingRequiredInput', { key: inputDef.key }),
-            };
-          }
-          continue;
-        }
-
-        if (inputDef.type === 'string') {
-          const stringValue = typeof value === 'string' ? value : String(value);
-          if (typeof inputDef.max_length === 'number' && stringValue.length > inputDef.max_length) {
-            return {
-              inputs: runInputs,
-              error: `${inputDef.key} exceeds max length (${inputDef.max_length})`,
-            };
-          }
-          if (typeof inputDef.pattern === 'string' && inputDef.pattern.trim()) {
-            let matchesPattern = false;
-            try {
-              const regex = new RegExp(inputDef.pattern);
-              matchesPattern = regex.test(stringValue);
-            } catch {
-              return {
-                inputs: runInputs,
-                error: `${inputDef.key} has invalid pattern config`,
-              };
-            }
-            if (!matchesPattern) {
-              return {
-                inputs: runInputs,
-                error: `${inputDef.key} format is invalid`,
-              };
-            }
-          }
-          runInputs[inputDef.key] = stringValue;
-          continue;
-        }
-
-        if (inputDef.type === 'number') {
-          if (typeof value !== 'number' || Number.isNaN(value)) {
-            return {
-              inputs: runInputs,
-              error: t('projectWorkflow.invalidNumberInput', { key: inputDef.key }),
-            };
-          }
-          runInputs[inputDef.key] = value;
-          continue;
-        }
-
-        if (inputDef.type === 'boolean') {
-          if (typeof value !== 'boolean') {
-            return {
-              inputs: runInputs,
-              error: t('projectWorkflow.invalidBooleanInput', { key: inputDef.key }),
-            };
-          }
-          runInputs[inputDef.key] = value;
-          continue;
-        }
-
-        if (inputDef.type === 'node') {
-          if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-            return {
-              inputs: runInputs,
-              error: t('projectWorkflow.invalidNodeInput', { key: inputDef.key }),
-            };
-          }
-          const hasTargetNode = workflow.nodes.some((node) => node.id === value);
-          if (!hasTargetNode) {
-            return {
-              inputs: runInputs,
-              error: t('projectWorkflow.invalidNodeInput', { key: inputDef.key }),
-            };
-          }
-          runInputs[inputDef.key] = value;
-        }
-      }
-
-      return { inputs: runInputs };
-    },
-    [projectWorkflowInputs, t]
-  );
-
   const handleOpenInlineRewrite = useCallback(() => {
     void ensureInlineRewriteWorkflowsLoaded();
     const snapshot = getInlineRewriteSelectionSnapshot();
-    setProjectWorkflowOpen(false);
     setInlineRewriteOpen(true);
     setInlineRewriteError(null);
     setInlineRewriteNoSelectionPromptOpen(false);
@@ -1021,20 +791,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     activeRewriteWorkflow,
     buildInlineRewriteDefaultInputs,
   ]);
-  const handleOpenProjectWorkflow = useCallback(() => {
-    void ensureProjectPipelineWorkflowsLoaded();
-    setInlineRewriteOpen(false);
-    setProjectWorkflowOpen(true);
-    setProjectWorkflowError(null);
-    setProjectWorkflowOutput('');
-    if (activeProjectWorkflow) {
-      setProjectWorkflowInputs(buildProjectWorkflowDefaultInputs(activeProjectWorkflow));
-    }
-  }, [
-    activeProjectWorkflow,
-    buildProjectWorkflowDefaultInputs,
-    ensureProjectPipelineWorkflowsLoaded,
-  ]);
 
   const handleStopInlineRewrite = useCallback(() => {
     inlineRewriteAbortRef.current?.abort();
@@ -1049,19 +805,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       // Ignore cancel errors when run already finished.
     });
   }, [inlineRewriteRunId]);
-  const handleStopProjectWorkflow = useCallback(() => {
-    projectWorkflowAbortRef.current?.abort();
-    projectWorkflowAbortRef.current = null;
-    setProjectWorkflowRunning(false);
-    const runId = projectWorkflowRunId;
-    setProjectWorkflowRunId(null);
-    if (!runId) {
-      return;
-    }
-    void cancelAsyncRun(runId).catch(() => {
-      // Ignore cancel errors when run already finished.
-    });
-  }, [projectWorkflowRunId]);
 
   const handleCloseInlineRewrite = useCallback(() => {
     handleStopInlineRewrite();
@@ -1071,12 +814,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setInlineRewritePreview('');
     rewriteSelectionRef.current = null;
   }, [handleStopInlineRewrite]);
-  const handleCloseProjectWorkflow = useCallback(() => {
-    handleStopProjectWorkflow();
-    setProjectWorkflowOpen(false);
-    setProjectWorkflowError(null);
-    setProjectWorkflowOutput('');
-  }, [handleStopProjectWorkflow]);
 
   const handleToggleInlineRewrite = useCallback(() => {
     if (inlineRewriteOpen) {
@@ -1085,122 +822,25 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
     handleOpenInlineRewrite();
   }, [inlineRewriteOpen, handleCloseInlineRewrite, handleOpenInlineRewrite]);
-  const handleToggleProjectWorkflow = useCallback(() => {
-    if (projectWorkflowOpen) {
-      handleCloseProjectWorkflow();
+
+  const handleOpenProjectWorkflowWorkspace = useCallback(() => {
+    if (!content) {
       return;
     }
-    handleOpenProjectWorkflow();
-  }, [projectWorkflowOpen, handleCloseProjectWorkflow, handleOpenProjectWorkflow]);
+    const selectionSnapshot = getInlineRewriteSelectionSnapshot();
+    queueWorkflowLaunch(projectId, {
+      source: 'file-viewer',
+      filePath: content.path,
+      selectedText: selectionSnapshot?.selectedText,
+      selectionStart: selectionSnapshot?.from,
+      selectionEnd: selectionSnapshot?.to,
+    });
+    navigate(getProjectWorkspacePath(projectId, 'workflows'));
+  }, [content, getInlineRewriteSelectionSnapshot, navigate, projectId, queueWorkflowLaunch]);
 
   const handleOpenWorkflowsPage = useCallback(() => {
     navigate('/workflows');
   }, [navigate]);
-  const handleRunProjectWorkflow = useCallback(async () => {
-    if (projectWorkflowRunning || !content) {
-      return;
-    }
-
-    const availableWorkflows =
-      projectPipelineWorkflowOptions.length > 0
-        ? projectPipelineWorkflowOptions
-        : await ensureProjectPipelineWorkflowsLoaded();
-    if (availableWorkflows.length === 0) {
-      setProjectWorkflowOpen(true);
-      setProjectWorkflowError(t('projectWorkflow.noWorkflows'));
-      return;
-    }
-
-    const workflowToRun =
-      availableWorkflows.find((workflow) => workflow.id === projectWorkflowId) || availableWorkflows[0];
-    if (!workflowToRun) {
-      setProjectWorkflowOpen(true);
-      setProjectWorkflowError(t('projectWorkflow.noWorkflows'));
-      return;
-    }
-
-    const prepared = buildProjectWorkflowRunInputs(workflowToRun);
-    if (prepared.error) {
-      setProjectWorkflowError(prepared.error);
-      return;
-    }
-
-    setProjectWorkflowRunning(true);
-    setProjectWorkflowError(null);
-    setProjectWorkflowOutput('');
-    setProjectWorkflowRunId(null);
-
-    const normalizedArtifactPath = projectWorkflowArtifactPath.trim();
-    try {
-      await runWorkflowStream(
-        workflowToRun.id,
-        prepared.inputs,
-        {
-          onRunCreated: (runId) => {
-            setProjectWorkflowRunId(runId);
-          },
-          onEvent: (event) => {
-            if (event.event_type === 'workflow_artifact_written') {
-              const writtenPath = event.payload.file_path;
-              const written = event.payload.written === true;
-              if (typeof writtenPath === 'string' && writtenPath.trim()) {
-                setProjectWorkflowOutput((previous) => {
-                  const prefix = previous ? `${previous}\n\n` : '';
-                  return `${prefix}[artifact] ${writtenPath}`;
-                });
-                if (written) {
-                  window.dispatchEvent(new CustomEvent('project-tree-updated', {
-                    detail: { projectId, filePath: writtenPath },
-                  }));
-                }
-              }
-            }
-          },
-          onChunk: (chunk) => {
-            setProjectWorkflowOutput((prev) => prev + chunk);
-          },
-          onComplete: () => {
-            setProjectWorkflowRunning(false);
-            setProjectWorkflowRunId(null);
-            addLauncherRecent(workflowToRun.id);
-          },
-          onError: (errorMessage) => {
-            setProjectWorkflowRunning(false);
-            setProjectWorkflowRunId(null);
-            setProjectWorkflowError(errorMessage);
-          },
-        },
-        projectWorkflowAbortRef,
-        {
-          sessionId: currentSessionId || undefined,
-          contextType: 'project',
-          projectId,
-          streamMode: 'default',
-          artifactTargetPath: normalizedArtifactPath || undefined,
-          writeMode: projectWorkflowWriteMode,
-        }
-      );
-    } catch (err) {
-      console.error('Project workflow request failed:', err);
-      setProjectWorkflowRunId(null);
-      setProjectWorkflowError(err instanceof Error ? err.message : t('projectWorkflow.requestFailed'));
-    } finally {
-      setProjectWorkflowRunning(false);
-    }
-  }, [
-    addLauncherRecent,
-    buildProjectWorkflowRunInputs,
-    content,
-    currentSessionId,
-    ensureProjectPipelineWorkflowsLoaded,
-    projectId,
-    projectPipelineWorkflowOptions,
-    projectWorkflowArtifactPath,
-    projectWorkflowId,
-    projectWorkflowRunning,
-    projectWorkflowWriteMode,
-    t,
-  ]);
 
   const handleStartInlineRewrite = useCallback(async (noSelectionMode: 'ask' | 'empty' | 'full_file' = 'ask') => {
     if (inlineRewriteStreaming || !content) {
@@ -1768,8 +1408,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     return () => {
       inlineRewriteAbortRef.current?.abort();
       inlineRewriteAbortRef.current = null;
-      projectWorkflowAbortRef.current?.abort();
-      projectWorkflowAbortRef.current = null;
     };
   }, []);
 
@@ -2049,11 +1687,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         insertToChatDisabled={!content || isInsertingToChat}
         insertToChatTitle={insertToChatTitle}
         onInlineRewrite={handleToggleInlineRewrite}
-        inlineRewriteDisabled={!content || inlineRewriteStreaming || projectWorkflowRunning}
+        inlineRewriteDisabled={!content || inlineRewriteStreaming}
         inlineRewriteTitle={inlineRewriteTitle}
-        onProjectWorkflow={handleToggleProjectWorkflow}
-        projectWorkflowDisabled={!content || projectWorkflowRunning || inlineRewriteStreaming}
-        projectWorkflowTitle={t('projectWorkflow.button')}
+        onProjectWorkflow={handleOpenProjectWorkflowWorkspace}
+        projectWorkflowDisabled={!content || inlineRewriteStreaming}
+        projectWorkflowTitle={t('projectWorkflow.shortcutButton')}
       />
 
       <InlineRewritePanel
@@ -2085,34 +1723,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onAccept={handleAcceptInlineRewrite}
         onReject={handleCloseInlineRewrite}
         onClose={handleCloseInlineRewrite}
-        onOpenWorkflows={handleOpenWorkflowsPage}
-      />
-      <ProjectWorkflowPanel
-        projectId={projectId}
-        currentFilePath={content?.path || null}
-        isOpen={projectWorkflowOpen}
-        isRunning={projectWorkflowRunning}
-        workflows={projectPipelineWorkflowOptions}
-        selectedWorkflowId={projectWorkflowId}
-        workflowLoading={inlineRewriteWorkflowsLoading}
-        workflowInputs={projectWorkflowInputDefs}
-        workflowNodeIds={projectWorkflowNodeIds}
-        inputValues={projectWorkflowInputs}
-        artifactPath={projectWorkflowArtifactPath}
-        writeMode={projectWorkflowWriteMode}
-        output={projectWorkflowOutput}
-        error={projectWorkflowError}
-        favorites={launcherFavorites}
-        recents={launcherRecents}
-        recommendationContext={projectWorkflowRecommendationContext}
-        onWorkflowChange={handleProjectWorkflowChange}
-        onToggleFavorite={toggleLauncherFavorite}
-        onInputChange={handleProjectWorkflowInputChange}
-        onArtifactPathChange={setProjectWorkflowArtifactPath}
-        onWriteModeChange={setProjectWorkflowWriteMode}
-        onRun={handleRunProjectWorkflow}
-        onStop={handleStopProjectWorkflow}
-        onClose={handleCloseProjectWorkflow}
         onOpenWorkflows={handleOpenWorkflowsPage}
       />
 

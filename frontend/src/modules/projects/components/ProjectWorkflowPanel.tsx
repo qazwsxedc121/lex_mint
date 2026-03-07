@@ -26,7 +26,8 @@ const canInsertFileForInput = (field: WorkflowInputDef): boolean => {
 interface ProjectWorkflowPanelProps {
   projectId: string;
   currentFilePath?: string | null;
-  isOpen: boolean;
+  isOpen?: boolean;
+  variant?: 'inline' | 'page';
   isRunning: boolean;
   workflows: Workflow[];
   selectedWorkflowId: string;
@@ -48,7 +49,7 @@ interface ProjectWorkflowPanelProps {
   onWriteModeChange: (mode: 'none' | 'create' | 'overwrite') => void;
   onRun: () => void;
   onStop: () => void;
-  onClose: () => void;
+  onClose?: () => void;
   onOpenWorkflows: () => void;
 }
 
@@ -59,7 +60,8 @@ interface FileBackedInputMeta {
 export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
   projectId,
   currentFilePath = null,
-  isOpen,
+  isOpen = true,
+  variant = 'inline',
   isRunning,
   workflows,
   selectedWorkflowId,
@@ -170,10 +172,16 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
     return null;
   }
 
+  const showCloseButton = variant === 'inline' && typeof onClose === 'function';
+
   return (
     <div
       data-name="project-workflow-panel"
-      className="border-b border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 space-y-3"
+      className={
+        variant === 'page'
+          ? 'rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4'
+          : 'border-b border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 space-y-3'
+      }
     >
       <div className="space-y-2">
         <WorkflowLauncherList
@@ -182,10 +190,10 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
           loading={workflowLoading}
           selectionLocked={isRunning}
           namespace="projects"
-          compact
+          compact={variant !== 'page'}
           showSearch
           maxWidthClassName="max-w-full xl:max-w-[920px]"
-          headerActions={(
+          headerActions={showCloseButton ? (
             <button
               type="button"
               onClick={onClose}
@@ -193,7 +201,7 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
             >
               {t('common:close')}
             </button>
-          )}
+          ) : undefined}
           favorites={favorites}
           recents={recents}
           recommendationContext={recommendationContext}

@@ -24,6 +24,7 @@ interface FileTreeProps {
   onDeleteFile?: (filePath: string) => Promise<void>;
   onDeleteFolder?: (directoryPath: string) => Promise<void>;
   onRenamePath?: (sourcePath: string, targetPath: string) => Promise<string>;
+  showTextSearch?: boolean;
   level?: number;
 }
 
@@ -295,6 +296,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
   onDeleteFile,
   onDeleteFolder,
   onRenamePath,
+  showTextSearch = true,
 }) => {
   const { t } = useTranslation('projects');
   const [createTarget, setCreateTarget] = useState<{
@@ -693,6 +695,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
 
   return (
     <div data-name="file-tree" className="h-full overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700">
+      {showTextSearch && (
       <div data-name="file-tree-text-search-panel" className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur p-2">
         <input
           data-name="file-tree-text-search-input"
@@ -760,6 +763,7 @@ export const FileTree: React.FC<Omit<FileTreeProps, 'level'>> = ({
           </div>
         )}
       </div>
+      )}
       <FileTreeItem
         tree={tree}
         selectedPath={selectedPath}

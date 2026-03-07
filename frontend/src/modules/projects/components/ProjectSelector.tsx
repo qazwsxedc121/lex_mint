@@ -8,6 +8,7 @@ import { ChevronDownIcon, CogIcon, XMarkIcon } from '@heroicons/react/24/outline
 import { useTranslation } from 'react-i18next';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import type { Project } from '../../../types/project';
+import { getProjectWorkspacePath } from '../workspace';
 
 interface ProjectSelectorProps {
   projects: Project[];
@@ -24,12 +25,12 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 }) => {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
-  const { setCurrentProject } = useProjectWorkspaceStore();
+  const { getProjectTab, setCurrentProject } = useProjectWorkspaceStore();
   const [isOpen, setIsOpen] = React.useState(false);
 
   const handleProjectSelect = (projectId: string) => {
     setCurrentProject(projectId);
-    navigate(`/projects/${projectId}`);
+    navigate(getProjectWorkspacePath(projectId, getProjectTab(projectId)));
     setIsOpen(false);
   };
 

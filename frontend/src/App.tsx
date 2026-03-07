@@ -5,6 +5,11 @@ import { ChatWelcome, ChatView } from './shared/chat';
 import { ProjectsModule } from './modules/projects';
 import { ProjectsWelcome } from './modules/projects/ProjectsWelcome';
 import { ProjectExplorer } from './modules/projects/ProjectExplorer';
+import { ProjectHomeView } from './modules/projects/ProjectHomeView';
+import { ProjectWorkspaceLayout } from './modules/projects/ProjectWorkspaceLayout';
+import { ProjectTabRedirect } from './modules/projects/ProjectTabRedirect';
+import { ProjectSearchView } from './modules/projects/ProjectSearchView';
+import { ProjectWorkflowsView } from './modules/projects/ProjectWorkflowsView';
 import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
 import { ModelsPage } from './modules/settings/ModelsPage';
@@ -48,7 +53,13 @@ function App() {
           </Route>
           <Route path="projects" element={<ProjectsModule />}>
             <Route index element={<ProjectsWelcome />} />
-            <Route path=":projectId" element={<ProjectExplorer />} />
+            <Route path=":projectId" element={<ProjectWorkspaceLayout />}>
+              <Route index element={<ProjectTabRedirect />} />
+              <Route path="project" element={<ProjectHomeView />} />
+              <Route path="files" element={<ProjectExplorer />} />
+              <Route path="search" element={<ProjectSearchView />} />
+              <Route path="workflows" element={<ProjectWorkflowsView />} />
+            </Route>
           </Route>
           <Route path="workflows" element={<WorkflowsModule />} />
           <Route path="developer" element={<DeveloperModule />} />

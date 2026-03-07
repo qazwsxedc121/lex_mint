@@ -2,10 +2,9 @@
  * ProjectExplorer - Main project view with file tree and viewer
  */
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useParams, useOutletContext, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams, useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ProjectSelector } from './components/ProjectSelector';
 import { FileTree } from './components/FileTree';
 import { FileViewer } from './components/FileViewer';
 import type { BeforeAgentSendHandler } from './components/FileViewer';
@@ -14,28 +13,20 @@ import { useFileContent } from './hooks/useFileContent';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import ProjectChatSidebar from './components/ProjectChatSidebar';
 import { ProjectEditorContext } from './contexts/ProjectEditorContext';
-import type { Project } from '../../types/project';
 import { ChatComposerProvider, ChatServiceProvider } from '../../shared/chat';
 import type { ChatNavigation } from '../../shared/chat';
 import { createProjectChatAPI } from './services/projectChatAPI';
 import { createFile, createFolder, deleteFile, deleteFolder, readFile, renameProjectPath } from '../../services/api';
-
-interface ProjectsOutletContext {
-  projects: Project[];
-  onManageClick: () => void;
-}
+import type { ProjectWorkspaceOutletContext } from './workspace';
 
 export const ProjectExplorer: React.FC = () => {
   const { t } = useTranslation('projects');
   const { projectId } = useParams();
-  const navigate = useNavigate();
-  const { projects, onManageClick } = useOutletContext<ProjectsOutletContext>();
+  const { currentProject } = useOutletContext<ProjectWorkspaceOutletContext>();
 
   // Get workspace state from global store
   const {
-    currentProjectId,
     getCurrentFile,
-    setCurrentProject,
     setCurrentFile,
     getProjectSession,
     setProjectSession,
@@ -56,31 +47,11 @@ export const ProjectExplorer: React.FC = () => {
   const [editorActions, setEditorActions] = useState<{ insertContent: (text: string) => void } | null>(null);
   const [beforeAgentSendHandler, setBeforeAgentSendHandler] = useState<BeforeAgentSendHandler | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const closingProjectRef = useRef(false);
 
-  // Find current project
-  const currentProject = projects.find(p => p.id === projectId);
-
-  // On mount: If no projectId in URL but we have a saved one, navigate to it
+  // When projectId changes, sync the selected file with persisted workspace state.
   useEffect(() => {
-    if (!projectId && currentProjectId && projects.some(p => p.id === currentProjectId)) {
-      navigate(`/projects/${currentProjectId}`, { replace: true });
-    }
-  }, [projectId, currentProjectId, projects, navigate]);
-
-  // When projectId changes, update the store and clear selection
-  useEffect(() => {
-    if (closingProjectRef.current) {
-      return;
-    }
-
-    if (projectId && projectId !== currentProjectId) {
-      setCurrentProject(projectId);
-      setSelectedFilePath(null);
-      // Clear the stored file path for this project to prevent loading non-existent files
-      setCurrentFile(projectId, null);
-    }
-  }, [projectId, currentProjectId, setCurrentProject, setCurrentFile]);
+    setSelectedFilePath(currentFilePath);
+  }, [currentFilePath, projectId]);
 
   // Restore file selection from store when switching back to a project
   useEffect(() => {
@@ -247,14 +218,6 @@ export const ProjectExplorer: React.FC = () => {
     }
   }, [projectId, setProjectSession]);
 
-  const handleCloseProject = useCallback(() => {
-    closingProjectRef.current = true;
-    setCurrentProject(null);
-    setSelectedFilePath(null);
-    setCurrentSessionId(null);
-    navigate('/projects', { replace: true });
-  }, [navigate, setCurrentProject]);
-
   const handleRegisterBeforeAgentSend = useCallback((handler: BeforeAgentSendHandler | null) => {
     setBeforeAgentSendHandler(() => handler);
   }, []);
@@ -296,34 +259,18 @@ export const ProjectExplorer: React.FC = () => {
 
   if (treeLoading && !tree) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ProjectSelector
-          projects={projects}
-          currentProject={currentProject}
-          onManageClick={onManageClick}
-          onCloseProject={handleCloseProject}
-        />
-        <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
           <p className="text-gray-500 dark:text-gray-400">{t('explorer.loading')}</p>
-        </div>
       </div>
     );
   }
 
   if (treeError) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ProjectSelector
-          projects={projects}
-          currentProject={currentProject}
-          onManageClick={onManageClick}
-          onCloseProject={handleCloseProject}
-        />
-        <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
-          <div className="text-center">
-            <p className="text-red-600 dark:text-red-400 mb-2">{t('explorer.loadFailed')}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{treeError}</p>
-          </div>
+      <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
+        <div className="text-center">
+          <p className="text-red-600 dark:text-red-400 mb-2">{t('explorer.loadFailed')}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{treeError}</p>
         </div>
       </div>
     );
@@ -331,16 +278,8 @@ export const ProjectExplorer: React.FC = () => {
 
   if (!tree) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ProjectSelector
-          projects={projects}
-          currentProject={currentProject}
-          onManageClick={onManageClick}
-          onCloseProject={handleCloseProject}
-        />
-        <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-900">
           <p className="text-gray-500 dark:text-gray-400">{t('explorer.noFiles')}</p>
-        </div>
       </div>
     );
   }
@@ -357,12 +296,6 @@ export const ProjectExplorer: React.FC = () => {
             {/* Left: File Tree */}
             {fileTreeOpen && (
               <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-                <ProjectSelector
-                  projects={projects}
-                  currentProject={currentProject}
-                  onManageClick={onManageClick}
-                  onCloseProject={handleCloseProject}
-                />
                 <div className="flex-1 overflow-hidden">
                 <FileTree
                   projectId={projectId}
@@ -375,6 +308,7 @@ export const ProjectExplorer: React.FC = () => {
                   onDeleteFile={handleDeleteFile}
                   onDeleteFolder={handleDeleteFolder}
                   onRenamePath={handleRenamePath}
+                  showTextSearch={false}
                 />
               </div>
             </div>

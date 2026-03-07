@@ -12,7 +12,7 @@ type ManagementMode = 'manage' | 'create';
 export const ProjectsModule: React.FC = () => {
   const [showManagement, setShowManagement] = useState(false);
   const [managementMode, setManagementMode] = useState<ManagementMode>('manage');
-  const { projects, createProject, updateProject, deleteProject } = useProjects();
+  const { projects, loading, createProject, updateProject, deleteProject } = useProjects();
 
   const openManagement = () => {
     setManagementMode('manage');
@@ -28,6 +28,7 @@ export const ProjectsModule: React.FC = () => {
     <div data-name="projects-module-root" className="flex flex-1 overflow-hidden min-w-0">
       <Outlet context={{
         projects,
+        projectsLoading: loading,
         onManageClick: openManagement,
         onAddProjectClick: openCreateProject,
       }} />
