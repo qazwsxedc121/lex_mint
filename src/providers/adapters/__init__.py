@@ -8,6 +8,7 @@ from .openrouter_adapter import OpenRouterAdapter
 from .deepseek_adapter import DeepSeekAdapter
 from .anthropic_adapter import AnthropicAdapter
 from .ollama_adapter import OllamaAdapter
+from .lmstudio_adapter import LmStudioAdapter
 from .xai_adapter import XAIAdapter
 from .zhipu_adapter import ZhipuAdapter
 from .volcengine_adapter import VolcEngineAdapter
@@ -23,6 +24,7 @@ __all__ = [
     "DeepSeekAdapter",
     "AnthropicAdapter",
     "OllamaAdapter",
+    "LmStudioAdapter",
     "XAIAdapter",
     "ZhipuAdapter",
     "VolcEngineAdapter",

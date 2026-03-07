@@ -135,6 +135,25 @@ providers:
   auto_append_path: false
   supports_model_list: true
   sdk_class: ollama
+- id: lmstudio
+  name: LM Studio
+  type: builtin
+  protocol: lmstudio
+  base_url: http://localhost:1234
+  api_keys: []
+  enabled: false
+  default_capabilities:
+    context_length: 4096
+    vision: false
+    function_calling: false
+    reasoning: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  url_suffix: /api/v1
+  auto_append_path: false
+  supports_model_list: true
+  sdk_class: lmstudio
 - id: xai
   name: xAI (Grok)
   type: builtin

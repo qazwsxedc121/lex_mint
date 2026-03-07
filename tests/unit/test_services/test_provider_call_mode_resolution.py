@@ -55,6 +55,12 @@ def test_resolve_effective_call_mode_native_for_ollama():
     assert service.resolve_effective_call_mode(provider) == CallMode.NATIVE
 
 
+def test_resolve_effective_call_mode_native_for_lmstudio():
+    service = _service()
+    provider = _provider(provider_id="lmstudio-custom", protocol=ApiProtocol.LMSTUDIO)
+    assert service.resolve_effective_call_mode(provider) == CallMode.NATIVE
+
+
 def test_resolve_effective_call_mode_openai_provider_id_defaults_to_responses():
     service = _service()
     provider = _provider(
@@ -123,6 +129,12 @@ def test_provider_does_not_require_api_key_for_ollama_sdk_override():
         protocol=ApiProtocol.OPENAI,
         sdk_class="ollama",
     )
+    assert service.provider_requires_api_key(provider) is False
+
+
+def test_provider_does_not_require_api_key_for_lmstudio():
+    service = _service()
+    provider = _provider(provider_id="lmstudio", protocol=ApiProtocol.LMSTUDIO)
     assert service.provider_requires_api_key(provider) is False
 
 

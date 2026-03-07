@@ -1189,7 +1189,7 @@ class ModelConfigService:
         """
         provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
         sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
-        return sdk_type not in {"ollama", "local_gguf"}
+        return sdk_type not in {"ollama", "lmstudio", "local_gguf"}
 
     @staticmethod
     def _normalize_base_host(base_url: str) -> str:
@@ -1252,7 +1252,7 @@ class ModelConfigService:
         provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
         sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
 
-        if sdk_type in {"anthropic", "gemini", "ollama", "local_gguf"}:
+        if sdk_type in {"anthropic", "gemini", "ollama", "lmstudio", "local_gguf"}:
             return CallMode.NATIVE
         if self.is_openai_official_provider(provider_cfg):
             return CallMode.RESPONSES

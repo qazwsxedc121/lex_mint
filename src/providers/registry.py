@@ -15,6 +15,7 @@ from .adapters import (
     DeepSeekAdapter,
     AnthropicAdapter,
     OllamaAdapter,
+    LmStudioAdapter,
     XAIAdapter,
     ZhipuAdapter,
     VolcEngineAdapter,
@@ -43,6 +44,7 @@ class AdapterRegistry:
         "deepseek": DeepSeekAdapter,
         "anthropic": AnthropicAdapter,
         "ollama": OllamaAdapter,
+        "lmstudio": LmStudioAdapter,
         "xai": XAIAdapter,
         "zhipu": ZhipuAdapter,
         "volcengine": VolcEngineAdapter,
@@ -59,6 +61,7 @@ class AdapterRegistry:
         ApiProtocol.ANTHROPIC: "anthropic",
         ApiProtocol.GEMINI: "gemini",
         ApiProtocol.OLLAMA: "ollama",
+        ApiProtocol.LMSTUDIO: "lmstudio",
         ApiProtocol.LOCAL_GGUF: "local_gguf",
     }
 
