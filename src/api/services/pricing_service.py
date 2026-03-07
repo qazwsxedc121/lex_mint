@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from src.providers.types import TokenUsage, CostInfo
-from ..paths import repo_root
+from ..paths import config_defaults_dir, config_local_dir, resolve_layered_read_path
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,11 @@ class PricingService:
         Initialize pricing service.
 
         Args:
-            config_path: Path to models_config.yaml containing pricing info
+            config_path: Optional local pricing config path
         """
+        self.defaults_path = config_defaults_dir() / "pricing_config.yaml"
         if config_path is None:
-            config_path = repo_root() / "config" / "models_config.yaml"
+            config_path = config_local_dir() / "pricing_config.yaml"
         self.config_path = config_path
         self._pricing_cache: Optional[Dict[str, Any]] = None
 
@@ -35,7 +36,11 @@ class PricingService:
             return self._pricing_cache
 
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            read_path = resolve_layered_read_path(
+                local_path=self.config_path,
+                defaults_path=self.defaults_path,
+            )
+            with open(read_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
                 self._pricing_cache = data.get("pricing", {})
         except Exception as e:

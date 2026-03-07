@@ -7,11 +7,17 @@ import yaml
 import aiofiles
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple, Any
+from datetime import datetime
+from typing import List, Optional, Tuple, Any, Dict
 from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 
-from ..models.model_config import Provider, Model, DefaultConfig, ModelsConfig
+from ..models.model_config import (
+    Provider,
+    Model,
+    DefaultConfig,
+    ModelsConfig,
+)
 from src.providers import (
     AdapterRegistry,
     ModelCapabilities,
@@ -60,7 +66,11 @@ class ModelConfigService:
             config_path: 配置文件路径，默认使用项目内 config/local/models_config.yaml
             keys_path: 密钥文件路径，默认使用项目内 config/local/keys_config.yaml
         """
-        self.defaults_path: Optional[Path] = config_defaults_dir() / "models_config.yaml"
+        defaults_dir = config_defaults_dir()
+        self.defaults_provider_path: Path = defaults_dir / "provider_config.yaml"
+        self.defaults_catalog_path: Path = defaults_dir / "models_catalog.yaml"
+        self.defaults_app_path: Path = defaults_dir / "app_defaults.yaml"
+        self.defaults_legacy_path: Path = defaults_dir / "models_config.yaml"
         self.legacy_models_paths: list[Path] = []
         self.legacy_keys_paths: list[Path] = []
         self._defaults_config_cache: Optional[dict[str, Any]] = None
@@ -78,27 +88,140 @@ class ModelConfigService:
             ]
             keys_path = local_keys_config_path()
         self.config_path = config_path
+        self.config_dir = self.config_path.parent
+        self.provider_config_path = self.config_dir / "provider_config.yaml"
+        self.models_catalog_path = self.config_dir / "models_catalog.yaml"
+        self.app_defaults_path = self.config_dir / "app_defaults.yaml"
         self.keys_path = keys_path
         self._ensure_config_exists()
         self._sync_builtin_entries()
         self._ensure_keys_config_exists()
 
-    def _ensure_config_exists(self):
-        """确保配置文件存在，如果不存在则创建默认配置"""
+    @staticmethod
+    def _load_yaml_dict(path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _write_yaml_dict(path: Path, data: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+
+    def _split_config_paths_exist(self) -> bool:
+        return (
+            self.provider_config_path.exists()
+            and self.models_catalog_path.exists()
+            and self.app_defaults_path.exists()
+        )
+
+    @staticmethod
+    def _assemble_aggregate_config(
+        provider_data: dict[str, Any],
+        catalog_data: dict[str, Any],
+        app_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        providers = provider_data.get("providers")
+        models = catalog_data.get("models")
+        default_config = app_data.get("default")
+        reasoning_patterns = app_data.get("reasoning_supported_patterns")
+        return {
+            "providers": providers if isinstance(providers, list) else [],
+            "models": models if isinstance(models, list) else [],
+            "default": default_config if isinstance(default_config, dict) else {},
+            "reasoning_supported_patterns": reasoning_patterns if isinstance(reasoning_patterns, list) else [],
+        }
+
+    def _load_split_config(self) -> dict[str, Any]:
+        provider_data = self._load_yaml_dict(self.provider_config_path)
+        catalog_data = self._load_yaml_dict(self.models_catalog_path)
+        app_data = self._load_yaml_dict(self.app_defaults_path)
+        return self._assemble_aggregate_config(provider_data, catalog_data, app_data)
+
+    def _split_aggregate_config(
+        self,
+        data: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        providers = data.get("providers")
+        models = data.get("models")
+        default_config = data.get("default")
+        reasoning_patterns = data.get("reasoning_supported_patterns")
+
+        bootstrap_provider_id, bootstrap_model_id, _ = self._get_bootstrap_model_identity()
+        app_payload = {
+            "default": default_config if isinstance(default_config, dict) and default_config else {
+                "provider": bootstrap_provider_id,
+                "model": bootstrap_model_id,
+            },
+            "reasoning_supported_patterns": (
+                reasoning_patterns
+                if isinstance(reasoning_patterns, list)
+                else self._get_default_reasoning_supported_patterns()
+            ),
+        }
+        return (
+            {"providers": providers if isinstance(providers, list) else []},
+            {"models": models if isinstance(models, list) else []},
+            app_payload,
+        )
+
+    def _backup_legacy_models_config(self) -> None:
         if not self.config_path.exists():
-            default_config = self._get_default_config()
-            initial_text = yaml.safe_dump(default_config, allow_unicode=True, sort_keys=False)
+            return
+        suffix = datetime.now().strftime("%Y%m%d%H%M%S")
+        backup_path = self.config_path.with_name(f"{self.config_path.name}.bak.{suffix}")
+        if backup_path.exists():
+            return
+        backup_path.write_text(self.config_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-            if self._layered_models:
-                ensure_local_file(
-                    local_path=self.config_path,
-                    legacy_paths=self.legacy_models_paths,
-                    initial_text=initial_text,
-                )
-                return
+    def _migrate_legacy_config_if_needed(self) -> None:
+        if self._split_config_paths_exist() or not self.config_path.exists():
+            return
 
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                f.write(initial_text)
+        legacy_data = self._load_yaml_dict(self.config_path)
+        if not legacy_data or not any(key in legacy_data for key in ("providers", "models", "default")):
+            return
+
+        provider_data, catalog_data, app_data = self._split_aggregate_config(legacy_data)
+        self._write_yaml_dict(self.provider_config_path, provider_data)
+        self._write_yaml_dict(self.models_catalog_path, catalog_data)
+        self._write_yaml_dict(self.app_defaults_path, app_data)
+        self._backup_legacy_models_config()
+
+    def _ensure_config_exists(self):
+        """Ensure split config files exist, migrating legacy aggregate config when needed."""
+        self._migrate_legacy_config_if_needed()
+        if self._split_config_paths_exist():
+            return
+
+        provider_defaults, catalog_defaults, app_defaults = self._split_aggregate_config(
+            self._get_default_config()
+        )
+
+        if self._layered_models:
+            ensure_local_file(
+                local_path=self.provider_config_path,
+                initial_text=yaml.safe_dump(provider_defaults, allow_unicode=True, sort_keys=False),
+            )
+            ensure_local_file(
+                local_path=self.models_catalog_path,
+                initial_text=yaml.safe_dump(catalog_defaults, allow_unicode=True, sort_keys=False),
+            )
+            ensure_local_file(
+                local_path=self.app_defaults_path,
+                initial_text=yaml.safe_dump(app_defaults, allow_unicode=True, sort_keys=False),
+            )
+            return
+
+        self._write_yaml_dict(self.provider_config_path, provider_defaults)
+        self._write_yaml_dict(self.models_catalog_path, catalog_defaults)
+        self._write_yaml_dict(self.app_defaults_path, app_defaults)
 
     def _get_default_config(self) -> dict:
         """获取默认配置"""
@@ -142,19 +265,31 @@ class ModelConfigService:
         )
 
     def _load_defaults_config(self) -> dict[str, Any]:
-        """Load the repo default models config once for bootstrap decisions."""
+        """Load the repo default split config once for bootstrap decisions."""
         if self._defaults_config_cache is not None:
             return self._defaults_config_cache
 
-        if self.defaults_path is None or not self.defaults_path.exists():
+        if (
+            self.defaults_provider_path.exists()
+            and self.defaults_catalog_path.exists()
+            and self.defaults_app_path.exists()
+        ):
+            self._defaults_config_cache = self._assemble_aggregate_config(
+                self._load_yaml_dict(self.defaults_provider_path),
+                self._load_yaml_dict(self.defaults_catalog_path),
+                self._load_yaml_dict(self.defaults_app_path),
+            )
+            return self._defaults_config_cache
+
+        if not self.defaults_legacy_path.exists():
             self._defaults_config_cache = {}
             return self._defaults_config_cache
 
         try:
-            with open(self.defaults_path, "r", encoding="utf-8") as f:
+            with open(self.defaults_legacy_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception as e:
-            logger.warning("Failed to read defaults models config: %s", e)
+            logger.warning("Failed to read legacy defaults models config: %s", e)
             data = {}
 
         self._defaults_config_cache = data if isinstance(data, dict) else {}
@@ -331,13 +466,7 @@ class ModelConfigService:
 
         Adds missing entries and refreshes non-user-editable builtin flags.
         """
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.warning(f"Failed to read model config for builtin sync: {e}")
-            return
-
+        data = self._load_split_config()
         if not isinstance(data, dict):
             return
 
@@ -520,35 +649,23 @@ class ModelConfigService:
                 changed = True
 
         if changed:
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+            provider_data, catalog_data, app_data = self._split_aggregate_config(data)
+            self._write_yaml_dict(self.provider_config_path, provider_data)
+            self._write_yaml_dict(self.models_catalog_path, catalog_data)
+            self._write_yaml_dict(self.app_defaults_path, app_data)
 
     async def load_config(self) -> ModelsConfig:
-        """加载配置文件"""
-        async with aiofiles.open(self.config_path, 'r', encoding='utf-8') as f:
-            content = await f.read()
-            data = yaml.safe_load(content)
-            return ModelsConfig(**data)
+        """鍔犺浇閰嶇疆鏂囦欢"""
+        data = self._load_split_config()
+        return ModelsConfig(**data)
 
     async def save_config(self, config: ModelsConfig):
-        """
-        保存配置文件（原子性写入）
-
-        使用临时文件 + 替换的方式确保原子性
-        """
-        # 先写入临时文件
-        temp_path = self.config_path.with_suffix('.yaml.tmp')
-        async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
-            # Use mode='json' to serialize enums as values
-            content = yaml.safe_dump(
-                config.model_dump(mode='json'),
-                allow_unicode=True,
-                sort_keys=False
-            )
-            await f.write(content)
-
-        # 原子性替换
-        temp_path.replace(self.config_path)
+        """Persist aggregated model/provider/default config into split local files."""
+        data = config.model_dump(mode='json')
+        provider_data, catalog_data, app_data = self._split_aggregate_config(data)
+        self._write_yaml_dict(self.provider_config_path, provider_data)
+        self._write_yaml_dict(self.models_catalog_path, catalog_data)
+        self._write_yaml_dict(self.app_defaults_path, app_data)
 
     def _ensure_keys_config_exists(self):
         """确保密钥配置文件存在，如果不存在则创建空配置"""
@@ -1164,9 +1281,7 @@ class ModelConfigService:
             ValueError: 如果模型或提供商不存在
         """
         # 同步加载配置
-        with open(self.config_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-            config = ModelsConfig(**data)
+        config = ModelsConfig(**self._load_split_config())
 
         # 确定使用哪个模型
         requested_model_id = model_id
@@ -1479,9 +1594,7 @@ class ModelConfigService:
             RuntimeError: 如果 API 密钥未配置
         """
         # 同步加载配置
-        with open(self.config_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-            config = ModelsConfig(**data)
+        config = ModelsConfig(**self._load_split_config())
 
         # 确定使用哪个模型
         requested_model_id = model_id

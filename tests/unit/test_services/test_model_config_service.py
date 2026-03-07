@@ -16,8 +16,19 @@ class TestModelConfigService:
 
     @staticmethod
     def _load_repo_defaults() -> dict:
-        with open(Path("config/defaults/models_config.yaml"), "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        defaults_dir = Path("config/defaults")
+        with open(defaults_dir / "provider_config.yaml", "r", encoding="utf-8") as f:
+            provider_data = yaml.safe_load(f) or {}
+        with open(defaults_dir / "models_catalog.yaml", "r", encoding="utf-8") as f:
+            model_data = yaml.safe_load(f) or {}
+        with open(defaults_dir / "app_defaults.yaml", "r", encoding="utf-8") as f:
+            app_data = yaml.safe_load(f) or {}
+        return {
+            "providers": provider_data.get("providers", []),
+            "models": model_data.get("models", []),
+            "default": app_data.get("default", {}),
+            "reasoning_supported_patterns": app_data.get("reasoning_supported_patterns", []),
+        }
 
     @pytest.fixture(autouse=True)
     def _disable_builtin_sync(self, monkeypatch, request):
@@ -34,15 +45,16 @@ class TestModelConfigService:
 
         service = ModelConfigService(config_path, keys_path)
 
-        assert config_path.exists()
+        assert (temp_config_dir / "provider_config.yaml").exists()
+        assert (temp_config_dir / "models_catalog.yaml").exists()
+        assert (temp_config_dir / "app_defaults.yaml").exists()
         assert keys_path.exists()
 
         # Verify default config structure
-        with open(config_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-            assert "default" in data
-            assert "providers" in data
-            assert "models" in data
+        data = await service.load_config()
+        assert data.default.provider
+        assert data.providers
+        assert data.models
 
     @pytest.mark.asyncio
     async def test_sync_builtin_supports_model_list_flag(self):
@@ -176,6 +188,59 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
+    async def test_legacy_models_config_is_auto_migrated_to_split_files(self):
+        test_dir = Path(".tmp") / "test_legacy_models_config_is_auto_migrated_to_split_files"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        legacy_payload = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "enabled": True,
+                }
+            ],
+            "reasoning_supported_patterns": ["deepseek-chat"],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(legacy_payload, f, allow_unicode=True, sort_keys=False)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert (test_dir / "provider_config.yaml").exists()
+            assert (test_dir / "models_catalog.yaml").exists()
+            assert (test_dir / "app_defaults.yaml").exists()
+            assert list(test_dir.glob("models_config.yaml.bak.*"))
+            assert config.default.provider == "deepseek"
+            assert config.default.model == "deepseek-chat"
+            assert any(provider.id == "deepseek" for provider in config.providers)
+            assert any(model.id == "deepseek-chat" for model in config.models)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
     async def test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing(self):
         """Builtin sync should reuse an existing enabled model before injecting bootstrap defaults."""
         test_dir = Path(".tmp") / "test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing"
@@ -284,7 +349,6 @@ class TestModelConfigService:
         local_dir.mkdir(parents=True, exist_ok=True)
         legacy_dir.mkdir(parents=True, exist_ok=True)
 
-        defaults_path = defaults_dir / "models_config.yaml"
         defaults_payload = {
             "default": {"provider": "deepseek", "model": "deepseek-chat"},
             "providers": [
@@ -314,8 +378,20 @@ class TestModelConfigService:
                 },
             ],
         }
-        with open(defaults_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(defaults_payload, f, allow_unicode=True, sort_keys=False)
+        with open(defaults_dir / "provider_config.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump({"providers": defaults_payload["providers"]}, f, allow_unicode=True, sort_keys=False)
+        with open(defaults_dir / "models_catalog.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump({"models": defaults_payload["models"]}, f, allow_unicode=True, sort_keys=False)
+        with open(defaults_dir / "app_defaults.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {
+                    "default": defaults_payload["default"],
+                    "reasoning_supported_patterns": [],
+                },
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
         monkeypatch.setattr("src.api.services.model_config_service.config_defaults_dir", lambda: defaults_dir)
         monkeypatch.setattr("src.api.services.model_config_service.config_local_dir", lambda: local_dir)
