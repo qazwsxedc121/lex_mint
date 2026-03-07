@@ -41,10 +41,10 @@ logger = logging.getLogger(__name__)
 class ModelConfigService:
     """模型配置管理服务"""
 
-    _DEFAULT_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
-    _BOOTSTRAP_PROVIDER_ID = "deepseek"
-    _BOOTSTRAP_MODEL_ID = "deepseek-chat"
-    _BOOTSTRAP_MODEL_NAME = "DeepSeek Chat"
+    _FALLBACK_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
+    _FALLBACK_BOOTSTRAP_PROVIDER_ID = "deepseek"
+    _FALLBACK_BOOTSTRAP_MODEL_ID = "deepseek-chat"
+    _FALLBACK_BOOTSTRAP_MODEL_NAME = "DeepSeek Chat"
     _BUILTIN_BASE_URL_MIGRATIONS = {
         "siliconflow": {
             "https://api.siliconflow.com/v1": "https://api.siliconflow.cn/v1",
@@ -60,14 +60,14 @@ class ModelConfigService:
             config_path: 配置文件路径，默认使用项目内 config/local/models_config.yaml
             keys_path: 密钥文件路径，默认使用项目内 config/local/keys_config.yaml
         """
-        self.defaults_path: Optional[Path] = None
+        self.defaults_path: Optional[Path] = config_defaults_dir() / "models_config.yaml"
         self.legacy_models_paths: list[Path] = []
         self.legacy_keys_paths: list[Path] = []
+        self._defaults_config_cache: Optional[dict[str, Any]] = None
         self._layered_models = config_path is None
         self._layered_keys = keys_path is None
 
         if config_path is None:
-            self.defaults_path = config_defaults_dir() / "models_config.yaml"
             self.legacy_models_paths = [legacy_config_dir() / "models_config.yaml"]
             config_path = config_local_dir() / "models_config.yaml"
         if keys_path is None:
@@ -104,12 +104,14 @@ class ModelConfigService:
         """获取默认配置"""
         providers: list[dict[str, Any]] = []
         models: list[dict[str, Any]] = []
+        enabled_builtin_provider_ids = self._get_default_enabled_builtin_provider_ids()
+        bootstrap_provider_id, bootstrap_model_id, _ = self._get_bootstrap_model_identity()
 
         for definition in get_all_builtin_providers().values():
             providers.append(
                 self._provider_from_definition(
                     definition,
-                    enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
+                    enabled=definition.id in enabled_builtin_provider_ids,
                 )
             )
 
@@ -118,25 +120,116 @@ class ModelConfigService:
 
         return {
             "default": {
-                "provider": self._BOOTSTRAP_PROVIDER_ID,
-                "model": self._BOOTSTRAP_MODEL_ID,
+                "provider": bootstrap_provider_id,
+                "model": bootstrap_model_id,
             },
             "providers": providers,
             "models": models,
-            "reasoning_supported_patterns": ["deepseek-chat", "glm-"],
+            "reasoning_supported_patterns": self._get_default_reasoning_supported_patterns(),
         }
 
     def _build_bootstrap_model(self) -> dict[str, Any]:
         """Build a single default model so a fresh install is immediately usable."""
-        deepseek = get_builtin_provider(self._BOOTSTRAP_PROVIDER_ID)
-        capabilities = deepseek.default_capabilities if deepseek else None
+        provider_id, model_id, model_name = self._get_bootstrap_model_identity()
+        provider = get_builtin_provider(provider_id)
+        capabilities = provider.default_capabilities if provider else None
         return self._model_from_definition(
-            provider_id=self._BOOTSTRAP_PROVIDER_ID,
-            model_id=self._BOOTSTRAP_MODEL_ID,
-            model_name=self._BOOTSTRAP_MODEL_NAME,
+            provider_id=provider_id,
+            model_id=model_id,
+            model_name=model_name,
             capabilities=capabilities,
             enabled=True,
         )
+
+    def _load_defaults_config(self) -> dict[str, Any]:
+        """Load the repo default models config once for bootstrap decisions."""
+        if self._defaults_config_cache is not None:
+            return self._defaults_config_cache
+
+        if self.defaults_path is None or not self.defaults_path.exists():
+            self._defaults_config_cache = {}
+            return self._defaults_config_cache
+
+        try:
+            with open(self.defaults_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning("Failed to read defaults models config: %s", e)
+            data = {}
+
+        self._defaults_config_cache = data if isinstance(data, dict) else {}
+        return self._defaults_config_cache
+
+    def _get_default_enabled_builtin_provider_ids(self) -> set[str]:
+        """Derive enabled builtin providers from defaults YAML."""
+        defaults = self._load_defaults_config()
+        providers = defaults.get("providers")
+        if isinstance(providers, list):
+            enabled_ids = {
+                str(provider.get("id"))
+                for provider in providers
+                if isinstance(provider, dict)
+                and str(provider.get("id") or "").strip()
+                and provider.get("type", "builtin") == "builtin"
+                and bool(provider.get("enabled"))
+            }
+            if enabled_ids:
+                return enabled_ids
+        return set(self._FALLBACK_ENABLED_BUILTIN_PROVIDERS)
+
+    def _get_bootstrap_model_identity(self) -> tuple[str, str, str]:
+        """Resolve the minimal bootstrap model from defaults YAML when available."""
+        defaults = self._load_defaults_config()
+        default_config = defaults.get("default")
+        if isinstance(default_config, dict):
+            provider_id = str(default_config.get("provider") or "").strip()
+            model_id = str(default_config.get("model") or "").strip()
+            if provider_id and model_id:
+                models = defaults.get("models")
+                if isinstance(models, list):
+                    for model in models:
+                        if (
+                            isinstance(model, dict)
+                            and model.get("provider_id") == provider_id
+                            and model.get("id") == model_id
+                        ):
+                            return provider_id, model_id, str(model.get("name") or model_id)
+                return provider_id, model_id, model_id
+
+        return (
+            self._FALLBACK_BOOTSTRAP_PROVIDER_ID,
+            self._FALLBACK_BOOTSTRAP_MODEL_ID,
+            self._FALLBACK_BOOTSTRAP_MODEL_NAME,
+        )
+
+    def _get_default_reasoning_supported_patterns(self) -> list[str]:
+        """Derive reasoning hint patterns from defaults YAML."""
+        defaults = self._load_defaults_config()
+        patterns = defaults.get("reasoning_supported_patterns")
+        if isinstance(patterns, list):
+            return [str(pattern) for pattern in patterns if str(pattern or "").strip()]
+        return []
+
+    @staticmethod
+    def _find_first_enabled_model_key(
+        providers: list[dict[str, Any]],
+        models: list[dict[str, Any]],
+    ) -> Optional[tuple[str, str]]:
+        enabled_provider_ids = {
+            str(provider.get("id"))
+            for provider in providers
+            if isinstance(provider, dict)
+            and str(provider.get("id") or "").strip()
+            and bool(provider.get("enabled"))
+        }
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            provider_id = str(model.get("provider_id") or "").strip()
+            model_id = str(model.get("id") or "").strip()
+            if provider_id and model_id and bool(model.get("enabled")) and provider_id in enabled_provider_ids:
+                return provider_id, model_id
+        return None
 
     def _provider_from_definition(self, definition, enabled: bool) -> dict[str, Any]:
         return {
@@ -302,12 +395,14 @@ class ModelConfigService:
             if isinstance(m, dict) and m.get("provider_id") and m.get("id")
         }
 
+        enabled_builtin_provider_ids = self._get_default_enabled_builtin_provider_ids()
+
         for definition in get_all_builtin_providers().values():
             if definition.id not in existing_provider_ids:
                 providers.append(
                     self._provider_from_definition(
                         definition,
-                        enabled=definition.id in self._DEFAULT_ENABLED_BUILTIN_PROVIDERS,
+                        enabled=definition.id in enabled_builtin_provider_ids,
                     )
                 )
                 existing_provider_ids.add(definition.id)
@@ -364,29 +459,32 @@ class ModelConfigService:
                             changed = True
 
         default_key = (default_provider, default_model)
-        bootstrap_key = (self._BOOTSTRAP_PROVIDER_ID, self._BOOTSTRAP_MODEL_ID)
+        bootstrap_provider_id, bootstrap_model_id, _ = self._get_bootstrap_model_identity()
+        bootstrap_key = (bootstrap_provider_id, bootstrap_model_id)
         if default_key not in existing_model_keys:
-            if bootstrap_key not in existing_model_keys:
-                models.append(self._build_bootstrap_model())
-                existing_model_keys.add(bootstrap_key)
-            data["default"] = {
-                "provider": self._BOOTSTRAP_PROVIDER_ID,
-                "model": self._BOOTSTRAP_MODEL_ID,
-            }
+            fallback_key = self._find_first_enabled_model_key(providers, models)
+            if fallback_key is not None:
+                data["default"] = {
+                    "provider": fallback_key[0],
+                    "model": fallback_key[1],
+                }
+            else:
+                if bootstrap_key not in existing_model_keys:
+                    models.append(self._build_bootstrap_model())
+                    existing_model_keys.add(bootstrap_key)
+                data["default"] = {
+                    "provider": bootstrap_provider_id,
+                    "model": bootstrap_model_id,
+                }
             changed = True
 
         reasoning_patterns = data.get("reasoning_supported_patterns")
         if not isinstance(reasoning_patterns, list):
-            reasoning_patterns = []
+            reasoning_patterns = self._get_default_reasoning_supported_patterns()
             data["reasoning_supported_patterns"] = reasoning_patterns
             changed = True
 
-        for pattern in ["deepseek-chat", "glm-"]:
-            if pattern not in reasoning_patterns:
-                reasoning_patterns.append(pattern)
-                changed = True
-
-        # Backfill stale model-level capability flags from older provider-level defaults.
+        # Backfill stale dynamic local GGUF capability flags when explicit metadata is absent.
         for model_entry in models:
             if not isinstance(model_entry, dict):
                 continue
@@ -395,6 +493,8 @@ class ModelConfigService:
                 continue
 
             provider_id_value = model_entry.get("provider_id")
+            if provider_id_value != "local_gguf":
+                continue
             inferred = infer_capability_overrides(
                 model_id_value,
                 provider_id=provider_id_value if isinstance(provider_id_value, str) else None,
@@ -1158,28 +1258,38 @@ class ModelConfigService:
         if provider.default_capabilities:
             base_caps = base_caps.merge_with(provider.default_capabilities)
 
-        inferred_overrides = infer_capability_overrides(
-            model.id,
-            provider_id=provider.id,
-        )
-        inferred_reasoning_controls = inferred_overrides.get("reasoning_controls")
-        if isinstance(inferred_reasoning_controls, dict):
-            inferred_overrides["reasoning_controls"] = ReasoningControls(**inferred_reasoning_controls)
-        hard_require_interleaved = (
-            inferred_overrides.get("requires_interleaved_thinking") is True
-            if inferred_overrides
-            else False
-        )
-        if inferred_overrides:
-            base_caps = base_caps.model_copy(update=inferred_overrides)
-
         # Override with model-specific capabilities
         if model.capabilities:
             base_caps = base_caps.merge_with(model.capabilities)
 
-        # Keep required interleaved passthrough as a hard safety rule.
-        if hard_require_interleaved and not base_caps.requires_interleaved_thinking:
-            base_caps = base_caps.model_copy(update={"requires_interleaved_thinking": True})
+        inferred_overrides = infer_capability_overrides(
+            model.id,
+            provider_id=provider.id,
+        )
+        if inferred_overrides:
+            explicit_capability_fields: set[str] = set()
+            if provider.default_capabilities:
+                explicit_capability_fields.update(
+                    provider.default_capabilities.model_dump(exclude_unset=True).keys()
+                )
+            if model.capabilities:
+                explicit_capability_fields.update(
+                    model.capabilities.model_dump(exclude_unset=True).keys()
+                )
+
+            filtered_inferred_overrides: Dict[str, Any] = {
+                key: value
+                for key, value in inferred_overrides.items()
+                if key not in explicit_capability_fields
+            }
+            inferred_reasoning_controls = filtered_inferred_overrides.get("reasoning_controls")
+            if isinstance(inferred_reasoning_controls, dict):
+                filtered_inferred_overrides["reasoning_controls"] = ReasoningControls(**inferred_reasoning_controls)
+            if filtered_inferred_overrides:
+                base_caps = base_caps.model_copy(update=filtered_inferred_overrides)
+
+        if not base_caps.reasoning and base_caps.reasoning_controls is not None:
+            base_caps = base_caps.model_copy(update={"reasoning_controls": None})
 
         return base_caps
 
