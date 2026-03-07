@@ -242,16 +242,6 @@ async def test_fetch_provider_models_for_local_gguf_returns_results_without_api_
                 "id": "llm/qwen3.gguf",
                 "name": "qwen3",
                 "tags": ["local", "gguf", "chat"],
-                "capabilities": {
-                    "context_length": 8192,
-                    "vision": False,
-                    "function_calling": False,
-                    "reasoning": False,
-                    "requires_interleaved_thinking": False,
-                    "streaming": True,
-                    "file_upload": False,
-                    "image_output": False,
-                },
             }
         ]
     )
@@ -265,6 +255,10 @@ async def test_fetch_provider_models_for_local_gguf_returns_results_without_api_
 
     assert [item.id for item in result] == ["llm/qwen3.gguf"]
     assert result[0].tags == ["local", "gguf", "chat"]
+    assert result[0].capabilities is not None
+    assert result[0].capabilities["function_calling"] is True
+    assert result[0].capabilities["reasoning"] is True
+    assert result[0].capabilities["reasoning_controls"]["disable_supported"] is True
     adapter.fetch_models.assert_awaited_once_with("local://gguf", "")
 
 

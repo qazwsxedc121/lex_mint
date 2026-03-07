@@ -786,3 +786,61 @@ class TestModelConfigService:
             assert model.capabilities.requires_interleaved_thinking is True
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_backfills_stale_local_qwen3_function_calling_and_reasoning(self):
+        test_dir = Path(".tmp") / "test_sync_builtin_backfills_stale_local_qwen3_function_calling_and_reasoning"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        config_data = {
+            "default": {"provider": "local_gguf", "model": "llm/Qwen3-0.6B-Q8_0.gguf"},
+            "providers": [
+                {
+                    "id": "local_gguf",
+                    "name": "Local GGUF",
+                    "type": "builtin",
+                    "protocol": "local_gguf",
+                    "base_url": "local://gguf",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "local_gguf",
+                    "auto_append_path": False,
+                }
+            ],
+            "models": [
+                {
+                    "id": "llm/Qwen3-0.6B-Q8_0.gguf",
+                    "name": "Qwen3-0.6B-Q8_0",
+                    "provider_id": "local_gguf",
+                    "tags": ["local", "gguf", "chat"],
+                    "enabled": True,
+                    "capabilities": {
+                        "function_calling": False,
+                        "reasoning": False,
+                        "requires_interleaved_thinking": False,
+                        "reasoning_controls": None,
+                    },
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(config_data, f)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            model = await service.get_model("llm/Qwen3-0.6B-Q8_0.gguf")
+
+            assert model is not None
+            assert model.capabilities is not None
+            assert model.capabilities.function_calling is True
+            assert model.capabilities.reasoning is True
+            assert model.capabilities.reasoning_controls is not None
+            assert model.capabilities.reasoning_controls.disable_supported is True
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)

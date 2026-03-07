@@ -10,6 +10,7 @@ from typing import Any, Iterable, Iterator
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from ..paths import appdata_models_root, configured_models_root, install_models_root, resolve_model_path
+from ...providers.model_capability_rules import apply_model_capability_hints
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,12 @@ def discover_local_gguf_models() -> list[dict[str, Any]]:
                 "id": relative_model_path,
                 "name": stem,
                 "tags": tags,
-                "capabilities": dict(_DEFAULT_DISCOVERY_CAPABILITIES),
+                "capabilities": apply_model_capability_hints(
+                    relative_model_path,
+                    None,
+                    provider_defaults=dict(_DEFAULT_DISCOVERY_CAPABILITIES),
+                    provider_id="local_gguf",
+                ) or dict(_DEFAULT_DISCOVERY_CAPABILITIES),
             }
 
     return list(discovered_by_id.values())
@@ -97,7 +103,7 @@ class LocalLlamaCppService:
         self.model_path = self._resolve_model_path(model_path)
         self.n_ctx = max(512, int(n_ctx or 8192))
         self.n_threads = max(0, int(n_threads or 0))
-        self.n_gpu_layers = max(0, int(n_gpu_layers or 0))
+        self.n_gpu_layers = max(-1, int(n_gpu_layers if n_gpu_layers is not None else 0))
 
         if not self.model_path.exists():
             raise FileNotFoundError(
@@ -145,7 +151,7 @@ class LocalLlamaCppService:
             }
             if self.n_threads > 0:
                 kwargs["n_threads"] = self.n_threads
-            if self.n_gpu_layers > 0:
+            if self.n_gpu_layers != 0:
                 kwargs["n_gpu_layers"] = self.n_gpu_layers
 
             model = Llama(**kwargs)
@@ -243,14 +249,20 @@ class LocalLlamaCppService:
         messages: list[dict[str, str]],
         *,
         generation_kwargs: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> Iterator[str]:
         model = self._get_model()
         with self._get_inference_lock():
-            stream = model.create_chat_completion(
-                messages=messages,
-                stream=True,
+            request_kwargs: dict[str, Any] = {
+                "messages": messages,
+                "stream": True,
                 **generation_kwargs,
-            )
+            }
+            if tools:
+                request_kwargs["tools"] = tools
+                request_kwargs["tool_choice"] = tool_choice or "auto"
+            stream = model.create_chat_completion(**request_kwargs)
             for chunk in stream:
                 if not isinstance(chunk, dict):
                     continue
@@ -285,6 +297,54 @@ class LocalLlamaCppService:
                 if text:
                     yield text
 
+    @staticmethod
+    def _filter_thinking_tokens(chunks: Iterable[str]) -> Iterator[str]:
+        open_tag = "<think>"
+        close_tag = "</think>"
+        in_thinking = False
+        buffer = ""
+
+        def _prefix_overlap(text: str, token: str) -> int:
+            max_len = min(len(text), len(token) - 1)
+            for size in range(max_len, 0, -1):
+                if text.endswith(token[:size]):
+                    return size
+            return 0
+
+        for chunk in chunks:
+            if not chunk:
+                continue
+            buffer += str(chunk)
+
+            while buffer:
+                if in_thinking:
+                    close_idx = buffer.find(close_tag)
+                    if close_idx == -1:
+                        keep = _prefix_overlap(buffer, close_tag)
+                        buffer = buffer[-keep:] if keep else ""
+                        break
+                    buffer = buffer[close_idx + len(close_tag):]
+                    in_thinking = False
+                    continue
+
+                open_idx = buffer.find(open_tag)
+                if open_idx != -1:
+                    visible = buffer[:open_idx]
+                    if visible:
+                        yield visible
+                    buffer = buffer[open_idx + len(open_tag):]
+                    in_thinking = True
+                    continue
+
+                keep = _prefix_overlap(buffer, open_tag)
+                if len(buffer) > keep:
+                    yield buffer[:-keep] if keep else buffer
+                buffer = buffer[-keep:] if keep else ""
+                break
+
+        if not in_thinking and buffer:
+            yield buffer
+
     def stream_messages(
         self,
         messages: Iterable[BaseMessage | dict[str, Any]],
@@ -295,6 +355,9 @@ class LocalLlamaCppService:
         top_k: int | None = None,
         frequency_penalty: float | None = None,
         presence_penalty: float | None = None,
+        disable_thinking: bool = False,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> Iterator[str]:
         """Stream completion tokens for a chat message sequence."""
         normalized_messages = self._normalize_messages(messages)
@@ -310,18 +373,24 @@ class LocalLlamaCppService:
         )
 
         try:
-            yield from self._stream_chat_messages(
+            stream = self._stream_chat_messages(
                 normalized_messages,
                 generation_kwargs=generation_kwargs,
+                tools=tools,
+                tool_choice=tool_choice,
             )
+            yield from self._filter_thinking_tokens(stream) if disable_thinking else stream
             return
         except Exception as e:
+            if tools:
+                raise
             logger.info("chat_completion failed, fallback to completion: %s", e)
 
-        yield from self._stream_text_completion(
+        fallback_stream = self._stream_text_completion(
             self._messages_to_prompt(normalized_messages),
             generation_kwargs=generation_kwargs,
         )
+        yield from self._filter_thinking_tokens(fallback_stream) if disable_thinking else fallback_stream
 
     def complete_messages(
         self,
@@ -333,6 +402,9 @@ class LocalLlamaCppService:
         top_k: int | None = None,
         frequency_penalty: float | None = None,
         presence_penalty: float | None = None,
+        disable_thinking: bool = False,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> str:
         """Generate full completion text for a chat message sequence."""
         return "".join(
@@ -344,6 +416,9 @@ class LocalLlamaCppService:
                 top_k=top_k,
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
+                disable_thinking=disable_thinking,
+                tools=tools,
+                tool_choice=tool_choice,
             )
         )
 

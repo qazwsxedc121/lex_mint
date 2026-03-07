@@ -3,6 +3,7 @@
 from src.providers.model_capability_rules import (
     apply_model_capability_hints,
     infer_capability_overrides,
+    infer_function_calling_support,
     infer_reasoning_support,
     infer_requires_interleaved_thinking,
 )
@@ -23,7 +24,13 @@ def test_infer_requires_interleaved_thinking_returns_none_for_unknown_models():
 def test_infer_reasoning_support_for_kimi_and_deepseek_variants():
     assert infer_reasoning_support("deepseek-chat") is True
     assert infer_reasoning_support("moonshotai/kimi-k2.5:free") is True
+    assert infer_reasoning_support("llm/qwen3-0.6b-q8_0.gguf", provider_id="local_gguf") is True
     assert infer_reasoning_support("gpt-4o-mini") is None
+
+
+def test_infer_function_calling_support_for_local_qwen3():
+    assert infer_function_calling_support("llm/qwen3-0.6b-q8_0.gguf", provider_id="local_gguf") is True
+    assert infer_function_calling_support("llm/qwen2.5-7b.gguf", provider_id="local_gguf") is None
 
 
 def test_infer_capability_overrides_include_reasoning_and_interleaved():
@@ -52,6 +59,16 @@ def test_infer_capability_overrides_provider_specific_controls():
     volcengine_overrides = infer_capability_overrides("doubao-seed-2-0-pro", provider_id="volcengine")
     assert volcengine_overrides["reasoning_controls"]["mode"] == "enum"
     assert volcengine_overrides["reasoning_controls"]["options"] == ["minimal", "low", "medium", "high"]
+
+    local_qwen3_overrides = infer_capability_overrides(
+        "llm/qwen3-0.6b-q8_0.gguf",
+        provider_id="local_gguf",
+    )
+    assert local_qwen3_overrides["reasoning"] is True
+    assert local_qwen3_overrides["function_calling"] is True
+    assert local_qwen3_overrides["reasoning_controls"]["mode"] == "toggle"
+    assert local_qwen3_overrides["reasoning_controls"]["param"] == "enable_thinking"
+    assert local_qwen3_overrides["reasoning_controls"]["options"] == []
 
 
 def test_apply_interleaved_hint_preserves_explicit_capability_override():

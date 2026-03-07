@@ -387,7 +387,7 @@ class ModelConfigService:
                 reasoning_patterns.append(pattern)
                 changed = True
 
-        # Backfill stale model-level interleaved flags from older provider-level defaults.
+        # Backfill stale model-level capability flags from older provider-level defaults.
         for model_entry in models:
             if not isinstance(model_entry, dict):
                 continue
@@ -400,14 +400,20 @@ class ModelConfigService:
                 model_id_value,
                 provider_id=provider_id_value if isinstance(provider_id_value, str) else None,
             )
-            if inferred.get("requires_interleaved_thinking") is not True:
+            if not inferred:
                 continue
 
             model_caps = model_entry.get("capabilities")
             if not isinstance(model_caps, dict):
                 continue
 
-            if model_caps.get("requires_interleaved_thinking") is False:
+            if inferred.get("function_calling") is True and model_caps.get("function_calling") is False:
+                model_caps["function_calling"] = True
+                changed = True
+            if inferred.get("reasoning") is True and model_caps.get("reasoning") is False:
+                model_caps["reasoning"] = True
+                changed = True
+            if inferred.get("requires_interleaved_thinking") is True and model_caps.get("requires_interleaved_thinking") is False:
                 model_caps["requires_interleaved_thinking"] = True
                 changed = True
             if inferred.get("reasoning_controls") and not isinstance(model_caps.get("reasoning_controls"), dict):

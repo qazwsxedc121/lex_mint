@@ -23,6 +23,14 @@ def _normalize_provider_id(provider_id: Optional[str]) -> str:
     return str(provider_id or "").strip().lower()
 
 
+def _is_local_qwen3_model(normalized_model_id: str, normalized_provider_id: str) -> bool:
+    if normalized_provider_id != "local_gguf":
+        return False
+    if "qwen3.5" in normalized_model_id or "qwen35" in normalized_model_id:
+        return False
+    return "qwen3" in normalized_model_id
+
+
 def infer_requires_interleaved_thinking(
     model_id: str,
     provider_id: Optional[str] = None,
@@ -67,9 +75,27 @@ def infer_reasoning_support(
     normalized_provider = _normalize_provider_id(provider_id)
     kimi_match = normalized.startswith("kimi-") or "/kimi-" in normalized
     deepseek_match = normalized.startswith("deepseek-") or "/deepseek-" in normalized
+    local_qwen3_match = _is_local_qwen3_model(normalized, normalized_provider)
     if normalized_provider in {"kimi", "deepseek"} and (kimi_match or deepseek_match):
         return True
+    if local_qwen3_match:
+        return True
     if kimi_match or deepseek_match:
+        return True
+    return None
+
+
+def infer_function_calling_support(
+    model_id: str,
+    provider_id: Optional[str] = None,
+) -> Optional[bool]:
+    """Infer whether the model supports function/tool calling."""
+    normalized = normalize_model_id(model_id)
+    if not normalized:
+        return None
+
+    normalized_provider = _normalize_provider_id(provider_id)
+    if _is_local_qwen3_model(normalized, normalized_provider):
         return True
     return None
 
@@ -91,6 +117,7 @@ def infer_reasoning_controls(
     normalized_provider = _normalize_provider_id(provider_id)
     kimi_match = normalized.startswith("kimi-") or "/kimi-" in normalized
     deepseek_match = normalized.startswith("deepseek-") or "/deepseek-" in normalized
+    local_qwen3_match = _is_local_qwen3_model(normalized, normalized_provider)
 
     if normalized_provider == "volcengine":
         return {
@@ -128,6 +155,14 @@ def infer_reasoning_controls(
             "default_option": "enabled",
             "disable_supported": True,
         }
+    if local_qwen3_match:
+        return {
+            "mode": "toggle",
+            "param": "enable_thinking",
+            "options": [],
+            "default_option": None,
+            "disable_supported": True,
+        }
     return None
 
 
@@ -141,6 +176,10 @@ def infer_capability_overrides(
     inferred_reasoning = infer_reasoning_support(model_id, provider_id=provider_id)
     if inferred_reasoning is not None:
         overrides["reasoning"] = inferred_reasoning
+
+    inferred_function_calling = infer_function_calling_support(model_id, provider_id=provider_id)
+    if inferred_function_calling is not None:
+        overrides["function_calling"] = inferred_function_calling
 
     inferred_controls = infer_reasoning_controls(model_id, provider_id=provider_id)
     if inferred_controls is not None:

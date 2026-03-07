@@ -124,3 +124,25 @@ def test_discover_local_gguf_models_scans_priority_roots(monkeypatch, tmp_path):
     ]
     assert [item["name"] for item in discovered] == ["alpha", "beta", "gamma"]
     assert all(item["capabilities"]["streaming"] is True for item in discovered)
+
+
+def test_discover_local_gguf_models_infers_qwen3_reasoning_controls(monkeypatch, tmp_path):
+    local_appdata = tmp_path / "localappdata"
+
+    monkeypatch.delenv("LEX_MINT_MODELS_ROOT", raising=False)
+    monkeypatch.delenv("LEX_MINT_PACKAGED", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    monkeypatch.setenv("LEX_MINT_RUNTIME_ROOT", str(tmp_path / "install_root"))
+    paths.repo_root.cache_clear()
+    paths.user_data_root.cache_clear()
+
+    model_path = local_appdata / "LexMint" / "models" / "llm" / "Qwen3-0.6B-Q8_0.gguf"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_text("qwen3", encoding="utf-8")
+
+    discovered = discover_local_gguf_models()
+
+    assert len(discovered) == 1
+    assert discovered[0]["capabilities"]["reasoning"] is True
+    assert discovered[0]["capabilities"]["function_calling"] is True
+    assert discovered[0]["capabilities"]["reasoning_controls"]["disable_supported"] is True
