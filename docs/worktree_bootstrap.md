@@ -5,6 +5,24 @@
 - 不重复排查端口和 CORS
 - 用一条脚本命令完成初始化
 
+## 端口分配规范（推荐）
+
+为避免多 worktree 端口冲突，建议统一采用 `slot` 规则：
+
+- `slot` 范围：`1-999`
+- `API_PORT = 19000 + slot`
+- `FRONTEND_PORT = 15100 + slot`
+
+示例：
+
+| slot | API_PORT | FRONTEND_PORT |
+|---:|---:|---:|
+| 1 | 19001 | 15101 |
+| 23 | 19023 | 15123 |
+| 101 | 19101 | 15201 |
+
+这样每个 worktree 只需记住一个 `slot`，并且前后端端口尾号一致，便于排查。
+
 ## 为什么新 worktree 看起来像“丢配置”
 
 以下文件本来就不会跟随 Git 切分到新 worktree（被 `.gitignore` 忽略）：
@@ -43,25 +61,41 @@ providers:
 powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <API_PORT> -FrontendPort <FRONTEND_PORT>
 ```
 
+macOS / Linux（推荐）：
+
+```bash
+./scripts/init_worktree.sh --slot <SLOT>
+```
+
 > 注意：`-ApiPort` 和 `-FrontendPort` 要按 **当前 worktree** 单独设置，避免和其他 worktree 冲突。  
 > 脚本要求显式传参，不提供默认端口。
 
+> `scripts/init_worktree.sh` 支持自动分配：如果不传 `--slot` 和端口参数，会自动选择第一个可用 slot，并检查 worktree/进程占用冲突。
+
 推荐做法（示例）：
 
-| worktree | API_PORT | FRONTEND_PORT |
-|---|---:|---:|
-| main | `<MAIN_API_PORT>` | `<MAIN_FRONTEND_PORT>` |
-| feature/a | `<FEATURE_A_API_PORT>` | `<FEATURE_A_FRONTEND_PORT>` |
-| feature/b | `<FEATURE_B_API_PORT>` | `<FEATURE_B_FRONTEND_PORT>` |
+| worktree | slot | API_PORT | FRONTEND_PORT |
+|---|---:|---:|---:|
+| main | 1 | 19001 | 15101 |
+| feature/a | 2 | 19002 | 15102 |
+| feature/b | 3 | 19003 | 15103 |
 
 对应执行示例：
 
 ```powershell
 # feature/a
-powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <FEATURE_A_API_PORT> -FrontendPort <FEATURE_A_FRONTEND_PORT>
+powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 19002 -FrontendPort 15102
 
 # feature/b
-powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <FEATURE_B_API_PORT> -FrontendPort <FEATURE_B_FRONTEND_PORT>
+powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort 19003 -FrontendPort 15103
+```
+
+```bash
+# feature/a
+./scripts/init_worktree.sh --slot 2
+
+# feature/b
+./scripts/init_worktree.sh --slot 3
 ```
 
 脚本会做这些事：
@@ -82,6 +116,17 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <A
 
 # 指定自定义共享 key 文件路径
 powershell -ExecutionPolicy Bypass -File .\scripts\init_worktree.ps1 -ApiPort <API_PORT> -FrontendPort <FRONTEND_PORT> -SharedKeysPath "D:\secrets\keys_config.yaml"
+```
+
+```bash
+# 仅更新 .env，不安装依赖
+./scripts/init_worktree.sh --slot <SLOT> --skip-install
+
+# 显式指定端口（不使用 slot）
+./scripts/init_worktree.sh --api-port <API_PORT> --frontend-port <FRONTEND_PORT>
+
+# 指定自定义共享 key 文件路径
+./scripts/init_worktree.sh --slot <SLOT> --shared-keys-path "/path/to/keys_config.yaml"
 ```
 
 ## 启动命令模板

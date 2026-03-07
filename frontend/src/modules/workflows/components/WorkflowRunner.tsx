@@ -74,6 +74,11 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
             return `${t('runner.event.workflowRunStarted')}`;
           case 'workflow_node_started':
             return `${t('runner.event.workflowNodeStarted')} ${nodeId} (${nodeType || '-'})`;
+          case 'workflow_node_retrying': {
+            const attempt = Number(payload.attempt || 0);
+            const maxAttempts = Number(payload.max_attempts || 0);
+            return `${t('runner.event.workflowNodeRetrying')} ${nodeId} (${attempt}/${maxAttempts})`;
+          }
           case 'workflow_node_finished':
             return `${t('runner.event.workflowNodeFinished')} ${nodeId} (${nodeType || '-'})`;
           case 'workflow_condition_evaluated': {

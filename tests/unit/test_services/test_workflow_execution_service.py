@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -245,6 +246,37 @@ def _workflow_with_node_input() -> Workflow:
                 id="llm_1",
                 type="llm",
                 prompt_template="target={{inputs.target_node}}",
+                next_id="end_1",
+            ),
+            EndNode(id="end_1", type="end", result_template="{{ctx.last_output}}"),
+        ],
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _workflow_with_llm_reliability(
+    *,
+    timeout_ms: int | None = None,
+    retry_count: int | None = None,
+    retry_backoff_ms: int | None = None,
+) -> Workflow:
+    now = datetime.now(timezone.utc)
+    return Workflow(
+        id="wf_llm_reliability",
+        name="LLM Reliability Test",
+        enabled=True,
+        input_schema=[WorkflowInputDef(key="topic", type="string", required=True)],
+        entry_node_id="start_1",
+        nodes=[
+            StartNode(id="start_1", type="start", next_id="llm_1"),
+            LlmNode(
+                id="llm_1",
+                type="llm",
+                prompt_template="{{inputs.topic}}",
+                timeout_ms=timeout_ms,
+                retry_count=retry_count,
+                retry_backoff_ms=retry_backoff_ms,
                 next_id="end_1",
             ),
             EndNode(id="end_1", type="end", result_template="{{ctx.last_output}}"),
@@ -535,3 +567,113 @@ async def test_workflow_execution_service_input_feature_rejects_invalid_chapter_
     assert events[-1]["type"] == "stream_error"
     assert "format is invalid" in str(events[-1]["error"])
     assert project_service.files == {}
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_retries_transient_llm_errors(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    attempts = {"count": 0}
+
+    async def flaky_llm_stream(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise TimeoutError("upstream timeout")
+        yield "recovered"
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=flaky_llm_stream,
+        default_llm_retry_count=0,
+        default_llm_retry_backoff_ms=0,
+        max_steps=10,
+    )
+    workflow = _workflow_with_llm_reliability(retry_count=1, retry_backoff_ms=0)
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"topic": "x"},
+        run_id="run_retry_ok",
+    ):
+        events.append(event)
+
+    assert attempts["count"] == 2
+    retry_event = next((event for event in events if event.get("type") == "workflow_node_retrying"), None)
+    assert retry_event is not None
+    assert retry_event["attempt"] == 2
+    assert events[-1]["type"] == "workflow_run_finished"
+    assert events[-1]["output"] == "recovered"
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_does_not_retry_after_partial_output(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    attempts = {"count": 0}
+
+    async def flaky_after_text(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        attempts["count"] += 1
+        yield "partial"
+        raise TimeoutError("broken stream")
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=flaky_after_text,
+        default_llm_retry_count=0,
+        default_llm_retry_backoff_ms=0,
+        max_steps=10,
+    )
+    workflow = _workflow_with_llm_reliability(retry_count=2, retry_backoff_ms=0)
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"topic": "x"},
+        run_id="run_partial_no_retry",
+    ):
+        events.append(event)
+
+    assert attempts["count"] == 1
+    assert all(event.get("type") != "workflow_node_retrying" for event in events)
+    assert events[-1]["type"] == "stream_error"
+    assert "broken stream" in str(events[-1]["error"])
+
+
+@pytest.mark.asyncio
+async def test_workflow_execution_service_honors_llm_timeout_and_retry_budget(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    attempts = {"count": 0}
+
+    async def slow_llm_stream(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        attempts["count"] += 1
+        await asyncio.sleep(0.05)
+        yield "too-late"
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=slow_llm_stream,
+        default_llm_retry_count=0,
+        default_llm_retry_backoff_ms=0,
+        max_steps=10,
+    )
+    workflow = _workflow_with_llm_reliability(
+        timeout_ms=10,
+        retry_count=1,
+        retry_backoff_ms=0,
+    )
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"topic": "x"},
+        run_id="run_timeout_exhausted",
+    ):
+        events.append(event)
+
+    assert attempts["count"] == 2
+    retry_events = [event for event in events if event.get("type") == "workflow_node_retrying"]
+    assert len(retry_events) == 1
+    assert events[-1]["type"] == "stream_error"
+    assert "timed out after 10 ms" in str(events[-1]["error"])

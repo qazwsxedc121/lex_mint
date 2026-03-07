@@ -12,8 +12,11 @@ from __future__ import annotations
 from functools import lru_cache
 import os
 from pathlib import Path
+import re
 import sys
 from typing import Iterable, Optional
+
+_WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 @lru_cache(maxsize=1)
@@ -43,7 +46,10 @@ def lex_mint_home_dir() -> Path:
 def default_user_data_root() -> Path:
     local_appdata = os.getenv("LOCALAPPDATA", "").strip()
     if local_appdata:
-        return Path(local_appdata).expanduser().resolve() / "LexMint"
+        base_path = Path(local_appdata).expanduser()
+        if os.name != "nt" and _WINDOWS_DRIVE_PATH_RE.match(local_appdata):
+            return base_path / "LexMint"
+        return base_path.resolve() / "LexMint"
     return lex_mint_home_dir() / "app"
 
 

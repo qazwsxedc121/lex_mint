@@ -7,6 +7,8 @@ This Windows delivery flow now supports two outputs:
 
 The packaged app runs as a single backend process. `Vite` is only used to build the frontend bundle.
 
+For macOS portable packaging, see `docs/macos_packaging_poc.md`.
+
 ## 1) Build Portable Package
 
 Run from repo root:

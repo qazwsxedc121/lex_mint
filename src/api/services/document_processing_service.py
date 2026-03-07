@@ -425,7 +425,7 @@ class DocumentProcessingService:
                         retry_delay = max(retry_delay, 5.0)
                     wait_seconds = min(max_delay, max(retry_delay, batch_delay, 0.5))
                     wait_seconds *= random.uniform(0.8, 1.2)
-                    max_label = "âˆ? if is_rate_limit or max_retries <= 0 else str(max_retries)
+                    max_label = "inf" if is_rate_limit or max_retries <= 0 else str(max_retries)
                     logger.warning(
                         f"Embedding batch {start + 1}-{end} failed "
                         f"(attempt {attempt}/{max_label}). Retrying in {wait_seconds:.2f}s: {e}"
