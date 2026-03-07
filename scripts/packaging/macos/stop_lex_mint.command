@@ -4,7 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${ROOT_DIR}"
 
-PID_FILE="${ROOT_DIR}/lex_mint.pid"
+default_user_data_root() {
+  printf '%s' "${HOME}/Library/Application Support/LexMint"
+}
+
+if [[ -z "${LEX_MINT_USER_DATA_ROOT:-}" ]]; then
+  export LEX_MINT_USER_DATA_ROOT="$(default_user_data_root)"
+fi
+
+RUN_DIR="${LEX_MINT_USER_DATA_ROOT}/run"
+PID_FILE="${RUN_DIR}/lex_mint.pid"
 
 read_env_value() {
   local key="$1"

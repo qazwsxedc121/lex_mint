@@ -64,6 +64,11 @@ Writable runtime data is stored under `~/Library/Application Support/LexMint` in
 - `attachments`
 - `logs`
 
+Runtime launcher state files are also stored in the user data root:
+
+- `run/lex_mint.pid`
+- `logs/launcher_runtime.log`
+
 Local GGUF models are resolved in this order:
 
 - Absolute path from config

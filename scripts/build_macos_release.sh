@@ -173,13 +173,105 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUNTIME_DIR="${SCRIPT_DIR}/../Resources/runtime"
 START_SCRIPT="${RUNTIME_DIR}/start_lex_mint.command"
+STOP_SCRIPT="${RUNTIME_DIR}/stop_lex_mint.command"
+
+default_user_data_root() {
+  printf '%s' "${HOME}/Library/Application Support/LexMint"
+}
+
+if [[ -z "${LEX_MINT_USER_DATA_ROOT:-}" ]]; then
+  export LEX_MINT_USER_DATA_ROOT="$(default_user_data_root)"
+fi
+
+RUN_DIR="${LEX_MINT_USER_DATA_ROOT}/run"
+PID_FILE="${RUN_DIR}/lex_mint.pid"
+LOCK_DIR="${RUN_DIR}/app_controller.lock"
+STATUS_FILE="${RUN_DIR}/launcher_start.status"
+ENV_FILE="${RUNTIME_DIR}/.env"
+mkdir -p "${RUN_DIR}"
+
+read_pid() {
+  if [[ -f "${PID_FILE}" ]]; then
+    cat "${PID_FILE}" 2>/dev/null || true
+  fi
+}
+
+read_env_value() {
+  local key="$1"
+  if [[ -f "${ENV_FILE}" ]]; then
+    grep -E "^${key}=" "${ENV_FILE}" | head -n1 | cut -d= -f2- | tr -d '\r' || true
+  fi
+}
+
+pid_running() {
+  local pid="$1"
+  [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1
+}
 
 if [[ ! -x "${START_SCRIPT}" ]]; then
   echo "Runtime start script missing: ${START_SCRIPT}" >&2
   exit 1
 fi
+if [[ ! -x "${STOP_SCRIPT}" ]]; then
+  echo "Runtime stop script missing: ${STOP_SCRIPT}" >&2
+  exit 1
+fi
 
-"${START_SCRIPT}"
+"${START_SCRIPT}" --status-file "${STATUS_FILE}" --no-open --no-wait || exit $?
+
+START_MODE=""
+START_PID=""
+if [[ -f "${STATUS_FILE}" ]]; then
+  STATUS_LINE="$(cat "${STATUS_FILE}" 2>/dev/null || true)"
+  rm -f "${STATUS_FILE}"
+  START_MODE="${STATUS_LINE%%:*}"
+  START_PID="${STATUS_LINE#*:}"
+fi
+
+# If backend already existed before launch, do not keep a controller process.
+if [[ "${START_MODE}" == "already_running" ]]; then
+  exit 0
+fi
+
+if [[ "${START_MODE}" != "started" ]]; then
+  START_MODE="started"
+  START_PID="$(read_pid)"
+fi
+
+API_HOST="$(read_env_value "API_HOST")"
+API_PORT="$(read_env_value "API_PORT")"
+if [[ -z "${API_HOST}" ]]; then
+  API_HOST="127.0.0.1"
+fi
+if [[ -z "${API_PORT}" ]]; then
+  API_PORT="18000"
+fi
+open "http://${API_HOST}:${API_PORT}" >/dev/null 2>&1 || true
+
+# If another controller instance is already active, just launch and exit.
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+  exit 0
+fi
+
+cleanup() {
+  rm -rf "${LOCK_DIR}" >/dev/null 2>&1 || true
+  rm -f "${STATUS_FILE}" >/dev/null 2>&1 || true
+  # Stop backend only when this app instance started a new backend process.
+  if [[ "${START_MODE}" == "started" ]]; then
+    "${STOP_SCRIPT}" >/dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup INT TERM EXIT
+
+# Keep the app process alive so Cmd+Q/closing the app can trigger cleanup.
+while true; do
+  PID_NOW="$(read_pid)"
+  if ! pid_running "${PID_NOW}"; then
+    break
+  fi
+  sleep 2
+done
 EOF
 chmod +x "${APP_DIR}/Contents/MacOS/${APP_EXECUTABLE}"
 

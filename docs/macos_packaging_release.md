@@ -63,5 +63,6 @@ Notes:
 ## 4) Result behavior
 
 - Launching `Lex Mint.app` invokes the packaged runtime start script.
+- If the app started a new backend process, quitting the app also stops that backend process.
 - Runtime data is still written to:
   - `~/Library/Application Support/LexMint`
