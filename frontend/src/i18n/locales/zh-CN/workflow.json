@@ -152,6 +152,7 @@
     "event": {
       "workflowRunStarted": "工作流已开始",
       "workflowNodeStarted": "节点开始：",
+      "workflowNodeRetrying": "节点重试：",
       "workflowNodeFinished": "节点结束：",
       "workflowConditionEvaluated": "条件计算",
       "workflowArtifactWritten": "产物已写入",

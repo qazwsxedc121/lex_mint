@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -44,6 +47,10 @@ class _ResolvedRuntimeConfig:
     model_id: Optional[str]
     system_prompt: Optional[str]
     generation_params: Dict[str, Any]
+
+
+class _NodeAttemptTimeoutError(Exception):
+    """Raised when one LLM attempt exceeds configured timeout."""
 
 
 class _ConditionParser:
@@ -221,12 +228,24 @@ class WorkflowExecutionService:
         storage: Optional[ConversationStorage] = None,
         project_service: Optional[ProjectService] = None,
         max_steps: int = 100,
+        default_llm_timeout_ms: Optional[int] = 180000,
+        default_llm_retry_count: int = 1,
+        default_llm_retry_backoff_ms: int = 300,
+        max_llm_retry_backoff_ms: int = 5000,
     ):
         self.history_service = history_service or WorkflowRunHistoryService()
         self.llm_stream_fn = llm_stream_fn or call_llm_stream
         self.storage = storage or create_storage_with_project_resolver(settings.conversations_dir)
         self.project_service = project_service or ProjectService()
         self.max_steps = max(1, int(max_steps))
+        self.default_llm_timeout_ms = (
+            None
+            if default_llm_timeout_ms is None
+            else max(1, int(default_llm_timeout_ms))
+        )
+        self.default_llm_retry_count = max(0, int(default_llm_retry_count))
+        self.default_llm_retry_backoff_ms = max(0, int(default_llm_retry_backoff_ms))
+        self.max_llm_retry_backoff_ms = max(0, int(max_llm_retry_backoff_ms))
 
     async def execute_stream(
         self,
@@ -305,77 +324,155 @@ class WorkflowExecutionService:
 
                 if isinstance(node, LlmNode):
                     prompt = self._render_template(node.prompt_template, template_context)
-                    chunk_parts: List[str] = []
+                    request_params = self._build_llm_request_params(node=node, runtime=runtime)
+                    timeout_ms = self._resolve_llm_timeout_ms(node)
+                    max_retries = self._resolve_llm_retry_count(node)
+                    backoff_ms = self._resolve_llm_retry_backoff_ms(node)
+                    max_attempts = max_retries + 1
                     usage: Optional[Dict[str, Any]] = None
-                    think_filter = ThinkTagStreamFilter() if stream_mode == "editor_rewrite" else None
+                    node_output = ""
+                    for attempt in range(1, max_attempts + 1):
+                        chunk_parts: List[str] = []
+                        attempt_usage: Optional[Dict[str, Any]] = None
+                        think_filter = (
+                            ThinkTagStreamFilter() if stream_mode == "editor_rewrite" else None
+                        )
+                        attempt_emitted_text = False
+                        stream = self.llm_stream_fn(
+                            messages=[{"role": "user", "content": prompt}],
+                            session_id=f"workflow:{workflow.id}:{run_identifier}",
+                            **request_params,
+                        )
+                        deadline = (
+                            time.monotonic() + (timeout_ms / 1000.0)
+                            if timeout_ms is not None
+                            else None
+                        )
+                        try:
+                            iterator = stream.__aiter__()
+                            while True:
+                                if deadline is not None:
+                                    remaining = deadline - time.monotonic()
+                                    if remaining <= 0:
+                                        raise _NodeAttemptTimeoutError(
+                                            f"LLM node '{node.id}' timed out after {timeout_ms} ms"
+                                        )
+                                else:
+                                    remaining = None
+                                try:
+                                    if remaining is None:
+                                        chunk = await iterator.__anext__()
+                                    else:
+                                        chunk = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+                                except asyncio.TimeoutError as exc:
+                                    if str(exc):
+                                        raise
+                                    raise _NodeAttemptTimeoutError(
+                                        f"LLM node '{node.id}' timed out after {timeout_ms} ms"
+                                    ) from exc
+                                except StopAsyncIteration:
+                                    break
 
-                    request_params: Dict[str, Any] = {}
-                    model_id = node.model_id or runtime.model_id
-                    system_prompt = (
-                        node.system_prompt
-                        if node.system_prompt is not None
-                        else runtime.system_prompt
-                    )
-                    request_params["model_id"] = model_id
-                    request_params["system_prompt"] = system_prompt
-
-                    temperature = (
-                        node.temperature
-                        if node.temperature is not None
-                        else runtime.generation_params.get("temperature")
-                    )
-                    max_tokens = (
-                        node.max_tokens
-                        if node.max_tokens is not None
-                        else runtime.generation_params.get("max_tokens")
-                    )
-                    request_params["temperature"] = temperature
-                    request_params["max_tokens"] = max_tokens
-
-                    for key in ("top_p", "top_k", "frequency_penalty", "presence_penalty"):
-                        value = runtime.generation_params.get(key)
-                        if value is not None:
-                            request_params[key] = value
-
-                    async for chunk in self.llm_stream_fn(
-                        messages=[{"role": "user", "content": prompt}],
-                        session_id=f"workflow:{workflow.id}:{run_identifier}",
-                        **request_params,
-                    ):
-                        if isinstance(chunk, str):
-                            visible_text = chunk
-                            if think_filter is not None:
-                                visible_text = think_filter.feed(chunk)
-                                if not visible_text:
+                                if isinstance(chunk, str):
+                                    visible_text = chunk
+                                    if think_filter is not None:
+                                        visible_text = think_filter.feed(chunk)
+                                        if not visible_text:
+                                            continue
+                                    chunk_parts.append(visible_text)
+                                    attempt_emitted_text = True
+                                    yield {
+                                        "type": "text_delta",
+                                        "workflow_id": workflow.id,
+                                        "run_id": run_identifier,
+                                        "node_id": node.id,
+                                        "text": visible_text,
+                                    }
                                     continue
-                            chunk_parts.append(visible_text)
+
+                                if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                                    raw_usage = chunk.get("usage")
+                                    if isinstance(raw_usage, dict):
+                                        attempt_usage = raw_usage
+
+                            if think_filter is not None:
+                                tail = think_filter.flush()
+                                if tail:
+                                    chunk_parts.append(tail)
+                                    attempt_emitted_text = True
+                                    yield {
+                                        "type": "text_delta",
+                                        "workflow_id": workflow.id,
+                                        "run_id": run_identifier,
+                                        "node_id": node.id,
+                                        "text": tail,
+                                    }
+
+                            node_output = "".join(chunk_parts)
+                            usage = attempt_usage
+                            break
+                        except _NodeAttemptTimeoutError as timeout_error:
+                            should_retry = (
+                                attempt < max_attempts
+                                and not attempt_emitted_text
+                                and self._is_retryable_llm_error(timeout_error)
+                            )
+                            if not should_retry:
+                                raise timeout_error
+
+                            delay_ms = self._compute_backoff_delay_ms(
+                                base_delay_ms=backoff_ms,
+                                retry_index=attempt,
+                            )
                             yield {
-                                "type": "text_delta",
+                                "type": "workflow_node_retrying",
                                 "workflow_id": workflow.id,
                                 "run_id": run_identifier,
                                 "node_id": node.id,
-                                "text": visible_text,
+                                "node_type": node.type,
+                                "attempt": attempt + 1,
+                                "max_attempts": max_attempts,
+                                "delay_ms": delay_ms,
+                                "error": str(timeout_error),
                             }
+                            if delay_ms > 0:
+                                await asyncio.sleep(delay_ms / 1000)
                             continue
+                        except Exception as exc:
+                            should_retry = (
+                                attempt < max_attempts
+                                and not attempt_emitted_text
+                                and self._is_retryable_llm_error(exc)
+                            )
+                            if not should_retry:
+                                raise
 
-                        if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                            raw_usage = chunk.get("usage")
-                            if isinstance(raw_usage, dict):
-                                usage = raw_usage
-
-                    if think_filter is not None:
-                        tail = think_filter.flush()
-                        if tail:
-                            chunk_parts.append(tail)
+                            delay_ms = self._compute_backoff_delay_ms(
+                                base_delay_ms=backoff_ms,
+                                retry_index=attempt,
+                            )
                             yield {
-                                "type": "text_delta",
+                                "type": "workflow_node_retrying",
                                 "workflow_id": workflow.id,
                                 "run_id": run_identifier,
                                 "node_id": node.id,
-                                "text": tail,
+                                "node_type": node.type,
+                                "attempt": attempt + 1,
+                                "max_attempts": max_attempts,
+                                "delay_ms": delay_ms,
+                                "error": str(exc),
                             }
+                            if delay_ms > 0:
+                                await asyncio.sleep(delay_ms / 1000)
+                            continue
+                        finally:
+                            await self._close_async_iterator(stream)
 
-                    node_output = "".join(chunk_parts)
+                    else:
+                        raise ValueError(
+                            f"LLM node '{node.id}' failed after {max_attempts} attempts"
+                        )
+
                     output_key = node.output_key or f"node_{node.id}_output"
                     ctx[output_key] = node_output
                     ctx["last_output"] = node_output
@@ -553,6 +650,91 @@ class WorkflowExecutionService:
                 error=error_message,
             )
             await self.history_service.append_run(record)
+
+    def _build_llm_request_params(
+        self,
+        *,
+        node: LlmNode,
+        runtime: _ResolvedRuntimeConfig,
+    ) -> Dict[str, Any]:
+        request_params: Dict[str, Any] = {}
+        model_id = node.model_id or runtime.model_id
+        system_prompt = (
+            node.system_prompt
+            if node.system_prompt is not None
+            else runtime.system_prompt
+        )
+        request_params["model_id"] = model_id
+        request_params["system_prompt"] = system_prompt
+
+        temperature = (
+            node.temperature
+            if node.temperature is not None
+            else runtime.generation_params.get("temperature")
+        )
+        max_tokens = (
+            node.max_tokens
+            if node.max_tokens is not None
+            else runtime.generation_params.get("max_tokens")
+        )
+        request_params["temperature"] = temperature
+        request_params["max_tokens"] = max_tokens
+
+        for key in ("top_p", "top_k", "frequency_penalty", "presence_penalty"):
+            value = runtime.generation_params.get(key)
+            if value is not None:
+                request_params[key] = value
+
+        return request_params
+
+    def _resolve_llm_timeout_ms(self, node: LlmNode) -> Optional[int]:
+        if node.timeout_ms is None:
+            return self.default_llm_timeout_ms
+        return max(1, int(node.timeout_ms))
+
+    def _resolve_llm_retry_count(self, node: LlmNode) -> int:
+        if node.retry_count is None:
+            return self.default_llm_retry_count
+        return max(0, int(node.retry_count))
+
+    def _resolve_llm_retry_backoff_ms(self, node: LlmNode) -> int:
+        if node.retry_backoff_ms is None:
+            return self.default_llm_retry_backoff_ms
+        return max(0, int(node.retry_backoff_ms))
+
+    def _compute_backoff_delay_ms(self, *, base_delay_ms: int, retry_index: int) -> int:
+        if base_delay_ms <= 0:
+            return 0
+        # retry_index starts from 1 (first retry)
+        delay = int(base_delay_ms * (2 ** max(0, retry_index - 1)))
+        return min(delay, self.max_llm_retry_backoff_ms)
+
+    def _is_retryable_llm_error(self, exc: Exception) -> bool:
+        if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError, OSError)):
+            return True
+        if isinstance(exc, (ValueError, TypeError, KeyError)):
+            return False
+
+        message = str(exc).lower()
+        retry_keywords = (
+            "timeout",
+            "timed out",
+            "temporary",
+            "temporarily",
+            "try again",
+            "rate limit",
+            "429",
+            "connection",
+            "reset",
+            "unavailable",
+        )
+        return any(keyword in message for keyword in retry_keywords)
+
+    async def _close_async_iterator(self, stream: Any) -> None:
+        aclose = getattr(stream, "aclose", None)
+        if callable(aclose):
+            with contextlib.suppress(Exception):
+                await aclose()
 
     async def _resolve_runtime_config(
         self,

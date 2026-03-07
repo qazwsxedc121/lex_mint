@@ -2,12 +2,15 @@
 
 import os
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, List
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .paths import attachments_dir, conversations_dir, data_state_dir
+from .paths import attachments_dir, conversations_dir, data_state_dir, user_data_root
+
+_WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def _default_cors_origins() -> List[str]:
@@ -24,6 +27,16 @@ def _default_cors_origins() -> List[str]:
             *origins,
         ]
     return origins
+
+
+def _normalize_storage_path(value) -> Path:
+    raw = os.path.expandvars(str(value))
+    candidate = Path(raw).expanduser()
+    if os.name != "nt" and _WINDOWS_DRIVE_PATH_RE.match(raw):
+        return candidate
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return user_data_root() / candidate
 
 
 class Settings(BaseSettings):
@@ -79,6 +92,11 @@ class Settings(BaseSettings):
         if isinstance(value, list):
             return [Path(os.path.expandvars(str(part))).expanduser() for part in value]
         return value
+
+    @field_validator("conversations_dir", "attachments_dir", "projects_config_path", mode="before")
+    @classmethod
+    def normalize_storage_paths(cls, value):
+        return _normalize_storage_path(value)
 
 
 # Global settings instance

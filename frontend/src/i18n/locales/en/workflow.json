@@ -152,6 +152,7 @@
     "event": {
       "workflowRunStarted": "Workflow started",
       "workflowNodeStarted": "Node started:",
+      "workflowNodeRetrying": "Node retrying:",
       "workflowNodeFinished": "Node finished:",
       "workflowConditionEvaluated": "Condition evaluated",
       "workflowArtifactWritten": "Artifact written",

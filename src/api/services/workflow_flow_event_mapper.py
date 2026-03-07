@@ -10,6 +10,7 @@ from .flow_event_types import (
     WORKFLOW_ARTIFACT_WRITTEN,
     WORKFLOW_CONDITION_EVALUATED,
     WORKFLOW_NODE_FINISHED,
+    WORKFLOW_NODE_RETRYING,
     WORKFLOW_NODE_STARTED,
     WORKFLOW_OUTPUT_REPORTED,
     WORKFLOW_RUN_FINISHED,
@@ -44,6 +45,22 @@ def map_workflow_event_to_flow_payload(
                 "run_id": event.get("run_id"),
                 "node_id": event.get("node_id"),
                 "node_type": event.get("node_type"),
+            },
+        )
+
+    if event_type == "workflow_node_retrying":
+        return emitter.emit(
+            event_type=WORKFLOW_NODE_RETRYING,
+            stage=FlowEventStage.ORCHESTRATION,
+            payload={
+                "workflow_id": event.get("workflow_id"),
+                "run_id": event.get("run_id"),
+                "node_id": event.get("node_id"),
+                "node_type": event.get("node_type"),
+                "attempt": event.get("attempt"),
+                "max_attempts": event.get("max_attempts"),
+                "delay_ms": event.get("delay_ms"),
+                "error": event.get("error"),
             },
         )
 
@@ -134,4 +151,3 @@ def map_workflow_event_to_flow_payload(
         stage=FlowEventStage.META,
         payload={"legacy_type": event_type, "data": event},
     )
-

@@ -26,6 +26,9 @@ export interface LlmNode {
   system_prompt?: string | null;
   temperature?: number | null;
   max_tokens?: number | null;
+  timeout_ms?: number | null;
+  retry_count?: number | null;
+  retry_backoff_ms?: number | null;
   output_key?: string | null;
   next_id: string;
 }

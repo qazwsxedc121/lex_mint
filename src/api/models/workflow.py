@@ -10,6 +10,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 _KEY_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+_TEMPLATE_VAR_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")
+_CONDITION_STRING_PATTERN = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
+_CONDITION_IDENTIFIER_PATTERN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_.]*\b")
+_CONDITION_RESERVED_WORDS = {"and", "or", "not", "true", "false"}
 
 
 class WorkflowInputDef(BaseModel):
@@ -91,6 +95,9 @@ class LlmNode(BaseModel):
     system_prompt: Optional[str] = None
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, ge=1)
+    timeout_ms: Optional[int] = Field(default=None, ge=1, le=900000)
+    retry_count: Optional[int] = Field(default=None, ge=0, le=10)
+    retry_backoff_ms: Optional[int] = Field(default=None, ge=0, le=120000)
     output_key: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
     next_id: str = Field(..., pattern=_KEY_PATTERN)
 
@@ -201,6 +208,9 @@ class WorkflowBase(BaseModel):
             raise ValueError("Workflow must include at least one node")
 
         node_ids: set[str] = set()
+        input_keys = {item.key for item in self.input_schema}
+        node_by_id: dict[str, WorkflowNode] = {}
+        adjacency: dict[str, List[str]] = {}
         has_start = False
         has_end = False
 
@@ -208,6 +218,7 @@ class WorkflowBase(BaseModel):
             if node.id in node_ids:
                 raise ValueError(f"Duplicate node id '{node.id}'")
             node_ids.add(node.id)
+            node_by_id[node.id] = node
             if node.type == "start":
                 has_start = True
             if node.type == "end":
@@ -221,6 +232,12 @@ class WorkflowBase(BaseModel):
         if not has_end:
             raise ValueError("Workflow must include at least one end node")
 
+        entry_node = node_by_id[self.entry_node_id]
+        if not isinstance(entry_node, StartNode):
+            raise ValueError(
+                f"entry_node_id '{self.entry_node_id}' must reference a start node"
+            )
+
         for node in self.nodes:
             targets: List[str] = []
             if isinstance(node, StartNode):
@@ -231,6 +248,7 @@ class WorkflowBase(BaseModel):
                 targets = [node.true_next_id, node.false_next_id]
             elif isinstance(node, ArtifactNode):
                 targets = [node.next_id]
+            adjacency[node.id] = targets
 
             for target in targets:
                 if target not in node_ids:
@@ -238,7 +256,122 @@ class WorkflowBase(BaseModel):
                         f"Node '{node.id}' references missing next node '{target}'"
                     )
 
+        self._validate_reachability(adjacency, node_ids)
+        self._validate_acyclic(adjacency, node_ids)
+        self._validate_template_variables(input_keys=input_keys)
+        self._validate_condition_variables(input_keys=input_keys)
+
         return self
+
+    def _validate_reachability(self, adjacency: Dict[str, List[str]], node_ids: set[str]) -> None:
+        reachable: set[str] = set()
+        stack = [self.entry_node_id]
+
+        while stack:
+            current = stack.pop()
+            if current in reachable:
+                continue
+            reachable.add(current)
+            for target in adjacency.get(current, []):
+                if target not in reachable:
+                    stack.append(target)
+
+        unreachable = sorted(node_ids - reachable)
+        if unreachable:
+            raise ValueError(
+                "Workflow contains unreachable nodes from entry node: "
+                + ", ".join(unreachable)
+            )
+
+        if not any(isinstance(node, EndNode) and node.id in reachable for node in self.nodes):
+            raise ValueError("Workflow entry path must reach at least one end node")
+
+    def _validate_acyclic(self, adjacency: Dict[str, List[str]], node_ids: set[str]) -> None:
+        in_degree: Dict[str, int] = {node_id: 0 for node_id in node_ids}
+        for targets in adjacency.values():
+            for target in targets:
+                in_degree[target] += 1
+
+        queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
+        visited = 0
+        index = 0
+
+        while index < len(queue):
+            current = queue[index]
+            index += 1
+            visited += 1
+            for target in adjacency.get(current, []):
+                in_degree[target] -= 1
+                if in_degree[target] == 0:
+                    queue.append(target)
+
+        if visited != len(node_ids):
+            raise ValueError("Workflow contains a cycle; looping graphs are not supported")
+
+    def _validate_template_variables(self, *, input_keys: set[str]) -> None:
+        for node in self.nodes:
+            template_fields: List[tuple[str, Optional[str]]] = []
+
+            if isinstance(node, LlmNode):
+                template_fields.append(("prompt_template", node.prompt_template))
+                template_fields.append(("system_prompt", node.system_prompt))
+            elif isinstance(node, ArtifactNode):
+                template_fields.append(("file_path_template", node.file_path_template))
+                template_fields.append(("content_template", node.content_template))
+            elif isinstance(node, EndNode):
+                template_fields.append(("result_template", node.result_template))
+
+            for field_name, template_value in template_fields:
+                if not template_value:
+                    continue
+                for match in _TEMPLATE_VAR_PATTERN.finditer(template_value):
+                    path = match.group(1)
+                    self._validate_context_reference(
+                        path=path,
+                        input_keys=input_keys,
+                        source=f"node '{node.id}' {field_name}",
+                    )
+
+    def _validate_condition_variables(self, *, input_keys: set[str]) -> None:
+        for node in self.nodes:
+            if not isinstance(node, ConditionNode):
+                continue
+
+            expression = _CONDITION_STRING_PATTERN.sub(" ", node.expression)
+            for identifier in _CONDITION_IDENTIFIER_PATTERN.findall(expression):
+                if identifier.lower() in _CONDITION_RESERVED_WORDS:
+                    continue
+                self._validate_context_reference(
+                    path=identifier,
+                    input_keys=input_keys,
+                    source=f"node '{node.id}' expression",
+                )
+
+    def _validate_context_reference(
+        self,
+        *,
+        path: str,
+        input_keys: set[str],
+        source: str,
+    ) -> None:
+        if path == "inputs":
+            raise ValueError(f"{source} references 'inputs' directly; use inputs.<key>")
+
+        if path == "ctx" or path.startswith("ctx."):
+            return
+
+        if not path.startswith("inputs."):
+            raise ValueError(
+                f"{source} uses unsupported reference '{path}'. Use inputs.* or ctx.*"
+            )
+
+        input_key = path.split(".", maxsplit=2)[1].strip()
+        if not input_key:
+            raise ValueError(f"{source} contains invalid input reference '{path}'")
+        if input_key not in input_keys:
+            raise ValueError(
+                f"{source} references unknown input '{input_key}' (from '{path}')"
+            )
 
 
 class Workflow(WorkflowBase):
