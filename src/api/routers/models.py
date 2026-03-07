@@ -674,4 +674,6 @@ async def get_available_protocols():
         {"id": ApiProtocol.ANTHROPIC.value, "name": "Anthropic", "description": "Anthropic Claude API"},
         {"id": ApiProtocol.GEMINI.value, "name": "Google Gemini", "description": "Google Gemini API"},
         {"id": ApiProtocol.OLLAMA.value, "name": "Ollama", "description": "Ollama local models"},
+        {"id": ApiProtocol.LMSTUDIO.value, "name": "LM Studio", "description": "LM Studio native local server API"},
+        {"id": ApiProtocol.LOCAL_GGUF.value, "name": "Local GGUF", "description": "Direct local GGUF inference"},
     ]

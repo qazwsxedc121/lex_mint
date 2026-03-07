@@ -14,6 +14,7 @@ class ApiProtocol(str, Enum):
     ANTHROPIC = "anthropic"     # Anthropic Claude API
     GEMINI = "gemini"           # Google Gemini API
     OLLAMA = "ollama"           # Ollama local models
+    LMSTUDIO = "lmstudio"       # LM Studio native local server API
     LOCAL_GGUF = "local_gguf"   # Direct local GGUF chat via llama.cpp
 
 

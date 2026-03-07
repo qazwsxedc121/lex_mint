@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from src.api.models.model_config import (
     Provider,
+    ProviderTestRequest,
     ProviderTestStoredRequest,
     ProviderEndpointProbeRequest,
     ProviderEndpointProbeResponse,
@@ -50,6 +51,30 @@ async def test_stored_connection_allows_empty_key_when_provider_does_not_require
     assert response.message == "Connection successful"
     service.test_provider_connection.assert_awaited_once_with(
         base_url="http://localhost:11434",
+        api_key="",
+        model_id=None,
+        provider=provider,
+    )
+
+
+@pytest.mark.asyncio
+async def test_direct_connection_request_accepts_empty_key_for_local_provider():
+    service = Mock()
+    provider = _provider(provider_id="lmstudio", protocol=ApiProtocol.LMSTUDIO, base_url="http://localhost:1234")
+
+    service.get_provider = AsyncMock(return_value=provider)
+    service.test_provider_connection = AsyncMock(return_value=(True, "Connection successful"))
+
+    request = ProviderTestRequest(
+        provider_id="lmstudio",
+        base_url="http://localhost:1234",
+        api_key="",
+    )
+    response = await models_router.test_provider_connection(request, service)
+
+    assert response.success is True
+    service.test_provider_connection.assert_awaited_once_with(
+        base_url="http://localhost:1234",
         api_key="",
         model_id=None,
         provider=provider,
@@ -228,6 +253,17 @@ async def test_builtin_provider_catalog_includes_local_gguf():
 
 
 @pytest.mark.asyncio
+async def test_builtin_provider_catalog_includes_lmstudio():
+    providers = await models_router.get_builtin_providers()
+    lmstudio = next(p for p in providers if p.id == "lmstudio")
+
+    assert lmstudio.supports_model_list is True
+    assert lmstudio.sdk_class == "lmstudio"
+    assert lmstudio.protocol == "lmstudio"
+    assert lmstudio.base_url == "http://localhost:1234"
+
+
+@pytest.mark.asyncio
 async def test_fetch_provider_models_for_local_gguf_returns_results_without_api_key_prompt():
     service = Mock()
     provider = _provider(
@@ -260,6 +296,56 @@ async def test_fetch_provider_models_for_local_gguf_returns_results_without_api_
     assert result[0].capabilities["reasoning"] is True
     assert result[0].capabilities["reasoning_controls"]["disable_supported"] is True
     adapter.fetch_models.assert_awaited_once_with("local://gguf", "")
+
+
+@pytest.mark.asyncio
+async def test_fetch_provider_models_for_lmstudio_returns_results_without_api_key_prompt():
+    service = Mock()
+    provider = _provider(
+        provider_id="lmstudio",
+        protocol=ApiProtocol.LMSTUDIO,
+        base_url="http://localhost:1234",
+    )
+    adapter = Mock()
+    adapter.fetch_models = AsyncMock(
+        return_value=[
+            {
+                "id": "qwen3-30b",
+                "name": "Qwen 3 30B",
+                "tags": ["chat", "reasoning"],
+                "capabilities": {
+                    "context_length": 32768,
+                    "vision": False,
+                    "function_calling": False,
+                    "reasoning": True,
+                    "requires_interleaved_thinking": False,
+                    "streaming": True,
+                    "file_upload": False,
+                    "image_output": False,
+                    "reasoning_controls": {
+                        "mode": "enum",
+                        "param": "reasoning",
+                        "options": ["none", "low", "medium", "high"],
+                        "default_option": "medium",
+                        "disable_supported": True,
+                    },
+                },
+            }
+        ]
+    )
+
+    service.get_provider = AsyncMock(return_value=provider)
+    service.get_api_key = AsyncMock(return_value=None)
+    service.get_adapter_for_provider = Mock(return_value=adapter)
+    service.provider_requires_api_key = Mock(return_value=False)
+
+    result = await models_router.fetch_provider_models("lmstudio", service)
+
+    assert [item.id for item in result] == ["qwen3-30b"]
+    assert result[0].capabilities is not None
+    assert result[0].capabilities["reasoning"] is True
+    assert result[0].capabilities["reasoning_controls"]["mode"] == "enum"
+    adapter.fetch_models.assert_awaited_once_with("http://localhost:1234", "")
 
 
 @pytest.mark.asyncio

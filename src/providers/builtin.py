@@ -246,6 +246,20 @@ BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
         auto_append_path=False,  # Ollama uses different path structure
     ),
 
+    "lmstudio": ProviderDefinition(
+        id="lmstudio",
+        name="LM Studio",
+        protocol=ApiProtocol.LMSTUDIO,
+        base_url="http://localhost:1234",
+        sdk_class="lmstudio",
+        default_capabilities=ModelCapabilities(
+            context_length=4096,
+            streaming=True,
+        ),
+        supports_model_list=True,
+        auto_append_path=False,
+    ),
+
     "xai": ProviderDefinition(
         id="xai",
         name="xAI (Grok)",

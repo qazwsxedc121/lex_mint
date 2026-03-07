@@ -323,13 +323,15 @@
   "providers.field.advanced": "高级选项",
   "providers.field.advanced.help": "可选专家设置，普通使用保持默认即可。",
   "providers.field.protocol": "服务商 API 类型",
-  "providers.field.protocol.help": "用于告诉适配器该地址属于哪一类接口（OpenAI 兼容 / Anthropic / Gemini / Ollama / 本地 GGUF）。",
+  "providers.field.protocol.help": "用于告诉适配器该地址属于哪一类接口（OpenAI 兼容 / Anthropic / Gemini / Ollama / LM Studio / 本地 GGUF）。",
   "providers.field.protocol.option.openai": "OpenAI 兼容",
   "providers.field.protocol.option.anthropic": "Anthropic 原生",
   "providers.field.protocol.option.gemini": "Gemini 原生",
   "providers.field.protocol.option.ollama": "Ollama 原生",
+  "providers.field.protocol.option.lmstudio": "LM Studio 原生",
+  "providers.field.protocol.option.local_gguf": "本地 GGUF",
   "providers.field.callMode": "请求 API 模式",
-  "providers.field.callMode.help": "Auto 策略：OpenAI 官方优先 Responses；Anthropic/Gemini/Ollama/本地 GGUF 原生走 Native；其他默认 Chat Completions。Responses 默认开启失败兜底到 Chat Completions。",
+  "providers.field.callMode.help": "Auto 策略：OpenAI 官方优先 Responses；Anthropic/Gemini/Ollama/LM Studio/本地 GGUF 原生走 Native；其他默认 Chat Completions。Responses 默认开启失败兜底到 Chat Completions。",
   "providers.field.callMode.option.auto": "自动（推荐）",
   "providers.field.callMode.option.native": "服务商原生",
   "providers.field.callMode.option.chatCompletions": "OpenAI Chat Completions",
@@ -776,6 +778,5 @@
   "tts.field.volume": "音量",
   "tts.field.volume.help": "音量调整（例如 +0%、+50%、-20%）",
   "tts.field.maxTextLength": "最大文本长度",
-  "tts.field.maxTextLength.help": "合成的最大字符数。超长文本将被截断。",
-  "providers.field.protocol.option.local_gguf": "本地 GGUF"
+  "tts.field.maxTextLength.help": "合成的最大字符数。超长文本将被截断。"
 }

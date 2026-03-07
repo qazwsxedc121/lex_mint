@@ -229,6 +229,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
         { value: 'anthropic', label: i18n.t('settings:providers.field.protocol.option.anthropic') },
         { value: 'gemini', label: i18n.t('settings:providers.field.protocol.option.gemini') },
         { value: 'ollama', label: i18n.t('settings:providers.field.protocol.option.ollama') },
+        { value: 'lmstudio', label: i18n.t('settings:providers.field.protocol.option.lmstudio') },
         { value: 'local_gguf', label: i18n.t('settings:providers.field.protocol.option.local_gguf') }
       ],
       get helpText() { return i18n.t('settings:providers.field.protocol.help'); },
@@ -322,6 +323,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
         { value: 'anthropic', label: i18n.t('settings:providers.field.protocol.option.anthropic') },
         { value: 'gemini', label: i18n.t('settings:providers.field.protocol.option.gemini') },
         { value: 'ollama', label: i18n.t('settings:providers.field.protocol.option.ollama') },
+        { value: 'lmstudio', label: i18n.t('settings:providers.field.protocol.option.lmstudio') },
         { value: 'local_gguf', label: i18n.t('settings:providers.field.protocol.option.local_gguf') }
       ],
       get helpText() { return i18n.t('settings:providers.field.protocol.help'); },
