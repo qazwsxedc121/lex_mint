@@ -140,6 +140,7 @@ docs/                   Architecture and analysis docs
 - `docs/api_endpoints.md` - API endpoint overview
 - `docs/project_management.md` - project workspace notes
 - `docs/macos_packaging_poc.md` - macOS portable packaging flow
+- `docs/macos_packaging_release.md` - macOS .app/.dmg release scaffold
 - `docs/cherry_studio_analysis.md` / `docs/lobehub_analysis.md` / `docs/open_webui_analysis.md` - comparative analysis
 
 ## Testing

@@ -76,4 +76,4 @@ Local GGUF models are resolved in this order:
 - Runtime install root is set via `LEX_MINT_RUNTIME_ROOT`.
 - Packaged frontend hosting is enabled by `LEX_MINT_SERVE_FRONTEND=1` in the packaging entrypoint.
 - Packaged writable data root is set via `LEX_MINT_USER_DATA_ROOT`.
-- This is a portable PoC; `.app`, signing, notarization, and `.dmg` are next steps.
+- For `.app` and `.dmg` outputs, see `docs/macos_packaging_release.md`.
