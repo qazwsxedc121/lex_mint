@@ -10,8 +10,10 @@ import type { Message } from '../../../types/message';
 import type { Project } from '../../../types/project';
 import SessionSelector from './SessionSelector';
 import { InsertToEditorButton } from './InsertToEditorButton';
+import { ProjectNotice } from './ProjectNotice';
 import { listProjects } from '../../../services/api';
 import { SessionTransferModal } from '../../../shared/chat/components/SessionTransferModal';
+import { useProjectNotice } from '../hooks/useProjectNotice';
 
 interface ProjectChatSidebarProps {
   projectId: string;  // Current project ID
@@ -71,6 +73,7 @@ function ChatServiceConsumer({
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [transferBusy, setTransferBusy] = useState(false);
+  const { notice, showError, clearNotice } = useProjectNotice();
 
   // Track when sessions have been loaded at least once
   useEffect(() => {
@@ -133,18 +136,18 @@ function ChatServiceConsumer({
   }, [sessionsLoaded, initialized, sessions, savedSessionId, onSetCurrentSessionId]);
 
   // Handle session creation
-  const handleCreateSession = async () => {
+  const handleCreateSession = useCallback(async () => {
     try {
       const newSessionId = await createSession();
       onSetCurrentSessionId(newSessionId);
     } catch (error) {
       console.error('Failed to create session:', error);
-      alert(t('chat.createFailed'));
+      showError(t('chat.createFailed'));
     }
-  };
+  }, [createSession, onSetCurrentSessionId, showError, t]);
 
   // Handle session deletion
-  const handleDeleteSession = async (sessionId: string) => {
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
     try {
       // If deleting current session, switch to another one first
       if (sessionId === currentSessionId) {
@@ -165,15 +168,15 @@ function ChatServiceConsumer({
       await deleteSession(sessionId);
     } catch (error) {
       console.error('Failed to delete session:', error);
-      alert(t('chat.deleteFailed'));
+      showError(t('chat.deleteFailed'));
     }
-  };
+  }, [currentSessionId, deleteSession, onSetCurrentSessionId, sessions, showError, t]);
 
   const handleOpenTransfer = (sessionId: string, mode: 'move' | 'copy') => {
     setTransferState({ sessionId, mode });
   };
 
-  const handleSelectTransferTarget = async (targetContextType: 'chat' | 'project', targetProjectId?: string) => {
+  const handleSelectTransferTarget = useCallback(async (targetContextType: 'chat' | 'project', targetProjectId?: string) => {
     if (!transferState) return;
 
     try {
@@ -195,12 +198,12 @@ function ChatServiceConsumer({
       }
     } catch (error) {
       console.error('Failed to transfer session:', error);
-      alert(t('chat.transferFailed'));
+      showError(t('chat.transferFailed'));
     } finally {
       setTransferBusy(false);
       setTransferState(null);
     }
-  };
+  }, [api, currentSessionId, onSetCurrentSessionId, refreshSessions, sessions, showError, t, transferState]);
 
   // Custom message actions for ChatView
   const customMessageActions = useCallback((message: Message) => (
@@ -217,6 +220,7 @@ function ChatServiceConsumer({
 
   return (
     <div data-name="chat-service-consumer" className="flex flex-col flex-1 min-h-0">
+      <ProjectNotice notice={notice} onDismiss={clearNotice} />
       {/* Session Selector */}
       <div data-name="session-selector-panel" className="border-b border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
         <SessionSelector

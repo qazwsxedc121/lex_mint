@@ -146,6 +146,20 @@ class AsyncRunService:
     async def get_run(self, run_id: str) -> Optional[AsyncRunRecord]:
         return await self.store.get_run(run_id)
 
+    async def reconcile_orphaned_runs(self, runs: list[AsyncRunRecord]) -> list[AsyncRunRecord]:
+        """Mark queued/running runs as failed when this process has no active task."""
+        reconciled: list[AsyncRunRecord] = []
+        for record in runs:
+            if record.status in {"queued", "running"} and not self._is_task_active(record.run_id):
+                now = datetime.now(timezone.utc)
+                record.status = "failed"
+                record.error = record.error or "Run interrupted before completion. Please rerun."
+                record.updated_at = now
+                record.finished_at = now
+                await self.store.save_run(record)
+            reconciled.append(record)
+        return reconciled
+
     async def _run_workflow_task(
         self,
         *,
@@ -307,3 +321,7 @@ class AsyncRunService:
     def _cleanup_task(self, run_id: str) -> None:
         self._tasks.pop(run_id, None)
         self._cancel_flags.pop(run_id, None)
+
+    def _is_task_active(self, run_id: str) -> bool:
+        task = self._tasks.get(run_id)
+        return task is not None and not task.done()

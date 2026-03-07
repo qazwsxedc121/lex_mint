@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
+import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 
 if (!process.env.API_PORT) {
   throw new Error('API_PORT is required for e2e tests.');
@@ -75,6 +75,87 @@ async function cleanupWorkflow(api: APIRequestContext, workflowId: string) {
   }
 }
 
+async function mockWorkflowRunStreamViaRunsApi(
+  page: Page,
+  runId: string,
+  ssePayloads: Array<Record<string, unknown>>
+) {
+  let createPayload: Record<string, unknown> | null = null;
+  let streamUrl = '';
+
+  await page.route('**/api/runs', async (route) => {
+    const request = route.request();
+    if (request.method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+
+    createPayload = request.postDataJSON() as Record<string, unknown>;
+    const nowIso = new Date().toISOString();
+    const workflowId =
+      typeof createPayload.workflow_id === 'string' ? createPayload.workflow_id : null;
+    const contextType =
+      typeof createPayload.context_type === 'string'
+        ? createPayload.context_type
+        : 'project';
+    const projectId =
+      typeof createPayload.project_id === 'string' ? createPayload.project_id : null;
+    const sessionId =
+      typeof createPayload.session_id === 'string' ? createPayload.session_id : null;
+
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        run_id: runId,
+        stream_id: `${runId}-stream`,
+        kind: 'workflow',
+        status: 'running',
+        context_type: contextType,
+        project_id: projectId,
+        session_id: sessionId,
+        workflow_id: workflowId,
+        created_at: nowIso,
+        updated_at: nowIso,
+        started_at: nowIso,
+        finished_at: null,
+        request_payload: createPayload,
+        result_summary: {},
+        error: null,
+        last_event_id: null,
+        last_seq: 0,
+      }),
+    });
+  });
+
+  await page.route(`**/api/runs/${runId}/stream`, async (route) => {
+    streamUrl = route.request().url();
+    const body = ssePayloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join('');
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+      body,
+    });
+  });
+
+  await page.route(`**/api/runs/${runId}/stream/resume`, async (route) => {
+    await route.fulfill({
+      status: 410,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'resume cursor expired' }),
+    });
+  });
+
+  return {
+    getCreatePayload: () => createPayload,
+    getStreamUrl: () => streamUrl,
+  };
+}
+
 test.describe('Projects inline rewrite', () => {
   test('rewrite selected text in editor and accept changes', async ({ page }) => {
     const api = await pwRequest.newContext({ baseURL: API_BASE });
@@ -86,60 +167,43 @@ test.describe('Projects inline rewrite', () => {
       projectId = created.projectId;
       tempRoot = created.tempRoot;
 
-      let rewritePayload: Record<string, unknown> | null = null;
-      await page.route('**/api/workflows/*/run/stream', async (route) => {
-        const request = route.request();
-        rewritePayload = request.postDataJSON() as Record<string, unknown>;
-
-        const streamId = 'rewrite-stream-1';
-        const now = Date.now();
-        const ssePayloads = [
-          {
-            flow_event: {
-              event_id: 'evt-1',
-              seq: 1,
-              ts: now,
-              stream_id: streamId,
-              event_type: 'stream_started',
-              stage: 'transport',
-              payload: { context_type: 'project' },
-            },
+      const streamId = 'rewrite-stream-1';
+      const now = Date.now();
+      const runMock = await mockWorkflowRunStreamViaRunsApi(page, 'run-inline-rewrite-1', [
+        {
+          flow_event: {
+            event_id: 'evt-1',
+            seq: 1,
+            ts: now,
+            stream_id: streamId,
+            event_type: 'stream_started',
+            stage: 'transport',
+            payload: { context_type: 'project' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-2',
-              seq: 2,
-              ts: now + 1,
-              stream_id: streamId,
-              event_type: 'text_delta',
-              stage: 'content',
-              payload: { text: 'Rewritten line for inline rewrite.\n' },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-2',
+            seq: 2,
+            ts: now + 1,
+            stream_id: streamId,
+            event_type: 'text_delta',
+            stage: 'content',
+            payload: { text: 'Rewritten line for inline rewrite.\n' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-3',
-              seq: 3,
-              ts: now + 2,
-              stream_id: streamId,
-              event_type: 'stream_ended',
-              stage: 'transport',
-              payload: { done: true },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-3',
+            seq: 3,
+            ts: now + 2,
+            stream_id: streamId,
+            event_type: 'stream_ended',
+            stage: 'transport',
+            payload: { done: true },
           },
-        ];
-        const body = ssePayloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join('');
-
-        await route.fulfill({
-          status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          },
-          body,
-        });
-      });
+        },
+      ]);
 
       await page.goto('/projects');
       await expect(page.locator('[data-name="projects-module-root"]')).toBeVisible();
@@ -193,7 +257,8 @@ test.describe('Projects inline rewrite', () => {
       await expect(page.locator('[data-name="inline-rewrite-preview"]')).toContainText(
         'Rewritten line for inline rewrite.'
       );
-      await expect.poll(() => rewritePayload).not.toBeNull();
+      await expect.poll(() => runMock.getCreatePayload()).not.toBeNull();
+      const rewritePayload = runMock.getCreatePayload();
       expect(rewritePayload?.context_type).toBe('project');
       expect(rewritePayload?.project_id).toBe(projectId);
       const inputs = rewritePayload?.inputs as Record<string, unknown> | undefined;
@@ -223,60 +288,43 @@ test.describe('Projects inline rewrite', () => {
       projectId = created.projectId;
       tempRoot = created.tempRoot;
 
-      let rewritePayload: Record<string, unknown> | null = null;
-      await page.route('**/api/workflows/*/run/stream', async (route) => {
-        const request = route.request();
-        rewritePayload = request.postDataJSON() as Record<string, unknown>;
-
-        const streamId = 'rewrite-stream-no-selection';
-        const now = Date.now();
-        const ssePayloads = [
-          {
-            flow_event: {
-              event_id: 'evt-n1',
-              seq: 1,
-              ts: now,
-              stream_id: streamId,
-              event_type: 'stream_started',
-              stage: 'transport',
-              payload: { context_type: 'project' },
-            },
+      const streamId = 'rewrite-stream-no-selection';
+      const now = Date.now();
+      const runMock = await mockWorkflowRunStreamViaRunsApi(page, 'run-inline-rewrite-2', [
+        {
+          flow_event: {
+            event_id: 'evt-n1',
+            seq: 1,
+            ts: now,
+            stream_id: streamId,
+            event_type: 'stream_started',
+            stage: 'transport',
+            payload: { context_type: 'project' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-n2',
-              seq: 2,
-              ts: now + 1,
-              stream_id: streamId,
-              event_type: 'text_delta',
-              stage: 'content',
-              payload: { text: 'Rewrite from full-file mode.\n' },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-n2',
+            seq: 2,
+            ts: now + 1,
+            stream_id: streamId,
+            event_type: 'text_delta',
+            stage: 'content',
+            payload: { text: 'Rewrite from full-file mode.\n' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-n3',
-              seq: 3,
-              ts: now + 2,
-              stream_id: streamId,
-              event_type: 'stream_ended',
-              stage: 'transport',
-              payload: { done: true },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-n3',
+            seq: 3,
+            ts: now + 2,
+            stream_id: streamId,
+            event_type: 'stream_ended',
+            stage: 'transport',
+            payload: { done: true },
           },
-        ];
-        const body = ssePayloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join('');
-
-        await route.fulfill({
-          status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          },
-          body,
-        });
-      });
+        },
+      ]);
 
       await page.goto(`/projects/${projectId}`);
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
@@ -298,7 +346,8 @@ test.describe('Projects inline rewrite', () => {
       await expect(page.locator('[data-name="inline-rewrite-preview"]')).toContainText(
         'Rewrite from full-file mode.'
       );
-      await expect.poll(() => rewritePayload).not.toBeNull();
+      await expect.poll(() => runMock.getCreatePayload()).not.toBeNull();
+      const rewritePayload = runMock.getCreatePayload();
 
       const inputs = rewritePayload?.inputs as Record<string, unknown> | undefined;
       expect(inputs?._source_mode).toBe('full_file');
@@ -353,7 +402,7 @@ test.describe('Projects inline rewrite', () => {
         if (response.request().method() !== 'PUT') return false;
         return new URL(response.url()).pathname === `/api/workflows/${customWorkflowId}`;
       });
-      await page.locator('[data-name="workflow-editor-save"]').click();
+      await page.locator('[data-name="workflow-builder-save"]').click();
       const updateWorkflowResponse = await updateWorkflowResponsePromise;
       expect(updateWorkflowResponse.ok()).toBeTruthy();
       await expect
@@ -367,62 +416,43 @@ test.describe('Projects inline rewrite', () => {
         })
         .toBe('editor_rewrite');
 
-      let runRequestUrl = '';
-      let runPayload: Record<string, unknown> | null = null;
-      await page.route('**/api/workflows/*/run/stream', async (route) => {
-        const request = route.request();
-        runRequestUrl = request.url();
-        runPayload = request.postDataJSON() as Record<string, unknown>;
-
-        const streamId = 'rewrite-stream-2';
-        const now = Date.now();
-        const ssePayloads = [
-          {
-            flow_event: {
-              event_id: 'evt-a1',
-              seq: 1,
-              ts: now,
-              stream_id: streamId,
-              event_type: 'stream_started',
-              stage: 'transport',
-              payload: { context_type: 'project' },
-            },
+      const streamId = 'rewrite-stream-2';
+      const now = Date.now();
+      const runMock = await mockWorkflowRunStreamViaRunsApi(page, 'run-inline-rewrite-3', [
+        {
+          flow_event: {
+            event_id: 'evt-a1',
+            seq: 1,
+            ts: now,
+            stream_id: streamId,
+            event_type: 'stream_started',
+            stage: 'transport',
+            payload: { context_type: 'project' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-a2',
-              seq: 2,
-              ts: now + 1,
-              stream_id: streamId,
-              event_type: 'text_delta',
-              stage: 'content',
-              payload: { text: 'Custom workflow rewrite output.\n' },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-a2',
+            seq: 2,
+            ts: now + 1,
+            stream_id: streamId,
+            event_type: 'text_delta',
+            stage: 'content',
+            payload: { text: 'Custom workflow rewrite output.\n' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-a3',
-              seq: 3,
-              ts: now + 2,
-              stream_id: streamId,
-              event_type: 'stream_ended',
-              stage: 'transport',
-              payload: { done: true },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-a3',
+            seq: 3,
+            ts: now + 2,
+            stream_id: streamId,
+            event_type: 'stream_ended',
+            stage: 'transport',
+            payload: { done: true },
           },
-        ];
-        const body = ssePayloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join('');
-
-        await route.fulfill({
-          status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          },
-          body,
-        });
-      });
+        },
+      ]);
 
       await page.goto(`/projects/${projectId}`);
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
@@ -445,8 +475,10 @@ test.describe('Projects inline rewrite', () => {
         'Custom workflow rewrite output.'
       );
 
-      await expect.poll(() => runRequestUrl).toContain(`/api/workflows/${customWorkflowId}/run/stream`);
-      await expect.poll(() => runPayload).not.toBeNull();
+      await expect.poll(() => runMock.getStreamUrl()).toContain('/api/runs/run-inline-rewrite-3/stream');
+      await expect.poll(() => runMock.getCreatePayload()).not.toBeNull();
+      const runPayload = runMock.getCreatePayload();
+      expect(runPayload?.workflow_id).toBe(customWorkflowId);
       expect(runPayload?.context_type).toBe('project');
       expect(runPayload?.project_id).toBe(projectId);
       expect(runPayload?.stream_mode).toBe('editor_rewrite');

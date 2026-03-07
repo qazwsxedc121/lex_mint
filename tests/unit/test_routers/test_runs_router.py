@@ -49,6 +49,14 @@ class _FakeStore:
         return self.record
 
 
+class _FakeListStore:
+    def __init__(self, runs: List[AsyncRunRecord]):
+        self.runs = runs
+
+    async def list_runs(self, **_kwargs) -> List[AsyncRunRecord]:
+        return list(self.runs)
+
+
 @pytest.mark.asyncio
 async def test_create_run_requires_workflow_id_for_workflow_kind():
     class _UnusedService:
@@ -76,3 +84,28 @@ async def test_stream_run_returns_synthetic_terminal_payload_when_runtime_stream
         "stream_ended",
     ]
     assert flow_events[1]["payload"]["error"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_applies_status_filter_after_reconcile():
+    running_record = _make_record(run_id="run-orphan", status="running")
+    store = _FakeListStore([running_record])
+
+    class _ReconcilingService:
+        async def reconcile_orphaned_runs(self, runs: List[AsyncRunRecord]) -> List[AsyncRunRecord]:
+            runs[0].status = "failed"
+            return runs
+
+    response = await runs_router.list_runs(
+        limit=50,
+        kind=None,
+        status="running",
+        context_type=None,
+        project_id=None,
+        session_id=None,
+        workflow_id=None,
+        store=store,
+        service=_ReconcilingService(),
+    )
+
+    assert response.runs == []

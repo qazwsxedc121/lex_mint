@@ -18,6 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useDeveloperMode } from '../hooks/useDeveloperMode';
 import { LanguageSwitcher } from '../i18n/components/LanguageSwitcher';
+import { AsyncRunCenter } from '../components/AsyncRunCenter';
 
 interface GlobalSidebarProps {
   collapsed: boolean;
@@ -91,7 +92,10 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
       {/* Language Switcher + Collapse Toggle */}
       <div className="border-t border-gray-700 p-2 space-y-1">
-        <LanguageSwitcher collapsed={collapsed} />
+        <div className={`grid gap-1 ${collapsed ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <LanguageSwitcher collapsed={collapsed} />
+          <AsyncRunCenter collapsed={collapsed} />
+        </div>
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"

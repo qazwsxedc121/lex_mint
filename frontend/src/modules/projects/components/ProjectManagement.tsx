@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Project, ProjectCreate, ProjectUpdate } from '../../../types/project';
 import { BackendDirectoryPicker } from './BackendDirectoryPicker';
+import { ProjectNotice } from './ProjectNotice';
+import { useProjectNotice } from '../hooks/useProjectNotice';
 
 interface ProjectManagementProps {
   projects: Project[];
@@ -30,6 +32,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   const [showCreateForm, setShowCreateForm] = useState(initialCreateForm);
   const [formData, setFormData] = useState<Partial<ProjectCreate>>({});
   const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
+  const { notice, showError, clearNotice } = useProjectNotice();
 
   const handleEdit = (project: Project) => {
     setEditingId(project.id);
@@ -65,7 +68,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
         setEditingId(null);
       } else {
         if (!formData.name || !formData.root_path) {
-          alert(t('management.alert.requiredFields'));
+          showError(t('management.alert.requiredFields'));
           return;
         }
         await onCreateProject(formData as ProjectCreate);
@@ -73,7 +76,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
       }
       setFormData({});
     } catch (err) {
-      alert(t('management.alert.saveFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
+      showError(t('management.alert.saveFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
     }
   };
 
@@ -82,7 +85,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
     try {
       await onDeleteProject(id);
     } catch (err) {
-      alert(t('management.alert.deleteFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
+      showError(t('management.alert.deleteFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
     }
   };
 
@@ -109,6 +112,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
               <XMarkIcon className="h-6 w-6" />
             </button>
           </div>
+          <ProjectNotice notice={notice} onDismiss={clearNotice} />
 
           {/* Create Button */}
           <div className="mb-4">

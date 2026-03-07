@@ -28,6 +28,10 @@ import { EditorToolbar } from './EditorToolbar';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
 import { InlineRewritePanel } from './InlineRewritePanel';
 import { ProjectWorkflowPanel } from './ProjectWorkflowPanel';
+import { ProjectNotice } from './ProjectNotice';
+import { useEditorPreferences } from '../hooks/useEditorPreferences';
+import { useGlobalHotkey } from '../hooks/useGlobalHotkey';
+import { useProjectNotice } from '../hooks/useProjectNotice';
 import { useWorkflowLauncherStorage } from '../../../shared/workflow-launcher/storage';
 import type { LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
 import { CodeBlock } from '../../../shared/chat/components/CodeBlock';
@@ -38,7 +42,6 @@ import { extractSvgBlocks } from '../../../shared/chat/utils/svgMarkdown';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
 const INLINE_REWRITE_CONTEXT_CHARS = 1200;
-const AGENT_AUTO_SAVE_BEFORE_SEND_KEY = 'project-agent-auto-save-before-send';
 const THINK_BLOCK_REGEX = /<think>[\s\S]*?<\/think>/g;
 const DEFAULT_INLINE_REWRITE_WORKFLOW_ID = 'wf_inline_rewrite_default';
 const PRIMARY_REWRITE_INPUT_KEYS = new Set(['input', 'text', 'selected_text']);
@@ -300,9 +303,17 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [projectWorkflowArtifactPath, setProjectWorkflowArtifactPath] = useState('');
   const [projectWorkflowWriteMode, setProjectWorkflowWriteMode] = useState<'none' | 'create' | 'overwrite'>('overwrite');
   const [inlineRewriteRunId, setInlineRewriteRunId] = useState<string | null>(null);
-  const [autoSaveBeforeAgentSend, setAutoSaveBeforeAgentSend] = useState<boolean>(() => {
-    return localStorage.getItem(AGENT_AUTO_SAVE_BEFORE_SEND_KEY) === 'true';
-  });
+  const {
+    lineWrapping,
+    setLineWrapping,
+    lineNumbers,
+    setLineNumbers,
+    fontSize,
+    setFontSize,
+    autoSaveBeforeAgentSend,
+    setAutoSaveBeforeAgentSend,
+  } = useEditorPreferences();
+  const { notice, showError: showNoticeError, clearNotice } = useProjectNotice();
 
   const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
@@ -315,49 +326,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const rewriteSelectionRef = useRef<RewriteSelectionSnapshot | null>(null);
   const pendingJumpRef = useRef<{ filePath: string; line: number } | null>(null);
 
-  // Line wrapping setting (default: true, persisted in localStorage)
-  const [lineWrapping, setLineWrapping] = useState<boolean>(() => {
-    const stored = localStorage.getItem('editor-line-wrapping');
-    return stored !== null ? stored === 'true' : true;
-  });
-
-  // Line numbers setting (default: true, persisted in localStorage)
-  const [lineNumbers, setLineNumbers] = useState<boolean>(() => {
-    const stored = localStorage.getItem('editor-line-numbers');
-    return stored !== null ? stored === 'true' : true;
-  });
-
-  // Font size setting (default: medium, persisted in localStorage)
-  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(() => {
-    const stored = localStorage.getItem('editor-font-size');
-    return (stored as 'small' | 'medium' | 'large') || 'medium';
-  });
-
   // Cursor position
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
   // Undo/redo state
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-
-  // Persist line wrapping setting
-  useEffect(() => {
-    localStorage.setItem('editor-line-wrapping', lineWrapping.toString());
-  }, [lineWrapping]);
-
-  // Persist line numbers setting
-  useEffect(() => {
-    localStorage.setItem('editor-line-numbers', lineNumbers.toString());
-  }, [lineNumbers]);
-
-  // Persist font size setting
-  useEffect(() => {
-    localStorage.setItem('editor-font-size', fontSize);
-  }, [fontSize]);
-
-  useEffect(() => {
-    localStorage.setItem(AGENT_AUTO_SAVE_BEFORE_SEND_KEY, autoSaveBeforeAgentSend ? 'true' : 'false');
-  }, [autoSaveBeforeAgentSend]);
 
   // Sync content when file changes
   useEffect(() => {
@@ -436,10 +410,10 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return newSessionId;
     } catch (err) {
       console.error('Failed to create chat session:', err);
-      alert('Failed to create chat session. Please try again.');
+      showNoticeError(t('chat.createFailed'));
       return null;
     }
-  }, [currentSessionId, createSession, navigation]);
+  }, [currentSessionId, createSession, navigation, showNoticeError, t]);
 
   const ensureInlineRewriteSession = useCallback(async () => {
     if (currentSessionId) {
@@ -1492,7 +1466,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       await chatComposer.focus();
     } catch (err) {
       console.error('Failed to insert editor content into chat:', err);
-      alert('Failed to insert content into chat. Please try again.');
+      showNoticeError(t('fileViewer.insertFailed'));
     } finally {
       setIsInsertingToChat(false);
     }
@@ -1504,6 +1478,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     ensureChatSession,
     getEditorContext,
     chatComposer,
+    showNoticeError,
+    t,
   ]);
 
   // Command handlers
@@ -1750,29 +1726,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }
   }, [hasUnsavedChanges, onRefreshProject, refreshingProject, t]);
 
-  // Ctrl+S handler
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleSave]);
-
-  // Ctrl/Cmd+K handler for toggling inline rewrite panel
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        handleToggleInlineRewrite();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleToggleInlineRewrite]);
+  useGlobalHotkey({ key: 's', onTrigger: handleSave });
+  useGlobalHotkey({ key: 'k', onTrigger: handleToggleInlineRewrite });
 
   useEffect(() => {
     const handler = (rawEvent: Event) => {
@@ -2053,6 +2008,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       {renderBreadcrumbBar(content.path)}
 
       {/* Toolbar */}
+      <ProjectNotice notice={notice} onDismiss={clearNotice} />
       <EditorToolbar
         onSave={handleSave}
         onCancel={handleCancel}

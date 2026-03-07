@@ -97,6 +97,7 @@ async def list_runs(
     session_id: Optional[str] = Query(default=None),
     workflow_id: Optional[str] = Query(default=None),
     store: AsyncRunStoreService = Depends(get_async_run_store),
+    service: AsyncRunService = Depends(get_async_run_service),
 ):
     runs = await store.list_runs(
         limit=limit,
@@ -107,14 +108,22 @@ async def list_runs(
         session_id=session_id,
         workflow_id=workflow_id,
     )
+    runs = await service.reconcile_orphaned_runs(runs)
+    if status is not None:
+        runs = [run for run in runs if run.status == status]
     return AsyncRunListResponse(runs=runs)
 
 
 @router.get("/{run_id}", response_model=AsyncRunRecord)
-async def get_run(run_id: str, store: AsyncRunStoreService = Depends(get_async_run_store)):
+async def get_run(
+    run_id: str,
+    store: AsyncRunStoreService = Depends(get_async_run_store),
+    service: AsyncRunService = Depends(get_async_run_service),
+):
     run = await store.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    run = (await service.reconcile_orphaned_runs([run]))[0]
     return run
 
 

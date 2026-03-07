@@ -37,14 +37,18 @@ interface ProjectWorkspaceState {
   clearWorkspace: () => void;
 }
 
+const DEFAULT_WORKSPACE_STATE = {
+  currentProjectId: null,
+  projectFileMap: {},
+  projectSessionMap: {},
+  chatSidebarOpen: false,
+  fileTreeOpen: true,
+};
+
 export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
   persist(
     (set, get) => ({
-      currentProjectId: null,
-      projectFileMap: {},
-      projectSessionMap: {},
-      chatSidebarOpen: false,
-      fileTreeOpen: true,
+      ...DEFAULT_WORKSPACE_STATE,
 
       setCurrentProject: (projectId) => set({
         currentProjectId: projectId
@@ -99,28 +103,26 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
       }),
 
       clearWorkspace: () => set({
-        currentProjectId: null,
-        projectFileMap: {},
-        projectSessionMap: {},
-        chatSidebarOpen: false,
-        fileTreeOpen: true
+        ...DEFAULT_WORKSPACE_STATE
       }),
     }),
     {
       name: 'project-workspace-storage', // localStorage key
       version: 1, // Increment this to force clear old incompatible data
-      migrate: (persistedState: any, version: number) => {
+      migrate: (persistedState: unknown, version: number) => {
         // If old version or no version, return fresh state
-        if (version < 1) {
-          return {
-            currentProjectId: null,
-            projectFileMap: {},
-            projectSessionMap: {},
-            chatSidebarOpen: false,
-            fileTreeOpen: true,
-          };
+        if (version < 1 || !persistedState || typeof persistedState !== 'object') {
+          return { ...DEFAULT_WORKSPACE_STATE };
         }
-        return persistedState;
+
+        const state = persistedState as Partial<ProjectWorkspaceState>;
+        return {
+          currentProjectId: typeof state.currentProjectId === 'string' ? state.currentProjectId : null,
+          projectFileMap: state.projectFileMap ?? {},
+          projectSessionMap: state.projectSessionMap ?? {},
+          chatSidebarOpen: state.chatSidebarOpen ?? false,
+          fileTreeOpen: state.fileTreeOpen ?? true,
+        };
       },
     }
   )

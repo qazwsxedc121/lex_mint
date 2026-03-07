@@ -1,7 +1,11 @@
 import React from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { ClockIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { cancelAsyncRun, listAsyncRuns } from '../services/api';
 import type { AsyncRunRecord, AsyncRunStatus } from '../services/api';
+
+interface AsyncRunCenterProps {
+  collapsed: boolean;
+}
 
 const ACTIVE_STATUSES: AsyncRunStatus[] = ['queued', 'running'];
 
@@ -42,7 +46,7 @@ const describeRun = (run: AsyncRunRecord): string => {
   return `${run.kind} run`;
 };
 
-export const AsyncRunCenter: React.FC = () => {
+export const AsyncRunCenter: React.FC<AsyncRunCenterProps> = ({ collapsed }) => {
   const [open, setOpen] = React.useState(false);
   const [runs, setRuns] = React.useState<AsyncRunRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -89,20 +93,31 @@ export const AsyncRunCenter: React.FC = () => {
   }, [refreshRuns]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-40" data-name="async-run-center">
-      <div className="flex flex-col items-end gap-2">
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-md transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-          data-name="async-run-center-toggle"
-        >
-          Runs {activeCount > 0 ? `(${activeCount})` : ''}
-        </button>
+    <div data-name="async-run-center">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`w-full relative flex items-center justify-center px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors ${
+          collapsed ? '' : 'border border-gray-700'
+        }`}
+        data-name="async-run-center-toggle"
+        title="Runs"
+      >
+        <ClockIcon className="h-5 w-5 flex-shrink-0" />
+        {activeCount > 0 && (
+          <span
+            className="absolute top-1 right-1 rounded-full bg-blue-600 text-white text-[10px] leading-none px-1.5 py-0.5"
+          >
+            {activeCount}
+          </span>
+        )}
+      </button>
 
-        {open && (
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-name="async-run-center-overlay">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
           <div
-            className="w-[360px] max-w-[90vw] rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
+            className="relative w-[560px] max-w-[95vw] rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
             data-name="async-run-center-panel"
           >
             <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700" data-name="async-run-center-header">
@@ -118,7 +133,7 @@ export const AsyncRunCenter: React.FC = () => {
               </button>
             </div>
 
-            <div className="max-h-96 overflow-y-auto p-2" data-name="async-run-center-body">
+            <div className="max-h-[70vh] overflow-y-auto p-2" data-name="async-run-center-body">
               {loading && runs.length === 0 ? (
                 <p className="px-2 py-3 text-sm text-gray-500 dark:text-gray-400">Loading runs...</p>
               ) : null}
@@ -169,8 +184,8 @@ export const AsyncRunCenter: React.FC = () => {
               })}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
+import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 
 if (!process.env.API_PORT) {
   throw new Error('API_PORT is required for e2e tests.');
@@ -81,6 +81,60 @@ async function cleanupWorkflow(api: APIRequestContext, workflowId: string) {
   }
 }
 
+async function mockWorkflowRunStreamViaRunsApi(
+  page: Page,
+  runId: string,
+  ssePayloads: Array<Record<string, unknown>>
+) {
+  await page.route('**/api/runs', async (route) => {
+    const request = route.request();
+    if (request.method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    const payload = request.postDataJSON() as Record<string, unknown>;
+    const nowIso = new Date().toISOString();
+    const workflowId =
+      typeof payload.workflow_id === 'string' ? payload.workflow_id : null;
+
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        run_id: runId,
+        stream_id: `${runId}-stream`,
+        kind: 'workflow',
+        status: 'running',
+        context_type: typeof payload.context_type === 'string' ? payload.context_type : 'workflow',
+        project_id: typeof payload.project_id === 'string' ? payload.project_id : null,
+        session_id: typeof payload.session_id === 'string' ? payload.session_id : null,
+        workflow_id: workflowId,
+        created_at: nowIso,
+        updated_at: nowIso,
+        started_at: nowIso,
+        finished_at: null,
+        request_payload: payload,
+        result_summary: {},
+        error: null,
+        last_event_id: null,
+        last_seq: 0,
+      }),
+    });
+  });
+
+  await page.route(`**/api/runs/${runId}/stream`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+      body: ssePayloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join(''),
+    });
+  });
+}
+
 test.describe('Workflows launcher', () => {
   test('shared launcher drives workflows views and persists favorites/recents into projects', async ({ page }) => {
     const api = await pwRequest.newContext({ baseURL: API_BASE });
@@ -93,55 +147,43 @@ test.describe('Workflows launcher', () => {
       const workflowName = `e2e-launcher-${nonce}`;
       workflowId = await createEditorRewriteWorkflow(api, workflowName);
 
-      await page.route('**/api/workflows/*/run/stream', async (route) => {
-        const streamId = 'workflow-launcher-stream';
-        const now = Date.now();
-        const payloads = [
-          {
-            flow_event: {
-              event_id: 'evt-1',
-              seq: 1,
-              ts: now,
-              stream_id: streamId,
-              event_type: 'stream_started',
-              stage: 'transport',
-              payload: {},
-            },
+      const streamId = 'workflow-launcher-stream';
+      const now = Date.now();
+      await mockWorkflowRunStreamViaRunsApi(page, 'run-workflow-launcher-1', [
+        {
+          flow_event: {
+            event_id: 'evt-1',
+            seq: 1,
+            ts: now,
+            stream_id: streamId,
+            event_type: 'stream_started',
+            stage: 'transport',
+            payload: {},
           },
-          {
-            flow_event: {
-              event_id: 'evt-2',
-              seq: 2,
-              ts: now + 1,
-              stream_id: streamId,
-              event_type: 'text_delta',
-              stage: 'content',
-              payload: { text: 'launcher output\n' },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-2',
+            seq: 2,
+            ts: now + 1,
+            stream_id: streamId,
+            event_type: 'text_delta',
+            stage: 'content',
+            payload: { text: 'launcher output\n' },
           },
-          {
-            flow_event: {
-              event_id: 'evt-3',
-              seq: 3,
-              ts: now + 2,
-              stream_id: streamId,
-              event_type: 'stream_ended',
-              stage: 'transport',
-              payload: { done: true },
-            },
+        },
+        {
+          flow_event: {
+            event_id: 'evt-3',
+            seq: 3,
+            ts: now + 2,
+            stream_id: streamId,
+            event_type: 'stream_ended',
+            stage: 'transport',
+            payload: { done: true },
           },
-        ];
-
-        await route.fulfill({
-          status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          },
-          body: payloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join(''),
-        });
-      });
+        },
+      ]);
 
       await page.goto('/workflows');
       await expect(page.locator('[data-name="workflows-module"]')).toBeVisible();

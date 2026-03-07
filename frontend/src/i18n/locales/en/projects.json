@@ -104,6 +104,7 @@
   "fileViewer.refreshing": "Refreshing...",
   "fileViewer.refreshConfirmDiscard": "You have unsaved changes. Refreshing will discard them. Continue?",
   "fileViewer.refreshFailed": "Failed to refresh project files.",
+  "fileViewer.insertFailed": "Failed to insert content into chat. Please try again.",
   "fileViewer.markdownModeEdit": "Markdown Text",
   "fileViewer.markdownModePreview": "Markdown Preview",
 

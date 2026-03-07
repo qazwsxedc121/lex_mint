@@ -9,7 +9,6 @@ import { Outlet } from 'react-router-dom';
 import { GlobalSidebar } from './GlobalSidebar';
 import { useCommandPalette } from '../hooks/useCommandPalette';
 import { CommandPalette } from '../components/CommandPalette';
-import { AsyncRunCenter } from '../components/AsyncRunCenter';
 
 export const MainLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -30,7 +29,6 @@ export const MainLayout: React.FC = () => {
 
       {/* Command Palette (Global Overlay) */}
       <CommandPalette isOpen={isOpen} onClose={close} />
-      <AsyncRunCenter />
     </div>
   );
 };
