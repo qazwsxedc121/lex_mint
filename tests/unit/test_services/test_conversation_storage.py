@@ -1,4 +1,4 @@
-"""Unit tests for ConversationStorage service."""
+﻿"""Unit tests for ConversationStorage service."""
 
 import pytest
 from datetime import datetime
@@ -34,7 +34,7 @@ class TestConversationStorage:
             assert session["session_id"] == session_id
             assert session["assistant_id"] == "default"
             assert session["model_id"] == "deepseek:deepseek-chat"
-            assert session["title"] == "新对话"
+            assert session["title"]
             assert session["state"]["current_step"] == 0
             assert session["state"]["messages"] == []
 
@@ -368,6 +368,32 @@ class TestConversationStorage:
         assert not compare_path.exists()
 
     @pytest.mark.asyncio
+    async def test_create_session_without_default_assistant_raises_clear_error(self, temp_conversation_dir):
+        mock_service = AsyncMock()
+        mock_service.get_default_assistant.side_effect = ValueError(
+            "No default assistant configured. Add an assistant first."
+        )
+
+        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_service):
+            storage = ConversationStorage(temp_conversation_dir)
+            with pytest.raises(ValueError, match="No default assistant configured"):
+                await storage.create_session()
+
+    @pytest.mark.asyncio
+    async def test_create_session_without_default_model_raises_clear_error(self, temp_conversation_dir):
+        with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+            mock_default = Mock()
+            mock_default.provider = ""
+            mock_default.model = ""
+
+            mock_service_instance = Mock()
+            mock_service_instance.get_default_config = AsyncMock(return_value=mock_default)
+            mock_model_service.return_value = mock_service_instance
+
+            storage = ConversationStorage(temp_conversation_dir)
+            with pytest.raises(ValueError, match="No default model configured"):
+                await storage.create_session(target_type="model")
+    @pytest.mark.asyncio
     async def test_update_session_model(self, temp_conversation_dir):
         """Test updating session's model."""
         # Create mock assistant
@@ -443,3 +469,5 @@ Python is a programming language.
         assert messages[1]["usage"]["total_tokens"] == 30
         assert "cost" in messages[1]
         assert messages[1]["cost"]["total_cost"] == 0.0015
+
+

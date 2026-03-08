@@ -1,8 +1,4 @@
 default:
-  provider: deepseek
-  model: deepseek-chat
-reasoning_supported_patterns:
-- deepseek-chat
-- glm-
-- qwen3-
-- qwq-
+  provider: ""
+  model: ""
+reasoning_supported_patterns: []

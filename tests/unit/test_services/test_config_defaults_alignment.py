@@ -1,4 +1,4 @@
-"""Regression tests for config services that should follow defaults YAML."""
+﻿"""Regression tests for config services that should follow defaults YAML."""
 
 import asyncio
 from pathlib import Path
@@ -63,14 +63,12 @@ def test_followup_service_falls_back_to_defaults_yaml(tmp_path):
     assert service.config.count == defaults["count"]
 
 
-def test_assistant_config_service_uses_defaults_yaml_for_bootstrap(tmp_path):
+def test_assistant_config_service_uses_empty_defaults_yaml(tmp_path):
     config_path = tmp_path / "assistants_config.yaml"
 
     service = AssistantConfigService(config_path=config_path)
     config = asyncio.run(service.load_config())
 
-    code_assistant = next(assistant for assistant in config.assistants if assistant.id == "code-assistant")
-    defaults = _load_defaults("assistants_config.yaml", "assistants")
-    default_code_assistant = next(assistant for assistant in defaults if assistant["id"] == "code-assistant")
+    assert config.default == ""
+    assert config.assistants == []
 
-    assert code_assistant.model_id == default_code_assistant["model_id"]

@@ -178,22 +178,21 @@ class AssistantConfigService:
 
     async def delete_assistant(self, assistant_id: str):
         """
-        Delete assistant
+        Delete assistant.
 
         Raises:
-            ValueError: If assistant not found or is default assistant
+            ValueError: If assistant not found.
         """
         config = await self.load_config()
-
-        # Check if it's the default assistant
-        if config.default == assistant_id:
-            raise ValueError(f"Cannot delete default assistant '{assistant_id}'")
 
         original_count = len(config.assistants)
         config.assistants = [a for a in config.assistants if a.id != assistant_id]
 
         if len(config.assistants) == original_count:
             raise ValueError(f"Assistant with id '{assistant_id}' not found")
+
+        if config.default == assistant_id:
+            config.default = ""
 
         await self.save_config(config)
 
@@ -206,12 +205,15 @@ class AssistantConfigService:
 
     async def get_default_assistant(self) -> Assistant:
         """
-        Get default assistant
+        Get default assistant.
 
         Raises:
-            ValueError: If default assistant not found
+            ValueError: If no default assistant is configured or it cannot be found.
         """
         config = await self.load_config()
+        if not config.default:
+            raise ValueError("No default assistant configured. Add an assistant first.")
+
         assistant = await self.get_assistant(config.default)
         if not assistant:
             raise ValueError(f"Default assistant '{config.default}' not found")
@@ -317,3 +319,4 @@ class AssistantConfigService:
             presence_penalty=None,
             enabled=True
         )
+

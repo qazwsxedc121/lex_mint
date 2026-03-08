@@ -1,4 +1,4 @@
-"""Unit tests for ModelConfigService."""
+﻿"""Unit tests for ModelConfigService."""
 
 import pytest
 import yaml
@@ -39,7 +39,7 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_ensure_config_exists(self, temp_config_dir):
-        """Test that default config is created if it doesn't exist."""
+        """Test that an empty runtime config is created if it doesn't exist."""
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
@@ -50,15 +50,15 @@ class TestModelConfigService:
         assert (temp_config_dir / "app_defaults.yaml").exists()
         assert keys_path.exists()
 
-        # Verify default config structure
         data = await service.load_config()
-        assert data.default.provider
-        assert data.providers
-        assert data.models
+        assert data.default.provider == ""
+        assert data.default.model == ""
+        assert data.providers == []
+        assert data.models == []
 
     @pytest.mark.asyncio
     async def test_sync_builtin_supports_model_list_flag(self):
-        """Builtin providers should refresh non-editable model-list support flags."""
+        """Builtin sync should only update metadata for providers already in local config."""
         test_dir = Path(".tmp") / "test_sync_builtin_supports_model_list_flag"
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
@@ -102,11 +102,7 @@ class TestModelConfigService:
 
             assert provider is not None
             assert provider.supports_model_list is True
-            assert stepfun is not None
-            assert stepfun.base_url == "https://api.stepfun.com/v1"
-            assert stepfun.sdk_class == "openai"
-            assert stepfun.supports_model_list is True
-            assert stepfun.enabled is False
+            assert stepfun is None
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -160,7 +156,7 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_default_config_uses_single_bootstrap_model(self):
-        """Fresh config should avoid preloading large builtin model catalogs."""
+        """Fresh config should stay empty instead of bootstrapping providers or models."""
         test_dir = Path(".tmp") / "test_default_config_uses_single_bootstrap_model"
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
@@ -171,18 +167,11 @@ class TestModelConfigService:
             service = ModelConfigService(config_path, keys_path)
             config = await service.load_config()
             defaults = self._load_repo_defaults()
-            default_config = defaults["default"]
-            default_model_entry = next(
-                model
-                for model in defaults["models"]
-                if model["provider_id"] == default_config["provider"] and model["id"] == default_config["model"]
-            )
 
-            assert config.default.provider == default_config["provider"]
-            assert config.default.model == default_config["model"]
-            assert len(config.models) == 1
-            assert config.models[0].provider_id == default_model_entry["provider_id"]
-            assert config.models[0].id == default_model_entry["id"]
+            assert config.default.provider == ""
+            assert config.default.model == ""
+            assert config.providers == []
+            assert config.models == []
             assert config.reasoning_supported_patterns == defaults.get("reasoning_supported_patterns", [])
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
@@ -242,7 +231,7 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing(self):
-        """Builtin sync should reuse an existing enabled model before injecting bootstrap defaults."""
+        """Builtin sync should clear invalid defaults instead of auto-selecting a replacement."""
         test_dir = Path(".tmp") / "test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing"
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
@@ -283,8 +272,8 @@ class TestModelConfigService:
             service = ModelConfigService(config_path, keys_path)
             config = await service.load_config()
 
-            assert config.default.provider == "openrouter"
-            assert config.default.model == "openai/gpt-5-nano"
+            assert config.default.provider == ""
+            assert config.default.model == ""
             assert len(config.models) == 1
             assert config.models[0].provider_id == "openrouter"
             assert config.models[0].id == "openai/gpt-5-nano"
@@ -341,7 +330,7 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_layered_bootstrap_ignores_defaults_model_catalog(self, monkeypatch, temp_config_dir):
-        """Layered runtime bootstrap should use generated minimal config instead of defaults catalogs."""
+        """Layered runtime bootstrap should ignore tracked defaults and stay empty."""
         defaults_dir = temp_config_dir / "defaults"
         local_dir = temp_config_dir / "local"
         legacy_dir = temp_config_dir / "legacy"
@@ -402,9 +391,10 @@ class TestModelConfigService:
         service = ModelConfigService()
         config = await service.load_config()
 
-        assert len(config.models) == 1
-        assert config.models[0].id == "deepseek-chat"
-        assert config.models[0].provider_id == "deepseek"
+        assert config.default.provider == ""
+        assert config.default.model == ""
+        assert config.providers == []
+        assert config.models == []
 
     @pytest.mark.asyncio
     async def test_test_provider_connection_logs_failures(self, temp_config_dir, monkeypatch, caplog):
@@ -566,7 +556,23 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_delete_default_provider(self, temp_config_dir, sample_model_config):
-        """Test that default provider cannot be deleted."""
+        """Deleting a deletable default provider should clear the default selection."""
+        sample_model_config["default"] = {"provider": "custom-openai", "model": "gpt-4-custom"}
+        sample_model_config["providers"].append({
+            "id": "custom-openai",
+            "name": "Custom OpenAI",
+            "type": "custom",
+            "protocol": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "enabled": True,
+        })
+        sample_model_config["models"].append({
+            "id": "gpt-4-custom",
+            "name": "GPT-4 Custom",
+            "provider_id": "custom-openai",
+            "tags": ["chat"],
+            "enabled": True,
+        })
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
@@ -576,9 +582,13 @@ class TestModelConfigService:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
+        await service.delete_provider("custom-openai")
 
-        with pytest.raises(ValueError, match="Cannot delete default provider"):
-            await service.delete_provider("deepseek")
+        config = await service.load_config()
+        assert config.default.provider == ""
+        assert config.default.model == ""
+        assert all(provider.id != "custom-openai" for provider in config.providers)
+        assert all(model.provider_id != "custom-openai" for model in config.models)
 
     @pytest.mark.asyncio
     async def test_get_models(self, temp_config_dir, sample_model_config):
@@ -692,7 +702,7 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_delete_default_model(self, temp_config_dir, sample_model_config):
-        """Test that default model cannot be deleted."""
+        """Deleting the default model should clear the default selection."""
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
@@ -702,9 +712,49 @@ class TestModelConfigService:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
+        await service.delete_model("deepseek-chat")
 
-        with pytest.raises(ValueError, match="Cannot delete default model"):
-            await service.delete_model("deepseek-chat")
+        config = await service.load_config()
+        assert config.default.provider == ""
+        assert config.default.model == ""
+        assert all(model.id != "deepseek-chat" for model in config.models)
+
+    @pytest.mark.asyncio
+    async def test_disable_default_model_clears_default(self, temp_config_dir, sample_model_config):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(sample_model_config, f)
+        with open(keys_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump({"providers": {}}, f)
+
+        service = ModelConfigService(config_path, keys_path)
+        default_model = await service.get_model("deepseek-chat")
+        assert default_model is not None
+        updated_model = default_model.model_copy(update={"enabled": False})
+
+        await service.update_model("deepseek-chat", updated_model)
+
+        config = await service.load_config()
+        assert config.default.provider == ""
+        assert config.default.model == ""
+        disabled_model = await service.get_model("deepseek-chat")
+        assert disabled_model is not None
+        assert disabled_model.enabled is False
+
+    @pytest.mark.asyncio
+    async def test_get_model_and_provider_sync_without_default_raises_clear_error(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+
+        with open(keys_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump({"providers": {}}, f)
+
+        service = ModelConfigService(config_path, keys_path)
+
+        with pytest.raises(ValueError, match="No default model configured"):
+            service.get_model_and_provider_sync()
 
     @pytest.mark.asyncio
     async def test_api_key_operations(self, temp_config_dir, sample_model_config):
@@ -1146,3 +1196,7 @@ class TestModelConfigService:
             assert model.capabilities.reasoning_controls.disable_supported is True
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
+
+
+
+
