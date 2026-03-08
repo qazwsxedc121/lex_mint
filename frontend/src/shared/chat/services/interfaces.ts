@@ -132,7 +132,7 @@ export interface ChatAPI {
   downloadFile(sessionId: string, messageIndex: number, filename: string): Promise<Blob>;
 
   // Assistant & model
-  listAssistants(): Promise<Assistant[]>;
+  listAssistants(enabledOnly?: boolean): Promise<Assistant[]>;
   getAssistant(assistantId: string): Promise<Assistant>;
   getModelCapabilities(modelId: string): Promise<CapabilitiesResponse>;
   generateTitleManually(sessionId: string): Promise<{ message: string; title: string }>;

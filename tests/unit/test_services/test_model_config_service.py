@@ -1197,6 +1197,64 @@ class TestModelConfigService:
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    @pytest.mark.asyncio
+    async def test_get_models_enabled_only_filters_models_with_disabled_provider(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        service = ModelConfigService(config_path, keys_path)
+        config = await service.load_config()
+        config.providers = [
+            Provider(id="enabled-provider", name="Enabled", base_url="https://enabled.test", enabled=True),
+            Provider(id="disabled-provider", name="Disabled", base_url="https://disabled.test", enabled=False),
+        ]
+        config.models = [
+            Model(id="ready", name="Ready", provider_id="enabled-provider", enabled=True),
+            Model(id="provider-off", name="Provider Off", provider_id="disabled-provider", enabled=True),
+            Model(id="model-off", name="Model Off", provider_id="enabled-provider", enabled=False),
+        ]
+        await service.save_config(config)
+
+        models = await service.get_models(enabled_only=True)
+
+        assert [model.id for model in models] == ["ready"]
+
+    @pytest.mark.asyncio
+    async def test_get_providers_enabled_only_filters_disabled_entries(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        service = ModelConfigService(config_path, keys_path)
+        config = await service.load_config()
+        config.providers = [
+            Provider(id="enabled-provider", name="Enabled", base_url="https://enabled.test", enabled=True),
+            Provider(id="disabled-provider", name="Disabled", base_url="https://disabled.test", enabled=False),
+        ]
+        await service.save_config(config)
+
+        providers = await service.get_providers(enabled_only=True)
+
+        assert [provider.id for provider in providers] == ["enabled-provider"]
+
+    @pytest.mark.asyncio
+    async def test_get_llm_instance_rejects_explicit_model_when_provider_disabled(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        service = ModelConfigService(config_path, keys_path)
+        config = ModelsConfig(
+            default={"provider": "", "model": ""},
+            providers=[
+                Provider(id="openai", name="OpenAI", base_url="https://api.openai.com/v1", enabled=False),
+            ],
+            models=[
+                Model(id="gpt-4", name="GPT-4", provider_id="openai", enabled=True),
+            ],
+            reasoning_supported_patterns=[],
+        )
+
+        await service.save_config(config)
+
+        with pytest.raises(ValueError, match="Provider 'openai' is disabled"):
+            service.get_llm_instance("openai:gpt-4")
+
 
 
 

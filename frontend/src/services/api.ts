@@ -1771,8 +1771,11 @@ export async function downloadFile(
 /**
  * List providers.
  */
-export async function listProviders(): Promise<Provider[]> {
-  const response = await api.get<Provider[]>('/api/models/providers');
+export async function listProviders(enabledOnly: boolean = false): Promise<Provider[]> {
+  const url = enabledOnly
+    ? '/api/models/providers?enabled_only=true'
+    : '/api/models/providers';
+  const response = await api.get<Provider[]>(url);
   return response.data;
 }
 
@@ -1811,10 +1814,16 @@ export async function deleteProvider(providerId: string): Promise<void> {
 /**
  * List models.
  */
-export async function listModels(providerId?: string): Promise<Model[]> {
-  const url = providerId
-    ? `/api/models/list?provider_id=${providerId}`
-    : '/api/models/list';
+export async function listModels(providerId?: string, enabledOnly: boolean = false): Promise<Model[]> {
+  const params = new URLSearchParams();
+  if (providerId) {
+    params.append('provider_id', providerId);
+  }
+  if (enabledOnly) {
+    params.append('enabled_only', 'true');
+  }
+  const suffix = params.toString();
+  const url = suffix ? `/api/models/list?${suffix}` : '/api/models/list';
   const response = await api.get<Model[]>(url);
   return response.data;
 }
@@ -1972,8 +1981,11 @@ export async function updateSessionParamOverrides(
 /**
  * List Assistants.
  */
-export async function listAssistants(): Promise<Assistant[]> {
-  const response = await api.get<Assistant[]>('/api/assistants');
+export async function listAssistants(enabledOnly: boolean = false): Promise<Assistant[]> {
+  const url = enabledOnly
+    ? '/api/assistants?enabled_only=true'
+    : '/api/assistants';
+  const response = await api.get<Assistant[]>(url);
   return response.data;
 }
 
@@ -2937,4 +2949,3 @@ export async function updateSessionFolder(
 
   await api.put(`/api/sessions/${sessionId}/folder?${params.toString()}`, { folder_id: folderId });
 }
-

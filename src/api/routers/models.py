@@ -119,9 +119,12 @@ async def get_builtin_provider_info(provider_id: str):
 
 
 @router.get("/providers", response_model=List[Provider])
-async def list_providers(service: ModelConfigService = Depends(get_model_service)):
+async def list_providers(
+    enabled_only: bool = False,
+    service: ModelConfigService = Depends(get_model_service),
+):
     """获取所有提供商列表"""
-    return await service.get_providers()
+    return await service.get_providers(enabled_only=enabled_only)
 
 
 @router.get("/providers/{provider_id}", response_model=Provider)
@@ -384,6 +387,7 @@ async def test_provider_stored_connection(
 @router.get("/list", response_model=List[Model])
 async def list_models(
     provider_id: Optional[str] = None,
+    enabled_only: bool = False,
     service: ModelConfigService = Depends(get_model_service)
 ):
     """
@@ -392,7 +396,7 @@ async def list_models(
     Args:
         provider_id: 可选，按提供商筛选
     """
-    return await service.get_models(provider_id)
+    return await service.get_models(provider_id, enabled_only=enabled_only)
 
 
 @router.get("/list/{model_id:path}", response_model=Model)

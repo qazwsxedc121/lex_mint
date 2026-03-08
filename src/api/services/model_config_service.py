@@ -751,7 +751,75 @@ class ModelConfigService:
 
     # ==================== Provider Management ====================
 
-    async def get_providers(self) -> List[Provider]:
+    @staticmethod
+    def _is_provider_enabled(provider: Provider) -> bool:
+        return bool(getattr(provider, "enabled", False))
+
+    @classmethod
+    def _is_model_effectively_enabled(cls, model: Model, provider: Optional[Provider]) -> bool:
+        return provider is not None and bool(getattr(model, "enabled", False)) and cls._is_provider_enabled(provider)
+
+    @classmethod
+    def _resolve_model_and_provider_from_config(
+        cls,
+        config: ModelsConfig,
+        model_id: Optional[str] = None,
+    ) -> Tuple[Model, Provider, str, bool]:
+        requested_model_id = model_id
+        using_default_model = requested_model_id is None
+        if requested_model_id is None:
+            requested_model_id = cls._require_default_model_lookup_id(config)
+
+        model = cls._find_model_in_config(config, requested_model_id)
+        if not model:
+            raise ValueError(f"Model with id '{requested_model_id}' not found")
+
+        provider = next((p for p in config.providers if p.id == model.provider_id), None)
+        if not provider:
+            raise ValueError(f"Provider with id '{model.provider_id}' not found")
+
+        return model, provider, requested_model_id, using_default_model
+
+    @classmethod
+    def _ensure_model_is_enabled(
+        cls,
+        *,
+        model: Model,
+        provider: Provider,
+        requested_model_id: str,
+        using_default_model: bool,
+    ) -> None:
+        if cls._is_model_effectively_enabled(model, provider):
+            return
+
+        if using_default_model:
+            raise ValueError(
+                f"Default model '{requested_model_id}' is disabled. Configure another default model first."
+            )
+
+        if not bool(model.enabled):
+            raise ValueError(f"Model '{requested_model_id}' is disabled")
+
+        raise ValueError(
+            f"Provider '{provider.id}' is disabled, so model '{requested_model_id}' is unavailable"
+        )
+
+    async def require_enabled_model(self, model_id: Optional[str] = None) -> Tuple[Model, Provider]:
+        """Resolve a model/provider pair and ensure both are enabled."""
+        config = await self.load_config()
+        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
+            config,
+            model_id,
+        )
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=requested_model_id,
+            using_default_model=using_default_model,
+        )
+        return model, provider
+
+    async def get_providers(self, enabled_only: bool = False) -> List[Provider]:
         """Get all providers, including has_api_key metadata."""
         config = await self.load_config()
         providers_with_keys = []
@@ -763,7 +831,10 @@ class ModelConfigService:
             provider_dict = provider.model_dump()
             provider_dict['has_api_key'] = has_key
             provider_dict['requires_api_key'] = requires_key
-            providers_with_keys.append(Provider(**provider_dict))
+            provider_obj = Provider(**provider_dict)
+            if enabled_only and not self._is_provider_enabled(provider_obj):
+                continue
+            providers_with_keys.append(provider_obj)
         return providers_with_keys
 
     async def get_provider(self, provider_id: str, include_masked_key: bool = False) -> Optional[Provider]:
@@ -910,7 +981,7 @@ class ModelConfigService:
         await self.save_config(config)
     # ==================== Model Management ====================
 
-    async def get_models(self, provider_id: Optional[str] = None) -> List[Model]:
+    async def get_models(self, provider_id: Optional[str] = None, enabled_only: bool = False) -> List[Model]:
         """
         Get models, optionally filtered by provider.
 
@@ -918,9 +989,16 @@ class ModelConfigService:
             provider_id: Provider ID to filter by.
         """
         config = await self.load_config()
+        providers_by_id = {provider.id: provider for provider in config.providers}
+        models = config.models
         if provider_id:
-            return [m for m in config.models if m.provider_id == provider_id]
-        return config.models
+            models = [m for m in models if m.provider_id == provider_id]
+        if enabled_only:
+            models = [
+                model for model in models
+                if self._is_model_effectively_enabled(model, providers_by_id.get(model.provider_id))
+            ]
+        return models
 
     async def get_model(self, model_id: str) -> Optional[Model]:
         """
@@ -1116,14 +1194,15 @@ class ModelConfigService:
             raise ValueError(f"Model with id '{model_id}' not found")
         if model.provider_id != provider_id:
             raise ValueError(f"Model '{model_id}' does not belong to provider '{provider_id}'")
-        if not bool(model.enabled):
-            raise ValueError(f"Model '{model_id}' is disabled and cannot be set as default")
-
         provider = next((p for p in config.providers if p.id == provider_id), None)
         if not provider:
             raise ValueError(f"Provider with id '{provider_id}' not found")
-        if not bool(provider.enabled):
-            raise ValueError(f"Provider '{provider_id}' is disabled and cannot be set as default")
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=f"{provider_id}:{model_id}",
+            using_default_model=False,
+        )
 
         config.default.provider = provider_id
         config.default.model = model_id
@@ -1209,22 +1288,16 @@ class ModelConfigService:
         """
         config = ModelsConfig(**self._load_split_config())
 
-        requested_model_id = model_id
-        if requested_model_id is None:
-            requested_model_id = self._require_default_model_lookup_id(config)
-
-        model = self._find_model_in_config(config, requested_model_id)
-        if not model:
-            raise ValueError(f"Model with id '{requested_model_id}' not found")
-
-        provider = next((p for p in config.providers if p.id == model.provider_id), None)
-        if not provider:
-            raise ValueError(f"Provider with id '{model.provider_id}' not found")
-
-        if model_id is None and (not bool(model.enabled) or not bool(provider.enabled)):
-            raise ValueError(
-                f"Default model '{requested_model_id}' is disabled. Configure another default model first."
-            )
+        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
+            config,
+            model_id,
+        )
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=requested_model_id,
+            using_default_model=using_default_model,
+        )
 
         return model, provider
 
@@ -1499,22 +1572,16 @@ class ModelConfigService:
         """
         config = ModelsConfig(**self._load_split_config())
 
-        requested_model_id = model_id
-        if requested_model_id is None:
-            requested_model_id = self._require_default_model_lookup_id(config)
-
-        model = self._find_model_in_config(config, requested_model_id)
-        if not model:
-            raise ValueError(f"Model with id '{requested_model_id}' not found")
-
-        provider = next((p for p in config.providers if p.id == model.provider_id), None)
-        if not provider:
-            raise ValueError(f"Provider with id '{model.provider_id}' not found")
-
-        if model_id is None and (not bool(model.enabled) or not bool(provider.enabled)):
-            raise ValueError(
-                f"Default model '{requested_model_id}' is disabled. Configure another default model first."
-            )
+        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
+            config,
+            model_id,
+        )
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=requested_model_id,
+            using_default_model=using_default_model,
+        )
 
         api_key = self.resolve_provider_api_key_sync(provider)
 

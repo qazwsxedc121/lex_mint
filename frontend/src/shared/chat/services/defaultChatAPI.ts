@@ -83,7 +83,7 @@ export const defaultChatAPI: ChatAPI = {
   downloadFile: api.downloadFile,
 
   // Assistant & model
-  listAssistants: api.listAssistants,
+  listAssistants: (enabledOnly?: boolean) => api.listAssistants(enabledOnly),
   getAssistant: api.getAssistant,
   getModelCapabilities: api.getModelCapabilities,
   generateTitleManually: api.generateTitleManually,

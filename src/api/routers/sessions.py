@@ -121,18 +121,16 @@ async def _normalize_and_validate_group_assistants(group_assistants: Optional[Li
     for participant_token in normalized:
         participant = parse_group_participant(participant_token)
         if participant.kind == "assistant":
-            assistant = await assistant_service.get_assistant(participant.value)
-            if not assistant:
-                raise HTTPException(status_code=400, detail=f"Assistant '{participant.value}' not found")
-            if not assistant.enabled:
-                raise HTTPException(status_code=400, detail=f"Assistant '{participant.value}' is not enabled")
+            try:
+                await assistant_service.require_enabled_assistant(participant.value)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             continue
 
-        model = await model_service.get_model(participant.value)
-        if not model:
-            raise HTTPException(status_code=400, detail=f"Model '{participant.value}' not found")
-        if not model.enabled:
-            raise HTTPException(status_code=400, detail=f"Model '{participant.value}' is not enabled")
+        try:
+            await model_service.require_enabled_model(participant.value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return normalized
 
@@ -1368,4 +1366,3 @@ async def update_session_folder(
         raise HTTPException(status_code=404, detail="Session not found")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-

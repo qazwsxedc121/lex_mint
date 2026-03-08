@@ -25,9 +25,12 @@ def get_assistant_service() -> AssistantConfigService:
 # ==================== Assistant Management ====================
 
 @router.get("", response_model=List[Assistant])
-async def list_assistants(service: AssistantConfigService = Depends(get_assistant_service)):
+async def list_assistants(
+    enabled_only: bool = False,
+    service: AssistantConfigService = Depends(get_assistant_service),
+):
     """Get all assistants list"""
-    return await service.get_assistants()
+    return await service.get_assistants(enabled_only=enabled_only)
 
 
 @router.get("/{assistant_id}", response_model=Assistant)

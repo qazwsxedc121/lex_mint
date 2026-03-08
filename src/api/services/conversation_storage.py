@@ -124,9 +124,7 @@ class ConversationStorage:
 
             assistant_service = AssistantConfigService()
             if assistant_id:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if not assistant:
-                    raise ValueError(f"Assistant '{assistant_id}' not found")
+                assistant = await assistant_service.require_enabled_assistant(assistant_id)
             else:
                 assistant = await assistant_service.get_default_assistant()
                 assistant_id = assistant.id
@@ -136,15 +134,11 @@ class ConversationStorage:
 
             model_service = ModelConfigService()
             if model_id:
-                model_obj = await model_service.get_model(model_id)
-                if not model_obj:
-                    raise ValueError(f"Model '{model_id}' not found")
+                model_obj, _provider_obj = await model_service.require_enabled_model(model_id)
                 model_id = f"{model_obj.provider_id}:{model_obj.id}"
             else:
-                default_model = await model_service.get_default_config()
-                if not default_model.provider or not default_model.model:
-                    raise ValueError("No default model configured. Add a provider and model first.")
-                model_id = f"{default_model.provider}:{default_model.model}"
+                default_model_obj, _provider_obj = await model_service.require_enabled_model()
+                model_id = f"{default_model_obj.provider_id}:{default_model_obj.id}"
             assistant_id = None
         else:
             # Legacy default path: no explicit target => default assistant.
@@ -1382,9 +1376,7 @@ class ConversationStorage:
 
             assistant_service = AssistantConfigService()
             if assistant_id:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if not assistant:
-                    raise ValueError(f"Assistant '{assistant_id}' not found")
+                assistant = await assistant_service.require_enabled_assistant(assistant_id)
             else:
                 assistant = await assistant_service.get_default_assistant()
                 assistant_id = assistant.id
@@ -1398,20 +1390,9 @@ class ConversationStorage:
 
             model_service = ModelConfigService()
             if model_id:
-                model_obj = await model_service.get_model(model_id)
-                if not model_obj:
-                    raise ValueError(f"Model '{model_id}' not found")
+                model_obj, _provider_obj = await model_service.require_enabled_model(model_id)
             else:
-                default_model = await model_service.get_default_config()
-                if not default_model.provider or not default_model.model:
-                    raise ValueError("No default model configured. Add a provider and model first.")
-                composite_id = f"{default_model.provider}:{default_model.model}"
-                model_obj = await model_service.get_model(composite_id)
-                if not model_obj:
-                    raise ValueError(f"Default model '{composite_id}' not found")
-
-            if not model_obj.enabled:
-                raise ValueError(f"Model '{model_obj.provider_id}:{model_obj.id}' is not enabled")
+                model_obj, _provider_obj = await model_service.require_enabled_model()
 
             post.metadata.pop("assistant_id", None)
             post.metadata["model_id"] = f"{model_obj.provider_id}:{model_obj.id}"
@@ -1422,23 +1403,14 @@ class ConversationStorage:
             await f.write(frontmatter.dumps(post))
 
     async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
-        """Legacy model setter that only updates the stored model_id.
-
-        Keep this behavior for backward compatibility with older call paths
-        that expect model updates without target/model validation.
-        """
-        filepath = await self._find_session_file(session_id, context_type, project_id)
-        if not filepath:
-            raise FileNotFoundError(f"Session {session_id} not found")
-
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
-            file_content = await f.read()
-        post = frontmatter.loads(file_content)
-
-        post.metadata["model_id"] = model_id
-
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(frontmatter.dumps(post))
+        """Backward-compatible wrapper for setting model target."""
+        await self.update_session_target(
+            session_id,
+            target_type="model",
+            model_id=model_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
 
     async def update_session_assistant(self, session_id: str, assistant_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Backward-compatible wrapper for setting assistant target."""

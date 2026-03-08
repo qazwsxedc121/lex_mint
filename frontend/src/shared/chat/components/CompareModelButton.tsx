@@ -62,15 +62,14 @@ export const CompareModelButton: React.FC<CompareModelButtonProps> = ({
       setLoadingModels(true);
       try {
         const [providerList, modelList] = await Promise.all([
-          listProviders(),
-          listModels(),
+          listProviders(true),
+          listModels(undefined, true),
         ]);
 
         const providerMap = new Map(providerList.map(p => [p.id, p.name]));
         const options: ModelOption[] = [];
 
         for (const model of modelList) {
-          if (!model.enabled) continue;
           const providerName = providerMap.get(model.provider_id) || model.provider_id;
           options.push({
             compositeId: `${model.provider_id}:${model.id}`,

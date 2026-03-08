@@ -49,7 +49,7 @@ class TestConversationStorage:
                 mock_model.provider_id = "deepseek"
 
                 mock_service_instance = Mock()
-                mock_service_instance.get_model = AsyncMock(return_value=mock_model)
+                mock_service_instance.require_enabled_model = AsyncMock(return_value=(mock_model, Mock()))
                 mock_model_service.return_value = mock_service_instance
 
                 storage = ConversationStorage(temp_conversation_dir)
@@ -382,12 +382,10 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_create_session_without_default_model_raises_clear_error(self, temp_conversation_dir):
         with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
-            mock_default = Mock()
-            mock_default.provider = ""
-            mock_default.model = ""
-
             mock_service_instance = Mock()
-            mock_service_instance.get_default_config = AsyncMock(return_value=mock_default)
+            mock_service_instance.require_enabled_model = AsyncMock(
+                side_effect=ValueError("No default model configured. Add a provider and model first.")
+            )
             mock_model_service.return_value = mock_service_instance
 
             storage = ConversationStorage(temp_conversation_dir)
@@ -404,22 +402,33 @@ class TestConversationStorage:
         mock_service = AsyncMock()
         mock_service.get_default_assistant.return_value = default_assistant
         mock_service.get_assistant.return_value = default_assistant
+        mock_service.require_enabled_assistant.return_value = default_assistant
 
         with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_service):
-            storage = ConversationStorage(temp_conversation_dir)
-            session_id = await storage.create_session(assistant_id="default")
+            with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+                model_obj = Mock()
+                model_obj.id = "gpt-4"
+                model_obj.provider_id = "openai"
+                model_obj.chat_template = None
 
-            # Update model
-            await storage.update_session_model(session_id, "openai:gpt-4")
+                model_service_instance = Mock()
+                model_service_instance.require_enabled_model = AsyncMock(return_value=(model_obj, Mock()))
+                mock_model_service.return_value = model_service_instance
 
-            # Verify - read file directly since get_session may override model_id
-            import frontmatter
-            filepath = await storage._find_session_file(session_id)
-            assert filepath is not None
-            with open(filepath, 'r', encoding='utf-8') as f:
-                post = frontmatter.load(f)
+                storage = ConversationStorage(temp_conversation_dir)
+                session_id = await storage.create_session(assistant_id="default")
 
-            assert post.metadata["model_id"] == "openai:gpt-4"
+                # Update model
+                await storage.update_session_model(session_id, "openai:gpt-4")
+
+                # Verify - read file directly since get_session may override model_id
+                import frontmatter
+                filepath = await storage._find_session_file(session_id)
+                assert filepath is not None
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    post = frontmatter.load(f)
+
+                assert post.metadata["model_id"] == "openai:gpt-4"
 
     @pytest.mark.asyncio
     async def test_update_session_assistant(self, temp_conversation_dir, mock_assistant_service):
@@ -430,6 +439,7 @@ class TestConversationStorage:
             new_assistant.id = "coding-expert"
             new_assistant.model_id = "deepseek:deepseek-coder"
             mock_assistant_service.get_assistant.return_value = new_assistant
+            mock_assistant_service.require_enabled_assistant.return_value = new_assistant
 
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
@@ -441,6 +451,51 @@ class TestConversationStorage:
             session = await storage.get_session(session_id)
             assert session["assistant_id"] == "coding-expert"
             assert session["model_id"] == "deepseek:deepseek-coder"
+
+    @pytest.mark.asyncio
+    async def test_update_session_assistant_rejects_disabled_assistant(self, temp_conversation_dir, mock_assistant_service):
+        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+            default_assistant = mock_assistant_service.require_enabled_assistant.return_value
+
+            async def _require_enabled_assistant(assistant_id):
+                if assistant_id == "default":
+                    return default_assistant
+                raise ValueError("Assistant 'disabled' is disabled")
+
+            mock_assistant_service.require_enabled_assistant.side_effect = _require_enabled_assistant
+
+            storage = ConversationStorage(temp_conversation_dir)
+            session_id = await storage.create_session(assistant_id="default")
+
+            with pytest.raises(ValueError, match="Assistant 'disabled' is disabled"):
+                await storage.update_session_assistant(session_id, "disabled")
+
+    @pytest.mark.asyncio
+    async def test_update_session_model_rejects_unavailable_model(self, temp_conversation_dir, mock_assistant_service):
+        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+            with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+                model_obj = Mock()
+                model_obj.id = "gpt-4"
+                model_obj.provider_id = "openai"
+                model_obj.chat_template = None
+
+                model_service_instance = Mock()
+                call_count = {"value": 0}
+
+                async def _require_enabled_model(model_id=None):
+                    call_count["value"] += 1
+                    if call_count["value"] > 1 and model_id == "openai:gpt-4":
+                        raise ValueError("Provider 'openai' is disabled, so model 'openai:gpt-4' is unavailable")
+                    return model_obj, Mock()
+
+                model_service_instance.require_enabled_model = AsyncMock(side_effect=_require_enabled_model)
+                mock_model_service.return_value = model_service_instance
+
+                storage = ConversationStorage(temp_conversation_dir)
+                session_id = await storage.create_session(model_id="openai:gpt-4")
+
+                with pytest.raises(ValueError, match="Provider 'openai' is disabled"):
+                    await storage.update_session_model(session_id, "openai:gpt-4")
 
     @pytest.mark.asyncio
     async def test_parse_messages_with_usage(self, temp_conversation_dir):

@@ -111,10 +111,78 @@ class AssistantConfigService:
 
     # ==================== Assistant Management ====================
 
-    async def get_assistants(self) -> List[Assistant]:
+    async def _find_assistant_in_config(
+        self,
+        config: AssistantsConfig,
+        assistant_id: str,
+    ) -> Optional[Assistant]:
+        for assistant in config.assistants:
+            if assistant.id == assistant_id:
+                return assistant
+        return None
+
+    async def _ensure_assistant_is_enabled(
+        self,
+        assistant: Assistant,
+        *,
+        using_default_assistant: bool,
+    ) -> None:
+        if not bool(assistant.enabled):
+            if using_default_assistant:
+                raise ValueError(
+                    f"Default assistant '{assistant.id}' is disabled. Configure another default assistant first."
+                )
+            raise ValueError(f"Assistant '{assistant.id}' is disabled")
+
+        try:
+            await self.model_service.require_enabled_model(assistant.model_id)
+        except ValueError as exc:
+            if using_default_assistant:
+                raise ValueError(
+                    f"Default assistant '{assistant.id}' is unavailable: {exc}"
+                ) from exc
+            raise ValueError(
+                f"Assistant '{assistant.id}' is unavailable because its model is not enabled: {exc}"
+            ) from exc
+
+    async def require_enabled_assistant(self, assistant_id: Optional[str] = None) -> Assistant:
+        """Resolve an assistant and ensure both the assistant and its model are enabled."""
+        config = await self.load_config()
+        requested_assistant_id = assistant_id or config.default
+        using_default_assistant = assistant_id is None
+
+        if not requested_assistant_id:
+            raise ValueError("No default assistant configured. Add an assistant first.")
+
+        assistant = await self._find_assistant_in_config(config, requested_assistant_id)
+        if not assistant:
+            if using_default_assistant:
+                raise ValueError(f"Default assistant '{requested_assistant_id}' not found")
+            raise ValueError(f"Assistant with id '{requested_assistant_id}' not found")
+
+        await self._ensure_assistant_is_enabled(
+            assistant,
+            using_default_assistant=using_default_assistant,
+        )
+        return assistant
+
+    async def get_assistants(self, enabled_only: bool = False) -> List[Assistant]:
         """Get all assistants"""
         config = await self.load_config()
-        return config.assistants
+        if not enabled_only:
+            return config.assistants
+
+        enabled_assistants: List[Assistant] = []
+        for assistant in config.assistants:
+            try:
+                await self._ensure_assistant_is_enabled(
+                    assistant,
+                    using_default_assistant=False,
+                )
+            except ValueError:
+                continue
+            enabled_assistants.append(assistant)
+        return enabled_assistants
 
     async def get_assistant(self, assistant_id: str) -> Optional[Assistant]:
         """
@@ -127,10 +195,7 @@ class AssistantConfigService:
             Assistant object or None if not found
         """
         config = await self.load_config()
-        for assistant in config.assistants:
-            if assistant.id == assistant_id:
-                return assistant
-        return None
+        return await self._find_assistant_in_config(config, assistant_id)
 
     async def add_assistant(self, assistant: Assistant):
         """
@@ -145,10 +210,7 @@ class AssistantConfigService:
         if any(a.id == assistant.id for a in config.assistants):
             raise ValueError(f"Assistant with id '{assistant.id}' already exists")
 
-        # Validate model_id exists
-        model = await self.model_service.get_model(assistant.model_id)
-        if not model:
-            raise ValueError(f"Model with id '{assistant.model_id}' not found")
+        await self.model_service.require_enabled_model(assistant.model_id)
 
         config.assistants.append(assistant)
         await self.save_config(config)
@@ -162,11 +224,7 @@ class AssistantConfigService:
         """
         config = await self.load_config()
 
-        # Validate model_id if provided
-        if updated.model_id:
-            model = await self.model_service.get_model(updated.model_id)
-            if not model:
-                raise ValueError(f"Model with id '{updated.model_id}' not found")
+        await self.model_service.require_enabled_model(updated.model_id)
 
         for i, assistant in enumerate(config.assistants):
             if assistant.id == assistant_id:
@@ -214,10 +272,7 @@ class AssistantConfigService:
         if not config.default:
             raise ValueError("No default assistant configured. Add an assistant first.")
 
-        assistant = await self.get_assistant(config.default)
-        if not assistant:
-            raise ValueError(f"Default assistant '{config.default}' not found")
-        return assistant
+        return await self.require_enabled_assistant()
 
     async def set_default_assistant(self, assistant_id: str):
         """
@@ -228,9 +283,7 @@ class AssistantConfigService:
         """
         config = await self.load_config()
 
-        # Verify assistant exists
-        if not any(a.id == assistant_id for a in config.assistants):
-            raise ValueError(f"Assistant with id '{assistant_id}' not found")
+        await self.require_enabled_assistant(assistant_id)
 
         config.default = assistant_id
         await self.save_config(config)
@@ -268,9 +321,7 @@ class AssistantConfigService:
         Raises:
             ValueError: If assistant not found or configuration invalid
         """
-        assistant = await self.get_assistant(assistant_id)
-        if not assistant:
-            raise ValueError(f"Assistant with id '{assistant_id}' not found")
+        assistant = await self.require_enabled_assistant(assistant_id)
 
         # Get effective temperature
         temperature = await self.get_effective_temperature(assistant)
@@ -301,9 +352,7 @@ class AssistantConfigService:
         Raises:
             ValueError: If model not found
         """
-        model = await self.model_service.get_model(model_id)
-        if not model:
-            raise ValueError(f"Model with id '{model_id}' not found")
+        model, _provider = await self.model_service.require_enabled_model(model_id)
 
         return Assistant(
             id=f"ephemeral-{model_id.replace(':', '-')}",

@@ -76,11 +76,11 @@ export const WorkflowsModule: React.FC = () => {
     let disposed = false;
     void (async () => {
       try {
-        const models = await listModels();
+        const models = await listModels(undefined, true);
         if (disposed) {
           return;
         }
-        setAvailableModels(models.filter((model) => model.enabled));
+        setAvailableModels(models);
       } catch (err) {
         console.error('Failed to load workflow model options:', err);
       }

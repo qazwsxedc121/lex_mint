@@ -137,8 +137,11 @@ def mock_assistant_service():
     default_assistant.system_prompt = "You are a helpful AI assistant."
     default_assistant.temperature = 0.7
     default_assistant.max_rounds = -1
+    default_assistant.enabled = True
+    default_assistant.memory_enabled = False
 
     mock.get_default_assistant.return_value = default_assistant
     mock.get_assistant.return_value = default_assistant
+    mock.require_enabled_assistant.return_value = default_assistant
 
     return mock

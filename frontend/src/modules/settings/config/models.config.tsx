@@ -378,5 +378,12 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
     edit: true,
     delete: true,
     setDefault: true
+  },
+
+  defaultActionVisibility: {
+    setDefault: (item, context) => {
+      const provider = (context.providers || []).find((candidate: any) => candidate.id === item.provider_id);
+      return item.enabled && !!provider?.enabled;
+    }
   }
 };

@@ -867,16 +867,18 @@ class AgentService:
             from .assistant_config_service import AssistantConfigService
 
             assistant_service = AssistantConfigService()
-            assistant_obj = await assistant_service.get_assistant(participant.value)
-            if not assistant_obj or not assistant_obj.enabled:
+            try:
+                assistant_obj = await assistant_service.require_enabled_assistant(participant.value)
+            except ValueError:
                 return None
             return participant.token, assistant_obj, assistant_obj.name
 
         from .model_config_service import ModelConfigService
 
         model_service = ModelConfigService()
-        model_obj = await model_service.get_model(participant.value)
-        if not model_obj or not model_obj.enabled:
+        try:
+            model_obj, _provider_obj = await model_service.require_enabled_model(participant.value)
+        except ValueError:
             return None
 
         composite_model_id = f"{model_obj.provider_id}:{model_obj.id}"
@@ -1198,4 +1200,3 @@ class AgentService:
             file_references=file_references,
         ):
             yield event
-
