@@ -152,16 +152,14 @@ export const ProjectHomeView: React.FC = () => {
       <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_320px]">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-              <SparklesIcon className="h-4 w-4" />
-              {t('projectHome.eyebrow')}
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
+            <h1 className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
               {currentProject.name}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-              {currentProject.description?.trim() || t('projectHome.descriptionFallback')}
-            </p>
+            {currentProject.description?.trim() && (
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
+                {currentProject.description}
+              </p>
+            )}
 
             <div className="mt-4 rounded-2xl bg-gray-50 px-4 py-3 text-xs text-gray-600 dark:bg-gray-950 dark:text-gray-300">
               {currentProject.root_path}
@@ -251,8 +249,6 @@ export const ProjectHomeView: React.FC = () => {
               <DocumentTextIcon className="h-4 w-4" />
               {t('projectHome.currentWorkTitle')}
             </div>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.currentWorkDescription')}</p>
-
             {workspaceState.loading && !workspaceState.workspaceState ? (
               <div className="mt-4 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.workspaceStateLoading')}</div>
             ) : workspaceState.error && !workspaceState.workspaceState ? (
@@ -287,7 +283,6 @@ export const ProjectHomeView: React.FC = () => {
                   <DocumentTextIcon className="h-4 w-4" />
                   {t('projectHome.recentActivityTitle')}
                 </div>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.recentActivityDescription')}</p>
               </div>
               <button
                 type="button"
@@ -368,7 +363,6 @@ export const ProjectHomeView: React.FC = () => {
               <SparklesIcon className="h-4 w-4" />
               {t('projectHome.aiActionsTitle')}
             </div>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.aiActionsDescription')}</p>
             <div className="mt-4 space-y-2">
               <button
                 type="button"

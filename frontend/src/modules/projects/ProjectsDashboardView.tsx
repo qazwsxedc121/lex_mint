@@ -1,12 +1,10 @@
 import React from 'react';
 import {
   ArrowRightIcon,
-  ChatBubbleLeftRightIcon,
   ClockIcon,
   FolderIcon,
   FolderOpenIcon,
   PlusIcon,
-  SparklesIcon,
   WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
@@ -43,17 +41,9 @@ export const ProjectsDashboardView: React.FC = () => {
       <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_320px]">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
-              <SparklesIcon className="h-4 w-4" />
-              {t('dashboard.eyebrow')}
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
+            <h1 className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
               {t('dashboard.title')}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-              {t('dashboard.description')}
-            </p>
-
             <div className="mt-6 flex flex-wrap gap-3">
               <button
                 type="button"
@@ -92,9 +82,11 @@ export const ProjectsDashboardView: React.FC = () => {
               <div className="mt-4 space-y-4">
                 <div>
                   <div className="text-lg font-semibold text-gray-900 dark:text-white">{recentProject.project.name}</div>
-                  <div className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
-                    {recentProject.project.description?.trim() || t('dashboard.recentProjectFallback')}
-                  </div>
+                  {recentProject.project.description?.trim() && (
+                    <div className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
+                      {recentProject.project.description}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
@@ -133,7 +125,6 @@ export const ProjectsDashboardView: React.FC = () => {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.projectsTitle')}</h2>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{t('dashboard.projectsDescription')}</p>
             </div>
             <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
               {summary.totalProjects}
@@ -166,9 +157,11 @@ export const ProjectsDashboardView: React.FC = () => {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{item.project.name}</div>
-                        <div className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
-                          {item.project.description?.trim() || t('dashboard.projectCardFallback')}
-                        </div>
+                        {item.project.description?.trim() && (
+                          <div className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
+                            {item.project.description}
+                          </div>
+                        )}
                       </div>
                       {item.isCurrent && (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
@@ -194,7 +187,6 @@ export const ProjectsDashboardView: React.FC = () => {
               <FolderIcon className="h-4 w-4" />
               {t('dashboard.quickStartTitle')}
             </div>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('dashboard.quickStartDescription')}</p>
             <div className="mt-4 space-y-2">
               <button
                 type="button"
@@ -217,13 +209,6 @@ export const ProjectsDashboardView: React.FC = () => {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-              <ChatBubbleLeftRightIcon className="h-4 w-4" />
-              {t('dashboard.workflowTitle')}
-            </div>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('dashboard.workflowDescription')}</p>
-          </section>
         </div>
       </section>
     </div>

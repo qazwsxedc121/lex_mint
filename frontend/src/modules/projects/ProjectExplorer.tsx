@@ -306,10 +306,10 @@ export const ProjectExplorer: React.FC = () => {
     <ChatServiceProvider api={projectChatAPI} navigation={navigation}>
       <ChatComposerProvider>
         <ProjectEditorContext.Provider value={editorContextValue}>
-          <div data-name="project-explorer-root" className="flex flex-1 overflow-hidden min-w-0">
+          <div data-name="project-explorer-root" className="flex flex-1 min-h-0 overflow-hidden min-w-0">
             {/* Left: File Tree */}
             {fileTreeOpen && (
-              <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex flex-col border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <div data-name="file-tree-panel" className="w-[300px] flex-shrink-0 flex min-h-0 flex-col overflow-hidden border-r border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
                 <div className="flex-1 overflow-hidden">
                 <FileTree
                   projectId={projectId}
@@ -329,7 +329,7 @@ export const ProjectExplorer: React.FC = () => {
             )}
 
             {/* Center: File Viewer */}
-            <div data-name="file-viewer-panel" className="flex-1 min-w-0 flex flex-col">
+            <div data-name="file-viewer-panel" className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
               <FileViewer
                 projectId={projectId}
                 projectName={currentProject?.name || 'Project'}

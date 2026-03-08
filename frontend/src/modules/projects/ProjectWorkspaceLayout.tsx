@@ -106,7 +106,7 @@ export const ProjectWorkspaceLayout: React.FC = () => {
         </nav>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <Outlet
           context={{
             projectId,
