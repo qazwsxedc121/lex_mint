@@ -29,8 +29,10 @@ import {
   enrichGroupAssistantMessages,
   mergeCompareResponses,
 } from './useChatSessionHelpers';
+import { createChatStreamProjectionRuntime } from './useChatStreamProjectionRuntime';
 import {
   applyGroupProjectionEvent,
+  type GroupProjectionEvent,
   type GroupTimelineProjectionInput,
 } from './useChatGroupProjection';
 
@@ -108,7 +110,7 @@ export function useChat(sessionId: string | null) {
   }, []);
 
   const applyGroupEventProjection = useCallback((
-    event: Record<string, unknown>,
+    event: GroupProjectionEvent,
     runtimeIsGroupChat: boolean,
     activateRuntimeGroupChatMode: () => void,
     updateAssistantMessage: (
@@ -283,7 +285,7 @@ export function useChat(sessionId: string | null) {
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
 
-    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
+    const initialIsGroupChat = !!groupAssistants && groupAssistants.length >= 2;
     if (initialIsGroupChat) {
       setGroupTimeline([]);
     }
@@ -319,83 +321,23 @@ export function useChat(sessionId: string | null) {
     let latestUserMessageId: string | null = null;
     let activeAssistantTurnId: string | null = null;
     let runtimeIsGroupChat = initialIsGroupChat;
-
-    const activateRuntimeGroupChatMode = () => {
-      if (runtimeIsGroupChat) {
-        return;
-      }
-      runtimeIsGroupChat = true;
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastMessage = newMessages[newMessages.length - 1];
-        // If a single-chat placeholder was created before group metadata loaded,
-        // remove it once group events are detected.
-        if (
-          lastMessage &&
-          lastMessage.role === 'assistant' &&
-          !lastMessage.assistant_id &&
-          !lastMessage.message_id &&
-          !lastMessage.content.trim()
-        ) {
-          newMessages.pop();
-          return newMessages;
-        }
-        return prev;
-      });
-    };
-
-    const updateAssistantMessage = (
-      updater: (message: Message) => Message,
-      options?: { assistantId?: string | null; assistantTurnId?: string | null; allowSingleFallback?: boolean }
-    ) => {
-      setMessages(prev => {
-        const newMessages = [...prev];
-        let targetIndex = -1;
-        const assistantTurnId = options?.assistantTurnId;
-        const assistantId = options?.assistantId;
-        const allowSingleFallback = options?.allowSingleFallback ?? true;
-        const hasGroupAssistantMessages = newMessages.some(
-          (message) => message.role === 'assistant' && !!message.assistant_id
-        );
-
-        if (assistantTurnId) {
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_turn_id === assistantTurnId) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0 && assistantId) {
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantId) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0) {
-          if (!allowSingleFallback || runtimeIsGroupChat || hasGroupAssistantMessages) {
-            return prev;
-          }
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && !newMessages[i].assistant_id) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0) {
-          return prev;
-        }
-
-        newMessages[targetIndex] = updater(newMessages[targetIndex]);
-        return newMessages;
-      });
-    };
+    const {
+      updateAssistantMessage,
+      handleAssistantStart,
+      applyGroupEvent,
+    } = createChatStreamProjectionRuntime({
+      getRuntimeIsGroupChat: () => runtimeIsGroupChat,
+      setRuntimeIsGroupChat: (value) => {
+        runtimeIsGroupChat = value;
+      },
+      getActiveAssistantTurnId: () => activeAssistantTurnId,
+      setActiveAssistantTurnId: (value) => {
+        activeAssistantTurnId = value;
+      },
+      nowTimestamp,
+      setMessages,
+      applyGroupEventProjection,
+    });
 
     try {
       await api.sendMessageStream(
@@ -577,54 +519,14 @@ export function useChat(sessionId: string | null) {
         },
         // Group chat: onAssistantStart
         (assistantId: string, name: string, icon?: string) => {
-          if (!runtimeIsGroupChat) {
-            activateRuntimeGroupChatMode();
-          }
-          // Reset streamed content for new assistant
-          activeAssistantTurnId = null;
-          // Add new empty assistant message with identity
-          const newAssistantMsg: Message = {
-            role: 'assistant',
-            content: '',
-            created_at: nowTimestamp(),
-            assistant_id: assistantId,
-            assistant_name: name,
-            assistant_icon: icon,
-          };
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            // If group metadata loaded late, remove the single-chat placeholder
-            // before appending the first assistant in group mode.
-            if (
-              lastMessage &&
-              lastMessage.role === 'assistant' &&
-              !lastMessage.assistant_id &&
-              !lastMessage.message_id &&
-              !lastMessage.content.trim()
-            ) {
-              newMessages.pop();
-            }
-            newMessages.push(newAssistantMsg);
-            return newMessages;
-          });
+          handleAssistantStart(assistantId, name, icon);
         },
         // Group chat: onAssistantDone
         () => {
           // Controlled by onGroupEvent when available.
         },
         (event) => {
-          const activeAssistantTurnIdRef = {
-            get current() { return activeAssistantTurnId; },
-            set current(value: string | null) { activeAssistantTurnId = value; },
-          };
-          applyGroupEventProjection(
-            event,
-            runtimeIsGroupChat,
-            activateRuntimeGroupChatMode,
-            updateAssistantMessage,
-            activeAssistantTurnIdRef,
-          );
+          applyGroupEvent(event);
         }
       );
     } catch (err) {
@@ -1028,7 +930,7 @@ export function useChat(sessionId: string | null) {
 
     isProcessingRef.current = true;
     const originalMessages = [...messages];
-    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
+    const initialIsGroupChat = !!groupAssistants && groupAssistants.length >= 2;
 
     // Keep messages up to and including truncateIndex
     const truncatedMessages = messages.slice(0, truncateIndex + 1);
@@ -1053,81 +955,23 @@ export function useChat(sessionId: string | null) {
     if (initialIsGroupChat) {
       setGroupTimeline([]);
     }
-
-    const activateRuntimeGroupChatMode = () => {
-      if (runtimeIsGroupChat) {
-        return;
-      }
-      runtimeIsGroupChat = true;
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastMessage = newMessages[newMessages.length - 1];
-        if (
-          lastMessage &&
-          lastMessage.role === 'assistant' &&
-          !lastMessage.assistant_id &&
-          !lastMessage.message_id &&
-          !lastMessage.content.trim()
-        ) {
-          newMessages.pop();
-          return newMessages;
-        }
-        return prev;
-      });
-    };
-
-    const updateAssistantMessage = (
-      updater: (message: Message) => Message,
-      options?: { assistantId?: string | null; assistantTurnId?: string | null; allowSingleFallback?: boolean }
-    ) => {
-      setMessages(prev => {
-        const newMessages = [...prev];
-        let targetIndex = -1;
-        const assistantTurnId = options?.assistantTurnId;
-        const assistantId = options?.assistantId;
-        const allowSingleFallback = options?.allowSingleFallback ?? true;
-        const hasGroupAssistantMessages = newMessages.some(
-          (message) => message.role === 'assistant' && !!message.assistant_id
-        );
-
-        if (assistantTurnId) {
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_turn_id === assistantTurnId) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0 && assistantId) {
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && newMessages[i].assistant_id === assistantId) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0) {
-          if (!allowSingleFallback || runtimeIsGroupChat || hasGroupAssistantMessages) {
-            return prev;
-          }
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].role === 'assistant' && !newMessages[i].assistant_id) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0) {
-          return prev;
-        }
-
-        newMessages[targetIndex] = updater(newMessages[targetIndex]);
-        return newMessages;
-      });
-    };
+    const {
+      updateAssistantMessage,
+      handleAssistantStart,
+      applyGroupEvent,
+    } = createChatStreamProjectionRuntime({
+      getRuntimeIsGroupChat: () => runtimeIsGroupChat,
+      setRuntimeIsGroupChat: (value) => {
+        runtimeIsGroupChat = value;
+      },
+      getActiveAssistantTurnId: () => activeAssistantTurnId,
+      setActiveAssistantTurnId: (value) => {
+        activeAssistantTurnId = value;
+      },
+      nowTimestamp,
+      setMessages,
+      applyGroupEventProjection,
+    });
 
     try {
       await api.sendMessageStream(
@@ -1256,38 +1100,13 @@ export function useChat(sessionId: string | null) {
           );
         },
         (assistantId: string, name: string, icon?: string) => {
-          if (!runtimeIsGroupChat) {
-            activateRuntimeGroupChatMode();
-          }
-          activeAssistantTurnId = null;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            newMessages.push({
-              role: 'assistant',
-              content: '',
-              created_at: nowTimestamp(),
-              assistant_id: assistantId,
-              assistant_name: name,
-              assistant_icon: icon,
-            });
-            return newMessages;
-          });
+          handleAssistantStart(assistantId, name, icon);
         },
         () => {
           // Controlled by onGroupEvent when available.
         },
         (event) => {
-          const activeAssistantTurnIdRef = {
-            get current() { return activeAssistantTurnId; },
-            set current(value: string | null) { activeAssistantTurnId = value; },
-          };
-          applyGroupEventProjection(
-            event,
-            runtimeIsGroupChat,
-            activateRuntimeGroupChatMode,
-            updateAssistantMessage,
-            activeAssistantTurnIdRef,
-          );
+          applyGroupEvent(event);
         }
       );
     } catch (err) {
