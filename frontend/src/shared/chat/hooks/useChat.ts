@@ -31,6 +31,7 @@ import {
 } from './useChatSessionHelpers';
 import {
   applyGroupProjectionEvent,
+  type GroupProjectionEvent,
   type GroupTimelineProjectionInput,
 } from './useChatGroupProjection';
 
@@ -108,7 +109,7 @@ export function useChat(sessionId: string | null) {
   }, []);
 
   const applyGroupEventProjection = useCallback((
-    event: Record<string, unknown>,
+    event: GroupProjectionEvent,
     runtimeIsGroupChat: boolean,
     activateRuntimeGroupChatMode: () => void,
     updateAssistantMessage: (
@@ -283,7 +284,7 @@ export function useChat(sessionId: string | null) {
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
 
-    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
+    const initialIsGroupChat = Boolean(groupAssistants && groupAssistants.length >= 2);
     if (initialIsGroupChat) {
       setGroupTimeline([]);
     }
@@ -1028,7 +1029,7 @@ export function useChat(sessionId: string | null) {
 
     isProcessingRef.current = true;
     const originalMessages = [...messages];
-    const initialIsGroupChat = groupAssistants && groupAssistants.length >= 2;
+    const initialIsGroupChat = Boolean(groupAssistants && groupAssistants.length >= 2);
 
     // Keep messages up to and including truncateIndex
     const truncatedMessages = messages.slice(0, truncateIndex + 1);

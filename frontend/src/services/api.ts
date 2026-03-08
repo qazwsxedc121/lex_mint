@@ -6,6 +6,7 @@ import axios from 'axios';
 import { API_BASE } from './apiBase';
 import { consumeFlowEventResponse, postFlowEventStream } from './flowEventStreamClient';
 import { asNumber, asRecord, asString, iterateSSEData, parseFlowEvent, sleep } from './flowEvents';
+import type { FlowEvent } from './flowEvents';
 import i18n from '../i18n';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type {

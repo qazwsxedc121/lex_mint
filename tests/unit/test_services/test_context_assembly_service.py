@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -17,8 +18,14 @@ class _Source:
 
 
 class _FakeStorage:
-    def __init__(self, *, param_overrides: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        *,
+        param_overrides: Optional[Dict[str, Any]] = None,
+        assistant_id: Optional[str] = None,
+    ):
         self.param_overrides = param_overrides or {}
+        self.assistant_id = assistant_id
 
     async def get_session(
         self,
@@ -30,13 +37,16 @@ class _FakeStorage:
         _ = session_id, context_type, project_id
         return {
             "state": {"messages": [{"role": "user", "content": "hi"}]},
-            "assistant_id": None,
+            "assistant_id": self.assistant_id,
             "model_id": "provider:model-a",
             "param_overrides": self.param_overrides,
         }
 
 
 class _FakeMemoryService:
+    def __init__(self):
+        self.calls: List[Dict[str, Any]] = []
+
     def build_memory_context(
         self,
         *,
@@ -45,7 +55,14 @@ class _FakeMemoryService:
         include_global: bool,
         include_assistant: bool,
     ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
-        _ = query, assistant_id, include_global, include_assistant
+        self.calls.append(
+            {
+                "query": query,
+                "assistant_id": assistant_id,
+                "include_global": include_global,
+                "include_assistant": include_assistant,
+            }
+        )
         return "MEM", [{"type": "memory"}]
 
 
@@ -146,3 +163,57 @@ async def test_prepare_context_honors_param_overrides_and_disabled_structured_co
     assert ctx.search_context is None
     assert ctx.structured_source_context is None
     assert ctx.system_prompt == "MEM\n\nWEB\n\nRAG"
+
+
+@pytest.mark.asyncio
+async def test_prepare_context_disables_assistant_memory_when_assistant_setting_is_off():
+    async def fake_rag_context_builder(**_kwargs):
+        return None, []
+
+    memory_service = _FakeMemoryService()
+    assistant = SimpleNamespace(
+        system_prompt="ASSISTANT",
+        max_rounds=4,
+        temperature=0.2,
+        max_tokens=512,
+        top_p=0.9,
+        top_k=20,
+        frequency_penalty=0.0,
+        presence_penalty=0.0,
+        memory_enabled=False,
+    )
+    mocked_assistant_service = SimpleNamespace(
+        require_enabled_assistant=AsyncMock(return_value=assistant)
+    )
+    service = ContextAssemblyService(
+        storage=_FakeStorage(assistant_id="assistant-a"),
+        memory_service=memory_service,
+        webpage_service=_FakeWebpageService(),
+        search_service=_FakeSearchService(),
+        source_context_service=_FakeSourceContextService(),
+        rag_config_service=_FakeRagConfigService(enabled=False),
+        rag_context_builder=fake_rag_context_builder,
+    )
+
+    with patch(
+        "src.api.services.assistant_config_service.AssistantConfigService",
+        return_value=mocked_assistant_service,
+    ):
+        ctx = await service.prepare_context(
+            session_id="s3",
+            raw_user_message="hello",
+            use_web_search=False,
+        )
+
+    assert ctx.assistant_id == "assistant-a"
+    assert ctx.assistant_memory_enabled is False
+    assert ctx.base_system_prompt == "ASSISTANT"
+    assert ctx.max_rounds == 4
+    assert memory_service.calls == [
+        {
+            "query": "hello",
+            "assistant_id": None,
+            "include_global": True,
+            "include_assistant": False,
+        }
+    ]

@@ -46,8 +46,12 @@ export function createEmptyChatSessionSnapshot(): ChatSessionSnapshot {
 
 export function deriveLastPromptTokens(messages: Message[]): number | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i].role === 'assistant' && messages[i].usage?.prompt_tokens) {
-      return messages[i].usage.prompt_tokens;
+    const message = messages[i];
+    if (!message) {
+      continue;
+    }
+    if (message.role === 'assistant' && message.usage?.prompt_tokens) {
+      return message.usage.prompt_tokens;
     }
   }
   return null;

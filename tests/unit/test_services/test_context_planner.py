@@ -1,6 +1,6 @@
 """Unit tests for ContextPlanner."""
 
-from src.api.services.context_planner import ContextPlanner
+from src.api.services.context_planner import ContextPlanner, ContextPlannerPolicy
 
 
 def test_context_planner_keeps_all_segments_when_budget_is_large():
@@ -67,3 +67,48 @@ def test_context_planner_applies_max_rounds_before_budgeting_history():
     assert [msg["content"] for msg in plan.chat_messages] == ["u3"]
     history_report = next(segment for segment in plan.segment_reports if segment.name == "history")
     assert history_report.truncated is True
+
+
+def test_context_planner_keeps_required_summary_by_truncating():
+    planner = ContextPlanner()
+
+    plan = planner.plan(
+        context_budget_tokens=80,
+        base_system_prompt="SYSTEM",
+        compressed_history_summary="x" * 4000,
+        recent_messages=[],
+    )
+
+    summary_report = next(segment for segment in plan.segment_reports if segment.name == "summary")
+
+    assert summary_report.included is True
+    assert summary_report.truncated is True
+    assert summary_report.estimated_tokens_after > 0
+
+
+def test_context_planner_policy_can_raise_sources_minimum_budget():
+    large_sources = "x" * 4000
+
+    default_plan = ContextPlanner().plan(
+        context_budget_tokens=500,
+        base_system_prompt=None,
+        compressed_history_summary=None,
+        recent_messages=[],
+        structured_source_context=large_sources,
+    )
+    strict_plan = ContextPlanner(
+        policy=ContextPlannerPolicy(min_segment_tokens_by_name={"sources": 64})
+    ).plan(
+        context_budget_tokens=500,
+        base_system_prompt=None,
+        compressed_history_summary=None,
+        recent_messages=[],
+        structured_source_context=large_sources,
+    )
+
+    default_sources = next(segment for segment in default_plan.segment_reports if segment.name == "sources")
+    strict_sources = next(segment for segment in strict_plan.segment_reports if segment.name == "sources")
+
+    assert default_sources.included is True
+    assert strict_sources.included is False
+    assert strict_sources.drop_reason == "budget_exhausted"
