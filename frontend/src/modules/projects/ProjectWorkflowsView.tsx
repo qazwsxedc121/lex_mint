@@ -3,7 +3,9 @@ import { BoltIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/ou
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import {
+  addProjectWorkspaceItem,
   cancelAsyncRun,
+  getAsyncRun,
   listAsyncRuns,
   listWorkflows,
   runWorkflowStream,
@@ -250,6 +252,21 @@ export const ProjectWorkflowsView: React.FC = () => {
     setActiveRunId(null);
 
     const normalizedArtifactPath = artifactPath.trim();
+    let createdRunId: string | null = null;
+
+    const syncRunWorkspaceItem = async (runId: string) => {
+      const latestRun = await getAsyncRun(runId);
+      await addProjectWorkspaceItem(projectId, {
+        type: 'run',
+        id: latestRun.run_id,
+        title: activeWorkflow.name || latestRun.workflow_id || t('workspace.workflows.unknownWorkflow'),
+        meta: {
+          workflow_id: latestRun.workflow_id,
+          status: latestRun.status,
+          artifact_path: latestRun.result_summary?.artifact_path,
+        },
+      });
+    };
 
     try {
       await runWorkflowStream(
@@ -257,7 +274,19 @@ export const ProjectWorkflowsView: React.FC = () => {
         prepared.inputs,
         {
           onRunCreated: (runId) => {
+            createdRunId = runId;
             setActiveRunId(runId);
+            void addProjectWorkspaceItem(projectId, {
+              type: 'run',
+              id: runId,
+              title: activeWorkflow.name || activeWorkflow.id,
+              meta: {
+                workflow_id: activeWorkflow.id,
+                status: 'queued',
+              },
+            }).catch((error) => {
+              console.error('Failed to persist queued project workflow run:', error);
+            });
           },
           onEvent: (event) => {
             if (event.event_type !== 'workflow_artifact_written') {
@@ -285,12 +314,22 @@ export const ProjectWorkflowsView: React.FC = () => {
             setRunning(false);
             setActiveRunId(null);
             addRecent(activeWorkflow.id);
+            if (createdRunId) {
+              void syncRunWorkspaceItem(createdRunId).catch((error) => {
+                console.error('Failed to persist completed project workflow run:', error);
+              });
+            }
             void loadRecentRuns();
           },
           onError: (message) => {
             setRunning(false);
             setActiveRunId(null);
             setRunError(message);
+            if (createdRunId) {
+              void syncRunWorkspaceItem(createdRunId).catch((error) => {
+                console.error('Failed to persist failed project workflow run:', error);
+              });
+            }
             void loadRecentRuns();
           },
         },

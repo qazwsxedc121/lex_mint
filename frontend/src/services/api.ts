@@ -320,6 +320,34 @@ export interface ProjectTextSearchResponse {
   results: ProjectTextSearchMatch[];
 }
 
+export type ProjectWorkspaceItemType = 'file' | 'session' | 'run';
+
+export interface ProjectWorkspaceRecentItem {
+  type: ProjectWorkspaceItemType;
+  id: string;
+  title: string;
+  path?: string | null;
+  updated_at?: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface ProjectWorkspaceState {
+  version: number;
+  project_id: string;
+  updated_at?: string | null;
+  recent_items: ProjectWorkspaceRecentItem[];
+  extra: Record<string, unknown>;
+}
+
+export interface ProjectWorkspaceItemUpsertRequest {
+  type: ProjectWorkspaceItemType;
+  id: string;
+  title: string;
+  path?: string;
+  updated_at?: string;
+  meta?: Record<string, unknown>;
+}
+
 /**
  * Search sessions by title and message content.
  */
@@ -2542,6 +2570,19 @@ export async function searchProjectText(
   const response = await api.get<ProjectTextSearchResponse>(
     `/api/projects/${projectId}/text/search?${params.toString()}`
   );
+  return response.data;
+}
+
+export async function getProjectWorkspaceState(projectId: string): Promise<ProjectWorkspaceState> {
+  const response = await api.get<ProjectWorkspaceState>(`/api/projects/${projectId}/workspace-state`);
+  return response.data;
+}
+
+export async function addProjectWorkspaceItem(
+  projectId: string,
+  payload: ProjectWorkspaceItemUpsertRequest,
+): Promise<ProjectWorkspaceState> {
+  const response = await api.post<ProjectWorkspaceState>(`/api/projects/${projectId}/workspace-state/items`, payload);
   return response.data;
 }
 

@@ -11,7 +11,7 @@ import type { Project } from '../../../types/project';
 import SessionSelector from './SessionSelector';
 import { InsertToEditorButton } from './InsertToEditorButton';
 import { ProjectNotice } from './ProjectNotice';
-import { listProjects } from '../../../services/api';
+import { addProjectWorkspaceItem, listProjects } from '../../../services/api';
 import { SessionTransferModal } from '../../../shared/chat/components/SessionTransferModal';
 import { useProjectNotice } from '../hooks/useProjectNotice';
 
@@ -74,6 +74,18 @@ function ChatServiceConsumer({
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [transferBusy, setTransferBusy] = useState(false);
   const { notice, showError, clearNotice } = useProjectNotice();
+
+  const trackSession = useCallback(async (sessionId: string) => {
+    const session = sessions.find((item) => item.session_id === sessionId);
+    await addProjectWorkspaceItem(projectId, {
+      type: 'session',
+      id: sessionId,
+      title: session?.title || t('session.defaultTitle'),
+      meta: {
+        message_count: session?.message_count || 0,
+      },
+    });
+  }, [projectId, sessions, t]);
 
   // Track when sessions have been loaded at least once
   useEffect(() => {
@@ -140,11 +152,28 @@ function ChatServiceConsumer({
     try {
       const newSessionId = await createSession();
       onSetCurrentSessionId(newSessionId);
+      void addProjectWorkspaceItem(projectId, {
+        type: 'session',
+        id: newSessionId,
+        title: t('session.defaultTitle'),
+        meta: {
+          message_count: 0,
+        },
+      }).catch((error) => {
+        console.error('Failed to persist new project session:', error);
+      });
     } catch (error) {
       console.error('Failed to create session:', error);
       showError(t('chat.createFailed'));
     }
-  }, [createSession, onSetCurrentSessionId, showError, t]);
+  }, [createSession, onSetCurrentSessionId, projectId, showError, t]);
+
+  const handleSelectSession = useCallback((sessionId: string) => {
+    onSelectSession(sessionId);
+    void trackSession(sessionId).catch((error) => {
+      console.error('Failed to persist selected project session:', error);
+    });
+  }, [onSelectSession, trackSession]);
 
   // Handle session deletion
   const handleDeleteSession = useCallback(async (sessionId: string) => {
@@ -226,7 +255,7 @@ function ChatServiceConsumer({
         <SessionSelector
           sessions={sessions}
           currentSessionId={currentSessionId}
-          onSelectSession={onSelectSession}
+          onSelectSession={handleSelectSession}
           onCreateSession={handleCreateSession}
           onDeleteSession={handleDeleteSession}
           onOpenTransfer={handleOpenTransfer}

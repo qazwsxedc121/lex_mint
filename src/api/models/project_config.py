@@ -1,10 +1,11 @@
 """Project configuration data models."""
 
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
-from pathlib import Path
-import os
 from datetime import datetime
+import os
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class Project(BaseModel):
@@ -134,3 +135,64 @@ class BrowseDirectoryCreate(BaseModel):
 
     parent_path: str = Field(..., description="Absolute parent directory path on server")
     name: str = Field(..., min_length=1, max_length=255, description="New directory name")
+
+
+ProjectWorkspaceItemType = Literal["file", "session", "run"]
+
+
+def _normalize_project_relative_path(value: str) -> str:
+    normalized = (value or "").replace("\\", "/").strip()
+    if not normalized:
+        raise ValueError("path must not be empty")
+    if normalized.startswith("/"):
+        raise ValueError("path must be relative")
+    pure = PurePosixPath(normalized)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        raise ValueError("path must be a safe relative path")
+    return str(pure)
+
+
+class ProjectWorkspaceRecentItem(BaseModel):
+    """One recent workspace item stored in the project-local state file."""
+
+    type: ProjectWorkspaceItemType
+    id: str = Field(..., min_length=1, max_length=800)
+    title: str = Field(..., min_length=1, max_length=500)
+    path: Optional[str] = Field(default=None, max_length=800)
+    updated_at: str = Field(..., min_length=1, max_length=64)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("path")
+    @classmethod
+    def validate_optional_path(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return _normalize_project_relative_path(value)
+
+
+class ProjectWorkspaceState(BaseModel):
+    """Project-local workspace state stored in .lex_mint/state/."""
+
+    version: int = Field(default=1, ge=1)
+    project_id: str = Field(..., min_length=1, max_length=200)
+    updated_at: Optional[str] = Field(default=None, max_length=64)
+    recent_items: List[ProjectWorkspaceRecentItem] = Field(default_factory=list)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectWorkspaceItemUpsert(BaseModel):
+    """Request model for adding/updating a recent workspace item."""
+
+    type: ProjectWorkspaceItemType
+    id: str = Field(..., min_length=1, max_length=800)
+    title: str = Field(..., min_length=1, max_length=500)
+    path: Optional[str] = Field(default=None, max_length=800)
+    updated_at: Optional[str] = Field(default=None, max_length=64)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("path")
+    @classmethod
+    def validate_optional_item_path(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return _normalize_project_relative_path(value)

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from ..services.project_service import ProjectService
 from ..services.project_service import ProjectConflictError
+from ..services.project_workspace_state_service import ProjectWorkspaceStateService
 from ..services.project_document_tool_service import (
     ConfirmPendingPatchArgs,
     ProjectDocumentToolError,
@@ -25,7 +26,9 @@ from ..models.project_config import (
     FileRenameResult,
     DirectoryCreate,
     DirectoryEntry,
-    BrowseDirectoryCreate
+    BrowseDirectoryCreate,
+    ProjectWorkspaceItemUpsert,
+    ProjectWorkspaceState,
 )
 from ..config import settings
 
@@ -35,6 +38,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 # Service instance
 _project_service: Optional[ProjectService] = None
+_project_workspace_state_service: Optional[ProjectWorkspaceStateService] = None
 
 
 def get_project_service() -> ProjectService:
@@ -43,6 +47,14 @@ def get_project_service() -> ProjectService:
     if _project_service is None:
         _project_service = ProjectService()
     return _project_service
+
+
+def get_project_workspace_state_service() -> ProjectWorkspaceStateService:
+    """Get or create project workspace state service instance."""
+    global _project_workspace_state_service
+    if _project_workspace_state_service is None:
+        _project_workspace_state_service = ProjectWorkspaceStateService(get_project_service())
+    return _project_workspace_state_service
 
 
 class ProjectChatApplyDiffResponse(BaseModel):
@@ -234,6 +246,34 @@ async def delete_project(project_id: str):
         raise
     except Exception as e:
         logger.error(f"Error deleting project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/workspace-state", response_model=ProjectWorkspaceState)
+async def get_workspace_state(project_id: str):
+    """Return the project-local workspace state stored under .lex_mint/state/."""
+    try:
+        service = get_project_workspace_state_service()
+        return await service.get_workspace_state(project_id)
+    except ValueError as e:
+        logger.error(f"Validation error reading workspace state for project {project_id}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error reading workspace state for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project_id}/workspace-state/items", response_model=ProjectWorkspaceState)
+async def add_workspace_state_item(project_id: str, item: ProjectWorkspaceItemUpsert):
+    """Add or update one recent workspace item for a project."""
+    try:
+        service = get_project_workspace_state_service()
+        return await service.upsert_recent_item(project_id, item)
+    except ValueError as e:
+        logger.error(f"Validation error updating workspace state for project {project_id}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating workspace state for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

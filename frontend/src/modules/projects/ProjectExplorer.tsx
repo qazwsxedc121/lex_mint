@@ -16,8 +16,14 @@ import { ProjectEditorContext } from './contexts/ProjectEditorContext';
 import { ChatComposerProvider, ChatServiceProvider } from '../../shared/chat';
 import type { ChatNavigation } from '../../shared/chat';
 import { createProjectChatAPI } from './services/projectChatAPI';
-import { createFile, createFolder, deleteFile, deleteFolder, readFile, renameProjectPath } from '../../services/api';
+import { addProjectWorkspaceItem, createFile, createFolder, deleteFile, deleteFolder, readFile, renameProjectPath } from '../../services/api';
 import type { ProjectWorkspaceOutletContext } from './workspace';
+
+const getFileName = (path: string): string => {
+  const normalized = path.replace(/\\/g, '/');
+  const parts = normalized.split('/').filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : normalized;
+};
 
 export const ProjectExplorer: React.FC = () => {
   const { t } = useTranslation('projects');
@@ -115,6 +121,14 @@ export const ProjectExplorer: React.FC = () => {
     // Save to store immediately when user selects a file
     if (projectId) {
       setCurrentFile(projectId, path);
+      void addProjectWorkspaceItem(projectId, {
+        type: 'file',
+        id: path,
+        title: getFileName(path),
+        path,
+      }).catch((error) => {
+        console.error('Failed to persist recent project file:', error);
+      });
     }
   };
 

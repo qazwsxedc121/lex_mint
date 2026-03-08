@@ -3,7 +3,9 @@
 import pytest
 from pathlib import Path
 from src.api.services.project_service import ProjectService, ProjectConflictError
+from src.api.services.project_workspace_state_service import ProjectWorkspaceStateService
 from src.api.models.project_config import Project, ProjectCreate
+from src.api.models.project_config import ProjectWorkspaceItemUpsert
 from src.api.config import settings
 
 
@@ -18,6 +20,12 @@ def temp_config_file(tmp_path):
 def project_service(temp_config_file):
     """Create ProjectService instance with temp config."""
     return ProjectService(config_path=temp_config_file)
+
+
+@pytest.fixture
+def project_workspace_state_service(project_service):
+    """Create workspace state service with temp project storage."""
+    return ProjectWorkspaceStateService(project_service=project_service, max_recent_items=3)
 
 
 @pytest.fixture
@@ -218,6 +226,181 @@ class TestProjectServiceCRUD:
             name="New Name"
         )
         assert updated is None
+
+
+class TestProjectWorkspaceStateService:
+    """Tests for project-local workspace state persistence."""
+
+    @pytest.mark.asyncio
+    async def test_get_workspace_state_returns_default_when_missing(
+        self,
+        project_service,
+        project_workspace_state_service,
+        test_project_path,
+    ):
+        await project_service.add_project(
+            Project(
+                id="test_proj",
+                name="Test Project",
+                root_path=str(test_project_path),
+            )
+        )
+
+        state = await project_workspace_state_service.get_workspace_state("test_proj")
+
+        assert state.project_id == "test_proj"
+        assert state.updated_at is None
+        assert state.recent_items == []
+        assert state.extra == {}
+
+    @pytest.mark.asyncio
+    async def test_upsert_recent_file_item_creates_project_local_state_file(
+        self,
+        project_service,
+        project_workspace_state_service,
+        test_project_path,
+    ):
+        await project_service.add_project(
+            Project(
+                id="test_proj",
+                name="Test Project",
+                root_path=str(test_project_path),
+            )
+        )
+
+        state = await project_workspace_state_service.upsert_recent_item(
+            "test_proj",
+            ProjectWorkspaceItemUpsert(
+                type="file",
+                id="drafts\\chapter1.md",
+                title="Chapter 1",
+                path="drafts\\chapter1.md",
+            ),
+        )
+
+        state_file = test_project_path / ".lex_mint" / "state" / "project_workspace_state.yaml"
+        assert state_file.exists()
+        assert state.recent_items[0].type == "file"
+        assert state.recent_items[0].id == "drafts/chapter1.md"
+        assert state.recent_items[0].path == "drafts/chapter1.md"
+        assert "drafts/chapter1.md" in state_file.read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_upsert_dedupes_existing_item_and_moves_it_to_front(
+        self,
+        project_service,
+        project_workspace_state_service,
+        test_project_path,
+    ):
+        await project_service.add_project(
+            Project(
+                id="test_proj",
+                name="Test Project",
+                root_path=str(test_project_path),
+            )
+        )
+
+        await project_workspace_state_service.upsert_recent_item(
+            "test_proj",
+            ProjectWorkspaceItemUpsert(
+                type="session",
+                id="session-1",
+                title="Session One",
+                updated_at="2026-03-07T10:00:00+00:00",
+            ),
+        )
+        await project_workspace_state_service.upsert_recent_item(
+            "test_proj",
+            ProjectWorkspaceItemUpsert(
+                type="file",
+                id="notes/todo.md",
+                title="Todo",
+                path="notes/todo.md",
+                updated_at="2026-03-07T11:00:00+00:00",
+            ),
+        )
+
+        state = await project_workspace_state_service.upsert_recent_item(
+            "test_proj",
+            ProjectWorkspaceItemUpsert(
+                type="session",
+                id="session-1",
+                title="Session One Updated",
+                updated_at="2026-03-07T12:00:00+00:00",
+                meta={"message_count": 5},
+            ),
+        )
+
+        assert [(item.type, item.id) for item in state.recent_items] == [
+            ("session", "session-1"),
+            ("file", "notes/todo.md"),
+        ]
+        assert state.recent_items[0].title == "Session One Updated"
+        assert state.recent_items[0].meta == {"message_count": 5}
+
+    @pytest.mark.asyncio
+    async def test_upsert_truncates_recent_items_to_configured_limit(
+        self,
+        project_service,
+        project_workspace_state_service,
+        test_project_path,
+    ):
+        await project_service.add_project(
+            Project(
+                id="test_proj",
+                name="Test Project",
+                root_path=str(test_project_path),
+            )
+        )
+
+        items = [
+            ProjectWorkspaceItemUpsert(
+                type="file",
+                id=f"docs/file-{index}.md",
+                title=f"File {index}",
+                path=f"docs/file-{index}.md",
+                updated_at=f"2026-03-07T0{index}:00:00+00:00",
+            )
+            for index in range(1, 5)
+        ]
+
+        for item in items:
+            await project_workspace_state_service.upsert_recent_item("test_proj", item)
+
+        state = await project_workspace_state_service.get_workspace_state("test_proj")
+
+        assert len(state.recent_items) == 3
+        assert [item.id for item in state.recent_items] == [
+            "docs/file-4.md",
+            "docs/file-3.md",
+            "docs/file-2.md",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_file_item_rejects_unsafe_relative_path(
+        self,
+        project_service,
+        project_workspace_state_service,
+        test_project_path,
+    ):
+        await project_service.add_project(
+            Project(
+                id="test_proj",
+                name="Test Project",
+                root_path=str(test_project_path),
+            )
+        )
+
+        with pytest.raises(ValueError, match="safe relative path"):
+            await project_workspace_state_service.upsert_recent_item(
+                "test_proj",
+                ProjectWorkspaceItemUpsert(
+                    type="file",
+                    id="../secret.txt",
+                    title="Secret",
+                    path="../secret.txt",
+                ),
+            )
 
     @pytest.mark.asyncio
     async def test_delete_project(self, project_service, test_project_path):
