@@ -1,147 +1,66 @@
-"""
-Tool Registry - defines and manages tools for LLM function calling.
+"""Central registry for builtin tools used by function calling."""
 
-Tools are defined using LangChain's @tool decorator so they work natively
-with bind_tools() across all LLM providers.
-"""
+from __future__ import annotations
 
-import ast
-import operator
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from langchain_core.tools import tool, BaseTool
+from langchain_core.tools import BaseTool
+
+from .builtin import BUILTIN_TOOL_DEFINITIONS, build_builtin_tools
+from .definitions import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Tool definitions
-# ---------------------------------------------------------------------------
-
-@tool
-def get_current_time(timezone_name: str = "UTC") -> str:
-    """Return the current date and time for UTC or a fixed UTC offset.
-
-    timezone_name supports "UTC" and "UTC+/-H" (for example, "UTC+8").
-    Unsupported formats fall back to UTC.
-    """
-    try:
-        if timezone_name.upper() == "UTC":
-            tz = timezone.utc
-        elif timezone_name.upper().startswith("UTC"):
-            offset_str = timezone_name[3:]
-            offset_hours = int(offset_str)
-            tz = timezone(timedelta(hours=offset_hours))
-        else:
-            # Fallback: try as UTC offset number
-            tz = timezone.utc
-        now = datetime.now(tz)
-        return now.strftime("%Y-%m-%d %H:%M:%S %Z (UTC%z)")
-    except Exception as e:
-        return f"Error getting time: {e}"
-
-
-# Safe operator mapping for calculator
-_SAFE_OPERATORS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.FloorDiv: operator.floordiv,
-    ast.Mod: operator.mod,
-    ast.Pow: operator.pow,
-    ast.USub: operator.neg,
-    ast.UAdd: operator.pos,
-}
-
-
-def _safe_eval_expr(node: ast.AST) -> float:
-    """Recursively evaluate an AST expression using only safe operators."""
-    if isinstance(node, ast.Expression):
-        return _safe_eval_expr(node.body)
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        return node.value
-    if isinstance(node, ast.BinOp):
-        op_func = _SAFE_OPERATORS.get(type(node.op))
-        if op_func is None:
-            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
-        left = _safe_eval_expr(node.left)
-        right = _safe_eval_expr(node.right)
-        return op_func(left, right)
-    if isinstance(node, ast.UnaryOp):
-        op_func = _SAFE_OPERATORS.get(type(node.op))
-        if op_func is None:
-            raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
-        return op_func(_safe_eval_expr(node.operand))
-    raise ValueError(f"Unsupported expression type: {type(node).__name__}")
-
-
-@tool
-def simple_calculator(expression: str) -> str:
-    """Evaluate a numeric arithmetic expression.
-
-    Supports +, -, *, /, //, %, **, and parentheses.
-    Only numbers and arithmetic operators are allowed (no variables or functions).
-    """
-    try:
-        tree = ast.parse(expression.strip(), mode="eval")
-        result = _safe_eval_expr(tree)
-        # Format: avoid trailing .0 for integer results
-        if isinstance(result, float) and result == int(result) and abs(result) < 1e15:
-            return str(int(result))
-        return str(result)
-    except ZeroDivisionError:
-        return "Error: Division by zero"
-    except Exception as e:
-        return f"Error: {e}"
-
-
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
-
 class ToolRegistry:
-    """Central registry for all available tools."""
+    """Central registry for globally available builtin tools."""
 
     def __init__(self) -> None:
-        self._tools: List[BaseTool] = [
-            get_current_time,
-            simple_calculator,
-        ]
-        self._tool_map = {t.name: t for t in self._tools}
+        self._definitions: List[ToolDefinition] = list(BUILTIN_TOOL_DEFINITIONS)
+        self._definition_map: Dict[str, ToolDefinition] = {
+            definition.name: definition for definition in self._definitions
+        }
+        self._tools: List[BaseTool] = build_builtin_tools()
+        self._tool_map = {tool.name: tool for tool in self._tools}
 
     def get_all_tools(self) -> List[BaseTool]:
-        """Return all registered tool objects (for bind_tools)."""
+        """Return all registered tool objects for LangChain bind_tools()."""
         return list(self._tools)
+
+    def get_all_definitions(self) -> List[ToolDefinition]:
+        """Return tool definition metadata for registry consumers."""
+        return list(self._definitions)
 
     def get_tool_by_name(self, name: str) -> Optional[BaseTool]:
         """Look up a tool by name."""
         return self._tool_map.get(name)
 
+    def get_definition_by_name(self, name: str) -> Optional[ToolDefinition]:
+        """Look up tool metadata by name."""
+        return self._definition_map.get(name)
+
     def execute_tool(self, name: str, args: dict) -> str:
-        """Execute a tool by name with the given arguments.
-
-        Args:
-            name: Tool name.
-            args: Argument dict matching the tool's schema.
-
-        Returns:
-            Tool result as a string.
-        """
+        """Execute a builtin tool by name with validated LangChain args."""
         tool_obj = self._tool_map.get(name)
         if tool_obj is None:
             return f"Error: Unknown tool '{name}'"
+
         try:
-            result = tool_obj.invoke(args)
+            result = tool_obj.invoke(args or {})
             return str(result)
-        except Exception as e:
-            logger.error(f"Tool execution error ({name}): {e}", exc_info=True)
-            return f"Error executing {name}: {e}"
+        except Exception as exc:
+            logger.error("Tool execution error (%s): %s", name, exc, exc_info=True)
+            return f"Error executing {name}: {exc}"
+
+    def get_default_project_enabled_map(self) -> Dict[str, bool]:
+        """Default per-project enablement state for builtin tools."""
+        return {
+            definition.name: definition.enabled_by_default
+            for definition in self._definitions
+        }
 
 
-# Module-level singleton
 _registry: Optional[ToolRegistry] = None
 
 

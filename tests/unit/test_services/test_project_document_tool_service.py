@@ -550,3 +550,49 @@ async def test_read_current_document_without_active_file_returns_error(tmp_path,
     payload = json.loads(await service.execute_tool("read_current_document", {}))
     assert payload["ok"] is False
     assert payload["error"]["code"] == "NO_ACTIVE_FILE"
+
+
+@pytest.mark.asyncio
+async def test_get_tools_includes_shared_metadata(tmp_path, project_service: ProjectService):
+    prepared_project = await _prepare_project(tmp_path, project_service)
+    service = ProjectDocumentToolService(
+        project_id=prepared_project.id,
+        session_id="session-meta",
+        active_file_path="notes.txt",
+        project_service=project_service,
+        pending_store=PendingPatchStore(),
+    )
+
+    tools = service.get_tools()
+    metadata_by_name = {tool.name: tool.metadata for tool in tools}
+
+    assert metadata_by_name["read_project_document"] == {
+        "group": "projectDocuments",
+        "source": "project_document",
+        "enabled_by_default": True,
+        "requires_project_knowledge": False,
+    }
+    assert metadata_by_name["apply_diff_project_document"] == {
+        "group": "projectDocuments",
+        "source": "project_document",
+        "enabled_by_default": False,
+        "requires_project_knowledge": False,
+    }
+    assert metadata_by_name["read_current_document"] == {
+        "group": "projectDocuments",
+        "source": "project_document",
+        "enabled_by_default": True,
+        "requires_project_knowledge": False,
+    }
+    assert metadata_by_name["apply_diff_current_document"] == {
+        "group": "projectDocuments",
+        "source": "project_document",
+        "enabled_by_default": False,
+        "requires_project_knowledge": False,
+    }
+    assert metadata_by_name["search_project_text"] == {
+        "group": "projectDocuments",
+        "source": "project_document",
+        "enabled_by_default": True,
+        "requires_project_knowledge": False,
+    }

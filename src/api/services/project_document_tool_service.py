@@ -14,8 +14,20 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ValidationError
+from src.tools.request_scoped import (
+    APPLY_DIFF_CURRENT_DOCUMENT_TOOL,
+    APPLY_DIFF_PROJECT_DOCUMENT_TOOL,
+    READ_CURRENT_DOCUMENT_TOOL,
+    READ_PROJECT_DOCUMENT_TOOL,
+    SEARCH_PROJECT_TEXT_TOOL,
+    ApplyDiffCurrentDocumentArgs,
+    ApplyDiffProjectDocumentArgs,
+    ReadCurrentDocumentArgs,
+    ReadProjectDocumentArgs,
+    SearchProjectTextArgs,
+)
 
 from ..config import settings
 from .project_service import ProjectService
@@ -42,149 +54,12 @@ def _normalize_rel_path(path: str) -> str:
     return str(path or "").replace("\\", "/").strip()
 
 
-class ReadCurrentDocumentArgs(BaseModel):
-    """Arguments for read_current_document."""
-
-    start_line: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="1-based start line (inclusive). Omit to read from the first line.",
-    )
-    end_line: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="1-based end line (inclusive). Omit to read through the last line.",
-    )
-    max_chars: int = Field(
-        default=12000,
-        ge=500,
-        le=120000,
-        description="Maximum characters to return; content is truncated when this limit is reached.",
-    )
-
-
-class ApplyDiffCurrentDocumentArgs(BaseModel):
-    """Arguments for apply_diff_current_document."""
-
-    unified_diff: str = Field(
-        ...,
-        min_length=1,
-        max_length=300000,
-        description="Single-file unified diff targeting the active document.",
-    )
-    base_hash: str = Field(
-        ...,
-        min_length=16,
-        max_length=128,
-        description="content_hash returned by read_current_document; must match latest file content.",
-    )
-    dry_run: bool = Field(
-        default=True,
-        description="Preview only. Must stay true; final apply requires explicit confirmation.",
-    )
-
-
-class SearchProjectTextArgs(BaseModel):
-    """Arguments for search_project_text."""
-
-    query: str = Field(
-        ...,
-        min_length=1,
-        max_length=500,
-        description="Text or regex pattern to match.",
-    )
-    case_sensitive: bool = Field(default=False, description="Enable case-sensitive matching.")
-    use_regex: bool = Field(default=False, description="Treat query as a regular expression.")
-    include_glob: Optional[str] = Field(
-        default=None,
-        max_length=200,
-        description="Optional include glob, for example **/*.py.",
-    )
-    exclude_glob: Optional[str] = Field(
-        default=None,
-        max_length=200,
-        description="Optional exclude glob, for example **/node_modules/**.",
-    )
-    max_results: int = Field(
-        default=30,
-        ge=1,
-        le=200,
-        description="Maximum number of matches to return.",
-    )
-    context_lines: int = Field(
-        default=0,
-        ge=0,
-        le=3,
-        description="Number of context lines before and after each match.",
-    )
-    max_chars_per_line: int = Field(
-        default=300,
-        ge=80,
-        le=1200,
-        description="Maximum characters per returned line; longer lines are clipped.",
-    )
-
-
 class ConfirmPendingPatchArgs(BaseModel):
     """Arguments for confirming a pending diff apply."""
 
     session_id: str = Field(..., min_length=1)
     pending_patch_id: str = Field(..., min_length=1)
     expected_hash: Optional[str] = Field(default=None, min_length=16, max_length=128)
-
-
-class ReadProjectDocumentArgs(BaseModel):
-    """Arguments for read_project_document."""
-
-    file_path: str = Field(
-        ...,
-        min_length=1,
-        max_length=800,
-        description="Project-relative file path to read.",
-    )
-    start_line: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="1-based start line (inclusive). Omit to read from the first line.",
-    )
-    end_line: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="1-based end line (inclusive). Omit to read through the last line.",
-    )
-    max_chars: int = Field(
-        default=12000,
-        ge=500,
-        le=120000,
-        description="Maximum characters to return; content is truncated when this limit is reached.",
-    )
-
-
-class ApplyDiffProjectDocumentArgs(BaseModel):
-    """Arguments for apply_diff_project_document."""
-
-    file_path: str = Field(
-        ...,
-        min_length=1,
-        max_length=800,
-        description="Project-relative file path to patch.",
-    )
-    unified_diff: str = Field(
-        ...,
-        min_length=1,
-        max_length=300000,
-        description="Single-file unified diff targeting file_path.",
-    )
-    base_hash: str = Field(
-        ...,
-        min_length=16,
-        max_length=128,
-        description="content_hash returned by read_project_document or read_current_document.",
-    )
-    dry_run: bool = Field(
-        default=True,
-        description="Preview only. Must stay true; final apply requires explicit confirmation.",
-    )
 
 
 @dataclass
@@ -556,63 +431,17 @@ class ProjectDocumentToolService:
     def get_tools(self) -> List[BaseTool]:
         """Build project-document tools for LLM function calling."""
         tools: List[BaseTool] = [
-            StructuredTool.from_function(
-                coroutine=self.read_project_document,
-                name="read_project_document",
-                description=(
-                    "Read any project file by path and return content with content_hash. "
-                    "Output may be truncated by max_chars. "
-                    "Call this before apply_diff_project_document."
-                ),
-                args_schema=ReadProjectDocumentArgs,
-            ),
-            StructuredTool.from_function(
-                coroutine=self.apply_diff_project_document,
-                name="apply_diff_project_document",
-                description=(
-                    "Preview a unified diff patch for a project file. "
-                    "base_hash must match read_project_document.content_hash for the same file_path. "
-                    "This tool only supports dry_run=true and returns pending_patch_id for confirmation."
-                ),
-                args_schema=ApplyDiffProjectDocumentArgs,
-            ),
+            READ_PROJECT_DOCUMENT_TOOL.build_tool(coroutine=self.read_project_document),
+            APPLY_DIFF_PROJECT_DOCUMENT_TOOL.build_tool(coroutine=self.apply_diff_project_document),
         ]
 
         if self.active_file_path:
             tools.extend([
-                StructuredTool.from_function(
-                    coroutine=self.read_current_document,
-                    name="read_current_document",
-                    description=(
-                        "Read the active project file and return content with content_hash. "
-                        "Output may be truncated by max_chars. "
-                        "Call this before apply_diff_current_document."
-                    ),
-                    args_schema=ReadCurrentDocumentArgs,
-                ),
-                StructuredTool.from_function(
-                    coroutine=self.apply_diff_current_document,
-                    name="apply_diff_current_document",
-                    description=(
-                        "Preview a unified diff patch for the active file. "
-                        "base_hash must match read_current_document.content_hash. "
-                        "This tool only supports dry_run=true and returns pending_patch_id for confirmation."
-                    ),
-                    args_schema=ApplyDiffCurrentDocumentArgs,
-                ),
+                READ_CURRENT_DOCUMENT_TOOL.build_tool(coroutine=self.read_current_document),
+                APPLY_DIFF_CURRENT_DOCUMENT_TOOL.build_tool(coroutine=self.apply_diff_current_document),
             ])
 
-        tools.append(
-            StructuredTool.from_function(
-                coroutine=self.search_project_text,
-                name="search_project_text",
-                description=(
-                    "Search text across project files and return matching snippets. "
-                    "Supports regex, glob filters, and capped results for cross-file discovery."
-                ),
-                args_schema=SearchProjectTextArgs,
-            )
-        )
+        tools.append(SEARCH_PROJECT_TEXT_TOOL.build_tool(coroutine=self.search_project_text))
         return tools
 
     async def execute_tool(self, name: str, args: Dict[str, Any]) -> Optional[str]:

@@ -7,51 +7,18 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import BaseModel, Field, ValidationError
+from langchain_core.tools import BaseTool
+from pydantic import ValidationError
+from src.tools.request_scoped import (
+    READ_KNOWLEDGE_TOOL,
+    SEARCH_KNOWLEDGE_TOOL,
+    ReadKnowledgeArgs,
+    SearchKnowledgeArgs,
+)
 
 from .source_context_service import SourceContextService
 
 logger = logging.getLogger(__name__)
-
-
-class SearchKnowledgeArgs(BaseModel):
-    """Arguments for search_knowledge tool."""
-
-    query: str = Field(
-        ...,
-        min_length=1,
-        max_length=500,
-        description="Search query for assistant-bound knowledge bases.",
-    )
-    top_k: int = Field(5, ge=1, le=8, description="Maximum number of hits to return (1-8).")
-    include_diagnostics: bool = Field(
-        False,
-        description="Include compact retrieval diagnostics in the response.",
-    )
-
-
-class ReadKnowledgeArgs(BaseModel):
-    """Arguments for read_knowledge tool."""
-
-    refs: List[str] = Field(
-        ...,
-        min_length=1,
-        max_length=8,
-        description="ref_id values from search_knowledge, e.g. kb:foo|doc:bar|chunk:3.",
-    )
-    max_chars: int = Field(
-        6000,
-        ge=1000,
-        le=12000,
-        description="Total character cap for all returned content; output is truncated when reached.",
-    )
-    neighbor_window: int = Field(
-        0,
-        ge=0,
-        le=2,
-        description="Include plus or minus N adjacent chunks around each requested chunk.",
-    )
 
 
 class RagToolService:
@@ -469,24 +436,8 @@ class RagToolService:
             )
 
         return [
-            StructuredTool.from_function(
-                coroutine=_search_knowledge,
-                name="search_knowledge",
-                description=(
-                    "Search assistant-bound knowledge bases and return ranked hits with ref_id. "
-                    "Call this before read_knowledge."
-                ),
-                args_schema=SearchKnowledgeArgs,
-            ),
-            StructuredTool.from_function(
-                coroutine=_read_knowledge,
-                name="read_knowledge",
-                description=(
-                    "Read chunk content for ref_id values from search_knowledge. "
-                    "Returns at most max_chars characters across all requested refs."
-                ),
-                args_schema=ReadKnowledgeArgs,
-            ),
+            SEARCH_KNOWLEDGE_TOOL.build_tool(coroutine=_search_knowledge),
+            READ_KNOWLEDGE_TOOL.build_tool(coroutine=_read_knowledge),
         ]
 
     async def execute_tool(self, name: str, args: Dict[str, Any]) -> Optional[str]:

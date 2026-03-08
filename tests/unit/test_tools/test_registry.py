@@ -1,0 +1,57 @@
+"""Unit tests for builtin tool registry and shared tool metadata."""
+
+from __future__ import annotations
+
+import json
+
+from src.tools.registry import ToolRegistry
+
+
+def test_builtin_registry_exposes_all_builtin_tools():
+    registry = ToolRegistry()
+
+    tool_names = [tool.name for tool in registry.get_all_tools()]
+
+    assert tool_names == [
+        "get_current_time",
+        "simple_calculator",
+        "format_json",
+        "text_statistics",
+    ]
+
+
+def test_builtin_registry_execute_format_json():
+    registry = ToolRegistry()
+
+    result = registry.execute_tool(
+        "format_json",
+        {"value": '{"b":1,"a":2}', "indent": 2, "sort_keys": True},
+    )
+
+    assert result == '{\n  "a": 2,\n  "b": 1\n}'
+
+
+def test_builtin_registry_execute_text_statistics():
+    registry = ToolRegistry()
+
+    result = registry.execute_tool("text_statistics", {"text": "hello world\nsecond line"})
+    payload = json.loads(result)
+
+    assert payload == {
+        "chars": 23,
+        "chars_no_whitespace": 20,
+        "words": 4,
+        "lines": 2,
+        "utf8_bytes": 23,
+    }
+
+
+def test_builtin_registry_default_project_map_tracks_definitions():
+    registry = ToolRegistry()
+
+    assert registry.get_default_project_enabled_map() == {
+        "get_current_time": False,
+        "simple_calculator": False,
+        "format_json": False,
+        "text_statistics": False,
+    }

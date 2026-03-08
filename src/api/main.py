@@ -35,6 +35,7 @@ from .routers import (
     search_config,
     sessions,
     title_generation,
+    tools,
     translation,
     translation_config,
     tts,
@@ -97,6 +98,7 @@ app.include_router(models.router)
 app.include_router(assistants.router)
 app.include_router(title_generation.router)
 app.include_router(projects.router)
+app.include_router(tools.router)
 app.include_router(search_config.router)
 app.include_router(webpage_config.router)
 app.include_router(followup.router)

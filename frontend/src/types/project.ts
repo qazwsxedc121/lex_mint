@@ -19,6 +19,29 @@ export interface ProjectToolSettings {
   tool_enabled_map: Record<string, boolean>;
 }
 
+export interface ProjectToolCatalogItem {
+  name: string;
+  description: string;
+  group: string;
+  source: string;
+  enabled_by_default: boolean;
+  title_i18n_key: string;
+  description_i18n_key: string;
+  requires_project_knowledge: boolean;
+}
+
+export interface ProjectToolCatalogGroup {
+  key: string;
+  title_i18n_key: string;
+  description_i18n_key: string;
+  tools: ProjectToolCatalogItem[];
+}
+
+export interface ProjectToolCatalogResponse {
+  groups: ProjectToolCatalogGroup[];
+  tools: ProjectToolCatalogItem[];
+}
+
 export interface ProjectSettings {
   rag: ProjectRagSettings;
   tools: ProjectToolSettings;

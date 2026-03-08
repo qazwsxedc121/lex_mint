@@ -7,17 +7,13 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from src.tools.builtin import get_builtin_tool_default_enabled_map
+from src.tools.request_scoped import get_request_scoped_tool_default_enabled_map
+
 
 DEFAULT_PROJECT_TOOL_ENABLED_MAP: Dict[str, bool] = {
-    "get_current_time": False,
-    "simple_calculator": False,
-    "read_project_document": True,
-    "read_current_document": True,
-    "search_project_text": True,
-    "apply_diff_project_document": False,
-    "apply_diff_current_document": False,
-    "search_knowledge": True,
-    "read_knowledge": True,
+    **get_builtin_tool_default_enabled_map(),
+    **get_request_scoped_tool_default_enabled_map(),
 }
 
 

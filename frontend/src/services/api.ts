@@ -22,7 +22,16 @@ import type {
   ProviderEndpointProfilesResponse,
 } from '../types/model';
 import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
-import type { Project, ProjectCreate, ProjectUpdate, FileNode, FileContent, FileRenameResult, DirectoryEntry } from '../types/project';
+import type {
+  Project,
+  ProjectCreate,
+  ProjectUpdate,
+  FileNode,
+  FileContent,
+  FileRenameResult,
+  DirectoryEntry,
+  ProjectToolCatalogResponse,
+} from '../types/project';
 import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, KnowledgeBaseChunk, RagConfig } from '../types/knowledgeBase';
 import type { PromptTemplate, PromptTemplateCreate, PromptTemplateUpdate } from '../types/promptTemplate';
 import type { Folder } from '../types/folder';
@@ -2187,6 +2196,14 @@ export async function getProject(id: string): Promise<Project> {
  */
 export async function updateProject(id: string, data: ProjectUpdate): Promise<Project> {
   const response = await api.put<Project>(`/api/projects/${id}`, data);
+  return response.data;
+}
+
+/**
+ * Get the unified tool catalog used by project settings and other tool-aware UIs.
+ */
+export async function getToolCatalog(): Promise<ProjectToolCatalogResponse> {
+  const response = await api.get<ProjectToolCatalogResponse>('/api/tools/catalog');
   return response.data;
 }
 

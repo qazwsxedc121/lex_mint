@@ -1,0 +1,44 @@
+"""Unit tests for unified tool catalog service."""
+
+from __future__ import annotations
+
+from src.api.services.tool_catalog_service import ToolCatalogService
+
+
+def test_build_catalog_includes_all_tool_names():
+    catalog = ToolCatalogService.build_catalog()
+    tool_names = [tool.name for tool in catalog.tools]
+
+    assert tool_names == [
+        "get_current_time",
+        "simple_calculator",
+        "format_json",
+        "text_statistics",
+        "read_project_document",
+        "read_current_document",
+        "search_project_text",
+        "apply_diff_project_document",
+        "apply_diff_current_document",
+        "search_knowledge",
+        "read_knowledge",
+    ]
+
+
+def test_build_catalog_groups_tools_in_ui_order():
+    catalog = ToolCatalogService.build_catalog()
+
+    assert [group.key for group in catalog.groups] == [
+        "builtin",
+        "projectDocuments",
+        "knowledge",
+    ]
+    assert [tool.name for tool in catalog.groups[0].tools] == [
+        "get_current_time",
+        "simple_calculator",
+        "format_json",
+        "text_statistics",
+    ]
+    assert catalog.groups[0].title_i18n_key == "workspace.settings.toolGroups.builtin.title"
+    assert catalog.groups[0].description_i18n_key == "workspace.settings.toolGroups.builtin.description"
+    assert catalog.tools[0].title_i18n_key == "workspace.settings.tools.get_current_time.title"
+    assert catalog.tools[0].description_i18n_key == "workspace.settings.tools.get_current_time.description"

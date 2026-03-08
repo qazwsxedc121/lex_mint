@@ -9,10 +9,10 @@ import {
 } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { deleteSession, listKnowledgeBases, listSessions, updateProject } from '../../services/api';
+import { deleteSession, getToolCatalog, listKnowledgeBases, listSessions, updateProject } from '../../services/api';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import type { KnowledgeBase } from '../../types/knowledgeBase';
-import type { ProjectSettings } from '../../types/project';
+import type { ProjectSettings, ProjectToolCatalogGroup, ProjectToolCatalogItem } from '../../types/project';
 import type { ProjectWorkspaceOutletContext } from './workspace';
 
 type FeedbackState =
@@ -20,52 +20,29 @@ type FeedbackState =
   | { type: 'error'; message: string }
   | null;
 
-type ProjectToolGroup = 'builtin' | 'projectDocuments' | 'knowledge';
-
-interface ProjectToolDefinition {
-  key: string;
-  group: ProjectToolGroup;
-  requiresProjectKnowledge?: boolean;
-}
-
-const DEFAULT_PROJECT_TOOL_ENABLED_MAP: Record<string, boolean> = {
-  get_current_time: false,
-  simple_calculator: false,
-  read_project_document: true,
-  read_current_document: true,
-  search_project_text: true,
-  apply_diff_project_document: false,
-  apply_diff_current_document: false,
-  search_knowledge: true,
-  read_knowledge: true,
-};
-
-const PROJECT_TOOL_GROUPS: ProjectToolGroup[] = ['builtin', 'projectDocuments', 'knowledge'];
-
-const PROJECT_TOOL_DEFINITIONS: ProjectToolDefinition[] = [
-  { key: 'get_current_time', group: 'builtin' },
-  { key: 'simple_calculator', group: 'builtin' },
-  { key: 'read_project_document', group: 'projectDocuments' },
-  { key: 'read_current_document', group: 'projectDocuments' },
-  { key: 'search_project_text', group: 'projectDocuments' },
-  { key: 'apply_diff_project_document', group: 'projectDocuments' },
-  { key: 'apply_diff_current_document', group: 'projectDocuments' },
-  { key: 'search_knowledge', group: 'knowledge', requiresProjectKnowledge: true },
-  { key: 'read_knowledge', group: 'knowledge', requiresProjectKnowledge: true },
-];
-
 const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
   rag: {
     knowledge_base_ids: [],
     knowledge_base_mode: 'append',
   },
   tools: {
-    tool_enabled_map: { ...DEFAULT_PROJECT_TOOL_ENABLED_MAP },
+    tool_enabled_map: {},
   },
 };
 
-const normalizeToolEnabledMap = (value?: Record<string, boolean> | null): Record<string, boolean> => {
-  const merged = { ...DEFAULT_PROJECT_TOOL_ENABLED_MAP };
+const buildDefaultToolEnabledMap = (tools: ProjectToolCatalogItem[]): Record<string, boolean> => {
+  const defaults: Record<string, boolean> = {};
+  for (const tool of tools) {
+    defaults[tool.name] = Boolean(tool.enabled_by_default);
+  }
+  return defaults;
+};
+
+const normalizeToolEnabledMap = (
+  defaultToolEnabledMap: Record<string, boolean>,
+  value?: Record<string, boolean> | null,
+): Record<string, boolean> => {
+  const merged = { ...defaultToolEnabledMap };
   if (!value) {
     return merged;
   }
@@ -79,19 +56,26 @@ const normalizeToolEnabledMap = (value?: Record<string, boolean> | null): Record
   return merged;
 };
 
-const normalizeProjectSettings = (settings?: ProjectSettings | null): ProjectSettings => ({
+const normalizeProjectSettings = (
+  defaultToolEnabledMap: Record<string, boolean>,
+  settings?: ProjectSettings | null,
+): ProjectSettings => ({
   rag: {
     knowledge_base_ids: settings?.rag?.knowledge_base_ids || [],
     knowledge_base_mode: settings?.rag?.knowledge_base_mode || 'append',
   },
   tools: {
-    tool_enabled_map: normalizeToolEnabledMap(settings?.tools?.tool_enabled_map),
+    tool_enabled_map: normalizeToolEnabledMap(defaultToolEnabledMap, settings?.tools?.tool_enabled_map),
   },
 });
 
-const areToolMapsEqual = (left: Record<string, boolean>, right: Record<string, boolean>): boolean => {
-  for (const definition of PROJECT_TOOL_DEFINITIONS) {
-    if (Boolean(left[definition.key]) !== Boolean(right[definition.key])) {
+const areToolMapsEqual = (
+  toolDefinitions: ProjectToolCatalogItem[],
+  left: Record<string, boolean>,
+  right: Record<string, boolean>,
+): boolean => {
+  for (const definition of toolDefinitions) {
+    if (Boolean(left[definition.name]) !== Boolean(right[definition.name])) {
       return false;
     }
   }
@@ -136,11 +120,25 @@ export const ProjectSettingsView: React.FC = () => {
   const [savingKnowledgeBases, setSavingKnowledgeBases] = useState(false);
   const [savingTools, setSavingTools] = useState(false);
   const [knowledgeBaseLoadError, setKnowledgeBaseLoadError] = useState<string | null>(null);
+  const [toolCatalogGroups, setToolCatalogGroups] = useState<ProjectToolCatalogGroup[]>([]);
+  const [toolCatalogItems, setToolCatalogItems] = useState<ProjectToolCatalogItem[]>([]);
+  const [loadingToolCatalog, setLoadingToolCatalog] = useState(true);
+  const [toolCatalogLoadError, setToolCatalogLoadError] = useState<string | null>(null);
   const [draftSettings, setDraftSettings] = useState<ProjectSettings>(DEFAULT_PROJECT_SETTINGS);
 
+  const defaultToolEnabledMap = useMemo(
+    () => buildDefaultToolEnabledMap(toolCatalogItems),
+    [toolCatalogItems]
+  );
+
+  const currentSettings = useMemo(
+    () => normalizeProjectSettings(defaultToolEnabledMap, currentProject?.settings),
+    [currentProject?.settings, defaultToolEnabledMap]
+  );
+
   useEffect(() => {
-    setDraftSettings(normalizeProjectSettings(currentProject?.settings));
-  }, [currentProject?.settings]);
+    setDraftSettings(currentSettings);
+  }, [currentSettings]);
 
   const loadSessionCount = useCallback(async () => {
     setLoadingCount(true);
@@ -170,6 +168,21 @@ export const ProjectSettingsView: React.FC = () => {
     }
   }, [t]);
 
+  const loadToolCatalog = useCallback(async () => {
+    setLoadingToolCatalog(true);
+    setToolCatalogLoadError(null);
+    try {
+      const catalog = await getToolCatalog();
+      setToolCatalogGroups(catalog.groups || []);
+      setToolCatalogItems(catalog.tools || []);
+    } catch (error) {
+      console.error('Failed to load tool catalog:', error);
+      setToolCatalogLoadError(t('workspace.settings.toolsLoadFailed'));
+    } finally {
+      setLoadingToolCatalog(false);
+    }
+  }, [t]);
+
   useEffect(() => {
     void loadSessionCount();
   }, [loadSessionCount]);
@@ -177,6 +190,10 @@ export const ProjectSettingsView: React.FC = () => {
   useEffect(() => {
     void loadKnowledgeBaseOptions();
   }, [loadKnowledgeBaseOptions]);
+
+  useEffect(() => {
+    void loadToolCatalog();
+  }, [loadToolCatalog]);
 
   const persistProjectSettings = useCallback(async (nextSettings: ProjectSettings) => {
     await updateProject(projectId, { settings: nextSettings });
@@ -224,11 +241,6 @@ export const ProjectSettingsView: React.FC = () => {
     }
   }, [clearAgentContextItems, currentProject?.name, loadSessionCount, projectId, sessionCount, setAgentSession, setProjectSession, t]);
 
-  const currentSettings = useMemo(
-    () => normalizeProjectSettings(currentProject?.settings),
-    [currentProject?.settings]
-  );
-
   const knowledgeBaseSelection = draftSettings.rag.knowledge_base_ids;
   const enabledKnowledgeBaseIds = useMemo(() => new Set(knowledgeBases.map((item) => item.id)), [knowledgeBases]);
   const normalizedSelection = useMemo(
@@ -240,13 +252,10 @@ export const ProjectSettingsView: React.FC = () => {
     || currentSettings.rag.knowledge_base_ids.join('|') !== normalizedSelection.join('|');
   const knowledgeToolsDefinitelyUnavailable =
     draftSettings.rag.knowledge_base_mode === 'override' && normalizedSelection.length === 0;
-  const isToolDirty = !areToolMapsEqual(currentSettings.tools.tool_enabled_map, draftSettings.tools.tool_enabled_map);
+  const isToolDirty = !areToolMapsEqual(toolCatalogItems, currentSettings.tools.tool_enabled_map, draftSettings.tools.tool_enabled_map);
   const groupedToolDefinitions = useMemo(
-    () => PROJECT_TOOL_GROUPS.map((group) => ({
-      group,
-      items: PROJECT_TOOL_DEFINITIONS.filter((item) => item.group === group),
-    })),
-    []
+    () => toolCatalogGroups,
+    [toolCatalogGroups]
   );
 
   useEffect(() => {
@@ -578,7 +587,24 @@ export const ProjectSettingsView: React.FC = () => {
             </div>
 
             <div className="mt-5 space-y-4">
-              {groupedToolDefinitions.map(({ group, items }) => (
+              {loadingToolCatalog && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950/30 dark:text-gray-300">
+                  {t('chat.loading')}
+                </div>
+              )}
+
+              {toolCatalogLoadError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+                  {toolCatalogLoadError}
+                </div>
+              )}
+
+              {!loadingToolCatalog && !toolCatalogLoadError && groupedToolDefinitions.map(({
+                group,
+                title_i18n_key,
+                description_i18n_key,
+                tools: items,
+              }) => (
                 <section
                   key={group}
                   className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/30"
@@ -586,21 +612,21 @@ export const ProjectSettingsView: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      {t(`workspace.settings.toolGroups.${group}.title`)}
+                      {t(title_i18n_key)}
                     </div>
                     <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {t(`workspace.settings.toolGroups.${group}.description`)}
+                      {t(description_i18n_key)}
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     {items.map((tool) => {
-                      const enabled = Boolean(draftSettings.tools.tool_enabled_map[tool.key]);
-                      const disabledByContext = Boolean(tool.requiresProjectKnowledge && knowledgeToolsDefinitelyUnavailable);
+                      const enabled = Boolean(draftSettings.tools.tool_enabled_map[tool.name]);
+                      const disabledByContext = Boolean(tool.requires_project_knowledge && knowledgeToolsDefinitelyUnavailable);
                       const reason = disabledByContext ? t('workspace.settings.toolUnavailableKnowledge') : null;
                       return (
                         <div
-                          key={tool.key}
+                          key={tool.name}
                           className={`rounded-xl border px-4 py-3 ${
                             disabledByContext
                               ? 'border-gray-200 bg-gray-100/80 opacity-70 dark:border-gray-800 dark:bg-gray-900/60'
@@ -613,10 +639,10 @@ export const ProjectSettingsView: React.FC = () => {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                {t(`workspace.settings.tools.${tool.key}.title`)}
+                                {t(tool.title_i18n_key)}
                               </div>
                               <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                                {t(`workspace.settings.tools.${tool.key}.description`)}
+                                {t(tool.description_i18n_key)}
                               </div>
                               {reason && (
                                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{reason}</div>
@@ -624,14 +650,14 @@ export const ProjectSettingsView: React.FC = () => {
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleToolToggle(tool.key)}
+                              onClick={() => handleToolToggle(tool.name)}
                               disabled={disabledByContext || savingTools}
                               className={`inline-flex min-w-[88px] items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
                                 enabled
                                   ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400'
                                   : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
                               } disabled:cursor-not-allowed disabled:opacity-70`}
-                              data-name={`project-settings-toggle-tool-${tool.key}`}
+                              data-name={`project-settings-toggle-tool-${tool.name}`}
                             >
                               {enabled ? t('workspace.settings.enabled') : t('workspace.settings.disabled')}
                             </button>
@@ -652,7 +678,7 @@ export const ProjectSettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleResetTools}
-                  disabled={savingTools || !isToolDirty}
+                  disabled={loadingToolCatalog || savingTools || !isToolDirty}
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                   data-name="project-settings-reset-tools"
                 >
@@ -661,7 +687,7 @@ export const ProjectSettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void handleSaveTools()}
-                  disabled={savingTools || !isToolDirty}
+                  disabled={loadingToolCatalog || savingTools || !isToolDirty}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
                   data-name="project-settings-save-tools"
                 >

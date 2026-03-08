@@ -165,3 +165,23 @@ def test_cached_search_restores_citation_mapping_after_other_query():
     assert third["hits"][0]["doc_id"] == "doc_1"
     assert read_payload["ok"] is True
     assert read_payload["sources"][0]["doc_id"] == "doc_1"
+
+
+def test_get_tools_includes_shared_metadata():
+    service = _build_service()
+
+    tools = service.get_tools()
+    metadata_by_name = {tool.name: tool.metadata for tool in tools}
+
+    assert metadata_by_name["search_knowledge"] == {
+        "group": "knowledge",
+        "source": "rag",
+        "enabled_by_default": True,
+        "requires_project_knowledge": True,
+    }
+    assert metadata_by_name["read_knowledge"] == {
+        "group": "knowledge",
+        "source": "rag",
+        "enabled_by_default": True,
+        "requires_project_knowledge": True,
+    }
