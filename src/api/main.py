@@ -17,6 +17,7 @@ from .logging_config import setup_logging
 setup_logging()
 
 from .config import settings
+from .errors import register_exception_handlers
 from .paths import repo_root, resolve_user_data_path
 from .routers import (
     assistants,
@@ -79,6 +80,7 @@ app = FastAPI(
     description="Web API for LangGraph-based AI agent with conversation persistence",
     version="1.0.0",
 )
+register_exception_handlers(app)
 
 # Configure CORS
 app.add_middleware(
@@ -211,5 +213,4 @@ async def packaged_frontend_routes(full_path: str):
         raise HTTPException(status_code=404, detail="Not Found")
 
     return _frontend_file_response(full_path)
-
 

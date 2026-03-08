@@ -10,6 +10,10 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
+from ..dependencies import get_agent_service as get_shared_agent_service
+from ..dependencies import get_file_service as get_shared_file_service
+from ..services.agent_service_simple import AgentService
+
 # 使用简化版 AgentService（不使用 LangGraph）
 from ..services.agent_service_simple import AgentService
 from ..services.conversation_storage import create_storage_with_project_resolver
@@ -142,13 +146,12 @@ class ResumeStreamRequest(BaseModel):
 
 def get_agent_service() -> AgentService:
     """Dependency injection for AgentService."""
-    storage = create_storage_with_project_resolver(settings.conversations_dir)
-    return AgentService(storage)
+    return get_shared_agent_service()
 
 
 def get_file_service() -> FileService:
     """Dependency injection for FileService."""
-    return FileService(settings.attachments_dir, settings.max_file_size_mb)
+    return get_shared_file_service()
 
 
 def _is_terminal_payload(payload: Dict[str, Any]) -> bool:

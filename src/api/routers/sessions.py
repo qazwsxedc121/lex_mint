@@ -12,13 +12,13 @@ import zipfile
 import shutil
 from urllib.parse import quote
 
-from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from ..dependencies import get_storage as get_shared_storage
+from ..services.conversation_storage import ConversationStorage
 from ..services.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
 from ..services.orchestration import GroupSettingsResolver
 from ..services.group_participants import parse_group_participant
-from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class ImportChatGPTResponse(BaseModel):
 
 def get_storage() -> ConversationStorage:
     """Dependency injection for ConversationStorage."""
-    return create_storage_with_project_resolver(settings.conversations_dir)
+    return get_shared_storage()
 
 
 async def _normalize_and_validate_group_assistants(group_assistants: Optional[List[str]]) -> Optional[List[str]]:
