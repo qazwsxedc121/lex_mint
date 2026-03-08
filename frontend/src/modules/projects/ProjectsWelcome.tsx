@@ -1,6 +1,6 @@
 import React from 'react';
-import { ProjectHomeView } from './ProjectHomeView';
+import { ProjectsDashboardView } from './ProjectsDashboardView';
 
 export const ProjectsWelcome: React.FC = () => {
-  return <ProjectHomeView />;
+  return <ProjectsDashboardView />;
 };

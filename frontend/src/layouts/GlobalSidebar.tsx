@@ -19,6 +19,8 @@ import {
 import { useDeveloperMode } from '../hooks/useDeveloperMode';
 import { LanguageSwitcher } from '../i18n/components/LanguageSwitcher';
 import { AsyncRunCenter } from '../components/AsyncRunCenter';
+import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore';
+import { getProjectWorkspacePath } from '../modules/projects/workspace';
 
 interface GlobalSidebarProps {
   collapsed: boolean;
@@ -37,9 +39,14 @@ export const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const { enabled: developerEnabled } = useDeveloperMode();
+  const currentProjectId = useProjectWorkspaceStore((state) => state.currentProjectId);
+  const getProjectTab = useProjectWorkspaceStore((state) => state.getProjectTab);
+  const projectsPath = currentProjectId
+    ? getProjectWorkspacePath(currentProjectId, getProjectTab(currentProjectId))
+    : '/projects';
   const navItems: NavItem[] = [
     { path: '/chat', labelKey: 'nav.chat', icon: ChatBubbleLeftRightIcon },
-    { path: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
+    { path: projectsPath, labelKey: 'nav.projects', icon: FolderIcon },
     { path: '/workflows', labelKey: 'nav.workflows', icon: RectangleStackIcon },
     ...(developerEnabled ? [{ path: '/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon }] : []),
     { path: '/settings', labelKey: 'nav.settings', icon: Cog6ToothIcon },

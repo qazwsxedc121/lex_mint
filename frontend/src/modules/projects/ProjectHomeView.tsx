@@ -1,204 +1,340 @@
-import React, { useEffect, useMemo } from 'react';
-import { FolderIcon, FolderOpenIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
+import React from 'react';
+import {
+  ArrowLeftIcon,
+  ChatBubbleLeftRightIcon,
+  CommandLineIcon,
+  DocumentTextIcon,
+  FolderOpenIcon,
+  MagnifyingGlassIcon,
+  SparklesIcon,
+} from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
-import type { ProjectsOutletContext } from './workspace';
+import type { ProjectWorkspaceOutletContext } from './workspace';
 import { getProjectWorkspacePath } from './workspace';
+import { useProjectHomeSummary } from './hooks/useProjectHomeSummary';
 
-type ProjectHomeContext = ProjectsOutletContext & {
-  currentProject?: {
-    id: string;
-    name: string;
-    description?: string | null;
-    root_path: string;
-  };
-  onCloseProject?: () => void;
+const formatSessionLabel = (sessionId: string | null): string => {
+  if (!sessionId) {
+    return '--';
+  }
+
+  return sessionId.length > 16 ? `${sessionId.slice(0, 8)}...${sessionId.slice(-4)}` : sessionId;
 };
 
 export const ProjectHomeView: React.FC = () => {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
-  const { projectId } = useParams();
-  const { projects, projectsLoading = false, onManageClick, onAddProjectClick, currentProject, onCloseProject } =
-    useOutletContext<ProjectHomeContext>();
-  const { currentProjectId, getProjectTab, setCurrentProject } = useProjectWorkspaceStore();
+  const { projectId, currentProject, onManageClick, onCloseProject } = useOutletContext<ProjectWorkspaceOutletContext>();
+  const setChatSidebarOpen = useProjectWorkspaceStore((state) => state.setChatSidebarOpen);
+  const summary = useProjectHomeSummary(projectId);
 
-  useEffect(() => {
-    if (projectId || !currentProjectId) {
-      return;
-    }
-    const exists = projects.some((project) => project.id === currentProjectId);
-    if (!exists) {
-      return;
-    }
-    navigate(getProjectWorkspacePath(currentProjectId, getProjectTab(currentProjectId)), { replace: true });
-  }, [currentProjectId, getProjectTab, navigate, projectId, projects]);
+  if (!currentProject) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-white dark:bg-gray-900">
+        <div className="text-center">
+          <p className="text-red-600 dark:text-red-400">{t('explorer.invalidId')}</p>
+          <button
+            type="button"
+            onClick={onCloseProject}
+            className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            {t('projectHome.backToDashboard')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const orderedProjects = useMemo(() => {
-    const currentId = currentProject?.id || currentProjectId || null;
-    return [...projects].sort((a, b) => {
-      if (currentId) {
-        if (a.id === currentId) {
-          return -1;
-        }
-        if (b.id === currentId) {
-          return 1;
-        }
-      }
-      return a.name.localeCompare(b.name);
-    });
-  }, [currentProject?.id, currentProjectId, projects]);
-
-  const handleProjectSelect = (nextProjectId: string) => {
-    setCurrentProject(nextProjectId);
-    navigate(getProjectWorkspacePath(nextProjectId, getProjectTab(nextProjectId)));
+  const openRecentConversation = () => {
+    setChatSidebarOpen(true);
+    navigate(getProjectWorkspacePath(projectId, 'files'));
   };
+
+  const openPath = (path: string) => navigate(path);
 
   return (
     <div data-name="project-home-view" className="flex h-full min-h-0 w-full flex-1 flex-col overflow-auto bg-gray-50 px-4 py-4 dark:bg-gray-950">
-      {!projectId && (
-        <div className="mb-4 border-b border-gray-200 pb-3 dark:border-gray-800">
-          <div className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-medium text-blue-700 shadow-sm ring-1 ring-blue-100 dark:bg-gray-900 dark:text-blue-200 dark:ring-blue-900/40">
-            <FolderIcon className="h-4 w-4" />
-            {t('workspace.tabs.project')}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900" data-name="project-home-primary-card">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-blue-50 p-3 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-              <FolderOpenIcon className="h-6 w-6" />
+      <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_320px]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+              <SparklesIcon className="h-4 w-4" />
+              {t('projectHome.eyebrow')}
             </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                {currentProject ? currentProject.name : t('workspace.project.emptyTitle')}
-              </h2>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                {currentProject
-                  ? (currentProject.description?.trim() || t('workspace.project.currentDescription'))
-                  : t('workspace.project.emptyDescription')}
-              </p>
-              {currentProject && (
-                <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-gray-950 dark:text-gray-300">
-                  {currentProject.root_path}
-                </div>
-              )}
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
+              {currentProject.name}
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
+              {currentProject.description?.trim() || t('projectHome.descriptionFallback')}
+            </p>
+
+            <div className="mt-4 rounded-2xl bg-gray-50 px-4 py-3 text-xs text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+              {currentProject.root_path}
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => openPath(summary.continueEditingPath)}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+                data-name="project-home-continue-editing"
+              >
+                <DocumentTextIcon className="h-4 w-4" />
+                {t('projectHome.continueEditing')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'search'))}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-800"
+                data-name="project-home-open-search"
+              >
+                <MagnifyingGlassIcon className="h-4 w-4" />
+                {t('projectHome.openSearch')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'workflows'))}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-800"
+                data-name="project-home-open-workflows"
+              >
+                <CommandLineIcon className="h-4 w-4" />
+                {t('projectHome.openWorkflows')}
+              </button>
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={onAddProjectClick}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              data-name="project-home-add-project"
-            >
-              {t('welcome.addProject')}
-            </button>
-            <button
-              type="button"
-              onClick={onManageClick}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
-              data-name="project-home-manage-projects"
-            >
-              {t('welcome.manageProjects')}
-            </button>
-            {currentProject && onCloseProject && (
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-950/60">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <FolderOpenIcon className="h-4 w-4" />
+              {t('projectHome.statusTitle')}
+            </div>
+            <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                {t('projectHome.lastTab')}: {t(`workspace.tabs.${summary.recentTab}`)}
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                {t('projectHome.lastFile')}: {summary.recentFileName || t('projectHome.noRecentFile')}
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                {t('projectHome.lastSession')}: {summary.recentSessionId ? formatSessionLabel(summary.recentSessionId) : t('projectHome.noRecentSession')}
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                {t('projectHome.sidebarState')}: {summary.chatSidebarOpen ? t('projectHome.sidebarOpen') : t('projectHome.sidebarClosed')}
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                {t('projectHome.fileTreeState')}: {summary.fileTreeOpen ? t('projectHome.fileTreeOpen') : t('projectHome.fileTreeClosed')}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onManageClick}
+                className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
+                data-name="project-home-manage-project"
+              >
+                {t('welcome.manageProjects')}
+              </button>
               <button
                 type="button"
                 onClick={onCloseProject}
-                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
-                data-name="project-home-close-project"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-800"
+                data-name="project-home-back-dashboard"
               >
-                {t('selector.closeProject')}
+                <ArrowLeftIcon className="h-4 w-4" />
+                {t('projectHome.backToDashboard')}
               </button>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900" data-name="project-home-side-card">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Cog6ToothIcon className="h-4 w-4" />
-            {t('workspace.project.actionsTitle')}
-          </div>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            {currentProject ? t('workspace.project.actionsDescription') : t('workspace.project.emptyActionsDescription')}
-          </p>
-          {currentProject && (
-            <div className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-200">
-              <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-950">
-                {t('workspace.project.currentProjectLabel')}: {currentProject.name}
-              </div>
-              <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-950">
-                {t('workspace.project.nextStepHint')}
-              </div>
             </div>
-          )}
-        </section>
-      </div>
-
-      <section className="mt-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900" data-name="project-home-project-list">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('workspace.project.listTitle')}</h3>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{t('workspace.project.listDescription')}</p>
           </div>
-          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-            {orderedProjects.length}
-          </span>
+        </div>
+      </section>
+
+      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <DocumentTextIcon className="h-4 w-4" />
+              {t('projectHome.continueTitle')}
+            </div>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.continueDescription')}</p>
+
+            {summary.hasWorkContext ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => openPath(summary.continueEditingPath)}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-recent-file-card"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                    {t('projectHome.lastFile')}
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                    {summary.recentFileName || t('projectHome.noRecentFile')}
+                  </div>
+                  <div className="mt-2 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
+                    {summary.recentFilePath || t('projectHome.lastFileHint')}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openPath(summary.recentTabPath)}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-last-tab-card"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                    {t('projectHome.lastTab')}
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                    {t(`workspace.tabs.${summary.recentTab}`)}
+                  </div>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                    {t('projectHome.lastTabHint')}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openRecentConversation}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-session-card"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                    {t('projectHome.lastSession')}
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                    {summary.recentSessionId ? t('projectHome.continueConversation') : t('projectHome.noRecentSession')}
+                  </div>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                    {summary.recentSessionId ? formatSessionLabel(summary.recentSessionId) : t('projectHome.lastSessionHint')}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openPath(getProjectWorkspacePath(projectId, 'workflows'))}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-workflow-card"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                    {t('workspace.tabs.workflows')}
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                    {t('projectHome.runWorkflow')}
+                  </div>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                    {t('projectHome.workflowHint')}
+                  </div>
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => openPath(getProjectWorkspacePath(projectId, 'files'))}
+                  className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-empty-open-files"
+                >
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{t('projectHome.emptyOpenFiles')}</div>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.emptyOpenFilesHint')}</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openPath(getProjectWorkspacePath(projectId, 'search'))}
+                  className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-empty-search"
+                >
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{t('projectHome.emptySearch')}</div>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.emptySearchHint')}</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openPath(getProjectWorkspacePath(projectId, 'workflows'))}
+                  className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-950 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                  data-name="project-home-empty-workflows"
+                >
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{t('projectHome.emptyWorkflow')}</div>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.emptyWorkflowHint')}</div>
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <ChatBubbleLeftRightIcon className="h-4 w-4" />
+              {t('projectHome.resourcesTitle')}
+            </div>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.resourcesDescription')}</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'files'))}
+                className="rounded-2xl bg-gray-50 px-4 py-4 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                data-name="project-home-resource-files"
+              >
+                {t('workspace.tabs.files')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'search'))}
+                className="rounded-2xl bg-gray-50 px-4 py-4 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                data-name="project-home-resource-search"
+              >
+                {t('workspace.tabs.search')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'workflows'))}
+                className="rounded-2xl bg-gray-50 px-4 py-4 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                data-name="project-home-resource-workflows"
+              >
+                {t('workspace.tabs.workflows')}
+              </button>
+            </div>
+          </section>
         </div>
 
-        <div className="mt-4">
-          {projectsLoading ? (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
-              {t('explorer.loading')}
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <SparklesIcon className="h-4 w-4" />
+              {t('projectHome.aiActionsTitle')}
             </div>
-          ) : orderedProjects.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300">
-              {t('welcome.noProjects')}
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('projectHome.aiActionsDescription')}</p>
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'files'))}
+                className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                data-name="project-home-ai-files"
+              >
+                <DocumentTextIcon className="h-4 w-4 flex-none" />
+                {t('projectHome.aiFilesAction')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'search'))}
+                className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                data-name="project-home-ai-search"
+              >
+                <MagnifyingGlassIcon className="h-4 w-4 flex-none" />
+                {t('projectHome.aiSearchAction')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'workflows'))}
+                className="flex w-full items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                data-name="project-home-ai-workflow"
+              >
+                <CommandLineIcon className="h-4 w-4 flex-none" />
+                {t('projectHome.aiWorkflowAction')}
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {orderedProjects.map((project) => {
-                const isActive = currentProject?.id === project.id;
-                return (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => handleProjectSelect(project.id)}
-                    className={`rounded-2xl border p-4 text-left transition ${
-                      isActive
-                        ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30'
-                        : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:bg-gray-950/40'
-                    }`}
-                    data-name="project-home-project-item"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {project.name}
-                        </div>
-                        {project.description && (
-                          <div className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
-                            {project.description}
-                          </div>
-                        )}
-                      </div>
-                      {isActive && (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-                          {t('workspace.project.currentBadge')}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-3 truncate text-xs text-gray-500 dark:text-gray-400">{project.root_path}</div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          </section>
         </div>
       </section>
     </div>

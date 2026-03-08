@@ -10,6 +10,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { createSession, searchSessions } from '../services/api';
 import type { SearchResult } from '../services/api';
+import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore';
+import { getProjectWorkspacePath } from '../modules/projects/workspace';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -37,6 +39,11 @@ type PaletteItem = CommandItem | SessionItem;
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
+  const currentProjectId = useProjectWorkspaceStore((state) => state.currentProjectId);
+  const getProjectTab = useProjectWorkspaceStore((state) => state.getProjectTab);
+  const projectsPath = currentProjectId
+    ? getProjectWorkspacePath(currentProjectId, getProjectTab(currentProjectId))
+    : '/projects';
   const [query, setQuery] = useState('');
   const [sessionResults, setSessionResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -87,7 +94,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       type: 'command' as const,
       label: 'Projects',
       icon: <FolderIcon className="h-4 w-4" />,
-      action: () => navigate('/projects'),
+      action: () => navigate(projectsPath),
     },
     {
       id: 'cmd-workflows',
@@ -96,7 +103,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       icon: <RectangleStackIcon className="h-4 w-4" />,
       action: () => navigate('/workflows'),
     },
-  ], [navigate]);
+  ], [navigate, projectsPath]);
 
   // Filter commands by query
   const filteredCommands = useMemo(() => {
