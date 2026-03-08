@@ -8,6 +8,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  RocketLaunchIcon,
   UserGroupIcon,
   CpuChipIcon,
   ServerIcon,
@@ -35,10 +36,11 @@ export const SettingsSidebar: React.FC = () => {
   const { t } = useTranslation('settings');
 
   const navItems: NavItem[] = [
+    { path: '/settings/get-started', labelKey: 'nav.getStarted', icon: RocketLaunchIcon },
     { path: '/settings/assistants', labelKey: 'nav.assistants', icon: UserGroupIcon },
-    { path: '/settings/memory', labelKey: 'nav.memory', icon: CircleStackIcon },
     { path: '/settings/models', labelKey: 'nav.models', icon: CpuChipIcon },
     { path: '/settings/providers', labelKey: 'nav.providers', icon: ServerIcon },
+    { path: '/settings/memory', labelKey: 'nav.memory', icon: CircleStackIcon },
     { path: '/settings/knowledge-bases', labelKey: 'nav.knowledgeBases', icon: BookOpenIcon },
     { path: '/settings/prompt-templates', labelKey: 'nav.promptTemplates', icon: DocumentTextIcon },
     { path: '/settings/rag', labelKey: 'nav.ragSettings', icon: CircleStackIcon },
