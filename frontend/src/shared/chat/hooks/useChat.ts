@@ -30,15 +30,8 @@ import {
   mergeCompareResponses,
 } from './useChatSessionHelpers';
 import {
-  parseAssistantChunkProjectionEvent,
-  parseAssistantDoneProjectionEvent,
-  parseAssistantMessageIdProjectionEvent,
-  parseAssistantStartProjectionEvent,
-  parseSourcesProjectionEvent,
-  parseThinkingDurationProjectionEvent,
-  parseUsageProjectionEvent,
-  shouldActivateGroupProjectionMode,
-  toGroupTimelineProjectionInput,
+  applyGroupProjectionEvent,
+  type GroupTimelineProjectionInput,
 } from './useChatGroupProjection';
 
 type SendMessageOptions = {
@@ -106,28 +99,41 @@ export function useChat(sessionId: string | null) {
     return mergeToolCallsFromCacheItems(items, toolCallsByMessageIdRef.current);
   }, []);
 
-  const appendGroupTimelineEvent = (event: {
-    type: string;
-    mode?: string;
-    round?: number;
-    max_rounds?: number;
-    action?: string;
-    reason?: string;
-    supervisor_id?: string;
-    supervisor_name?: string;
-    assistant_id?: string;
-    assistant_name?: string;
-    assistant_ids?: string[];
-    assistant_names?: string[];
-    instruction?: string;
-    rounds?: number;
-  }) => {
+  const appendGroupTimelineEvent = useCallback((event: GroupTimelineProjectionInput) => {
     const timelineEvent = buildGroupTimelineEvent(event);
     if (!timelineEvent) {
       return;
     }
     setGroupTimeline(prev => [...prev.slice(-39), timelineEvent]);
-  };
+  }, []);
+
+  const applyGroupEventProjection = useCallback((
+    event: Record<string, unknown>,
+    runtimeIsGroupChat: boolean,
+    activateRuntimeGroupChatMode: () => void,
+    updateAssistantMessage: (
+      updater: (message: Message) => Message,
+      options?: { assistantTurnId?: string | null; allowSingleFallback?: boolean },
+    ) => void,
+    activeAssistantTurnIdRef: { current: string | null },
+  ) => {
+    applyGroupProjectionEvent({
+      event,
+      activateRuntimeGroupChatMode,
+      runtimeIsGroupChat,
+      appendGroupTimelineEvent,
+      updateAssistantMessage,
+      setMessages,
+      setTotalUsage,
+      setTotalCost,
+      setLastPromptTokens,
+      getActiveAssistantTurnId: () => activeAssistantTurnIdRef.current,
+      setActiveAssistantTurnId: (value) => {
+        activeAssistantTurnIdRef.current = value;
+      },
+      nowTimestamp,
+    });
+  }, [appendGroupTimelineEvent, setLastPromptTokens, setMessages, setTotalCost, setTotalUsage]);
 
   // Extract loadSession as a standalone function so it can be called after sending messages
   const loadSession = useCallback(async () => {
@@ -608,128 +614,17 @@ export function useChat(sessionId: string | null) {
           // Controlled by onGroupEvent when available.
         },
         (event) => {
-          if (shouldActivateGroupProjectionMode(event)) {
-            activateRuntimeGroupChatMode();
-          }
-          if (!runtimeIsGroupChat) {
-            return;
-          }
-          const timelineEventInput = toGroupTimelineProjectionInput(event);
-          if (timelineEventInput) {
-            appendGroupTimelineEvent(timelineEventInput);
-            return;
-          }
-          switch (event.type) {
-            case 'assistant_start': {
-              const assistantStart = parseAssistantStartProjectionEvent(event);
-              if (!assistantStart) {
-                return;
-              }
-              const { assistantId, assistantTurnId, assistantName, assistantIcon } = assistantStart;
-              activeAssistantTurnId = assistantTurnId;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const exists = newMessages.some(
-                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
-                );
-                if (exists) {
-                  return prev;
-                }
-                newMessages.push({
-                  role: 'assistant',
-                  content: '',
-                  created_at: nowTimestamp(),
-                  assistant_id: assistantId,
-                  assistant_turn_id: assistantTurnId,
-                  assistant_name: assistantName || undefined,
-                  assistant_icon: assistantIcon,
-                });
-                return newMessages;
-              });
-              return;
-            }
-            case 'assistant_chunk': {
-              const assistantChunk = parseAssistantChunkProjectionEvent(event);
-              if (!assistantChunk) {
-                return;
-              }
-              const { assistantTurnId, chunk } = assistantChunk;
-              updateAssistantMessage(
-                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'usage': {
-              const usageEvent = parseUsageProjectionEvent(event);
-              if (!usageEvent) {
-                return;
-              }
-              const { assistantTurnId, usage, cost } = usageEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, usage, cost }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              setTotalUsage(prev => prev ? {
-                prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
-                completion_tokens: prev.completion_tokens + usage.completion_tokens,
-                total_tokens: prev.total_tokens + usage.total_tokens,
-              } : usage);
-              if (cost) {
-                setTotalCost(prev => prev ? {
-                  ...prev,
-                  total_cost: prev.total_cost + cost.total_cost,
-                } : cost);
-              }
-              setLastPromptTokens(usage.prompt_tokens);
-              return;
-            }
-            case 'sources': {
-              const sourcesEvent = parseSourcesProjectionEvent(event);
-              if (!sourcesEvent) {
-                return;
-              }
-              const { assistantTurnId, sources } = sourcesEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, sources }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'thinking_duration': {
-              const thinkingDurationEvent = parseThinkingDurationProjectionEvent(event);
-              if (!thinkingDurationEvent) {
-                return;
-              }
-              const { assistantTurnId, durationMs } = thinkingDurationEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, thinkingDurationMs: durationMs }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_message_id': {
-              const assistantMessageIdEvent = parseAssistantMessageIdProjectionEvent(event);
-              if (!assistantMessageIdEvent) {
-                return;
-              }
-              const { assistantTurnId, messageId } = assistantMessageIdEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, message_id: messageId }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_done': {
-              const assistantDoneEvent = parseAssistantDoneProjectionEvent(event);
-              if (assistantDoneEvent && activeAssistantTurnId === assistantDoneEvent.assistantTurnId) {
-                activeAssistantTurnId = null;
-              }
-              return;
-            }
-            default:
-              return;
-          }
+          const activeAssistantTurnIdRef = {
+            get current() { return activeAssistantTurnId; },
+            set current(value: string | null) { activeAssistantTurnId = value; },
+          };
+          applyGroupEventProjection(
+            event,
+            runtimeIsGroupChat,
+            activateRuntimeGroupChatMode,
+            updateAssistantMessage,
+            activeAssistantTurnIdRef,
+          );
         }
       );
     } catch (err) {
@@ -1382,117 +1277,17 @@ export function useChat(sessionId: string | null) {
           // Controlled by onGroupEvent when available.
         },
         (event) => {
-          if (shouldActivateGroupProjectionMode(event)) {
-            activateRuntimeGroupChatMode();
-          }
-          if (!runtimeIsGroupChat) {
-            return;
-          }
-          const timelineEventInput = toGroupTimelineProjectionInput(event);
-          if (timelineEventInput) {
-            appendGroupTimelineEvent(timelineEventInput);
-            return;
-          }
-          switch (event.type) {
-            case 'assistant_start': {
-              const assistantStart = parseAssistantStartProjectionEvent(event);
-              if (!assistantStart) {
-                return;
-              }
-              const { assistantId, assistantTurnId, assistantName, assistantIcon } = assistantStart;
-              activeAssistantTurnId = assistantTurnId;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const exists = newMessages.some(
-                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
-                );
-                if (exists) {
-                  return prev;
-                }
-                newMessages.push({
-                  role: 'assistant',
-                  content: '',
-                  created_at: nowTimestamp(),
-                  assistant_id: assistantId,
-                  assistant_turn_id: assistantTurnId,
-                  assistant_name: assistantName || undefined,
-                  assistant_icon: assistantIcon,
-                });
-                return newMessages;
-              });
-              return;
-            }
-            case 'assistant_chunk': {
-              const assistantChunk = parseAssistantChunkProjectionEvent(event);
-              if (!assistantChunk) {
-                return;
-              }
-              const { assistantTurnId, chunk } = assistantChunk;
-              updateAssistantMessage(
-                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'usage': {
-              const usageEvent = parseUsageProjectionEvent(event);
-              if (!usageEvent) {
-                return;
-              }
-              const { assistantTurnId, usage, cost } = usageEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, usage, cost }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              setLastPromptTokens(usage.prompt_tokens);
-              return;
-            }
-            case 'sources': {
-              const sourcesEvent = parseSourcesProjectionEvent(event);
-              if (!sourcesEvent) {
-                return;
-              }
-              const { assistantTurnId, sources } = sourcesEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, sources }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'thinking_duration': {
-              const thinkingDurationEvent = parseThinkingDurationProjectionEvent(event);
-              if (!thinkingDurationEvent) {
-                return;
-              }
-              const { assistantTurnId, durationMs } = thinkingDurationEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, thinkingDurationMs: durationMs }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_message_id': {
-              const assistantMessageIdEvent = parseAssistantMessageIdProjectionEvent(event);
-              if (!assistantMessageIdEvent) {
-                return;
-              }
-              const { assistantTurnId, messageId: messageIdFromEvent } = assistantMessageIdEvent;
-              updateAssistantMessage(
-                (message) => ({ ...message, message_id: messageIdFromEvent }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_done': {
-              const assistantDoneEvent = parseAssistantDoneProjectionEvent(event);
-              if (assistantDoneEvent && activeAssistantTurnId === assistantDoneEvent.assistantTurnId) {
-                activeAssistantTurnId = null;
-              }
-              return;
-            }
-            default:
-              return;
-          }
+          const activeAssistantTurnIdRef = {
+            get current() { return activeAssistantTurnId; },
+            set current(value: string | null) { activeAssistantTurnId = value; },
+          };
+          applyGroupEventProjection(
+            event,
+            runtimeIsGroupChat,
+            activateRuntimeGroupChatMode,
+            updateAssistantMessage,
+            activeAssistantTurnIdRef,
+          );
         }
       );
     } catch (err) {

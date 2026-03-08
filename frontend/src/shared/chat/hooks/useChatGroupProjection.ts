@@ -1,3 +1,5 @@
+import type { Dispatch, SetStateAction } from 'react';
+
 import type { CostInfo, Message, TokenUsage } from '../../../types/message';
 
 export type GroupProjectionEvent = {
@@ -193,4 +195,164 @@ export function parseAssistantDoneProjectionEvent(event: GroupProjectionEvent): 
   }
 
   return { assistantTurnId };
+}
+
+type UpdateAssistantMessage = (
+  updater: (message: Message) => Message,
+  options?: { assistantTurnId?: string | null; allowSingleFallback?: boolean },
+) => void;
+
+type ApplyGroupProjectionEventArgs = {
+  event: GroupProjectionEvent;
+  activateRuntimeGroupChatMode: () => void;
+  runtimeIsGroupChat: boolean;
+  appendGroupTimelineEvent: (event: GroupTimelineProjectionInput) => void;
+  updateAssistantMessage: UpdateAssistantMessage;
+  setMessages: Dispatch<SetStateAction<Message[]>>;
+  setTotalUsage?: Dispatch<SetStateAction<TokenUsage | null>>;
+  setTotalCost?: Dispatch<SetStateAction<CostInfo | null>>;
+  setLastPromptTokens?: Dispatch<SetStateAction<number | null>>;
+  getActiveAssistantTurnId: () => string | null;
+  setActiveAssistantTurnId: (value: string | null) => void;
+  nowTimestamp: () => string;
+};
+
+export function applyGroupProjectionEvent({
+  event,
+  activateRuntimeGroupChatMode,
+  runtimeIsGroupChat,
+  appendGroupTimelineEvent,
+  updateAssistantMessage,
+  setMessages,
+  setTotalUsage,
+  setTotalCost,
+  setLastPromptTokens,
+  getActiveAssistantTurnId,
+  setActiveAssistantTurnId,
+  nowTimestamp,
+}: ApplyGroupProjectionEventArgs): void {
+  if (shouldActivateGroupProjectionMode(event)) {
+    activateRuntimeGroupChatMode();
+  }
+  if (!runtimeIsGroupChat) {
+    return;
+  }
+
+  const timelineEventInput = toGroupTimelineProjectionInput(event);
+  if (timelineEventInput) {
+    appendGroupTimelineEvent(timelineEventInput);
+    return;
+  }
+
+  switch (event.type) {
+    case 'assistant_start': {
+      const assistantStart = parseAssistantStartProjectionEvent(event);
+      if (!assistantStart) {
+        return;
+      }
+      const { assistantId, assistantTurnId, assistantName, assistantIcon } = assistantStart;
+      setActiveAssistantTurnId(assistantTurnId);
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        const exists = newMessages.some(
+          (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId,
+        );
+        if (exists) {
+          return prev;
+        }
+        newMessages.push({
+          role: 'assistant',
+          content: '',
+          created_at: nowTimestamp(),
+          assistant_id: assistantId,
+          assistant_turn_id: assistantTurnId,
+          assistant_name: assistantName || undefined,
+          assistant_icon: assistantIcon,
+        });
+        return newMessages;
+      });
+      return;
+    }
+    case 'assistant_chunk': {
+      const assistantChunk = parseAssistantChunkProjectionEvent(event);
+      if (!assistantChunk) {
+        return;
+      }
+      const { assistantTurnId, chunk } = assistantChunk;
+      updateAssistantMessage(
+        (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
+        { assistantTurnId, allowSingleFallback: false },
+      );
+      return;
+    }
+    case 'usage': {
+      const usageEvent = parseUsageProjectionEvent(event);
+      if (!usageEvent) {
+        return;
+      }
+      const { assistantTurnId, usage, cost } = usageEvent;
+      updateAssistantMessage(
+        (message) => ({ ...message, usage, cost }),
+        { assistantTurnId, allowSingleFallback: false },
+      );
+      setTotalUsage?.((prev) => (prev ? {
+        prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
+        completion_tokens: prev.completion_tokens + usage.completion_tokens,
+        total_tokens: prev.total_tokens + usage.total_tokens,
+      } : usage));
+      if (cost) {
+        setTotalCost?.((prev) => (prev ? {
+          ...prev,
+          total_cost: prev.total_cost + cost.total_cost,
+        } : cost));
+      }
+      setLastPromptTokens?.(usage.prompt_tokens);
+      return;
+    }
+    case 'sources': {
+      const sourcesEvent = parseSourcesProjectionEvent(event);
+      if (!sourcesEvent) {
+        return;
+      }
+      const { assistantTurnId, sources } = sourcesEvent;
+      updateAssistantMessage(
+        (message) => ({ ...message, sources }),
+        { assistantTurnId, allowSingleFallback: false },
+      );
+      return;
+    }
+    case 'thinking_duration': {
+      const thinkingDurationEvent = parseThinkingDurationProjectionEvent(event);
+      if (!thinkingDurationEvent) {
+        return;
+      }
+      const { assistantTurnId, durationMs } = thinkingDurationEvent;
+      updateAssistantMessage(
+        (message) => ({ ...message, thinkingDurationMs: durationMs }),
+        { assistantTurnId, allowSingleFallback: false },
+      );
+      return;
+    }
+    case 'assistant_message_id': {
+      const assistantMessageIdEvent = parseAssistantMessageIdProjectionEvent(event);
+      if (!assistantMessageIdEvent) {
+        return;
+      }
+      const { assistantTurnId, messageId } = assistantMessageIdEvent;
+      updateAssistantMessage(
+        (message) => ({ ...message, message_id: messageId }),
+        { assistantTurnId, allowSingleFallback: false },
+      );
+      return;
+    }
+    case 'assistant_done': {
+      const assistantDoneEvent = parseAssistantDoneProjectionEvent(event);
+      if (assistantDoneEvent && getActiveAssistantTurnId() === assistantDoneEvent.assistantTurnId) {
+        setActiveAssistantTurnId(null);
+      }
+      return;
+    }
+    default:
+      return;
+  }
 }
