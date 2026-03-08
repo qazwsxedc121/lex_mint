@@ -1,7 +1,7 @@
 """
-模型配置管理服务
+Model configuration management service.
 
-负责加载、保存和管理 LLM 提供商和模型配置
+Handles loading, saving, and managing LLM provider and model settings.
 """
 import yaml
 import aiofiles
@@ -45,12 +45,8 @@ logger = logging.getLogger(__name__)
 
 
 class ModelConfigService:
-    """模型配置管理服务"""
+    """Model configuration management service."""
 
-    _FALLBACK_ENABLED_BUILTIN_PROVIDERS = {"deepseek", "openrouter"}
-    _FALLBACK_BOOTSTRAP_PROVIDER_ID = "deepseek"
-    _FALLBACK_BOOTSTRAP_MODEL_ID = "deepseek-chat"
-    _FALLBACK_BOOTSTRAP_MODEL_NAME = "DeepSeek Chat"
     _BUILTIN_BASE_URL_MIGRATIONS = {
         "siliconflow": {
             "https://api.siliconflow.com/v1": "https://api.siliconflow.cn/v1",
@@ -60,11 +56,11 @@ class ModelConfigService:
 
     def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
         """
-        初始化配置服务
+        Initialize the configuration service.
 
         Args:
-            config_path: 配置文件路径，默认使用项目内 config/local/models_config.yaml
-            keys_path: 密钥文件路径，默认使用项目内 config/local/keys_config.yaml
+            config_path: Path to ``config/local/models_config.yaml`` by default.
+            keys_path: Path to ``config/local/keys_config.yaml`` by default.
         """
         defaults_dir = config_defaults_dir()
         self.defaults_provider_path: Path = defaults_dir / "provider_config.yaml"
@@ -97,6 +93,30 @@ class ModelConfigService:
         self._sync_builtin_entries()
         self._ensure_keys_config_exists()
 
+    @staticmethod
+    def _empty_default_payload() -> dict[str, str]:
+        return {"provider": "", "model": ""}
+
+    @classmethod
+    def _normalize_default_payload(cls, value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return cls._empty_default_payload()
+        return {
+            "provider": str(value.get("provider") or "").strip(),
+            "model": str(value.get("model") or "").strip(),
+        }
+
+    @classmethod
+    def _require_default_model_lookup_id(cls, config: ModelsConfig) -> str:
+        default_payload = cls._normalize_default_payload(
+            {
+                "provider": config.default.provider,
+                "model": config.default.model,
+            }
+        )
+        if not default_payload["provider"] or not default_payload["model"]:
+            raise ValueError("No default model configured. Add a provider and model first.")
+        return f"{default_payload['provider']}:{default_payload['model']}"
     @staticmethod
     def _load_yaml_dict(path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -134,7 +154,14 @@ class ModelConfigService:
         return {
             "providers": providers if isinstance(providers, list) else [],
             "models": models if isinstance(models, list) else [],
-            "default": default_config if isinstance(default_config, dict) else {},
+            "default": (
+                {
+                    "provider": str(default_config.get("provider") or "").strip(),
+                    "model": str(default_config.get("model") or "").strip(),
+                }
+                if isinstance(default_config, dict)
+                else {"provider": "", "model": ""}
+            ),
             "reasoning_supported_patterns": reasoning_patterns if isinstance(reasoning_patterns, list) else [],
         }
 
@@ -153,12 +180,15 @@ class ModelConfigService:
         default_config = data.get("default")
         reasoning_patterns = data.get("reasoning_supported_patterns")
 
-        bootstrap_provider_id, bootstrap_model_id, _ = self._get_bootstrap_model_identity()
         app_payload = {
-            "default": default_config if isinstance(default_config, dict) and default_config else {
-                "provider": bootstrap_provider_id,
-                "model": bootstrap_model_id,
-            },
+            "default": (
+                {
+                    "provider": str(default_config.get("provider") or "").strip(),
+                    "model": str(default_config.get("model") or "").strip(),
+                }
+                if isinstance(default_config, dict)
+                else {"provider": "", "model": ""}
+            ),
             "reasoning_supported_patterns": (
                 reasoning_patterns
                 if isinstance(reasoning_patterns, list)
@@ -170,7 +200,6 @@ class ModelConfigService:
             {"models": models if isinstance(models, list) else []},
             app_payload,
         )
-
     def _backup_legacy_models_config(self) -> None:
         if not self.config_path.exists():
             return
@@ -224,45 +253,13 @@ class ModelConfigService:
         self._write_yaml_dict(self.app_defaults_path, app_defaults)
 
     def _get_default_config(self) -> dict:
-        """获取默认配置"""
-        providers: list[dict[str, Any]] = []
-        models: list[dict[str, Any]] = []
-        enabled_builtin_provider_ids = self._get_default_enabled_builtin_provider_ids()
-        bootstrap_provider_id, bootstrap_model_id, _ = self._get_bootstrap_model_identity()
-
-        for definition in get_all_builtin_providers().values():
-            providers.append(
-                self._provider_from_definition(
-                    definition,
-                    enabled=definition.id in enabled_builtin_provider_ids,
-                )
-            )
-
-        # Keep default config minimal; runtime model discovery should come from provider APIs.
-        models.append(self._build_bootstrap_model())
-
+        """Get default configuration."""
         return {
-            "default": {
-                "provider": bootstrap_provider_id,
-                "model": bootstrap_model_id,
-            },
-            "providers": providers,
-            "models": models,
+            "default": self._empty_default_payload(),
+            "providers": [],
+            "models": [],
             "reasoning_supported_patterns": self._get_default_reasoning_supported_patterns(),
         }
-
-    def _build_bootstrap_model(self) -> dict[str, Any]:
-        """Build a single default model so a fresh install is immediately usable."""
-        provider_id, model_id, model_name = self._get_bootstrap_model_identity()
-        provider = get_builtin_provider(provider_id)
-        capabilities = provider.default_capabilities if provider else None
-        return self._model_from_definition(
-            provider_id=provider_id,
-            model_id=model_id,
-            model_name=model_name,
-            capabilities=capabilities,
-            enabled=True,
-        )
 
     def _load_defaults_config(self) -> dict[str, Any]:
         """Load the repo default split config once for bootstrap decisions."""
@@ -310,32 +307,7 @@ class ModelConfigService:
             }
             if enabled_ids:
                 return enabled_ids
-        return set(self._FALLBACK_ENABLED_BUILTIN_PROVIDERS)
-
-    def _get_bootstrap_model_identity(self) -> tuple[str, str, str]:
-        """Resolve the minimal bootstrap model from defaults YAML when available."""
-        defaults = self._load_defaults_config()
-        default_config = defaults.get("default")
-        if isinstance(default_config, dict):
-            provider_id = str(default_config.get("provider") or "").strip()
-            model_id = str(default_config.get("model") or "").strip()
-            if provider_id and model_id:
-                models = defaults.get("models")
-                if isinstance(models, list):
-                    for model in models:
-                        if (
-                            isinstance(model, dict)
-                            and model.get("provider_id") == provider_id
-                            and model.get("id") == model_id
-                        ):
-                            return provider_id, model_id, str(model.get("name") or model_id)
-                return provider_id, model_id, model_id
-
-        return (
-            self._FALLBACK_BOOTSTRAP_PROVIDER_ID,
-            self._FALLBACK_BOOTSTRAP_MODEL_ID,
-            self._FALLBACK_BOOTSTRAP_MODEL_NAME,
-        )
+        return set()
 
     def _get_default_reasoning_supported_patterns(self) -> list[str]:
         """Derive reasoning hint patterns from defaults YAML."""
@@ -344,27 +316,6 @@ class ModelConfigService:
         if isinstance(patterns, list):
             return [str(pattern) for pattern in patterns if str(pattern or "").strip()]
         return []
-
-    @staticmethod
-    def _find_first_enabled_model_key(
-        providers: list[dict[str, Any]],
-        models: list[dict[str, Any]],
-    ) -> Optional[tuple[str, str]]:
-        enabled_provider_ids = {
-            str(provider.get("id"))
-            for provider in providers
-            if isinstance(provider, dict)
-            and str(provider.get("id") or "").strip()
-            and bool(provider.get("enabled"))
-        }
-        for model in models:
-            if not isinstance(model, dict):
-                continue
-            provider_id = str(model.get("provider_id") or "").strip()
-            model_id = str(model.get("id") or "").strip()
-            if provider_id and model_id and bool(model.get("enabled")) and provider_id in enabled_provider_ids:
-                return provider_id, model_id
-        return None
 
     def _provider_from_definition(self, definition, enabled: bool) -> dict[str, Any]:
         return {
@@ -462,9 +413,7 @@ class ModelConfigService:
 
     def _sync_builtin_entries(self) -> None:
         """
-        Ensure built-in providers/models always exist in local config.
-
-        Adds missing entries and refreshes non-user-editable builtin flags.
+        Refresh non-user-editable builtin metadata for providers already present in local config.
         """
         data = self._load_split_config()
         if not isinstance(data, dict):
@@ -508,103 +457,92 @@ class ModelConfigService:
                 model.pop("group", None)
                 changed = True
 
-        default_config = data.get("default") or {}
-        default_provider = default_config.get("provider")
-        default_model = default_config.get("model")
+        normalized_default = self._normalize_default_payload(data.get("default"))
+        default_provider = normalized_default["provider"]
+        default_model = normalized_default["model"]
 
         existing_providers = {
             p.get("id"): p
             for p in providers
             if isinstance(p, dict) and p.get("id")
         }
-        existing_provider_ids = set(existing_providers.keys())
-        existing_model_keys = {
-            (m.get("provider_id"), m.get("id"))
-            for m in models
-            if isinstance(m, dict) and m.get("provider_id") and m.get("id")
-        }
-
-        enabled_builtin_provider_ids = self._get_default_enabled_builtin_provider_ids()
 
         for definition in get_all_builtin_providers().values():
-            if definition.id not in existing_provider_ids:
-                providers.append(
-                    self._provider_from_definition(
-                        definition,
-                        enabled=definition.id in enabled_builtin_provider_ids,
-                    )
-                )
-                existing_provider_ids.add(definition.id)
-                changed = True
-            else:
-                # Keep non-user-editable builtin metadata flags in sync.
-                provider_entry = existing_providers.get(definition.id)
+            provider_entry = existing_providers.get(definition.id)
+            if not (
+                isinstance(provider_entry, dict)
+                and provider_entry.get("type") == "builtin"
+            ):
+                continue
+
+            current_base_url = _normalize_url(provider_entry.get("base_url"))
+            for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
                 if (
-                    isinstance(provider_entry, dict)
-                    and provider_entry.get("type") == "builtin"
+                    current_base_url == _normalize_url(legacy_url)
+                    and _normalize_url(definition.base_url) == _normalize_url(target_url)
                 ):
-                    current_base_url = _normalize_url(provider_entry.get("base_url"))
-                    for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
-                        if (
-                            current_base_url == _normalize_url(legacy_url)
-                            and _normalize_url(definition.base_url) == _normalize_url(target_url)
-                        ):
-                            provider_entry["base_url"] = target_url
-                            current_base_url = _normalize_url(target_url)
-                            changed = True
+                    provider_entry["base_url"] = target_url
+                    current_base_url = _normalize_url(target_url)
+                    changed = True
 
-                    if provider_entry.get("supports_model_list") != definition.supports_model_list:
-                        provider_entry["supports_model_list"] = definition.supports_model_list
-                        changed = True
-                    if provider_entry.get("sdk_class") != definition.sdk_class:
-                        provider_entry["sdk_class"] = definition.sdk_class
-                        changed = True
-                    profile_payload = [
-                        profile.model_dump(mode="json")
-                        for profile in definition.endpoint_profiles
-                    ]
-                    if provider_entry.get("endpoint_profiles") != profile_payload:
-                        provider_entry["endpoint_profiles"] = profile_payload
-                        changed = True
-                    if not provider_entry.get("endpoint_profile_id"):
-                        resolved_profile = self._resolve_endpoint_profile_id_by_url(
-                            definition.endpoint_profiles,
-                            str(provider_entry.get("base_url", "")),
-                        ) or definition.default_endpoint_profile_id
-                        if resolved_profile:
-                            provider_entry["endpoint_profile_id"] = resolved_profile
-                            changed = True
+            if provider_entry.get("supports_model_list") != definition.supports_model_list:
+                provider_entry["supports_model_list"] = definition.supports_model_list
+                changed = True
+            if provider_entry.get("sdk_class") != definition.sdk_class:
+                provider_entry["sdk_class"] = definition.sdk_class
+                changed = True
+            profile_payload = [
+                profile.model_dump(mode="json")
+                for profile in definition.endpoint_profiles
+            ]
+            if provider_entry.get("endpoint_profiles") != profile_payload:
+                provider_entry["endpoint_profiles"] = profile_payload
+                changed = True
+            if not provider_entry.get("endpoint_profile_id"):
+                resolved_profile = self._resolve_endpoint_profile_id_by_url(
+                    definition.endpoint_profiles,
+                    str(provider_entry.get("base_url", "")),
+                ) or definition.default_endpoint_profile_id
+                if resolved_profile:
+                    provider_entry["endpoint_profile_id"] = resolved_profile
+                    changed = True
 
-                    provider_caps = provider_entry.get("default_capabilities")
-                    if isinstance(provider_caps, dict):
-                        if definition.id in self._MODEL_LEVEL_INTERLEAVED_PROVIDERS:
-                            if provider_caps.get("requires_interleaved_thinking") is not False:
-                                provider_caps["requires_interleaved_thinking"] = False
-                                changed = True
-                        elif "requires_interleaved_thinking" not in provider_caps:
-                            provider_caps["requires_interleaved_thinking"] = (
-                                definition.default_capabilities.requires_interleaved_thinking
-                            )
-                            changed = True
+            provider_caps = provider_entry.get("default_capabilities")
+            if isinstance(provider_caps, dict):
+                if definition.id in self._MODEL_LEVEL_INTERLEAVED_PROVIDERS:
+                    if provider_caps.get("requires_interleaved_thinking") is not False:
+                        provider_caps["requires_interleaved_thinking"] = False
+                        changed = True
+                elif "requires_interleaved_thinking" not in provider_caps:
+                    provider_caps["requires_interleaved_thinking"] = (
+                        definition.default_capabilities.requires_interleaved_thinking
+                    )
+                    changed = True
 
-        default_key = (default_provider, default_model)
-        bootstrap_provider_id, bootstrap_model_id, _ = self._get_bootstrap_model_identity()
-        bootstrap_key = (bootstrap_provider_id, bootstrap_model_id)
-        if default_key not in existing_model_keys:
-            fallback_key = self._find_first_enabled_model_key(providers, models)
-            if fallback_key is not None:
-                data["default"] = {
-                    "provider": fallback_key[0],
-                    "model": fallback_key[1],
-                }
-            else:
-                if bootstrap_key not in existing_model_keys:
-                    models.append(self._build_bootstrap_model())
-                    existing_model_keys.add(bootstrap_key)
-                data["default"] = {
-                    "provider": bootstrap_provider_id,
-                    "model": bootstrap_model_id,
-                }
+        default_provider_entry = existing_providers.get(default_provider)
+        default_model_entry = next(
+            (
+                model_entry
+                for model_entry in models
+                if isinstance(model_entry, dict)
+                and model_entry.get("provider_id") == default_provider
+                and model_entry.get("id") == default_model
+            ),
+            None,
+        )
+        default_is_configured = bool(default_provider and default_model)
+        default_is_valid = (
+            default_is_configured
+            and isinstance(default_provider_entry, dict)
+            and isinstance(default_model_entry, dict)
+            and bool(default_provider_entry.get("enabled"))
+            and bool(default_model_entry.get("enabled"))
+        )
+        if data.get("default") != normalized_default:
+            data["default"] = normalized_default
+            changed = True
+        if default_is_configured and not default_is_valid:
+            data["default"] = self._empty_default_payload()
             changed = True
 
         reasoning_patterns = data.get("reasoning_supported_patterns")
@@ -655,7 +593,7 @@ class ModelConfigService:
             self._write_yaml_dict(self.app_defaults_path, app_data)
 
     async def load_config(self) -> ModelsConfig:
-        """鍔犺浇閰嶇疆鏂囦欢"""
+        """Load config."""
         data = self._load_split_config()
         return ModelsConfig(**data)
 
@@ -668,7 +606,7 @@ class ModelConfigService:
         self._write_yaml_dict(self.app_defaults_path, app_data)
 
     def _ensure_keys_config_exists(self):
-        """确保密钥配置文件存在，如果不存在则创建空配置"""
+        """Ensure the key config file exists, creating an empty file if needed."""
         if not self.keys_path.exists():
             default_keys = {"providers": {}}
             initial_text = yaml.safe_dump(default_keys, allow_unicode=True, sort_keys=False)
@@ -694,7 +632,7 @@ class ModelConfigService:
                 f.write(initial_text)
 
     async def load_keys_config(self) -> dict:
-        """加载密钥配置文件"""
+        """Load the key configuration file."""
         if not self.keys_path.exists():
             return {"providers": {}}
 
@@ -705,13 +643,13 @@ class ModelConfigService:
 
     async def save_keys_config(self, keys_data: dict):
         """
-        保存密钥配置文件（原子性写入）
+        Save the key configuration file atomically.
 
-        使用临时文件 + 替换的方式确保原子性
+        Uses a temporary file followed by replace to avoid partial writes.
         """
         self._assert_keys_path_writable()
 
-        # 先写入临时文件
+        # Write the temporary file first.
         temp_path = self.keys_path.with_suffix('.yaml.tmp')
         async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
             content = yaml.safe_dump(
@@ -721,7 +659,7 @@ class ModelConfigService:
             )
             await f.write(content)
 
-        # 原子性替换
+        # Replace atomically.
         temp_path.replace(self.keys_path)
 
     @staticmethod
@@ -759,24 +697,24 @@ class ModelConfigService:
 
     async def get_api_key(self, provider_id: str) -> Optional[str]:
         """
-        获取指定提供商的 API 密钥
+        Get the API key for a provider.
 
         Args:
-            provider_id: 提供商ID
+            provider_id: Provider ID.
 
         Returns:
-            API 密钥，如果不存在则返回 None
+            The API key, or ``None`` if it is not configured.
         """
         keys_data = await self.load_keys_config()
         return keys_data.get("providers", {}).get(provider_id, {}).get("api_key")
 
     async def set_api_key(self, provider_id: str, api_key: str):
         """
-        设置/更新指定提供商的 API 密钥
+        Set or update the API key for a provider.
 
         Args:
-            provider_id: 提供商ID
-            api_key: API 密钥
+            provider_id: Provider ID.
+            api_key: API key value.
         """
         keys_data = await self.load_keys_config()
         if "providers" not in keys_data:
@@ -788,10 +726,10 @@ class ModelConfigService:
 
     async def delete_api_key(self, provider_id: str):
         """
-        删除指定提供商的 API 密钥
+        Delete the stored API key for a provider.
 
         Args:
-            provider_id: 提供商ID
+            provider_id: Provider ID.
         """
         keys_data = await self.load_keys_config()
         if "providers" in keys_data and provider_id in keys_data["providers"]:
@@ -800,54 +738,125 @@ class ModelConfigService:
 
     async def has_api_key(self, provider_id: str) -> bool:
         """
-        检查指定提供商是否已配置 API 密钥
+        Check whether a provider has a non-empty API key.
 
         Args:
-            provider_id: 提供商ID
+            provider_id: Provider ID.
 
         Returns:
-            如果已配置密钥返回 True，否则返回 False
+            ``True`` when an API key exists, otherwise ``False``.
         """
         api_key = await self.get_api_key(provider_id)
         return api_key is not None and api_key.strip() != ""
 
-    # ==================== 提供商管理 ====================
+    # ==================== Provider Management ====================
 
-    async def get_providers(self) -> List[Provider]:
-        """获取所有提供商（包含 has_api_key 标记）"""
+    @staticmethod
+    def _is_provider_enabled(provider: Provider) -> bool:
+        return bool(getattr(provider, "enabled", False))
+
+    @classmethod
+    def _is_model_effectively_enabled(cls, model: Model, provider: Optional[Provider]) -> bool:
+        return provider is not None and bool(getattr(model, "enabled", False)) and cls._is_provider_enabled(provider)
+
+    @classmethod
+    def _resolve_model_and_provider_from_config(
+        cls,
+        config: ModelsConfig,
+        model_id: Optional[str] = None,
+    ) -> Tuple[Model, Provider, str, bool]:
+        requested_model_id = model_id
+        using_default_model = requested_model_id is None
+        if requested_model_id is None:
+            requested_model_id = cls._require_default_model_lookup_id(config)
+
+        model = cls._find_model_in_config(config, requested_model_id)
+        if not model:
+            raise ValueError(f"Model with id '{requested_model_id}' not found")
+
+        provider = next((p for p in config.providers if p.id == model.provider_id), None)
+        if not provider:
+            raise ValueError(f"Provider with id '{model.provider_id}' not found")
+
+        return model, provider, requested_model_id, using_default_model
+
+    @classmethod
+    def _ensure_model_is_enabled(
+        cls,
+        *,
+        model: Model,
+        provider: Provider,
+        requested_model_id: str,
+        using_default_model: bool,
+    ) -> None:
+        if cls._is_model_effectively_enabled(model, provider):
+            return
+
+        if using_default_model:
+            raise ValueError(
+                f"Default model '{requested_model_id}' is disabled. Configure another default model first."
+            )
+
+        if not bool(model.enabled):
+            raise ValueError(f"Model '{requested_model_id}' is disabled")
+
+        raise ValueError(
+            f"Provider '{provider.id}' is disabled, so model '{requested_model_id}' is unavailable"
+        )
+
+    async def require_enabled_model(self, model_id: Optional[str] = None) -> Tuple[Model, Provider]:
+        """Resolve a model/provider pair and ensure both are enabled."""
+        config = await self.load_config()
+        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
+            config,
+            model_id,
+        )
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=requested_model_id,
+            using_default_model=using_default_model,
+        )
+        return model, provider
+
+    async def get_providers(self, enabled_only: bool = False) -> List[Provider]:
+        """Get all providers, including has_api_key metadata."""
         config = await self.load_config()
         providers_with_keys = []
         for provider in config.providers:
-            # 检查是否有 API 密钥
+            # Check whether the provider has an API key configured.
             has_key = await self.has_api_key(provider.id)
             requires_key = self.provider_requires_api_key(provider)
-            # 创建新的 Provider 对象，添加 has_api_key 字段
+            # Attach runtime-only key metadata to the returned provider object.
             provider_dict = provider.model_dump()
             provider_dict['has_api_key'] = has_key
             provider_dict['requires_api_key'] = requires_key
-            providers_with_keys.append(Provider(**provider_dict))
+            provider_obj = Provider(**provider_dict)
+            if enabled_only and not self._is_provider_enabled(provider_obj):
+                continue
+            providers_with_keys.append(provider_obj)
         return providers_with_keys
 
     async def get_provider(self, provider_id: str, include_masked_key: bool = False) -> Optional[Provider]:
         """
-        获取指定提供商
+        Get a provider by ID.
 
         Args:
-            provider_id: 提供商ID
-            include_masked_key: 是否包含遮罩后的API密钥（用于编辑界面显示）
+            provider_id: Provider ID.
+            include_masked_key: Whether to include a masked API key preview.
         """
         config = await self.load_config()
         for provider in config.providers:
             if provider.id == provider_id:
                 provider_dict = provider.model_dump()
 
-                # 添加 has_api_key 标记
+                # Attach runtime-only key metadata.
                 has_key = await self.has_api_key(provider_id)
                 requires_key = self.provider_requires_api_key(provider)
                 provider_dict['has_api_key'] = has_key
                 provider_dict['requires_api_key'] = requires_key
 
-                # 如果需要，添加遮罩后的API密钥
+                # Add a masked key preview when requested.
                 if include_masked_key and has_key:
                     api_key = await self.get_api_key(provider_id)
                     if api_key:
@@ -901,9 +910,9 @@ class ModelConfigService:
 
     def _mask_api_key(self, api_key: str) -> str:
         """
-        遮罩API密钥，只显示前缀和后4位
+        Mask an API key while preserving a small prefix and suffix.
 
-        例如: sk- -> sk-****
+        Example: ``sk-xxxx1234`` -> ``sk-****...1234``
         """
         if len(api_key) <= 8:
             return "****"
@@ -911,107 +920,115 @@ class ModelConfigService:
 
     async def add_provider(self, provider: Provider):
         """
-        添加提供商
+        Add a provider.
 
         Raises:
-            ValueError: 如果提供商ID已存在
+            ValueError: If the provider ID already exists.
         """
         config = await self.load_config()
 
-        # 检查ID是否已存在
+        # Ensure the provider ID is unique.
         if any(p.id == provider.id for p in config.providers):
             raise ValueError(f"Provider with id '{provider.id}' already exists")
 
-        # 移除临时字段，避免保存到配置文件
+        # Remove transient fields so they are not persisted to config.
         provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
         config.providers.append(Provider(**provider_dict))
         await self.save_config(config)
 
     async def update_provider(self, provider_id: str, updated: Provider):
         """
-        更新提供商
+        Update provider.
 
         Raises:
-            ValueError: 如果提供商不存在
+            ValueError: If the provider does not exist.
         """
         config = await self.load_config()
 
         for i, provider in enumerate(config.providers):
             if provider.id == provider_id:
-                # 移除临时字段，避免保存到配置文件
                 updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
                 config.providers[i] = Provider(**updated_dict)
+                if config.default.provider == provider_id and (
+                    config.providers[i].id != provider_id or not bool(config.providers[i].enabled)
+                ):
+                    config.default = DefaultConfig(**self._empty_default_payload())
                 await self.save_config(config)
                 return
 
         raise ValueError(f"Provider with id '{provider_id}' not found")
-
     async def delete_provider(self, provider_id: str):
         """
-        删除提供商（级联删除关联的模型）
+        Delete a provider and all models under it.
 
         Raises:
-            ValueError: 如果提供商不存在或是默认提供商
+            ValueError: If the provider does not exist or is built in.
         """
         config = await self.load_config()
 
-        # 检查是否是默认提供商
         if config.default.provider == provider_id:
-            raise ValueError(f"Cannot delete default provider '{provider_id}'")
+            config.default = DefaultConfig(**self._empty_default_payload())
         if get_builtin_provider(provider_id):
             raise ValueError(f"Cannot delete built-in provider '{provider_id}', disable it instead")
 
-        # 删除提供商
+        original_count = len(config.providers)
         config.providers = [p for p in config.providers if p.id != provider_id]
-
-        # 级联删除关联的模型
         config.models = [m for m in config.models if m.provider_id != provider_id]
 
+        if len(config.providers) == original_count:
+            raise ValueError(f"Provider with id '{provider_id}' not found")
+
         await self.save_config(config)
+    # ==================== Model Management ====================
 
-    # ==================== 模型管理 ====================
-
-    async def get_models(self, provider_id: Optional[str] = None) -> List[Model]:
+    async def get_models(self, provider_id: Optional[str] = None, enabled_only: bool = False) -> List[Model]:
         """
-        获取模型列表
+        Get models, optionally filtered by provider.
 
         Args:
-            provider_id: 可选的提供商ID，用于筛选
+            provider_id: Provider ID to filter by.
         """
         config = await self.load_config()
+        providers_by_id = {provider.id: provider for provider in config.providers}
+        models = config.models
         if provider_id:
-            return [m for m in config.models if m.provider_id == provider_id]
-        return config.models
+            models = [m for m in models if m.provider_id == provider_id]
+        if enabled_only:
+            models = [
+                model for model in models
+                if self._is_model_effectively_enabled(model, providers_by_id.get(model.provider_id))
+            ]
+        return models
 
     async def get_model(self, model_id: str) -> Optional[Model]:
         """
-        获取指定模型
+        Get a model by ID.
 
         Args:
-            model_id: 模型ID，可以是简单ID或复合ID (provider_id:model_id)
+            model_id: Model ID, supporting composite IDs like ``provider_id:model_id``.
         """
         config = await self.load_config()
 
-        # 判断是否为复合ID：检查第一个冒号前是否为有效的provider_id
+        # Determine whether this is a composite identifier.
         is_composite = False
         provider_id = None
         simple_model_id = None
 
         if ':' in model_id:
             potential_provider, potential_model = model_id.split(':', 1)
-            # 检查是否为有效的provider_id
+            # Treat the prefix as a provider ID only when it matches a known provider.
             if any(p.id == potential_provider for p in config.providers):
                 is_composite = True
                 provider_id = potential_provider
                 simple_model_id = potential_model
 
         if is_composite:
-            # 复合ID格式：provider_id:model_id
+            # Composite ID format: provider_id:model_id.
             for model in config.models:
                 if model.id == simple_model_id and model.provider_id == provider_id:
                     return model
         else:
-            # 简单ID（包括可能包含冒号的模型ID）
+            # Simple ID lookup, including model IDs that may contain colons.
             for model in config.models:
                 if model.id == model_id:
                     return model
@@ -1020,21 +1037,21 @@ class ModelConfigService:
 
     async def add_model(self, model: Model):
         """
-        添加模型
+        Add a model.
 
         Raises:
-            ValueError: 如果模型在该提供商下已存在，或提供商不存在
+            ValueError: If the model already exists or its provider is missing.
         """
         config = await self.load_config()
 
-        # 检查同一个提供商下是否有重复的模型ID（复合主键）
+        # Ensure the composite key (provider_id + model_id) is unique.
         if any(m.id == model.id and m.provider_id == model.provider_id
                for m in config.models):
             raise ValueError(
                 f"Model '{model.id}' already exists for provider '{model.provider_id}'"
             )
 
-        # 检查提供商是否存在
+        # Ensure the referenced provider exists.
         if not any(p.id == model.provider_id for p in config.providers):
             raise ValueError(f"Provider with id '{model.provider_id}' not found")
 
@@ -1043,162 +1060,160 @@ class ModelConfigService:
 
     async def update_model(self, model_id: str, updated: Model):
         """
-        更新模型
+        Update a model.
 
         Args:
-            model_id: 模型ID，可以是简单ID或复合ID (provider_id:model_id)
+            model_id: Model ID, can be simple or composite provider_id:model_id.
 
         Raises:
-            ValueError: 如果模型不存在
+            ValueError: If the model does not exist.
         """
         config = await self.load_config()
 
-        # 判断是否为复合ID：检查第一个冒号前是否为有效的provider_id
         is_composite = False
         provider_id = None
         simple_model_id = None
 
         if ':' in model_id:
             potential_provider, potential_model = model_id.split(':', 1)
-            # 检查是否为有效的provider_id
             if any(p.id == potential_provider for p in config.providers):
                 is_composite = True
                 provider_id = potential_provider
                 simple_model_id = potential_model
 
         if is_composite:
-            # 复合ID格式：provider_id:model_id
             for i, model in enumerate(config.models):
                 if model.id == simple_model_id and model.provider_id == provider_id:
+                    config.models[i] = updated
                     if (
                         model.provider_id == config.default.provider
                         and model.id == config.default.model
-                        and not bool(updated.enabled)
-                    ):
-                        raise ValueError(
-                            "Cannot disable default model. Set another default model first."
+                        and (
+                            updated.provider_id != model.provider_id
+                            or updated.id != model.id
+                            or not bool(updated.enabled)
                         )
-                    config.models[i] = updated
+                    ):
+                        config.default = DefaultConfig(**self._empty_default_payload())
                     await self.save_config(config)
                     return
         else:
-            # 简单ID（包括可能包含冒号的模型ID）
             for i, model in enumerate(config.models):
                 if model.id == model_id:
+                    config.models[i] = updated
                     if (
                         model.provider_id == config.default.provider
                         and model.id == config.default.model
-                        and not bool(updated.enabled)
-                    ):
-                        raise ValueError(
-                            "Cannot disable default model. Set another default model first."
+                        and (
+                            updated.provider_id != model.provider_id
+                            or updated.id != model.id
+                            or not bool(updated.enabled)
                         )
-                    config.models[i] = updated
+                    ):
+                        config.default = DefaultConfig(**self._empty_default_payload())
                     await self.save_config(config)
                     return
 
         raise ValueError(f"Model with id '{model_id}' not found")
-
     async def delete_model(self, model_id: str):
         """
-        删除模型
+        Delete a model.
 
         Args:
-            model_id: 模型ID，可以是简单ID或复合ID (provider_id:model_id)
+            model_id: Model ID, can be simple or composite provider_id:model_id.
 
         Raises:
-            ValueError: 如果模型不存在或是默认模型
+            ValueError: If the model does not exist.
         """
         config = await self.load_config()
 
-        # 判断是否为复合ID：检查第一个冒号前是否为有效的provider_id
         is_composite = False
         provider_id = None
         simple_model_id = None
 
         if ':' in model_id:
             potential_provider, potential_model = model_id.split(':', 1)
-            # 检查是否为有效的provider_id
             if any(p.id == potential_provider for p in config.providers):
                 is_composite = True
                 provider_id = potential_provider
                 simple_model_id = potential_model
 
         if is_composite:
-            # 复合ID格式：provider_id:model_id
             composite_default = f"{config.default.provider}:{config.default.model}"
-
-            # 检查是否是默认模型
-            if model_id == composite_default or (
-                simple_model_id == config.default.model and
-                provider_id == config.default.provider
-            ):
-                raise ValueError(f"Cannot delete default model '{model_id}'")
-
-            # 删除模型
+            deleting_default = model_id == composite_default or (
+                simple_model_id == config.default.model
+                and provider_id == config.default.provider
+            )
             original_count = len(config.models)
             config.models = [
                 m for m in config.models
                 if not (m.id == simple_model_id and m.provider_id == provider_id)
             ]
         else:
-            # 简单ID（包括可能包含冒号的模型ID，如 google/model:free）
-            if config.default.model == model_id:
-                raise ValueError(f"Cannot delete default model '{model_id}'")
-
+            deleting_default = (
+                config.default.model == model_id
+                and any(
+                    m.id == model_id and m.provider_id == config.default.provider
+                    for m in config.models
+                )
+            )
             original_count = len(config.models)
             config.models = [m for m in config.models if m.id != model_id]
 
         if len(config.models) == original_count:
             raise ValueError(f"Model with id '{model_id}' not found")
 
-        await self.save_config(config)
+        if deleting_default:
+            config.default = DefaultConfig(**self._empty_default_payload())
 
-    # ==================== 默认配置 ====================
+        await self.save_config(config)
+    # ==================== Default Configuration ====================
 
     async def get_default_config(self) -> DefaultConfig:
-        """获取默认配置"""
+        """Get the default provider/model configuration."""
         config = await self.load_config()
         return config.default
 
     async def set_default_model(self, provider_id: str, model_id: str):
         """
-        设置默认模型
+        Set the default provider/model pair.
 
         Raises:
-            ValueError: 如果提供商或模型不存在
+            ValueError: If the provider or model does not exist, does not match,
+                or is disabled.
         """
         config = await self.load_config()
 
-        # 验证提供商存在
+        # Validate that the provider exists.
         if not any(p.id == provider_id for p in config.providers):
             raise ValueError(f"Provider with id '{provider_id}' not found")
 
-        # 验证模型存在且属于该提供商
+        # Validate that the model exists and belongs to the provider.
         model = next((m for m in config.models if m.id == model_id), None)
         if not model:
             raise ValueError(f"Model with id '{model_id}' not found")
         if model.provider_id != provider_id:
             raise ValueError(f"Model '{model_id}' does not belong to provider '{provider_id}'")
-        if not bool(model.enabled):
-            raise ValueError(f"Model '{model_id}' is disabled and cannot be set as default")
-
         provider = next((p for p in config.providers if p.id == provider_id), None)
         if not provider:
             raise ValueError(f"Provider with id '{provider_id}' not found")
-        if not bool(provider.enabled):
-            raise ValueError(f"Provider '{provider_id}' is disabled and cannot be set as default")
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=f"{provider_id}:{model_id}",
+            using_default_model=False,
+        )
 
         config.default.provider = provider_id
         config.default.model = model_id
         await self.save_config(config)
 
     async def get_reasoning_supported_patterns(self) -> list[str]:
-        """获取支持 reasoning effort 参数的模型名称模式列表"""
+        """Get reasoning effort model-name patterns."""
         config = await self.load_config()
         return config.reasoning_supported_patterns
 
-    # ==================== 测试连接 ====================
+    # ==================== Connection Testing ====================
 
     async def test_provider_connection(
         self,
@@ -1208,16 +1223,16 @@ class ModelConfigService:
         provider: Optional[Provider] = None
     ) -> tuple[bool, str]:
         """
-        测试提供商连接是否有效
+        Test connectivity for a provider endpoint.
 
         Args:
-            base_url: API基础URL
-            api_key: API密钥
-            model_id: 用于测试的模型ID（默认使用通用的模型名）
-            provider: 提供商配置（用于选择正确的适配器）
+            base_url: Provider API base URL.
+            api_key: API key used for the test request.
+            model_id: Optional model ID to test against.
+            provider: Optional provider definition used to resolve the adapter.
 
         Returns:
-            (是否成功, 消息)
+            A tuple of ``(success, message)``.
         """
         # Resolve the correct adapter for this provider
         if provider:
@@ -1262,55 +1277,27 @@ class ModelConfigService:
         )
         return success, message
 
-    # ==================== Provider 抽象层支持 ====================
+    # ==================== Provider Abstraction Support ====================
 
     def get_model_and_provider_sync(
         self,
         model_id: Optional[str] = None
     ) -> Tuple[Model, Provider]:
         """
-        同步获取模型和提供商配置
-
-        Args:
-            model_id: 模型ID，支持复合ID (provider_id:model_id)
-
-        Returns:
-            Tuple of (Model, Provider)
-
-        Raises:
-            ValueError: 如果模型或提供商不存在
+        Synchronously load a model and provider pair.
         """
-        # 同步加载配置
         config = ModelsConfig(**self._load_split_config())
 
-        # 确定使用哪个模型
-        requested_model_id = model_id
-        if requested_model_id is None:
-            requested_model_id = f"{config.default.provider}:{config.default.model}"
-
-        # 查找模型（支持复合ID）
-        model = self._find_model_in_config(config, requested_model_id)
-
-        if not model:
-            raise ValueError(f"Model with id '{requested_model_id}' not found")
-
-        # 查找提供商
-        provider = next((p for p in config.providers if p.id == model.provider_id), None)
-        if not provider:
-            raise ValueError(f"Provider with id '{model.provider_id}' not found")
-
-        # If default points to a disabled target, fallback to the single enabled model.
-        if model_id is None and (not bool(model.enabled) or not bool(provider.enabled)):
-            fallback = self._find_single_enabled_model_and_provider(config)
-            if fallback is not None:
-                fallback_model, fallback_provider = fallback
-                logger.warning(
-                    "Default model '%s' is disabled; falling back to enabled model '%s:%s'",
-                    requested_model_id,
-                    fallback_provider.id,
-                    fallback_model.id,
-                )
-                return fallback_model, fallback_provider
+        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
+            config,
+            model_id,
+        )
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=requested_model_id,
+            using_default_model=using_default_model,
+        )
 
         return model, provider
 
@@ -1350,16 +1337,17 @@ class ModelConfigService:
         provider: Provider
     ) -> ModelCapabilities:
         """
-        获取合并后的模型能力配置
+        Get the merged capability configuration for a model.
 
-        优先级：model.capabilities > provider.default_capabilities > 内置默认值
+        Precedence: ``model.capabilities`` > ``provider.default_capabilities`` >
+        built-in defaults.
 
         Args:
-            model: Model 配置
-            provider: Provider 配置
+            model: Model configuration.
+            provider: Provider configuration.
 
         Returns:
-            合并后的 ModelCapabilities
+            The merged ``ModelCapabilities`` value.
         """
         # Start with default capabilities
         base_caps = ModelCapabilities()
@@ -1410,13 +1398,13 @@ class ModelConfigService:
 
     def get_api_key_sync(self, provider_id: str) -> Optional[str]:
         """
-        同步获取 API 密钥
+        Get the API key for a provider synchronously.
 
         Args:
-            provider_id: 提供商ID
+            provider_id: Provider ID.
 
         Returns:
-            API 密钥，如果不存在则返回 None
+            The API key, or ``None`` if it is not configured.
         """
         if not self.keys_path.exists():
             return None
@@ -1530,13 +1518,13 @@ class ModelConfigService:
 
     def to_provider_config(self, provider: Provider) -> ProviderConfig:
         """
-        将 Provider 转换为 ProviderConfig（用于 AdapterRegistry）
+        Convert a ``Provider`` into a ``ProviderConfig`` for ``AdapterRegistry``.
 
         Args:
-            provider: Provider 配置
+            provider: Provider instance.
 
         Returns:
-            ProviderConfig 实例
+            The normalized ``ProviderConfig`` instance.
         """
         return ProviderConfig(
             id=provider.id,
@@ -1554,18 +1542,18 @@ class ModelConfigService:
 
     def get_adapter_for_provider(self, provider: Provider):
         """
-        获取提供商对应的 SDK 适配器
+        Get the adapter implementation for a provider.
 
         Args:
-            provider: Provider 配置
+            provider: Provider instance.
 
         Returns:
-            BaseLLMAdapter 实例
+            The resolved ``BaseLLMAdapter`` implementation.
         """
         provider_config = self.to_provider_config(provider)
         return AdapterRegistry.get_for_provider(provider_config)
 
-    # ==================== LLM 实例化 ====================
+    # ==================== LLM Instantiation ====================
 
     def get_llm_instance(
         self,
@@ -1580,52 +1568,20 @@ class ModelConfigService:
         disable_thinking: bool = False,
     ) -> Any:
         """
-        创建 LLM 实例（同步方法）
-
-        Args:
-            model_id: 模型ID，可以是简单ID或复合ID (provider_id:model_id)
-                     如果为 None 则使用默认模型
-
-        Returns:
-            ChatOpenAI 实例
-
-        Raises:
-            ValueError: 如果模型不存在或配置无效
-            RuntimeError: 如果 API 密钥未配置
+        Create an LLM instance synchronously.
         """
-        # 同步加载配置
         config = ModelsConfig(**self._load_split_config())
 
-        # 确定使用哪个模型
-        requested_model_id = model_id
-        if requested_model_id is None:
-            # 使用默认模型（复合ID）
-            requested_model_id = f"{config.default.provider}:{config.default.model}"
-
-        # 查找模型（支持复合ID）
-        model = self._find_model_in_config(config, requested_model_id)
-
-        if not model:
-            raise ValueError(f"Model with id '{requested_model_id}' not found")
-
-        # 查找提供商
-        provider = next((p for p in config.providers if p.id == model.provider_id), None)
-        if not provider:
-            raise ValueError(f"Provider with id '{model.provider_id}' not found")
-
-        # If default points to a disabled target, fallback to the single enabled model.
-        if model_id is None and (not bool(model.enabled) or not bool(provider.enabled)):
-            fallback = self._find_single_enabled_model_and_provider(config)
-            if fallback is not None:
-                fallback_model, fallback_provider = fallback
-                logger.warning(
-                    "Default model '%s' is disabled; falling back to enabled model '%s:%s'",
-                    requested_model_id,
-                    fallback_provider.id,
-                    fallback_model.id,
-                )
-                model = fallback_model
-                provider = fallback_provider
+        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
+            config,
+            model_id,
+        )
+        self._ensure_model_is_enabled(
+            model=model,
+            provider=provider,
+            requested_model_id=requested_model_id,
+            using_default_model=using_default_model,
+        )
 
         api_key = self.resolve_provider_api_key_sync(provider)
 

@@ -502,22 +502,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([api.listAssistants(), listModels()])
+    Promise.all([api.listAssistants(true), listModels(undefined, true)])
       .then(([assistants, models]) => {
         if (cancelled) return;
 
-        const enabledAssistantList = assistants.filter((assistant) => assistant.enabled);
-        const enabledModelList = models.filter((model) => model.enabled);
-
-        setEnabledAssistants(enabledAssistantList);
-        setEnabledModels(enabledModelList);
+        setEnabledAssistants(assistants);
+        setEnabledModels(models);
 
         if (isGroupChat && groupAssistants) {
           const nameMap: Record<string, string> = {};
           assistants.forEach((assistant) => {
             nameMap[assistant.id] = assistant.name;
           });
-          enabledModelList.forEach((model) => {
+          models.forEach((model) => {
             nameMap[`${MODEL_PARTICIPANT_PREFIX}${model.provider_id}:${model.id}`] =
               model.name || `${model.provider_id}:${model.id}`;
           });

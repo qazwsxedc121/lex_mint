@@ -89,10 +89,12 @@ class ConversationStorage:
         """Create a new conversation session.
 
         Args:
-            model_id: 可选的模型 ID，支持简单ID或复合ID (provider_id:model_id)
-                     如果未指定则使用默认模型（向后兼容）
-            assistant_id: 可选的助手 ID，优先使用（新方式）
-            target_type: 对话目标类型 ("assistant" or "model")
+            model_id: Optional model ID. Supports either a simple ID or a composite
+                ID in the form ``provider_id:model_id``. If omitted, the default
+                model is used for backward compatibility.
+            assistant_id: Optional assistant ID. Preferred when using the newer
+                assistant-target flow.
+            target_type: Conversation target type ("assistant" or "model")
             context_type: Context type ("chat" or "project")
             project_id: Project ID (required when context_type="project")
 
@@ -122,9 +124,7 @@ class ConversationStorage:
 
             assistant_service = AssistantConfigService()
             if assistant_id:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if not assistant:
-                    raise ValueError(f"Assistant '{assistant_id}' not found")
+                assistant = await assistant_service.require_enabled_assistant(assistant_id)
             else:
                 assistant = await assistant_service.get_default_assistant()
                 assistant_id = assistant.id
@@ -134,13 +134,11 @@ class ConversationStorage:
 
             model_service = ModelConfigService()
             if model_id:
-                model_obj = await model_service.get_model(model_id)
-                if not model_obj:
-                    raise ValueError(f"Model '{model_id}' not found")
+                model_obj, _provider_obj = await model_service.require_enabled_model(model_id)
                 model_id = f"{model_obj.provider_id}:{model_obj.id}"
             else:
-                default_model = await model_service.get_default_config()
-                model_id = f"{default_model.provider}:{default_model.model}"
+                default_model_obj, _provider_obj = await model_service.require_enabled_model()
+                model_id = f"{default_model_obj.provider_id}:{default_model_obj.id}"
             assistant_id = None
         else:
             # Legacy default path: no explicit target => default assistant.
@@ -165,13 +163,13 @@ class ConversationStorage:
         metadata = {
             "session_id": session_id,
             "created_at": datetime.now().isoformat(),
-            "title": "新对话",
+            "title": "New Conversation",
             "current_step": 0,
-            "model_id": model_id,  # 存储复合ID格式（向后兼容）
+            "model_id": model_id,  # Store the composite ID format for backward compatibility.
             "target_type": "assistant" if assistant_id else "model",
         }
 
-        # 新会话：存储 assistant_id
+        # Store assistant_id for newly created sessions.
         if assistant_id:
             metadata["assistant_id"] = assistant_id
 
@@ -219,8 +217,8 @@ class ConversationStorage:
                 "session_id": str,
                 "title": str,
                 "created_at": str,
-                "assistant_id": str,  # NEW: 助手ID（优先）
-                "model_id": str,       # 向后兼容
+                "assistant_id": str,  # New preferred assistant identifier.
+                "model_id": str,       # Kept for backward compatibility.
                 "state": {
                     "messages": List[Dict],
                     "current_step": int
@@ -285,7 +283,7 @@ class ConversationStorage:
 
         result = {
             "session_id": self._as_str(metadata.get("session_id"), session_id),
-            "title": self._as_str(metadata.get("title"), "未命名对话"),
+            "title": self._as_str(metadata.get("title"), "Untitled Conversation"),
             "created_at": self._as_str(metadata.get("created_at")),
             "assistant_id": assistant_id,
             "model_id": model_id,
@@ -422,7 +420,7 @@ class ConversationStorage:
                 metadata["total_cost"] = total_cost
 
         # Auto-generate title from first user message
-        if self._as_str(metadata.get("title")) == "\u65B0\u5BF9\u8BDD" and role == "user":
+        if self._as_str(metadata.get("title")) in {"\\u65B0\\u5BF9\\u8BDD", "New Conversation", "New Chat"} and role == "user":
             # Clean title: remove special chars, limit length
             clean_title = content.strip().replace('\n', ' ')[:30]
             metadata["title"] = clean_title + ("..." if len(content) > 30 else "")
@@ -1378,9 +1376,7 @@ class ConversationStorage:
 
             assistant_service = AssistantConfigService()
             if assistant_id:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if not assistant:
-                    raise ValueError(f"Assistant '{assistant_id}' not found")
+                assistant = await assistant_service.require_enabled_assistant(assistant_id)
             else:
                 assistant = await assistant_service.get_default_assistant()
                 assistant_id = assistant.id
@@ -1394,18 +1390,9 @@ class ConversationStorage:
 
             model_service = ModelConfigService()
             if model_id:
-                model_obj = await model_service.get_model(model_id)
-                if not model_obj:
-                    raise ValueError(f"Model '{model_id}' not found")
+                model_obj, _provider_obj = await model_service.require_enabled_model(model_id)
             else:
-                default_model = await model_service.get_default_config()
-                composite_id = f"{default_model.provider}:{default_model.model}"
-                model_obj = await model_service.get_model(composite_id)
-                if not model_obj:
-                    raise ValueError(f"Default model '{composite_id}' not found")
-
-            if not model_obj.enabled:
-                raise ValueError(f"Model '{model_obj.provider_id}:{model_obj.id}' is not enabled")
+                model_obj, _provider_obj = await model_service.require_enabled_model()
 
             post.metadata.pop("assistant_id", None)
             post.metadata["model_id"] = f"{model_obj.provider_id}:{model_obj.id}"
@@ -1416,23 +1403,14 @@ class ConversationStorage:
             await f.write(frontmatter.dumps(post))
 
     async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
-        """Legacy model setter that only updates the stored model_id.
-
-        Keep this behavior for backward compatibility with older call paths
-        that expect model updates without target/model validation.
-        """
-        filepath = await self._find_session_file(session_id, context_type, project_id)
-        if not filepath:
-            raise FileNotFoundError(f"Session {session_id} not found")
-
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
-            file_content = await f.read()
-        post = frontmatter.loads(file_content)
-
-        post.metadata["model_id"] = model_id
-
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(frontmatter.dumps(post))
+        """Backward-compatible wrapper for setting model target."""
+        await self.update_session_target(
+            session_id,
+            target_type="model",
+            model_id=model_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
 
     async def update_session_assistant(self, session_id: str, assistant_id: str, context_type: str = "chat", project_id: Optional[str] = None):
         """Backward-compatible wrapper for setting assistant target."""
@@ -1713,3 +1691,6 @@ def create_storage_with_project_resolver(conversations_dir) -> ConversationStora
         return None
 
     return ConversationStorage(conversations_dir, project_root_resolver=resolve_project_root)
+
+
+

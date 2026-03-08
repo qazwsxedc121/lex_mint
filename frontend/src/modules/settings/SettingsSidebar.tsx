@@ -8,6 +8,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  RocketLaunchIcon,
   UserGroupIcon,
   CpuChipIcon,
   ServerIcon,
@@ -31,26 +32,57 @@ interface NavItem {
   icon: React.ForwardRefExoticComponent<React.SVGProps<SVGSVGElement>>;
 }
 
+interface NavSection {
+  titleKey: string;
+  items: NavItem[];
+}
+
 export const SettingsSidebar: React.FC = () => {
   const { t } = useTranslation('settings');
 
-  const navItems: NavItem[] = [
-    { path: '/settings/assistants', labelKey: 'nav.assistants', icon: UserGroupIcon },
-    { path: '/settings/memory', labelKey: 'nav.memory', icon: CircleStackIcon },
-    { path: '/settings/models', labelKey: 'nav.models', icon: CpuChipIcon },
-    { path: '/settings/providers', labelKey: 'nav.providers', icon: ServerIcon },
-    { path: '/settings/knowledge-bases', labelKey: 'nav.knowledgeBases', icon: BookOpenIcon },
-    { path: '/settings/prompt-templates', labelKey: 'nav.promptTemplates', icon: DocumentTextIcon },
-    { path: '/settings/rag', labelKey: 'nav.ragSettings', icon: CircleStackIcon },
-    { path: '/settings/search', labelKey: 'nav.search', icon: MagnifyingGlassIcon },
-    { path: '/settings/webpage', labelKey: 'nav.webpage', icon: GlobeAltIcon },
-    { path: '/settings/title-generation', labelKey: 'nav.titleGeneration', icon: SparklesIcon },
-    { path: '/settings/followup', labelKey: 'nav.followup', icon: ChatBubbleLeftRightIcon },
-    { path: '/settings/compression', labelKey: 'nav.compression', icon: ArchiveBoxArrowDownIcon },
-    { path: '/settings/file-reference', labelKey: 'nav.fileReference', icon: AtSymbolIcon },
-    { path: '/settings/translation', labelKey: 'nav.translation', icon: LanguageIcon },
-    { path: '/settings/tts', labelKey: 'nav.tts', icon: SpeakerWaveIcon },
-    { path: '/settings/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon },
+  const navSections: NavSection[] = [
+    {
+      titleKey: 'navGroup.setup',
+      items: [
+        { path: '/settings/get-started', labelKey: 'nav.getStarted', icon: RocketLaunchIcon },
+        { path: '/settings/providers', labelKey: 'nav.providers', icon: ServerIcon },
+        { path: '/settings/models', labelKey: 'nav.models', icon: CpuChipIcon },
+        { path: '/settings/assistants', labelKey: 'nav.assistants', icon: UserGroupIcon },
+      ],
+    },
+    {
+      titleKey: 'navGroup.context',
+      items: [
+        { path: '/settings/knowledge-bases', labelKey: 'nav.knowledgeBases', icon: BookOpenIcon },
+        { path: '/settings/rag', labelKey: 'nav.ragSettings', icon: CircleStackIcon },
+        { path: '/settings/prompt-templates', labelKey: 'nav.promptTemplates', icon: DocumentTextIcon },
+        { path: '/settings/memory', labelKey: 'nav.memory', icon: CircleStackIcon },
+        { path: '/settings/file-reference', labelKey: 'nav.fileReference', icon: AtSymbolIcon },
+      ],
+    },
+    {
+      titleKey: 'navGroup.experience',
+      items: [
+        { path: '/settings/search', labelKey: 'nav.search', icon: MagnifyingGlassIcon },
+        { path: '/settings/webpage', labelKey: 'nav.webpage', icon: GlobeAltIcon },
+        { path: '/settings/title-generation', labelKey: 'nav.titleGeneration', icon: SparklesIcon },
+        { path: '/settings/followup', labelKey: 'nav.followup', icon: ChatBubbleLeftRightIcon },
+        { path: '/settings/compression', labelKey: 'nav.compression', icon: ArchiveBoxArrowDownIcon },
+      ],
+    },
+    {
+      titleKey: 'navGroup.language',
+      items: [
+        { path: '/settings/translation', labelKey: 'nav.translation', icon: LanguageIcon },
+        { path: '/settings/tts', labelKey: 'nav.tts', icon: SpeakerWaveIcon },
+      ],
+    },
+    {
+      titleKey: 'navGroup.developerTools',
+      items: [
+        { path: '/settings/developer', labelKey: 'nav.developer', icon: WrenchScrewdriverIcon },
+      ],
+    },
   ];
 
   return (
@@ -62,28 +94,43 @@ export const SettingsSidebar: React.FC = () => {
 
       {/* Navigation */}
       <nav className="flex-1 py-4 px-3 overflow-y-auto">
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <li key={item.path}>
-                <NavLink
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
-                    }`
-                  }
-                >
-                  <Icon className="h-5 w-5 mr-3" />
-                  {t(item.labelKey)}
-                </NavLink>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="space-y-4" data-name="settings-sidebar-groups">
+          {navSections.map((section) => (
+            <section
+              key={section.titleKey}
+              data-name="settings-sidebar-group"
+              className="border-t border-gray-200 pt-4 first:border-t-0 first:pt-0 dark:border-gray-700"
+            >
+              <div className="px-3 mb-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                  {t(section.titleKey)}
+                </div>
+              </div>
+              <ul className="space-y-1">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.path}>
+                      <NavLink
+                        to={item.path}
+                        className={({ isActive }) =>
+                          `w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                            isActive
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                              : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                          }`
+                        }
+                      >
+                        <Icon className="h-5 w-5 mr-3" />
+                        {t(item.labelKey)}
+                      </NavLink>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
       </nav>
     </aside>
   );

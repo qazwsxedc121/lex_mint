@@ -44,11 +44,11 @@ export const AssistantSelector: React.FC<AssistantSelectorProps> = ({
     const loadData = async () => {
       try {
         const [assistantList, modelList] = await Promise.all([
-          api.listAssistants(),
-          listModels(),
+          api.listAssistants(true),
+          listModels(undefined, true),
         ]);
-        setAssistants(assistantList.filter((item) => item.enabled));
-        setModels(modelList.filter((item) => item.enabled));
+        setAssistants(assistantList);
+        setModels(modelList);
       } catch (error) {
         console.error('Failed to load target selector data:', error);
       } finally {

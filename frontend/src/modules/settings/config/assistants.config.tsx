@@ -31,6 +31,22 @@ const supportsParam = (param: string) => (formData: any, context: any): boolean 
   return (PARAM_SUPPORT[param] || []).includes(sdk);
 };
 
+const getEnabledModelOptions = (context: any) => {
+  const models = context.models || [];
+  const enabledProviderIds = new Set(
+    (context.providers || [])
+      .filter((provider: any) => provider.enabled)
+      .map((provider: any) => provider.id)
+  );
+
+  return models
+    .filter((model: any) => model.enabled && enabledProviderIds.has(model.provider_id))
+    .map((model: any) => ({
+      value: `${model.provider_id}:${model.id}`,
+      label: `${model.name} (${model.provider_id}:${model.id})`
+    }));
+};
+
 // === Shared field definitions for LLM parameters ===
 
 const llmParamFields = [
@@ -229,15 +245,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       name: 'model_id',
       get label() { return i18n.t('settings:assistants.field.modelId'); },
       required: true,
-      dynamicOptions: (context) => {
-        const models = context.models || [];
-        return models
-          .filter((m: any) => m.enabled)
-          .map((m: any) => ({
-            value: `${m.provider_id}:${m.id}`,
-            label: `${m.name} (${m.provider_id}:${m.id})`
-          }));
-      },
+      dynamicOptions: getEnabledModelOptions,
       get helpText() { return i18n.t('settings:assistants.field.modelId.help'); }
     },
     {
@@ -336,15 +344,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       name: 'model_id',
       get label() { return i18n.t('settings:assistants.field.modelId'); },
       required: true,
-      dynamicOptions: (context) => {
-        const models = context.models || [];
-        return models
-          .filter((m: any) => m.enabled)
-          .map((m: any) => ({
-            value: `${m.provider_id}:${m.id}`,
-            label: `${m.name} (${m.provider_id}:${m.id})`
-          }));
-      },
+      dynamicOptions: getEnabledModelOptions,
       get helpText() { return i18n.t('settings:assistants.field.modelId.help'); }
     },
     {
@@ -415,5 +415,17 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
     edit: true,
     delete: true,
     setDefault: true
+  },
+
+  defaultActionVisibility: {
+    setDefault: (item, context) => {
+      const enabledProviderIds = new Set(
+        (context.providers || [])
+          .filter((provider: any) => provider.enabled)
+          .map((provider: any) => provider.id)
+      );
+      const [providerId] = String(item.model_id || '').split(':');
+      return item.enabled && enabledProviderIds.has(providerId);
+    }
   }
 };

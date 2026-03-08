@@ -12,6 +12,7 @@ import { ProjectSearchView } from './modules/projects/ProjectSearchView';
 import { ProjectWorkflowsView } from './modules/projects/ProjectWorkflowsView';
 import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
+import { GetStartedPage } from './modules/settings/GetStartedPage';
 import { ModelsPage } from './modules/settings/ModelsPage';
 import { ProvidersPage } from './modules/settings/ProvidersPage';
 import {
@@ -64,7 +65,8 @@ function App() {
           <Route path="workflows" element={<WorkflowsModule />} />
           <Route path="developer" element={<DeveloperModule />} />
           <Route path="settings" element={<SettingsModule />}>
-            <Route index element={<Navigate to="assistants" replace />} />
+            <Route index element={<Navigate to="get-started" replace />} />
+            <Route path="get-started" element={<GetStartedPage />} />
             <Route path="assistants" element={<AssistantsPage />} />
             <Route path="assistants/new" element={<AssistantsCreatePage />} />
             <Route path="assistants/:assistantId" element={<AssistantsEditPage />} />

@@ -72,12 +72,13 @@ class ContextAssemblyService:
 
             assistant_service = AssistantConfigService()
             try:
-                assistant = await assistant_service.get_assistant(assistant_id)
-                if assistant:
-                    assistant_obj = assistant
-                    system_prompt = assistant.system_prompt
-                    max_rounds = assistant.max_rounds
-                    assistant_params = self._assistant_params_from_assistant(assistant)
+                assistant = await assistant_service.require_enabled_assistant(assistant_id)
+                assistant_obj = assistant
+                system_prompt = assistant.system_prompt
+                max_rounds = assistant.max_rounds
+                assistant_params = self._assistant_params_from_assistant(assistant)
+            except ValueError:
+                raise
             except Exception as e:
                 logger.warning("Failed to load assistant config: %s, using defaults", e)
 

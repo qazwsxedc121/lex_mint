@@ -60,10 +60,10 @@ export const GroupChatCreateModal: React.FC<GroupChatCreateModalProps> = ({
     setGroupMode('round_robin');
     setCommitteeSupervisorId('');
     setToastError(null);
-    Promise.all([api.listAssistants(), listModels()])
+    Promise.all([api.listAssistants(true), listModels(undefined, true)])
       .then(([assistantList, modelList]) => {
-        setAssistants(assistantList.filter((item) => item.enabled));
-        setModels(modelList.filter((item) => item.enabled));
+        setAssistants(assistantList);
+        setModels(modelList);
       })
       .catch((err: unknown) => {
         const detail = extractErrorDetail(err);

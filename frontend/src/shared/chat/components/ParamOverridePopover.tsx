@@ -97,10 +97,10 @@ export const ParamOverridePopover: React.FC<ParamOverridePopoverProps> = ({
     const loadData = async () => {
       try {
         const [modelsData, providersData] = await Promise.all([
-          listModels(),
-          listProviders(),
+          listModels(undefined, true),
+          listProviders(true),
         ]);
-        setModels(modelsData.filter((m) => m.enabled));
+        setModels(modelsData);
         setProviders(providersData);
 
         if (currentAssistantId && !currentAssistantId.startsWith('__legacy_model_')) {
