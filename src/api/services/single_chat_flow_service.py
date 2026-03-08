@@ -140,6 +140,7 @@ class SingleChatFlowService:
             session_id=runtime.session_id,
             active_file_path=runtime.active_file_path,
             active_file_hash=runtime.active_file_hash,
+            use_web_search=use_web_search,
         )
         outcome = SingleTurnOutcome()
         async for event in self._stream_single_turn(
@@ -185,12 +186,18 @@ class SingleChatFlowService:
 
         print(f"[Step 2] Loading session state...")
         logger.info(f"[Step 2] Loading session state")
+        prefer_web_tools = await self._should_prefer_web_tools(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
+            use_web_search=use_web_search,
+        )
         ctx = await self.deps.prepare_context(
             session_id=session_id,
             raw_user_message=prepared_input.raw_user_message,
             context_type=context_type,
             project_id=project_id,
-            use_web_search=use_web_search,
+            use_web_search=use_web_search and not prefer_web_tools,
             search_query=search_query,
         )
         print(f"[OK] Session loaded, {len(ctx.messages)} messages")
@@ -203,6 +210,22 @@ class SingleChatFlowService:
             context_type=context_type,
             project_id=project_id,
         )
+        system_prompt = ctx.system_prompt
+        context_segments = {
+            "base_system_prompt": ctx.base_system_prompt,
+            "memory_context": ctx.memory_context,
+            "webpage_context": ctx.webpage_context,
+            "search_context": ctx.search_context,
+            "rag_context": ctx.rag_context,
+            "structured_source_context": ctx.structured_source_context,
+        }
+        all_sources = list(ctx.all_sources)
+        if prefer_web_tools:
+            system_prompt, context_segments, all_sources = self._strip_preloaded_web_context(
+                context_segments=context_segments,
+                all_sources=all_sources,
+            )
+
         return SingleChatRuntime(
             session_id=session_id,
             context_type=context_type,
@@ -213,17 +236,10 @@ class SingleChatFlowService:
             assistant_id=ctx.assistant_id,
             assistant_obj=ctx.assistant_obj,
             model_id=ctx.model_id,
-            system_prompt=ctx.system_prompt,
-            context_segments={
-                "base_system_prompt": ctx.base_system_prompt,
-                "memory_context": ctx.memory_context,
-                "webpage_context": ctx.webpage_context,
-                "search_context": ctx.search_context,
-                "rag_context": ctx.rag_context,
-                "structured_source_context": ctx.structured_source_context,
-            },
+            system_prompt=system_prompt,
+            context_segments=context_segments,
             assistant_params=ctx.assistant_params,
-            all_sources=list(ctx.all_sources),
+            all_sources=all_sources,
             max_rounds=ctx.max_rounds,
             is_legacy_assistant=ctx.is_legacy_assistant,
             assistant_memory_enabled=ctx.assistant_memory_enabled,
@@ -231,6 +247,66 @@ class SingleChatFlowService:
             active_file_hash=(active_file_hash or "").strip() or None,
             compression_event=compression_event,
         )
+
+    @staticmethod
+    def _compose_system_prompt(*segments: Optional[str]) -> Optional[str]:
+        parts = [str(segment).strip() for segment in segments if isinstance(segment, str) and segment.strip()]
+        return "\n\n".join(parts) if parts else None
+
+    def _strip_preloaded_web_context(
+        self,
+        *,
+        context_segments: Dict[str, Optional[str]],
+        all_sources: List[SourcePayload],
+    ) -> Tuple[Optional[str], Dict[str, Optional[str]], List[SourcePayload]]:
+        pruned_segments = dict(context_segments)
+        pruned_segments["webpage_context"] = None
+        pruned_segments["search_context"] = None
+        system_prompt = self._compose_system_prompt(
+            pruned_segments.get("base_system_prompt"),
+            pruned_segments.get("memory_context"),
+            pruned_segments.get("rag_context"),
+            pruned_segments.get("structured_source_context"),
+        )
+        filtered_sources = [
+            source for source in all_sources
+            if source.get("type") not in {"search", "webpage"}
+        ]
+        return system_prompt, pruned_segments, filtered_sources
+
+    async def _should_prefer_web_tools(
+        self,
+        *,
+        session_id: str,
+        context_type: str,
+        project_id: Optional[str],
+        use_web_search: bool,
+    ) -> bool:
+        if not use_web_search:
+            return False
+
+        try:
+            from .model_config_service import ModelConfigService
+
+            session = await self.deps.storage.get_session(
+                session_id,
+                context_type=context_type,
+                project_id=project_id,
+            )
+            model_id = session.get("model_id")
+            param_overrides = session.get("param_overrides", {}) or {}
+            if "model_id" in param_overrides:
+                model_id = param_overrides["model_id"]
+            if not model_id:
+                return False
+
+            model_service = ModelConfigService()
+            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(str(model_id))
+            merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
+            return bool(getattr(merged_caps, "function_calling", False))
+        except Exception as exc:
+            logger.warning("Failed to determine web tool preference: %s", exc)
+            return False
 
     async def _stream_single_turn(
         self,
@@ -449,6 +525,7 @@ class SingleChatFlowService:
         session_id: str,
         active_file_path: Optional[str],
         active_file_hash: Optional[str],
+        use_web_search: bool,
     ) -> Tuple[Optional[List[Any]], Optional[Any]]:
         """Resolve function-calling tools and optional assistant-scoped RAG tool executor."""
         llm_tools: Optional[List[Any]] = None
@@ -459,6 +536,7 @@ class SingleChatFlowService:
             from .project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
             from .project_document_tool_service import ProjectDocumentToolService
             from .project_tool_policy_resolver import ProjectToolPolicyResolver
+            from .web_tool_service import WebToolService
             from src.tools.registry import get_tool_registry
 
             model_service = ModelConfigService()
@@ -468,6 +546,14 @@ class SingleChatFlowService:
                 return llm_tools, None
 
             llm_tools = list(get_tool_registry().get_all_tools())
+            if use_web_search:
+                web_tool_service = WebToolService()
+                web_tools = web_tool_service.get_tools()
+                if web_tools:
+                    llm_tools.extend(web_tools)
+                    tool_executors.append(web_tool_service.execute_tool)
+                    print(f"[TOOLS] Added web tools: {len(web_tools)}")
+
             kb_ids_for_tools = await ProjectKnowledgeBaseResolver().resolve_effective_kb_ids(
                 assistant_id=assistant_id,
                 assistant_obj=assistant_obj,

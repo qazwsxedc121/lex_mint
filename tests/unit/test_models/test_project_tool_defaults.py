@@ -26,6 +26,8 @@ def test_project_tool_defaults_include_all_known_tools():
         "simple_calculator",
         "format_json",
         "text_statistics",
+        "web_search",
+        "read_webpage",
         "read_project_document",
         "read_current_document",
         "search_project_text",

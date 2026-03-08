@@ -14,7 +14,7 @@ from ..models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalog
 class ToolCatalogService:
     """Aggregates builtin and request-scoped tool definitions into one catalog."""
 
-    GROUP_ORDER = ["builtin", "projectDocuments", "knowledge"]
+    GROUP_ORDER = ["builtin", "web", "projectDocuments", "knowledge"]
 
     @classmethod
     def get_tool_definitions(cls) -> List[ToolDefinition]:

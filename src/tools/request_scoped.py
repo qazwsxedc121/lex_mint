@@ -9,6 +9,53 @@ from pydantic import BaseModel, Field
 from .definitions import ToolDefinition
 
 
+class WebSearchArgs(BaseModel):
+    """Arguments for web_search tool."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Search query for public web search.",
+    )
+
+
+class ReadWebpageArgs(BaseModel):
+    """Arguments for read_webpage tool."""
+
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Absolute webpage URL to fetch and summarize for research use.",
+    )
+
+
+WEB_SEARCH_TOOL = ToolDefinition(
+    name="web_search",
+    description=(
+        "Search the public web and return structured results with title, URL, and snippet. "
+        "Use this when you need up-to-date external information."
+    ),
+    args_schema=WebSearchArgs,
+    group="web",
+    source="web",
+    enabled_by_default=False,
+)
+
+
+READ_WEBPAGE_TOOL = ToolDefinition(
+    name="read_webpage",
+    description=(
+        "Fetch and read a webpage URL, returning the title, final URL, and extracted main content."
+    ),
+    args_schema=ReadWebpageArgs,
+    group="web",
+    source="web",
+    enabled_by_default=False,
+)
+
+
 class SearchKnowledgeArgs(BaseModel):
     """Arguments for search_knowledge tool."""
 
@@ -283,6 +330,8 @@ SEARCH_PROJECT_TEXT_TOOL = ToolDefinition(
 
 
 REQUEST_SCOPED_TOOL_DEFINITIONS = [
+    WEB_SEARCH_TOOL,
+    READ_WEBPAGE_TOOL,
     READ_PROJECT_DOCUMENT_TOOL,
     READ_CURRENT_DOCUMENT_TOOL,
     SEARCH_PROJECT_TEXT_TOOL,

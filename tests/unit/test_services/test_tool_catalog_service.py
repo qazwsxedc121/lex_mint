@@ -14,6 +14,8 @@ def test_build_catalog_includes_all_tool_names():
         "simple_calculator",
         "format_json",
         "text_statistics",
+        "web_search",
+        "read_webpage",
         "read_project_document",
         "read_current_document",
         "search_project_text",
@@ -29,6 +31,7 @@ def test_build_catalog_groups_tools_in_ui_order():
 
     assert [group.key for group in catalog.groups] == [
         "builtin",
+        "web",
         "projectDocuments",
         "knowledge",
     ]
@@ -37,6 +40,10 @@ def test_build_catalog_groups_tools_in_ui_order():
         "simple_calculator",
         "format_json",
         "text_statistics",
+    ]
+    assert [tool.name for tool in catalog.groups[1].tools] == [
+        "web_search",
+        "read_webpage",
     ]
     assert catalog.groups[0].title_i18n_key == "workspace.settings.toolGroups.builtin.title"
     assert catalog.groups[0].description_i18n_key == "workspace.settings.toolGroups.builtin.description"
