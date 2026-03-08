@@ -32,6 +32,12 @@ def _is_local_qwen3_model(normalized_model_id: str, normalized_provider_id: str)
     return "qwen3" in normalized_model_id
 
 
+def _is_kimi_k2_family_model(normalized_model_id: str, normalized_provider_id: str) -> bool:
+    if normalized_provider_id == "kimi":
+        return normalized_model_id.startswith("kimi-k2")
+    return "/kimi-k2" in normalized_model_id or normalized_model_id.startswith("kimi-k2")
+
+
 def infer_capability_overrides(
     model_id: str,
     provider_id: Optional[str] = None,
@@ -53,6 +59,19 @@ def infer_capability_overrides(
             "reasoning_controls": {
                 "mode": "toggle",
                 "param": "enable_thinking",
+                "options": [],
+                "default_option": None,
+                "disable_supported": True,
+            },
+        }
+
+    if _is_kimi_k2_family_model(normalized_model_id, normalized_provider_id):
+        return {
+            "reasoning": True,
+            "requires_interleaved_thinking": True,
+            "reasoning_controls": {
+                "mode": "toggle",
+                "param": "thinking",
                 "options": [],
                 "default_option": None,
                 "disable_supported": True,

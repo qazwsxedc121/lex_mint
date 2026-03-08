@@ -6,18 +6,28 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from src.api.services.local_llama_cpp_service import (
-    LocalLlamaCppService,
-    discover_local_gguf_models,
-)
-
 from ..base import BaseLLMAdapter
 from ..types import LLMResponse, StreamChunk
+
+if TYPE_CHECKING:
+    from src.api.services.local_llama_cpp_service import LocalLlamaCppService
+
+LocalLlamaCppService = None
+
+
+def _get_local_llama_cpp_service_class():
+    service_cls = LocalLlamaCppService
+    if service_cls is not None:
+        return service_cls
+
+    from src.api.services.local_llama_cpp_service import LocalLlamaCppService as imported_service_cls
+
+    return imported_service_cls
 
 logger = logging.getLogger(__name__)
 _SENTINEL = object()
@@ -203,13 +213,14 @@ class LocalGgufAdapter(BaseLLMAdapter):
         **kwargs,
     ) -> LocalGgufChatModel:
         del base_url, api_key, streaming, thinking_enabled
+        service_cls = _get_local_llama_cpp_service_class()
         raw_n_gpu_layers = kwargs.get("n_gpu_layers", _SENTINEL)
         n_gpu_layers = (
             _DEFAULT_N_GPU_LAYERS
             if raw_n_gpu_layers in {_SENTINEL, None, ""}
             else int(raw_n_gpu_layers)
         )
-        service = LocalLlamaCppService(
+        service = service_cls(
             model_path=model,
             n_ctx=int(kwargs.get("n_ctx") or 8192),
             n_threads=int(kwargs.get("n_threads") or 0),
@@ -277,6 +288,8 @@ class LocalGgufAdapter(BaseLLMAdapter):
         api_key: str,
     ) -> List[Dict[str, Any]]:
         del base_url, api_key
+        from src.api.services.local_llama_cpp_service import discover_local_gguf_models
+
         return discover_local_gguf_models()
 
     async def test_connection(
@@ -286,6 +299,8 @@ class LocalGgufAdapter(BaseLLMAdapter):
         model_id: Optional[str] = None,
     ) -> tuple[bool, str]:
         del base_url, api_key
+        from src.api.services.local_llama_cpp_service import discover_local_gguf_models
+
         selected_model_id = model_id
         if not selected_model_id:
             models = discover_local_gguf_models()

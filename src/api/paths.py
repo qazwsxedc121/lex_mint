@@ -20,6 +20,12 @@ _WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 @lru_cache(maxsize=1)
+def source_repo_root() -> Path:
+    """Return the source checkout root regardless of runtime overrides."""
+    return Path(__file__).resolve().parents[2]
+
+
+@lru_cache(maxsize=1)
 def repo_root() -> Path:
     runtime_root = os.getenv("LEX_MINT_RUNTIME_ROOT", "").strip()
     if runtime_root:
@@ -29,8 +35,7 @@ def repo_root() -> Path:
         # PyInstaller/Nuitka runtime: place writable/runtime files next to the exe.
         return Path(sys.executable).resolve().parent
 
-    # This file lives at src/api/paths.py -> parents: api/ -> src/ -> repo root.
-    return Path(__file__).resolve().parents[2]
+    return source_repo_root()
 
 
 def is_packaged_runtime() -> bool:
@@ -115,7 +120,10 @@ def resolve_model_path(path: Path | str) -> Path:
 
 
 def config_defaults_dir() -> Path:
-    return repo_root() / "config" / "defaults"
+    runtime_defaults_dir = repo_root() / "config" / "defaults"
+    if runtime_defaults_dir.exists():
+        return runtime_defaults_dir
+    return source_repo_root() / "config" / "defaults"
 
 
 def config_local_dir() -> Path:

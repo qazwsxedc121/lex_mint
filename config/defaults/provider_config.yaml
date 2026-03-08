@@ -260,6 +260,30 @@ providers:
   supports_model_list: true
   sdk_class: openai
   endpoint_profiles: []
+- id: minimax
+  name: MiniMax
+  type: builtin
+  protocol: openai
+  call_mode: auto
+  base_url: https://api.minimax.chat/v1
+  endpoint_profile_id: null
+  api_keys: []
+  enabled: false
+  default_capabilities:
+    context_length: 128000
+    vision: false
+    function_calling: true
+    reasoning: false
+    reasoning_controls: null
+    requires_interleaved_thinking: false
+    streaming: true
+    file_upload: false
+    image_output: false
+  url_suffix: /v1
+  auto_append_path: true
+  supports_model_list: true
+  sdk_class: openai
+  endpoint_profiles: []
 - id: bailian
   name: Alibaba Cloud (Qwen)
   type: builtin

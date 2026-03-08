@@ -67,7 +67,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
       }
       return response.json();
     }
-  }), [API_BASE]);
+  }), []);
 
   const api = useMemo(() => apiClient || defaultApiClient, [apiClient, defaultApiClient]);
   const headerTitle = config.help ? (
@@ -231,4 +231,3 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
     </div>
   );
 };
-
