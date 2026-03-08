@@ -12,12 +12,12 @@ from dataclasses import dataclass
 import yaml
 
 from .model_config_service import ModelConfigService
+from .yaml_config_utils import load_default_yaml_section, load_layered_yaml_section, save_yaml_section_updates
 from ..paths import (
     config_defaults_dir,
     config_local_dir,
     legacy_config_dir,
     ensure_local_file,
-    resolve_layered_read_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,30 +74,18 @@ class FollowupService:
 
     def _load_default_section(self) -> Dict:
         """Load fallback defaults from the repo default config file."""
-        if self.defaults_path is None or not self.defaults_path.exists():
-            return {}
-
-        with open(self.defaults_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-        return data.get('followup', {}) or {}
+        return load_default_yaml_section(self.defaults_path, 'followup')
 
     def _load_config(self) -> FollowupConfig:
         """Load configuration from YAML file"""
-        default_config = self._load_default_section()
-        config_path = resolve_layered_read_path(
-            local_path=self.config_path,
+        default_config, config_data = load_layered_yaml_section(
+            config_path=self.config_path,
             defaults_path=self.defaults_path,
             legacy_paths=self.legacy_paths,
+            section_name='followup',
+            logger=logger,
+            error_label='followup config',
         )
-
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-
-            config_data = data.get('followup', {})
-        except Exception as e:
-            logger.error(f"Failed to load followup config: {e}")
-            config_data = default_config
 
         return FollowupConfig(
             enabled=config_data.get('enabled', default_config.get('enabled', True)),
@@ -124,23 +112,11 @@ class FollowupService:
     def save_config(self, updates: Dict):
         """Save updated configuration to file"""
         try:
-            # Read current config
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-
-            # Update fields
-            if 'followup' not in data:
-                data['followup'] = {}
-
-            for key, value in updates.items():
-                if value is not None:
-                    data['followup'][key] = value
-
-            # Write back
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-
-            # Reload
+            save_yaml_section_updates(
+                config_path=self.config_path,
+                section_name='followup',
+                updates=updates,
+            )
             self.reload_config()
             logger.info("Followup config updated successfully")
         except Exception as e:

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import yaml
 
+from .yaml_config_utils import load_default_yaml_section, load_layered_yaml_section, save_yaml_section_updates
 from ..paths import (
     config_defaults_dir,
     config_local_dir,
@@ -134,30 +135,18 @@ class CompressionConfigService:
 
     def _load_default_section(self) -> Dict:
         """Load fallback defaults from the repo default config file."""
-        if self.defaults_path is None or not self.defaults_path.exists():
-            return {}
-
-        with open(self.defaults_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-        return data.get('compression', {}) or {}
+        return load_default_yaml_section(self.defaults_path, 'compression')
 
     def _load_config(self) -> CompressionConfig:
         """Load configuration from YAML file"""
-        default_config = self._load_default_section()
-        config_path = resolve_layered_read_path(
-            local_path=self.config_path,
+        default_config, config_data = load_layered_yaml_section(
+            config_path=self.config_path,
             defaults_path=self.defaults_path,
             legacy_paths=self.legacy_paths,
+            section_name='compression',
+            logger=logger,
+            error_label='compression config',
         )
-
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-
-            config_data = data.get('compression', {})
-        except Exception as e:
-            logger.error(f"Failed to load compression config: {e}")
-            config_data = default_config
 
         return CompressionConfig(
             provider=config_data.get('provider', default_config.get('provider', 'model_config')),
@@ -247,19 +236,11 @@ class CompressionConfigService:
     def save_config(self, updates: Dict):
         """Save updated configuration to file"""
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-
-            if 'compression' not in data:
-                data['compression'] = {}
-
-            for key, value in updates.items():
-                if value is not None:
-                    data['compression'][key] = value
-
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-
+            save_yaml_section_updates(
+                config_path=self.config_path,
+                section_name='compression',
+                updates=updates,
+            )
             self.reload_config()
             logger.info("Compression config updated successfully")
         except Exception as e:
