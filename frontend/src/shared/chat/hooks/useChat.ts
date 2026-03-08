@@ -15,6 +15,15 @@ import type {
   ChatTargetType,
 } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
+import {
+  buildGroupTimelineEvent,
+  loadToolCallCache,
+  mergeToolCallsFromCache as mergeToolCallsFromCacheItems,
+  nowTimestamp,
+  persistToolCallCache,
+  rememberToolCallsInCache,
+} from './useChatHelpers';
+import { buildChatSessionSnapshot, createEmptyChatSessionSnapshot } from './useChatSessionHelpers';
 
 type SendMessageOptions = {
   reasoningEffort?: string;
@@ -25,18 +34,8 @@ type SendMessageOptions = {
 
 type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
 
-const TOOL_CALL_CACHE_STORAGE_KEY = 'lex-mint.tool-calls.cache.v1';
-const TOOL_CALL_CACHE_LIMIT = 300;
-
 export function useChat(sessionId: string | null) {
   const { api } = useChatServices();
-
-  /** Generate current timestamp in YYYY-MM-DD HH:MM:SS format */
-  const nowTimestamp = () => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  };
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,86 +59,35 @@ export function useChat(sessionId: string | null) {
   const isProcessingRef = useRef(false);
   const toolCallsByMessageIdRef = useRef<Record<string, NonNullable<Message['toolCalls']>>>({});
 
-  const persistToolCallCache = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      window.sessionStorage.setItem(
-        TOOL_CALL_CACHE_STORAGE_KEY,
-        JSON.stringify(toolCallsByMessageIdRef.current)
-      );
-    } catch {
-      // Ignore storage quota/availability errors.
-    }
+  const applySessionSnapshot = useCallback((snapshot: ReturnType<typeof createEmptyChatSessionSnapshot>) => {
+    setMessages(snapshot.messages);
+    setCurrentModelId(snapshot.currentModelId);
+    setCurrentAssistantId(snapshot.currentAssistantId);
+    setCurrentTargetType(snapshot.currentTargetType);
+    setTotalUsage(snapshot.totalUsage);
+    setTotalCost(snapshot.totalCost);
+    setLastPromptTokens(snapshot.lastPromptTokens);
+    setParamOverrides(snapshot.paramOverrides);
+    setIsTemporary(snapshot.isTemporary);
+    setGroupAssistants(snapshot.groupAssistants);
+    setGroupMode(snapshot.groupMode);
+    setGroupTimeline(snapshot.groupTimeline);
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      const raw = window.sessionStorage.getItem(TOOL_CALL_CACHE_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') {
-        return;
-      }
-      const hydrated: Record<string, NonNullable<Message['toolCalls']>> = {};
-      for (const [messageId, value] of Object.entries(parsed)) {
-        if (!messageId || !Array.isArray(value) || value.length === 0) {
-          continue;
-        }
-        hydrated[messageId] = value as NonNullable<Message['toolCalls']>;
-      }
-      toolCallsByMessageIdRef.current = hydrated;
-    } catch {
-      // Ignore malformed persisted cache.
-    }
+    toolCallsByMessageIdRef.current = loadToolCallCache();
   }, []);
 
   const rememberToolCalls = useCallback((items: Message[]) => {
-    let updated = false;
-    for (const item of items) {
-      if (
-        item.role === 'assistant' &&
-        item.message_id &&
-        Array.isArray(item.toolCalls) &&
-        item.toolCalls.length > 0
-      ) {
-        toolCallsByMessageIdRef.current[item.message_id] = item.toolCalls;
-        updated = true;
-      }
-    }
+    const updated = rememberToolCallsInCache(toolCallsByMessageIdRef.current, items);
     if (!updated) {
       return;
     }
-    const messageIds = Object.keys(toolCallsByMessageIdRef.current);
-    if (messageIds.length > TOOL_CALL_CACHE_LIMIT) {
-      const trimCount = messageIds.length - TOOL_CALL_CACHE_LIMIT;
-      for (let i = 0; i < trimCount; i += 1) {
-        delete toolCallsByMessageIdRef.current[messageIds[i]];
-      }
-    }
-    persistToolCallCache();
-  }, [persistToolCallCache]);
+    persistToolCallCache(toolCallsByMessageIdRef.current);
+  }, []);
 
   const mergeToolCallsFromCache = useCallback((items: Message[]): Message[] => {
-    return items.map((item) => {
-      if (item.role !== 'assistant' || !item.message_id || (item.toolCalls && item.toolCalls.length > 0)) {
-        return item;
-      }
-      const cachedToolCalls = toolCallsByMessageIdRef.current[item.message_id];
-      if (!cachedToolCalls || cachedToolCalls.length === 0) {
-        return item;
-      }
-      return {
-        ...item,
-        toolCalls: cachedToolCalls,
-      };
-    });
+    return mergeToolCallsFromCacheItems(items, toolCallsByMessageIdRef.current);
   }, []);
 
   const appendGroupTimelineEvent = (event: {
@@ -158,32 +106,10 @@ export function useChat(sessionId: string | null) {
     instruction?: string;
     rounds?: number;
   }) => {
-    const eventType = event.type;
-    if (
-      eventType !== 'group_round_start' &&
-      eventType !== 'group_action' &&
-      eventType !== 'group_done'
-    ) {
+    const timelineEvent = buildGroupTimelineEvent(event);
+    if (!timelineEvent) {
       return;
     }
-    const timelineEvent: GroupTimelineEvent = {
-      event_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-      created_at: nowTimestamp(),
-      type: eventType,
-      mode: event.mode,
-      round: event.round,
-      max_rounds: event.max_rounds,
-      action: event.action,
-      reason: event.reason,
-      supervisor_id: event.supervisor_id,
-      supervisor_name: event.supervisor_name,
-      assistant_id: event.assistant_id,
-      assistant_name: event.assistant_name,
-      assistant_ids: event.assistant_ids,
-      assistant_names: event.assistant_names,
-      instruction: event.instruction,
-      rounds: event.rounds,
-    };
     setGroupTimeline(prev => [...prev.slice(-39), timelineEvent]);
   };
 
@@ -199,20 +125,9 @@ export function useChat(sessionId: string | null) {
     setIsCompressing(false);
 
     if (!sessionId) {
-      setMessages([]);
-      setCurrentModelId(null);
-      setCurrentAssistantId(null);
-      setCurrentTargetType('model');
-      setTotalUsage(null);
-      setTotalCost(null);
+      applySessionSnapshot(createEmptyChatSessionSnapshot());
       setFollowupQuestions([]);
       setContextInfo(null);
-      setLastPromptTokens(null);
-      setParamOverrides({});
-      setIsTemporary(false);
-      setGroupAssistants(null);
-      setGroupMode(null);
-      setGroupTimeline([]);
       return;
     }
 
@@ -277,54 +192,16 @@ export function useChat(sessionId: string | null) {
       }
 
       loadedMessages = mergeToolCallsFromCache(loadedMessages);
-      setMessages(loadedMessages);
       rememberToolCalls(loadedMessages);
-      setCurrentModelId(session.model_id || null);
-      setCurrentAssistantId(session.assistant_id || null);
-      const inferredTargetType: ChatTargetType =
-        session.target_type ||
-        (session.assistant_id && !session.assistant_id.startsWith('__legacy_model_') ? 'assistant' : 'model');
-      setCurrentTargetType(inferredTargetType);
-      setTotalUsage(session.total_usage || null);
-      setTotalCost(session.total_cost || null);
-      setParamOverrides(session.param_overrides || {});
-      setIsTemporary(session.temporary || false);
-      setGroupAssistants(session.group_assistants || null);
-      setGroupMode(
-        session.group_mode ||
-        (session.group_assistants && session.group_assistants.length >= 2 ? 'round_robin' : null)
-      );
-      setGroupTimeline([]);
-
-      // Derive lastPromptTokens from last assistant message's usage
-      const msgs = session.state.messages;
-      let derivedPromptTokens: number | null = null;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'assistant' && msgs[i].usage?.prompt_tokens) {
-          derivedPromptTokens = msgs[i].usage!.prompt_tokens;
-          break;
-        }
-      }
-      setLastPromptTokens(derivedPromptTokens);
+      applySessionSnapshot(buildChatSessionSnapshot(session, loadedMessages));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load session');
-      setMessages([]);
-      setCurrentModelId(null);
-      setCurrentAssistantId(null);
-      setCurrentTargetType('model');
-      setTotalUsage(null);
-      setTotalCost(null);
+      applySessionSnapshot(createEmptyChatSessionSnapshot());
       setContextInfo(null);
-      setLastPromptTokens(null);
-      setParamOverrides({});
-      setIsTemporary(false);
-      setGroupAssistants(null);
-      setGroupMode(null);
-      setGroupTimeline([]);
     } finally {
       setLoading(false);
     }
-  }, [api, mergeToolCallsFromCache, rememberToolCalls, sessionId]);
+  }, [api, applySessionSnapshot, mergeToolCallsFromCache, rememberToolCalls, sessionId]);
 
   useEffect(() => {
     rememberToolCalls(messages);
