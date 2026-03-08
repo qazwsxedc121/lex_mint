@@ -13,18 +13,46 @@ import type {
   Provider,
   Model,
   DefaultConfig,
-  BuiltinProviderInfo,
-  ModelInfo,
-  CapabilitiesResponse,
-  ProtocolInfo,
-  ProviderEndpointProbeRequest,
-  ProviderEndpointProbeResponse,
-  ProviderEndpointProfilesResponse,
 } from '../types/model';
-import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
 import type { Project, ProjectCreate, ProjectUpdate } from '../types/project';
 import type { PromptTemplate, PromptTemplateCreate, PromptTemplateUpdate } from '../types/promptTemplate';
 import type { Folder } from '../types/folder';
+export {
+  generateTitleManually,
+  getSearchConfig,
+  getTitleGenerationConfig,
+  getWebpageConfig,
+  updateSearchConfig,
+  updateTitleGenerationConfig,
+  updateWebpageConfig,
+} from './configApi';
+export type {
+  SearchConfig,
+  SearchConfigUpdate,
+  TitleGenerationConfig,
+  TitleGenerationConfigUpdate,
+  WebpageConfig,
+  WebpageConfigUpdate,
+} from './configApi';
+export {
+  createAssistant,
+  deleteAssistant,
+  fetchProviderModels,
+  getAssistant,
+  getBuiltinProvider,
+  getDefaultAssistant,
+  getDefaultAssistantId,
+  getModelCapabilities,
+  listAssistants,
+  listBuiltinProviders,
+  listProtocols,
+  listProviderEndpointProfiles,
+  probeProviderEndpoints,
+  setDefaultAssistant,
+  testProviderConnection,
+  testProviderStoredConnection,
+  updateAssistant,
+} from './assistantProviderApi';
 export {
   createKnowledgeBase,
   deleteDocument,
@@ -1767,300 +1795,6 @@ export async function updateSessionParamOverrides(
   await api.put(`/api/sessions/${sessionId}/param-overrides?${params.toString()}`, { param_overrides: paramOverrides });
 }
 
-
-/**
- * List Assistants.
- */
-export async function listAssistants(enabledOnly: boolean = false): Promise<Assistant[]> {
-  const url = enabledOnly
-    ? '/api/assistants?enabled_only=true'
-    : '/api/assistants';
-  const response = await api.get<Assistant[]>(url);
-  return response.data;
-}
-
-/**
- * Get Assistant.
- */
-export async function getAssistant(assistantId: string): Promise<Assistant> {
-  const response = await api.get<Assistant>(`/api/assistants/${assistantId}`);
-  return response.data;
-}
-
-/**
- * Create Assistant.
- */
-export async function createAssistant(assistant: AssistantCreate): Promise<void> {
-  await api.post('/api/assistants', assistant);
-}
-
-/**
- * Update Assistant.
- */
-export async function updateAssistant(assistantId: string, assistant: AssistantUpdate): Promise<void> {
-  await api.put(`/api/assistants/${assistantId}`, assistant);
-}
-
-/**
- * Delete Assistant.
- */
-export async function deleteAssistant(assistantId: string): Promise<void> {
-  await api.delete(`/api/assistants/${assistantId}`);
-}
-
-/**
- * Get Default Assistant Id.
- */
-export async function getDefaultAssistantId(): Promise<string> {
-  const response = await api.get<{ default_assistant_id: string }>('/api/assistants/default/id');
-  return response.data.default_assistant_id;
-}
-
-/**
- * Get Default Assistant.
- */
-export async function getDefaultAssistant(): Promise<Assistant> {
-  const response = await api.get<Assistant>('/api/assistants/default/assistant');
-  return response.data;
-}
-
-/**
- * Set Default Assistant.
- */
-export async function setDefaultAssistant(assistantId: string): Promise<void> {
-  await api.put(`/api/assistants/default/${assistantId}`);
-}
-
-/**
- * Test provider connection using a provided API key.
- */
-export async function testProviderConnection(
-  baseUrl: string,
-  apiKey: string,
-  providerId?: string,
-  modelId?: string
-): Promise<{ success: boolean; message: string }> {
-  const response = await api.post<{ success: boolean; message: string }>(
-    '/api/models/providers/test',
-    {
-      base_url: baseUrl,
-      api_key: apiKey,
-      provider_id: providerId,
-      model_id: modelId,
-    }
-  );
-  return response.data;
-}
-
-/**
- * Test provider connection using a stored API key.
- */
-export async function testProviderStoredConnection(
-  providerId: string,
-  baseUrl: string,
-  modelId?: string
-): Promise<{ success: boolean; message: string }> {
-  const response = await api.post<{ success: boolean; message: string }>(
-    '/api/models/providers/test-stored',
-    {
-      provider_id: providerId,
-      base_url: baseUrl,
-      model_id: modelId,
-    }
-  );
-  return response.data;
-}
-
-/**
- * Probe provider endpoints (auto/manual diagnostics).
- */
-export async function probeProviderEndpoints(
-  providerId: string,
-  payload: ProviderEndpointProbeRequest
-): Promise<ProviderEndpointProbeResponse> {
-  const response = await api.post<ProviderEndpointProbeResponse>(
-    `/api/models/providers/${providerId}/probe-endpoints`,
-    payload
-  );
-  return response.data;
-}
-
-/**
- * List endpoint profiles for a provider.
- */
-export async function listProviderEndpointProfiles(
-  providerId: string,
-  clientRegionHint: 'cn' | 'global' | 'unknown' = 'unknown'
-): Promise<ProviderEndpointProfilesResponse> {
-  const response = await api.get<ProviderEndpointProfilesResponse>(
-    `/api/models/providers/${providerId}/endpoint-profiles?client_region_hint=${clientRegionHint}`
-  );
-  return response.data;
-}
-
-
-/**
- * List built-in providers.
- */
-export async function listBuiltinProviders(): Promise<BuiltinProviderInfo[]> {
-  const response = await api.get<BuiltinProviderInfo[]>('/api/models/providers/builtin');
-  return response.data;
-}
-
-/**
- * Get built-in provider definition.
- */
-export async function getBuiltinProvider(providerId: string): Promise<BuiltinProviderInfo> {
-  const response = await api.get<BuiltinProviderInfo>(`/api/models/providers/builtin/${providerId}`);
-  return response.data;
-}
-
-/**
- * Fetch available models from provider API.
- */
-export async function fetchProviderModels(providerId: string): Promise<ModelInfo[]> {
-  const response = await api.post<ModelInfo[]>(`/api/models/providers/${providerId}/fetch-models`);
-  return response.data;
-}
-
-/**
- * Get model capabilities (provider defaults plus overrides).
- */
-export async function getModelCapabilities(modelId: string): Promise<CapabilitiesResponse> {
-  const response = await api.get<CapabilitiesResponse>(`/api/models/capabilities/${modelId}`);
-  return response.data;
-}
-
-/**
- * List supported API protocol types.
- */
-export async function listProtocols(): Promise<ProtocolInfo[]> {
-  const response = await api.get<ProtocolInfo[]>('/api/models/protocols');
-  return response.data;
-}
-
-// ==================== Search Config API ====================
-
-export interface SearchConfig {
-  provider: string;
-  max_results: number;
-  timeout_seconds: number;
-}
-
-export interface SearchConfigUpdate {
-  provider?: string;
-  max_results?: number;
-  timeout_seconds?: number;
-}
-
-/**
- * Get search configuration
- */
-export async function getSearchConfig(): Promise<SearchConfig> {
-  const response = await api.get<SearchConfig>('/api/search/config');
-  return response.data;
-}
-
-/**
- * Update search configuration
- */
-export async function updateSearchConfig(updates: SearchConfigUpdate): Promise<void> {
-  await api.put('/api/search/config', updates);
-}
-
-// ==================== Webpage Config API ====================
-
-export interface WebpageConfig {
-  enabled: boolean;
-  max_urls: number;
-  timeout_seconds: number;
-  max_bytes: number;
-  max_content_chars: number;
-  user_agent: string;
-  proxy?: string | null;
-  trust_env: boolean;
-  diagnostics_enabled: boolean;
-  diagnostics_timeout_seconds: number;
-}
-
-export interface WebpageConfigUpdate {
-  enabled?: boolean;
-  max_urls?: number;
-  timeout_seconds?: number;
-  max_bytes?: number;
-  max_content_chars?: number;
-  user_agent?: string;
-  proxy?: string | null;
-  trust_env?: boolean;
-  diagnostics_enabled?: boolean;
-  diagnostics_timeout_seconds?: number;
-}
-
-/**
- * Get webpage configuration
- */
-export async function getWebpageConfig(): Promise<WebpageConfig> {
-  const response = await api.get<WebpageConfig>('/api/webpage/config');
-  return response.data;
-}
-
-/**
- * Update webpage configuration
- */
-export async function updateWebpageConfig(updates: WebpageConfigUpdate): Promise<void> {
-  await api.put('/api/webpage/config', updates);
-}
-
-// ==================== Title Generation API ====================
-
-export interface TitleGenerationConfig {
-  enabled: boolean;
-  trigger_threshold: number;
-  model_id: string;
-  prompt_template: string;
-  max_context_rounds: number;
-  timeout_seconds: number;
-}
-
-export interface TitleGenerationConfigUpdate {
-  enabled?: boolean;
-  trigger_threshold?: number;
-  model_id?: string;
-  prompt_template?: string;
-  max_context_rounds?: number;
-  timeout_seconds?: number;
-}
-
-/**
- * Get title generation configuration
- */
-export async function getTitleGenerationConfig(): Promise<TitleGenerationConfig> {
-  const response = await api.get<TitleGenerationConfig>('/api/title-generation/config');
-  return response.data;
-}
-
-/**
- * Update title generation configuration
- */
-export async function updateTitleGenerationConfig(updates: TitleGenerationConfigUpdate): Promise<void> {
-  await api.put('/api/title-generation/config', updates);
-}
-
-/**
- * Manually trigger title generation for a session
- */
-export async function generateTitleManually(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<{ message: string; title: string }> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.post<{ message: string; title: string }>(`/api/title-generation/generate?${params.toString()}`, {
-    session_id: sessionId
-  });
-  return response.data;
-}
 
 // ==================== Project Management API ====================
 
