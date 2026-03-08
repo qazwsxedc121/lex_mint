@@ -13,6 +13,8 @@ import uuid
 import re
 
 from src.providers.types import TokenUsage, CostInfo
+from .conversation_storage_paths import StoragePathResolver, build_project_root_resolver
+from .conversation_target_resolver import ConversationSessionTargetResolver
 from .group_participants import parse_group_participant
 
 
@@ -24,7 +26,13 @@ class ConversationStorage:
     - Markdown body with timestamped messages
     """
 
-    def __init__(self, conversations_dir: Path, project_root_resolver: Optional[Callable[[str], Optional[str]]] = None):
+    def __init__(
+        self,
+        conversations_dir: Path,
+        project_root_resolver: Optional[Callable[[str], Optional[str]]] = None,
+        assistant_service: Any = None,
+        model_service: Any = None,
+    ):
         """Initialize storage with conversations directory.
 
         Args:
@@ -38,6 +46,11 @@ class ConversationStorage:
         self.conversations_dir = Path(conversations_dir)
         self.conversations_dir.mkdir(exist_ok=True)
         self._project_root_resolver = project_root_resolver
+        self._path_resolver = StoragePathResolver(self.conversations_dir, project_root_resolver)
+        self._target_resolver = ConversationSessionTargetResolver(
+            assistant_service=assistant_service,
+            model_service=model_service,
+        )
         # Per-file locks to prevent concurrent read-modify-write corruption
         self._file_locks: Dict[str, asyncio.Lock] = {}
 
@@ -104,50 +117,13 @@ class ConversationStorage:
         Raises:
             ValueError: If context parameters are invalid
         """
-        normalized_target_type = (target_type or "").strip().lower() if target_type else None
-        if normalized_target_type not in {None, "assistant", "model"}:
-            raise ValueError("target_type must be one of: assistant, model")
-
-        # Legacy marker is not a real assistant target.
-        if assistant_id and str(assistant_id).startswith("__legacy_model_"):
-            assistant_id = None
-
-        # Backward-compatible target type inference.
-        if normalized_target_type is None:
-            if assistant_id:
-                normalized_target_type = "assistant"
-            elif model_id:
-                normalized_target_type = "model"
-
-        if normalized_target_type == "assistant":
-            from .assistant_config_service import AssistantConfigService
-
-            assistant_service = AssistantConfigService()
-            if assistant_id:
-                assistant = await assistant_service.require_enabled_assistant(assistant_id)
-            else:
-                assistant = await assistant_service.get_default_assistant()
-                assistant_id = assistant.id
-            model_id = assistant.model_id
-        elif normalized_target_type == "model":
-            from .model_config_service import ModelConfigService
-
-            model_service = ModelConfigService()
-            if model_id:
-                model_obj, _provider_obj = await model_service.require_enabled_model(model_id)
-                model_id = f"{model_obj.provider_id}:{model_obj.id}"
-            else:
-                default_model_obj, _provider_obj = await model_service.require_enabled_model()
-                model_id = f"{default_model_obj.provider_id}:{default_model_obj.id}"
-            assistant_id = None
-        else:
-            # Legacy default path: no explicit target => default assistant.
-            from .assistant_config_service import AssistantConfigService
-
-            assistant_service = AssistantConfigService()
-            default_assistant = await assistant_service.get_default_assistant()
-            assistant_id = default_assistant.id
-            model_id = default_assistant.model_id
+        resolved_target = await self._target_resolver.resolve_target(
+            target_type=target_type,
+            assistant_id=assistant_id,
+            model_id=model_id,
+        )
+        assistant_id = resolved_target.assistant_id
+        model_id = resolved_target.model_id
 
         # Get context-specific directory and create if needed
         conversation_dir = self._get_conversation_dir(context_type, project_id)
@@ -166,7 +142,7 @@ class ConversationStorage:
             "title": "New Conversation",
             "current_step": 0,
             "model_id": model_id,  # Store the composite ID format for backward compatibility.
-            "target_type": "assistant" if assistant_id else "model",
+            "target_type": resolved_target.target_type,
         }
 
         # Store assistant_id for newly created sessions.
@@ -1328,25 +1304,7 @@ class ConversationStorage:
     @staticmethod
     def _extract_model_chat_template_overrides(model_obj: Any) -> Dict[str, Any]:
         """Build session param overrides from model chat_template."""
-        template = getattr(model_obj, "chat_template", None)
-        if not template:
-            return {}
-        if hasattr(template, "model_dump"):
-            raw_template = template.model_dump(exclude_none=True)
-        elif isinstance(template, dict):
-            raw_template = {k: v for k, v in template.items() if v is not None}
-        else:
-            return {}
-
-        allowed_keys = {
-            "temperature",
-            "max_tokens",
-            "top_p",
-            "top_k",
-            "frequency_penalty",
-            "presence_penalty",
-        }
-        return {k: raw_template[k] for k in allowed_keys if k in raw_template}
+        return ConversationSessionTargetResolver.extract_model_chat_template_overrides(model_obj)
 
     async def update_session_target(
         self,
@@ -1363,41 +1321,16 @@ class ConversationStorage:
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        normalized_target_type = (target_type or "").strip().lower()
-        if normalized_target_type not in {"assistant", "model"}:
-            raise ValueError("target_type must be one of: assistant, model")
-
         async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
             file_content = await f.read()
         post = frontmatter.loads(file_content)
 
-        if normalized_target_type == "assistant":
-            from .assistant_config_service import AssistantConfigService
-
-            assistant_service = AssistantConfigService()
-            if assistant_id:
-                assistant = await assistant_service.require_enabled_assistant(assistant_id)
-            else:
-                assistant = await assistant_service.get_default_assistant()
-                assistant_id = assistant.id
-
-            post.metadata["assistant_id"] = assistant_id
-            post.metadata["model_id"] = assistant.model_id
-            post.metadata["target_type"] = "assistant"
-            post.metadata["param_overrides"] = {}
-        else:
-            from .model_config_service import ModelConfigService
-
-            model_service = ModelConfigService()
-            if model_id:
-                model_obj, _provider_obj = await model_service.require_enabled_model(model_id)
-            else:
-                model_obj, _provider_obj = await model_service.require_enabled_model()
-
-            post.metadata.pop("assistant_id", None)
-            post.metadata["model_id"] = f"{model_obj.provider_id}:{model_obj.id}"
-            post.metadata["target_type"] = "model"
-            post.metadata["param_overrides"] = self._extract_model_chat_template_overrides(model_obj)
+        await self._target_resolver.apply_target_metadata(
+            post,
+            target_type=target_type,
+            assistant_id=assistant_id,
+            model_id=model_id,
+        )
 
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
             await f.write(frontmatter.dumps(post))
@@ -1493,27 +1426,7 @@ class ConversationStorage:
         Raises:
             ValueError: If context_type is invalid or project_id is missing/invalid
         """
-        # Validate context_type
-        if context_type not in ["chat", "project"]:
-            raise ValueError(f"Invalid context_type: {context_type}. Must be 'chat' or 'project'")
-
-        # Validate project_id for project context
-        if context_type == "project":
-            if not project_id:
-                raise ValueError("project_id is required for project context")
-            if not project_id.strip():
-                raise ValueError("project_id cannot be empty")
-
-        # Return appropriate directory
-        if context_type == "chat":
-            return self.conversations_dir / "chat"
-        else:  # project
-            assert project_id is not None
-            if self._project_root_resolver:
-                root_path = self._project_root_resolver(project_id)
-                if root_path:
-                    return Path(root_path) / ".lex_mint" / "conversations"
-            raise ValueError(f"Project '{project_id}' not found or project root resolver not configured")
+        return self._path_resolver.get_conversation_dir(context_type, project_id)
 
     async def _find_session_file(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> Optional[Path]:
         """Find the file path for a session by its ID.
@@ -1529,35 +1442,7 @@ class ConversationStorage:
         Raises:
             ValueError: If context parameters are invalid
         """
-        # Get the context-specific directory
-        search_dir = self._get_conversation_dir(context_type, project_id)
-
-        # Check if directory exists
-        if not search_dir.exists():
-            return None
-
-        # Quick path: check if filename contains session_id prefix
-        for filepath in search_dir.glob(f"*_{session_id[:8]}.md"):
-            # Verify by reading metadata
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    post = frontmatter.load(f)
-                    if post.metadata.get("session_id") == session_id:
-                        return filepath
-            except Exception:
-                continue
-
-        # Fallback: scan all files
-        for filepath in search_dir.glob("*.md"):
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    post = frontmatter.load(f)
-                    if post.metadata.get("session_id") == session_id:
-                        return filepath
-            except Exception:
-                continue
-
-        return None
+        return await self._path_resolver.find_session_file(session_id, context_type, project_id)
 
     def _parse_messages(self, content: str, session_id: str) -> List[Dict]:
         """Parse messages from markdown content.
@@ -1659,7 +1544,13 @@ class ConversationStorage:
         return messages
 
 
-def create_storage_with_project_resolver(conversations_dir) -> ConversationStorage:
+def create_storage_with_project_resolver(
+    conversations_dir,
+    *,
+    project_service: Any = None,
+    assistant_service: Any = None,
+    model_service: Any = None,
+) -> ConversationStorage:
     """Create a ConversationStorage with a sync resolver that reads projects_config.yaml.
 
     The resolver maps project_id -> root_path by reading the projects config file.
@@ -1671,26 +1562,17 @@ def create_storage_with_project_resolver(conversations_dir) -> ConversationStora
     Returns:
         ConversationStorage instance with project root resolver configured
     """
-    import yaml
-    from ..config import settings
+    if project_service is None:
+        from .project_service import ProjectService
 
-    def resolve_project_root(project_id: str) -> Optional[str]:
-        config_path = settings.projects_config_path
-        if not config_path.exists():
-            return None
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
-            if not data:
-                return None
-            for proj in data.get('projects', []):
-                if proj.get('id') == project_id:
-                    return proj.get('root_path')
-        except Exception:
-            return None
-        return None
+        project_service = ProjectService()
 
-    return ConversationStorage(conversations_dir, project_root_resolver=resolve_project_root)
+    return ConversationStorage(
+        conversations_dir,
+        project_root_resolver=build_project_root_resolver(project_service),
+        assistant_service=assistant_service,
+        model_service=model_service,
+    )
 
 
 

@@ -7,11 +7,11 @@ result merging, and context formatting.
 import asyncio
 import logging
 import hashlib
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 from dataclasses import dataclass
 
-from ..paths import resolve_user_data_path
+from .rag_backend_search import RagBackendSearch
+from .rag_post_processor import RagPostProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -56,94 +56,69 @@ class RagService:
     query_transform_service: Any
     retrieval_query_planner_service: Any
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        rag_config_service: Any = None,
+        embedding_service: Any = None,
+        rerank_service: Any = None,
+        bm25_service: Any = None,
+        query_transform_service: Any = None,
+        retrieval_query_planner_service: Any = None,
+    ):
         from .rag_config_service import RagConfigService
         from .embedding_service import EmbeddingService
         from .rerank_service import RerankService
         from .bm25_service import Bm25Service
         from .query_transform_service import QueryTransformService
         from .retrieval_query_planner_service import RetrievalQueryPlannerService
-        self.rag_config_service = RagConfigService()
-        self.embedding_service = EmbeddingService()
-        self.rerank_service = RerankService()
-        self.bm25_service = Bm25Service()
-        self.query_transform_service = QueryTransformService()
-        self.retrieval_query_planner_service = RetrievalQueryPlannerService()
+        self.rag_config_service = rag_config_service or RagConfigService()
+        self.embedding_service = embedding_service or EmbeddingService()
+        self.rerank_service = rerank_service or RerankService()
+        self.bm25_service = bm25_service or Bm25Service()
+        self.query_transform_service = query_transform_service or QueryTransformService()
+        self.retrieval_query_planner_service = retrieval_query_planner_service or RetrievalQueryPlannerService()
+        self.result_cls = RagResult
+        self.post_processor = RagPostProcessor()
+        self.backend_search = RagBackendSearch(self)
+
+    def _get_backend_search(self) -> RagBackendSearch:
+        backend_search = getattr(self, "backend_search", None)
+        if backend_search is None:
+            self.result_cls = getattr(self, "result_cls", RagResult)
+            backend_search = RagBackendSearch(self)
+            self.backend_search = backend_search
+        return backend_search
 
     @staticmethod
     def _result_identity(result: RagResult) -> Tuple[str, str, int, str]:
         """Stable identity key for deduplicating retrieved chunks."""
-        doc_key = result.doc_id or result.filename or ""
-        if not doc_key:
-            digest = hashlib.sha1(result.content.encode("utf-8", errors="ignore")).hexdigest()
-            doc_key = f"content:{digest}"
-        return (result.kb_id, doc_key, int(result.chunk_index), result.filename or "")
+        return RagPostProcessor.result_identity(result)
 
     @staticmethod
     def _doc_identity(result: RagResult) -> str:
         """Document-level identity key for diversity capping."""
-        return f"{result.kb_id}:{result.doc_id or result.filename or RagService._result_identity(result)[1]}"
+        return RagPostProcessor.doc_identity(result)
 
     @staticmethod
     def _deduplicate_results(results: List[RagResult]) -> List[RagResult]:
-        seen = set()
-        deduped: List[RagResult] = []
-        for item in results:
-            key = RagService._result_identity(item)
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(item)
-        return deduped
+        return RagPostProcessor.deduplicate_results(results)
 
     @staticmethod
     def _apply_doc_diversity(results: List[RagResult], max_per_doc: int) -> List[RagResult]:
-        if max_per_doc <= 0:
-            return results
-
-        per_doc: Dict[str, int] = {}
-        diversified: List[RagResult] = []
-        for item in results:
-            doc_key = RagService._doc_identity(item)
-            count = per_doc.get(doc_key, 0)
-            if count >= max_per_doc:
-                continue
-            per_doc[doc_key] = count + 1
-            diversified.append(item)
-        return diversified
+        return RagPostProcessor.apply_doc_diversity(results, max_per_doc)
 
     @staticmethod
     def _collapse_to_best_per_doc(results: List[RagResult]) -> List[RagResult]:
-        """Collapse chunk results so each document contributes only its best-ranked chunk."""
-        seen_docs = set()
-        collapsed: List[RagResult] = []
-        for item in results:
-            doc_key = RagService._doc_identity(item)
-            if doc_key in seen_docs:
-                continue
-            seen_docs.add(doc_key)
-            collapsed.append(item)
-        return collapsed
+        return RagPostProcessor.collapse_to_best_per_doc(results)
 
     @staticmethod
     def _long_context_reorder(results: List[RagResult]) -> List[RagResult]:
-        """
-        Reorder so top-ranked chunks appear near both prompt edges:
-        [1,2,3,4,5,6] -> [1,3,5,6,4,2].
-        """
-        if len(results) <= 2:
-            return results
-        front = results[::2]
-        back = results[1::2]
-        return front + list(reversed(back))
+        return RagPostProcessor.long_context_reorder(results)
 
     @staticmethod
     def _reorder_results(results: List[RagResult], strategy: str) -> List[RagResult]:
-        if strategy == "none":
-            return results
-        if strategy == "long_context":
-            return RagService._long_context_reorder(results)
-        return results
+        return RagPostProcessor.reorder_results(results, strategy)
 
     @staticmethod
     def _normalize_overlap_text(text: str) -> str:
@@ -1340,7 +1315,6 @@ class RagService:
         override_model: Optional[str] = None,
         query_embedding: Optional[Sequence[float]] = None,
     ) -> List[RagResult]:
-        """Search a single collection in the configured vector backend."""
         backend = str(
             getattr(self.rag_config_service.config.storage, "vector_store_backend", "chroma")
             or "chroma"
@@ -1355,9 +1329,7 @@ class RagService:
             }
             if query_embedding is not None:
                 sqlite_kwargs["query_embedding"] = query_embedding
-            return self._search_collection_sqlite_vec(
-                **sqlite_kwargs,
-            )
+            return self._search_collection_sqlite_vec(**sqlite_kwargs)
         return self._search_collection_chroma(
             kb_id=kb_id,
             query=query,
@@ -1374,77 +1346,16 @@ class RagService:
         score_threshold: float,
         override_model: Optional[str] = None,
     ) -> List[RagResult]:
-        """Search a single ChromaDB collection."""
-        from langchain_chroma import Chroma
-
-        persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
-        if not persist_dir.is_absolute():
-            persist_dir = resolve_user_data_path(persist_dir)
-
-        collection_name = f"kb_{kb_id}"
-
-        embedding_fn = cast(Any, self.embedding_service.get_embedding_function(override_model))
-
-        try:
-            vectorstore = Chroma(
-                collection_name=collection_name,
-                embedding_function=embedding_fn,
-                persist_directory=str(persist_dir),
-                collection_metadata={"hnsw:space": "cosine"},
-            )
-            try:
-                collection_count = vectorstore._collection.count()
-                logger.info(
-                    "[RAG] collection=%s count=%s persist_dir=%s override_model=%s",
-                    collection_name,
-                    collection_count,
-                    str(persist_dir),
-                    override_model,
-                )
-            except Exception:
-                logger.info(
-                    "[RAG] collection=%s persist_dir=%s override_model=%s",
-                    collection_name,
-                    str(persist_dir),
-                    override_model,
-                )
-
-            # Search with scores
-            results_with_scores = vectorstore.similarity_search_with_relevance_scores(
-                query, k=top_k
-            )
-        except Exception as e:
-            logger.warning(f"ChromaDB search failed for collection {collection_name}: {e}")
-            return []
-
-        if not results_with_scores:
-            logger.info("[RAG] collection=%s raw_results=0", collection_name)
-        else:
-            scores = [score for _, score in results_with_scores]
-            best_raw = max(scores)
-            top_scores = sorted(scores, reverse=True)[:5]
-            logger.info(
-                "[RAG] collection=%s raw_results=%d best_raw=%.4f top_scores=%s",
-                collection_name,
-                len(results_with_scores),
-                best_raw,
-                [round(s, 4) for s in top_scores],
-            )
-
-        rag_results = []
-        for doc, score in results_with_scores:
-            if score >= score_threshold:
-                metadata = doc.metadata or {}
-                rag_results.append(RagResult(
-                    content=doc.page_content,
-                    score=score,
-                    kb_id=metadata.get("kb_id", kb_id),
-                    doc_id=metadata.get("doc_id", ""),
-                    filename=metadata.get("filename", ""),
-                    chunk_index=metadata.get("chunk_index", 0),
-                ))
-
-        return rag_results
+        return cast(
+            List[RagResult],
+            self._get_backend_search().search_collection_chroma(
+                kb_id,
+                query,
+                top_k,
+                score_threshold,
+                override_model=override_model,
+            ),
+        )
 
     def _search_collection_sqlite_vec(
         self,
@@ -1455,59 +1366,17 @@ class RagService:
         override_model: Optional[str] = None,
         query_embedding: Optional[Sequence[float]] = None,
     ) -> List[RagResult]:
-        """Search a single SQLite vector collection."""
-        from .sqlite_vec_service import SqliteVecService
-
-        try:
-            if query_embedding is None:
-                embedding_fn = self.embedding_service.get_embedding_function(override_model)
-                if not hasattr(embedding_fn, "embed_query"):
-                    logger.warning("sqlite_vec search failed for kb=%s: embedding function lacks embed_query()", kb_id)
-                    return []
-                query_embedding = embedding_fn.embed_query(query)
-            if query_embedding is None:
-                return []
-            sqlite_vec = SqliteVecService()
-            rows = cast(
-                List[Dict[str, Any]],
-                sqlite_vec.search(
-                kb_id=kb_id,
-                query_embedding=query_embedding,
-                top_k=top_k,
-                ),
-            )
-        except Exception as e:
-            logger.warning(f"SQLite vector search failed for kb {kb_id}: {e}")
-            return []
-
-        if not rows:
-            logger.info("[RAG] sqlite_vec kb=%s raw_results=0", kb_id)
-        else:
-            scores = [float(item.get("score", 0.0) or 0.0) for item in rows]
-            logger.info(
-                "[RAG] sqlite_vec kb=%s raw_results=%d best_raw=%.4f top_scores=%s",
+        return cast(
+            List[RagResult],
+            self._get_backend_search().search_collection_sqlite_vec(
                 kb_id,
-                len(rows),
-                max(scores),
-                [round(s, 4) for s in scores[:5]],
-            )
-
-        rag_results: List[RagResult] = []
-        for item in rows:
-            score = float(item.get("score", 0.0) or 0.0)
-            if score < score_threshold:
-                continue
-            rag_results.append(
-                RagResult(
-                    content=str(item.get("content") or ""),
-                    score=score,
-                    kb_id=str(item.get("kb_id") or kb_id),
-                    doc_id=str(item.get("doc_id") or ""),
-                    filename=str(item.get("filename") or ""),
-                    chunk_index=int(item.get("chunk_index", 0) or 0),
-                )
-            )
-        return rag_results
+                query,
+                top_k,
+                score_threshold,
+                override_model=override_model,
+                query_embedding=query_embedding,
+            ),
+        )
 
     def _search_bm25_collection(
         self,
@@ -1517,33 +1386,15 @@ class RagService:
         top_k: int,
         min_term_coverage: float,
     ) -> List[RagResult]:
-        try:
-            rows = cast(
-                List[Dict[str, Any]],
-                self.bm25_service.search(
+        return cast(
+            List[RagResult],
+            self._get_backend_search().search_bm25_collection(
                 kb_id=kb_id,
                 query=query,
                 top_k=top_k,
                 min_term_coverage=min_term_coverage,
-                ),
-            )
-        except Exception as e:
-            logger.warning(f"BM25 search failed for kb {kb_id}: {e}")
-            return []
-
-        results: List[RagResult] = []
-        for item in rows:
-            results.append(
-                RagResult(
-                    content=str(item.get("content") or ""),
-                    score=float(item.get("score", 0.0) or 0.0),
-                    kb_id=str(item.get("kb_id") or kb_id),
-                    doc_id=str(item.get("doc_id") or ""),
-                    filename=str(item.get("filename") or ""),
-                    chunk_index=int(item.get("chunk_index", 0) or 0),
-                )
-            )
-        return results
+            ),
+        )
 
     @staticmethod
     def build_rag_context(query: str, results: List[RagResult]) -> str:
@@ -1658,5 +1509,3 @@ class RagService:
             lines.append(f"Content: {content}")
 
         return "\n".join(lines)
-
-

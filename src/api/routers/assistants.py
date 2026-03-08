@@ -6,20 +6,20 @@ CRUD operations for AI assistant configurations
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 
+from ..dependencies import get_assistant_service as get_shared_assistant_service
 from ..models.assistant_config import (
     Assistant,
     AssistantCreate,
     AssistantUpdate,
 )
 from ..services.assistant_config_service import AssistantConfigService
-from ..services.model_config_service import ModelConfigService
 
 router = APIRouter(prefix="/api/assistants", tags=["assistants"])
 
 
 def get_assistant_service() -> AssistantConfigService:
     """Dependency injection: get assistant configuration service instance"""
-    return AssistantConfigService(model_service=ModelConfigService())
+    return get_shared_assistant_service()
 
 
 # ==================== Assistant Management ====================

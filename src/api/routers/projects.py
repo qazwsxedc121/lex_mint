@@ -6,6 +6,10 @@ import logging
 import uuid
 from pydantic import BaseModel
 
+from ..dependencies import get_project_service as get_shared_project_service
+from ..dependencies import (
+    get_project_workspace_state_service as get_shared_project_workspace_state_service,
+)
 from ..services.project_service import ProjectService
 from ..services.project_service import ProjectConflictError
 from ..services.project_workspace_state_service import ProjectWorkspaceStateService
@@ -37,25 +41,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
-# Service instance
-_project_service: Optional[ProjectService] = None
-_project_workspace_state_service: Optional[ProjectWorkspaceStateService] = None
-
 
 def get_project_service() -> ProjectService:
     """Get or create project service instance."""
-    global _project_service
-    if _project_service is None:
-        _project_service = ProjectService()
-    return _project_service
+    return get_shared_project_service()
 
 
 def get_project_workspace_state_service() -> ProjectWorkspaceStateService:
     """Get or create project workspace state service instance."""
-    global _project_workspace_state_service
-    if _project_workspace_state_service is None:
-        _project_workspace_state_service = ProjectWorkspaceStateService(get_project_service())
-    return _project_workspace_state_service
+    return get_shared_project_workspace_state_service()
 
 
 class ProjectChatApplyDiffResponse(BaseModel):
@@ -633,4 +627,3 @@ async def search_project_text(
     except Exception as e:
         logger.error(f"Error searching project text in project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

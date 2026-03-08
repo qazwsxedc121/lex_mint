@@ -424,7 +424,8 @@ class AgentService:
     ) -> str:
         """Read file and return chunked, abbreviated context (safe for large files)."""
         try:
-            from ..routers.projects import get_project_service
+            from ..dependencies import get_project_service
+
             service = get_project_service()
 
             # Use existing read_file method

@@ -31,6 +31,8 @@ from src.providers import (
 )
 from src.providers.types import ProviderConfig
 from src.providers.model_capability_rules import infer_capability_overrides
+from .model_config_repository import ModelConfigRepository
+from .model_runtime_service import ModelRuntimeService
 
 from ..paths import (
     config_defaults_dir,
@@ -89,9 +91,27 @@ class ModelConfigService:
         self.models_catalog_path = self.config_dir / "models_catalog.yaml"
         self.app_defaults_path = self.config_dir / "app_defaults.yaml"
         self.keys_path = keys_path
+        self.logger = logger
+        self.repository = ModelConfigRepository(self)
+        self.runtime = ModelRuntimeService(self)
         self._ensure_config_exists()
         self._sync_builtin_entries()
         self._ensure_keys_config_exists()
+
+    def _get_repository(self) -> ModelConfigRepository:
+        repository = getattr(self, "repository", None)
+        if repository is None:
+            self.logger = getattr(self, "logger", logger)
+            repository = ModelConfigRepository(self)
+            self.repository = repository
+        return repository
+
+    def _get_runtime(self) -> ModelRuntimeService:
+        runtime = getattr(self, "runtime", None)
+        if runtime is None:
+            runtime = ModelRuntimeService(self)
+            self.runtime = runtime
+        return runtime
 
     @staticmethod
     def _empty_default_payload() -> dict[str, str]:
@@ -119,27 +139,14 @@ class ModelConfigService:
         return f"{default_payload['provider']}:{default_payload['model']}"
     @staticmethod
     def _load_yaml_dict(path: Path) -> dict[str, Any]:
-        if not path.exists():
-            return {}
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except Exception:
-            return {}
-        return data if isinstance(data, dict) else {}
+        return ModelConfigRepository.load_yaml_dict(path)
 
     @staticmethod
     def _write_yaml_dict(path: Path, data: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        ModelConfigRepository.write_yaml_dict(path, data)
 
     def _split_config_paths_exist(self) -> bool:
-        return (
-            self.provider_config_path.exists()
-            and self.models_catalog_path.exists()
-            and self.app_defaults_path.exists()
-        )
+        return self._get_repository().split_config_paths_exist()
 
     @staticmethod
     def _assemble_aggregate_config(
@@ -147,150 +154,33 @@ class ModelConfigService:
         catalog_data: dict[str, Any],
         app_data: dict[str, Any],
     ) -> dict[str, Any]:
-        providers = provider_data.get("providers")
-        models = catalog_data.get("models")
-        default_config = app_data.get("default")
-        reasoning_patterns = app_data.get("reasoning_supported_patterns")
-        return {
-            "providers": providers if isinstance(providers, list) else [],
-            "models": models if isinstance(models, list) else [],
-            "default": (
-                {
-                    "provider": str(default_config.get("provider") or "").strip(),
-                    "model": str(default_config.get("model") or "").strip(),
-                }
-                if isinstance(default_config, dict)
-                else {"provider": "", "model": ""}
-            ),
-            "reasoning_supported_patterns": reasoning_patterns if isinstance(reasoning_patterns, list) else [],
-        }
+        return ModelConfigRepository.assemble_aggregate_config(ModelConfigRepository.__new__(ModelConfigRepository), provider_data, catalog_data, app_data)
 
     def _load_split_config(self) -> dict[str, Any]:
-        provider_data = self._load_yaml_dict(self.provider_config_path)
-        catalog_data = self._load_yaml_dict(self.models_catalog_path)
-        app_data = self._load_yaml_dict(self.app_defaults_path)
-        return self._assemble_aggregate_config(provider_data, catalog_data, app_data)
+        return self._get_repository().load_split_config()
 
     def _split_aggregate_config(
         self,
         data: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        providers = data.get("providers")
-        models = data.get("models")
-        default_config = data.get("default")
-        reasoning_patterns = data.get("reasoning_supported_patterns")
-
-        app_payload = {
-            "default": (
-                {
-                    "provider": str(default_config.get("provider") or "").strip(),
-                    "model": str(default_config.get("model") or "").strip(),
-                }
-                if isinstance(default_config, dict)
-                else {"provider": "", "model": ""}
-            ),
-            "reasoning_supported_patterns": (
-                reasoning_patterns
-                if isinstance(reasoning_patterns, list)
-                else self._get_default_reasoning_supported_patterns()
-            ),
-        }
-        return (
-            {"providers": providers if isinstance(providers, list) else []},
-            {"models": models if isinstance(models, list) else []},
-            app_payload,
-        )
+        return self._get_repository().split_aggregate_config(data)
     def _backup_legacy_models_config(self) -> None:
-        if not self.config_path.exists():
-            return
-        suffix = datetime.now().strftime("%Y%m%d%H%M%S")
-        backup_path = self.config_path.with_name(f"{self.config_path.name}.bak.{suffix}")
-        if backup_path.exists():
-            return
-        backup_path.write_text(self.config_path.read_text(encoding="utf-8"), encoding="utf-8")
+        self._get_repository().backup_legacy_models_config()
 
     def _migrate_legacy_config_if_needed(self) -> None:
-        if self._split_config_paths_exist() or not self.config_path.exists():
-            return
-
-        legacy_data = self._load_yaml_dict(self.config_path)
-        if not legacy_data or not any(key in legacy_data for key in ("providers", "models", "default")):
-            return
-
-        provider_data, catalog_data, app_data = self._split_aggregate_config(legacy_data)
-        self._write_yaml_dict(self.provider_config_path, provider_data)
-        self._write_yaml_dict(self.models_catalog_path, catalog_data)
-        self._write_yaml_dict(self.app_defaults_path, app_data)
-        self._backup_legacy_models_config()
+        self._get_repository().migrate_legacy_config_if_needed()
 
     def _ensure_config_exists(self):
         """Ensure split config files exist, migrating legacy aggregate config when needed."""
-        self._migrate_legacy_config_if_needed()
-        if self._split_config_paths_exist():
-            return
-
-        provider_defaults, catalog_defaults, app_defaults = self._split_aggregate_config(
-            self._get_default_config()
-        )
-
-        if self._layered_models:
-            ensure_local_file(
-                local_path=self.provider_config_path,
-                initial_text=yaml.safe_dump(provider_defaults, allow_unicode=True, sort_keys=False),
-            )
-            ensure_local_file(
-                local_path=self.models_catalog_path,
-                initial_text=yaml.safe_dump(catalog_defaults, allow_unicode=True, sort_keys=False),
-            )
-            ensure_local_file(
-                local_path=self.app_defaults_path,
-                initial_text=yaml.safe_dump(app_defaults, allow_unicode=True, sort_keys=False),
-            )
-            return
-
-        self._write_yaml_dict(self.provider_config_path, provider_defaults)
-        self._write_yaml_dict(self.models_catalog_path, catalog_defaults)
-        self._write_yaml_dict(self.app_defaults_path, app_defaults)
+        self._get_repository().ensure_config_exists()
 
     def _get_default_config(self) -> dict:
         """Get default configuration."""
-        return {
-            "default": self._empty_default_payload(),
-            "providers": [],
-            "models": [],
-            "reasoning_supported_patterns": self._get_default_reasoning_supported_patterns(),
-        }
+        return self._get_repository().default_config()
 
     def _load_defaults_config(self) -> dict[str, Any]:
         """Load the repo default split config once for bootstrap decisions."""
-        if self._defaults_config_cache is not None:
-            return self._defaults_config_cache
-
-        if (
-            self.defaults_provider_path.exists()
-            and self.defaults_catalog_path.exists()
-            and self.defaults_app_path.exists()
-        ):
-            self._defaults_config_cache = self._assemble_aggregate_config(
-                self._load_yaml_dict(self.defaults_provider_path),
-                self._load_yaml_dict(self.defaults_catalog_path),
-                self._load_yaml_dict(self.defaults_app_path),
-            )
-            return self._defaults_config_cache
-
-        if not self.defaults_legacy_path.exists():
-            self._defaults_config_cache = {}
-            return self._defaults_config_cache
-
-        try:
-            with open(self.defaults_legacy_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.warning("Failed to read legacy defaults models config: %s", e)
-            data = {}
-
-        self._defaults_config_cache = data if isinstance(data, dict) else {}
-        return self._defaults_config_cache
+        return self._get_repository().load_defaults_config()
 
     def _get_default_enabled_builtin_provider_ids(self) -> set[str]:
         """Derive enabled builtin providers from defaults YAML."""
@@ -606,61 +496,13 @@ class ModelConfigService:
         self._write_yaml_dict(self.app_defaults_path, app_data)
 
     def _ensure_keys_config_exists(self):
-        """Ensure the key config file exists, creating an empty file if needed."""
-        if not self.keys_path.exists():
-            default_keys = {"providers": {}}
-            initial_text = yaml.safe_dump(default_keys, allow_unicode=True, sort_keys=False)
-
-            if self._layered_keys:
-                ensure_local_file(
-                    local_path=self.keys_path,
-                    defaults_path=None,
-                    legacy_paths=self.legacy_keys_paths,
-                    initial_text=initial_text,
-                )
-                return
-
-            if self._is_shared_keys_path(self.keys_path):
-                logger.warning(
-                    "Refusing to create shared key file at %s; "
-                    "runtime writes must use config/local/keys_config.yaml",
-                    self.keys_path,
-                )
-                return
-
-            with open(self.keys_path, 'w', encoding='utf-8') as f:
-                f.write(initial_text)
+        self._get_repository().ensure_keys_config_exists()
 
     async def load_keys_config(self) -> dict:
-        """Load the key configuration file."""
-        if not self.keys_path.exists():
-            return {"providers": {}}
-
-        async with aiofiles.open(self.keys_path, 'r', encoding='utf-8') as f:
-            content = await f.read()
-            data = yaml.safe_load(content)
-            return data if data else {"providers": {}}
+        return await self._get_repository().load_keys_config()
 
     async def save_keys_config(self, keys_data: dict):
-        """
-        Save the key configuration file atomically.
-
-        Uses a temporary file followed by replace to avoid partial writes.
-        """
-        self._assert_keys_path_writable()
-
-        # Write the temporary file first.
-        temp_path = self.keys_path.with_suffix('.yaml.tmp')
-        async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
-            content = yaml.safe_dump(
-                keys_data,
-                allow_unicode=True,
-                sort_keys=False
-            )
-            await f.write(content)
-
-        # Replace atomically.
-        temp_path.replace(self.keys_path)
+        await self._get_repository().save_keys_config(keys_data)
 
     @staticmethod
     def _normalize_url(value: str) -> str:
@@ -680,20 +522,17 @@ class ModelConfigService:
 
     @staticmethod
     def _same_path(path_a: Path, path_b: Path) -> bool:
-        try:
-            return path_a.expanduser().resolve() == path_b.expanduser().resolve()
-        except Exception:
-            return str(path_a.expanduser()) == str(path_b.expanduser())
+        return ModelConfigRepository.same_path(path_a, path_b)
 
     def _is_shared_keys_path(self, path: Path) -> bool:
-        return self._same_path(path, shared_keys_config_path())
+        return self._get_repository().is_shared_keys_path(path)
+
+    @staticmethod
+    def _shared_keys_config_path() -> Path:
+        return shared_keys_config_path()
 
     def _assert_keys_path_writable(self) -> None:
-        if self._is_shared_keys_path(self.keys_path):
-            raise PermissionError(
-                "Shared key file (~/.lex_mint/keys_config.yaml) is bootstrap-only. "
-                "Runtime writes are allowed only in config/local/keys_config.yaml."
-            )
+        self._get_repository().assert_keys_path_writable()
 
     async def get_api_key(self, provider_id: str) -> Optional[str]:
         """
@@ -1397,161 +1236,29 @@ class ModelConfigService:
         return base_caps
 
     def get_api_key_sync(self, provider_id: str) -> Optional[str]:
-        """
-        Get the API key for a provider synchronously.
-
-        Args:
-            provider_id: Provider ID.
-
-        Returns:
-            The API key, or ``None`` if it is not configured.
-        """
-        if not self.keys_path.exists():
-            return None
-
-        try:
-            with open(self.keys_path, 'r', encoding='utf-8') as f:
-                keys_data = yaml.safe_load(f)
-                if keys_data and "providers" in keys_data:
-                    return keys_data["providers"].get(provider_id, {}).get("api_key")
-        except Exception:
-            pass
-        return None
+        return self._get_runtime().get_api_key_sync(provider_id)
 
     def provider_requires_api_key(self, provider: Provider | ProviderConfig) -> bool:
-        """
-        Return whether this provider requires a non-empty API key.
-
-        Uses resolved adapter family instead of protocol-only checks so custom
-        sdk overrides (for example sdk_class=ollama) behave correctly.
-        """
-        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
-        sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
-        return sdk_type not in {"ollama", "lmstudio", "local_gguf"}
+        return self._get_runtime().provider_requires_api_key(provider)
 
     @staticmethod
     def _normalize_base_host(base_url: str) -> str:
-        """Extract normalized host from base URL (supports URLs without scheme)."""
-        if not base_url:
-            return ""
-
-        candidate = base_url.strip()
-        if not candidate:
-            return ""
-
-        if "://" not in candidate:
-            candidate = f"https://{candidate}"
-
-        try:
-            parsed = urlparse(candidate)
-            return (parsed.hostname or "").strip().lower().rstrip(".")
-        except Exception:
-            return ""
+        return ModelRuntimeService.normalize_base_host(base_url)
 
     def is_openai_official_provider(self, provider: Provider | ProviderConfig) -> bool:
-        """
-        Determine whether a provider should be treated as OpenAI official.
-
-        Primary rule:
-        - provider id is "openai"
-
-        Fallback rule:
-        - base_url host is api.openai.com
-        """
-        provider_id = (getattr(provider, "id", "") or "").strip().lower()
-        if provider_id == "openai":
-            return True
-
-        base_url = getattr(provider, "base_url", "") or ""
-        host = self._normalize_base_host(base_url)
-        return host == "api.openai.com"
+        return self._get_runtime().is_openai_official_provider(provider)
 
     def resolve_effective_call_mode(self, provider: Provider | ProviderConfig) -> CallMode:
-        """
-        Resolve effective call mode with auto policy.
-
-        Auto policy:
-        - Anthropic/Gemini/Ollama adapter families -> native
-        - OpenAI official -> responses
-        - Others -> chat_completions
-        """
-        raw_mode = getattr(provider, "call_mode", CallMode.AUTO)
-        if isinstance(raw_mode, CallMode):
-            configured_mode = raw_mode
-        else:
-            try:
-                configured_mode = CallMode(raw_mode)
-            except Exception:
-                configured_mode = CallMode.AUTO
-
-        if configured_mode != CallMode.AUTO:
-            return configured_mode
-
-        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
-        sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
-
-        if sdk_type in {"anthropic", "gemini", "ollama", "lmstudio", "local_gguf"}:
-            return CallMode.NATIVE
-        if self.is_openai_official_provider(provider_cfg):
-            return CallMode.RESPONSES
-        return CallMode.CHAT_COMPLETIONS
+        return self._get_runtime().resolve_effective_call_mode(provider)
 
     def resolve_provider_api_key_sync(self, provider: Provider) -> str:
-        """
-        Resolve API key for a provider, allowing empty key for local providers.
-
-        Raises:
-            RuntimeError: when provider requires API key but none is configured.
-        """
-        api_key = self.get_api_key_sync(provider.id)
-
-        if api_key:
-            return api_key
-
-        if self.provider_requires_api_key(provider):
-            raise RuntimeError(
-                f"API key not found for provider '{provider.id}'. "
-                "Please set it via the UI (stored in config/local/keys_config.yaml)."
-            )
-
-        return ""
+        return self._get_runtime().resolve_provider_api_key_sync(provider)
 
     def to_provider_config(self, provider: Provider) -> ProviderConfig:
-        """
-        Convert a ``Provider`` into a ``ProviderConfig`` for ``AdapterRegistry``.
-
-        Args:
-            provider: Provider instance.
-
-        Returns:
-            The normalized ``ProviderConfig`` instance.
-        """
-        return ProviderConfig(
-            id=provider.id,
-            name=provider.name,
-            type=provider.type if hasattr(provider, 'type') and provider.type else ProviderType.BUILTIN,
-            protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
-            call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
-            base_url=provider.base_url,
-            endpoint_profile_id=provider.endpoint_profile_id,
-            enabled=provider.enabled,
-            default_capabilities=provider.default_capabilities,
-            sdk_class=provider.sdk_class if hasattr(provider, 'sdk_class') else None,
-            endpoint_profiles=provider.endpoint_profiles if hasattr(provider, 'endpoint_profiles') else [],
-        )
+        return self._get_runtime().to_provider_config(provider)
 
     def get_adapter_for_provider(self, provider: Provider):
-        """
-        Get the adapter implementation for a provider.
-
-        Args:
-            provider: Provider instance.
-
-        Returns:
-            The resolved ``BaseLLMAdapter`` implementation.
-        """
-        provider_config = self.to_provider_config(provider)
-        return AdapterRegistry.get_for_provider(provider_config)
+        return self._get_runtime().get_adapter_for_provider(provider)
 
     # ==================== LLM Instantiation ====================
 
@@ -1567,53 +1274,13 @@ class ModelConfigService:
         presence_penalty: Optional[float] = None,
         disable_thinking: bool = False,
     ) -> Any:
-        """
-        Create an LLM instance synchronously.
-        """
-        config = ModelsConfig(**self._load_split_config())
-
-        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
-            config,
+        return self._get_runtime().get_llm_instance(
             model_id,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
+            disable_thinking=disable_thinking,
         )
-        self._ensure_model_is_enabled(
-            model=model,
-            provider=provider,
-            requested_model_id=requested_model_id,
-            using_default_model=using_default_model,
-        )
-
-        api_key = self.resolve_provider_api_key_sync(provider)
-
-        adapter = self.get_adapter_for_provider(provider)
-        resolved_call_mode = self.resolve_effective_call_mode(provider)
-        effective_call_mode = (
-            resolved_call_mode.value
-            if isinstance(resolved_call_mode, CallMode)
-            else str(resolved_call_mode)
-        )
-        capabilities = self.get_merged_capabilities(model, provider)
-
-        create_kwargs: Dict[str, Any] = {
-            "model": model.id,
-            "base_url": provider.base_url,
-            "api_key": api_key,
-            "temperature": 0.7 if temperature is None else temperature,
-            "streaming": False,
-            "call_mode": effective_call_mode,
-            "requires_interleaved_thinking": bool(capabilities.requires_interleaved_thinking),
-        }
-        if max_tokens is not None:
-            create_kwargs["max_tokens"] = max_tokens
-        if top_p is not None:
-            create_kwargs["top_p"] = top_p
-        if top_k is not None:
-            create_kwargs["top_k"] = top_k
-        if frequency_penalty is not None:
-            create_kwargs["frequency_penalty"] = frequency_penalty
-        if presence_penalty is not None:
-            create_kwargs["presence_penalty"] = presence_penalty
-        if disable_thinking:
-            create_kwargs["disable_thinking"] = True
-
-        return adapter.create_llm(**create_kwargs)

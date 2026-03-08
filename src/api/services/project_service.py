@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+from src.api.errors import ConflictError
 from src.api.models.project_config import (
     Project,
     ProjectSettings,
@@ -28,14 +29,11 @@ logger = logging.getLogger(__name__)
 _TEXT_SEARCH_MAX_FILES = 5000
 
 
-class ProjectConflictError(ValueError):
+class ProjectConflictError(ConflictError):
     """Conflict error for optimistic-lock write operations."""
 
     def __init__(self, code: str, message: str, **extra: Any):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.extra = extra
+        super().__init__(message, code=code, extra=extra)
 
 
 class ProjectService:
@@ -86,6 +84,26 @@ class ProjectService:
                     return ProjectsConfig(projects=valid_projects)
             except Exception as e:
                 raise ValueError(f"Failed to load config: {e}")
+
+    def resolve_project_root(self, project_id: str) -> Optional[str]:
+        """Resolve a project id to its root path without async orchestration."""
+        if not project_id or not self.config_path.exists():
+            return None
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            return None
+        projects = data.get('projects', []) if isinstance(data, dict) else []
+        if not isinstance(projects, list):
+            return None
+        for raw_project in projects:
+            if not isinstance(raw_project, dict):
+                continue
+            if raw_project.get('id') == project_id:
+                root_path = raw_project.get('root_path')
+                return str(root_path) if isinstance(root_path, str) and root_path.strip() else None
+        return None
 
     def _resolve_browse_roots(self) -> List[Path]:
         roots = settings.projects_browse_roots or [Path(".")]

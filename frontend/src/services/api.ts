@@ -2,511 +2,207 @@
  * API client for backend communication using axios.
  */
 
-import axios from 'axios';
 import { API_BASE } from './apiBase';
+import { createWorkflowRun, type WorkflowRunStreamOptions } from './asyncRunApi';
+import { api } from './apiClient';
 import { consumeFlowEventResponse, postFlowEventStream } from './flowEventStreamClient';
 import { asNumber, asRecord, asString, iterateSSEData, parseFlowEvent, sleep } from './flowEvents';
 import type { FlowEvent } from './flowEvents';
 import i18n from '../i18n';
-import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
-import type {
-  Provider,
-  Model,
-  DefaultConfig,
-  BuiltinProviderInfo,
-  ModelInfo,
-  CapabilitiesResponse,
-  ProtocolInfo,
-  ProviderEndpointProbeRequest,
-  ProviderEndpointProbeResponse,
-  ProviderEndpointProfilesResponse,
-} from '../types/model';
-import type { Assistant, AssistantCreate, AssistantUpdate } from '../types/assistant';
-import type {
-  Project,
-  ProjectCreate,
-  ProjectUpdate,
-  FileNode,
-  FileContent,
-  FileRenameResult,
-  DirectoryEntry,
-  ProjectToolCatalogResponse,
-} from '../types/project';
-import type { KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDocument, KnowledgeBaseChunk, RagConfig } from '../types/knowledgeBase';
-import type { PromptTemplate, PromptTemplateCreate, PromptTemplateUpdate } from '../types/promptTemplate';
-import type { Folder } from '../types/folder';
+import type { ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ContextInfo } from '../types/message';
+export {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  updateProject,
+} from './projectApi';
+
+export {
+  createPromptTemplate,
+  createWorkflow,
+  deletePromptTemplate,
+  deleteWorkflow,
+  getPromptTemplate,
+  getWorkflow,
+  getWorkflowRun,
+  listPromptTemplates,
+  listWorkflowRuns,
+  listWorkflows,
+  updatePromptTemplate,
+  updateWorkflow,
+} from './promptWorkflowCrudApi';
+export {
+  createChatFolder,
+  deleteChatFolder,
+  listChatFolders,
+  reorderChatFolder,
+  updateChatFolder,
+  updateSessionFolder,
+} from './folderApi';
+export {
+  exportSession,
+  generateFollowups,
+  importChatGPTConversations,
+  importMarkdownConversation,
+  synthesizeSpeech,
+} from './sessionAssetApi';
+export type {
+  ChatGPTImportResult,
+  ChatGPTImportSessionSummary,
+} from './sessionAssetApi';
+export {
+  checkHealth,
+  downloadFile,
+  uploadFile,
+} from './runtimeApi';
+export {
+  branchSession,
+  clearAllMessages,
+  copySession,
+  createSession,
+  deleteMessage,
+  deleteSession,
+  duplicateSession,
+  getSession,
+  insertSeparator,
+  listSessions,
+  moveSession,
+  saveTemporarySession,
+  searchSessions,
+  updateGroupAssistants,
+  updateMessageContent,
+  updateSessionAssistant,
+  updateSessionModel,
+  updateSessionParamOverrides,
+  updateSessionTarget,
+  updateSessionTitle,
+} from './sessionApi';
+export type { SearchResult } from './sessionApi';
+export {
+  cancelAsyncRun,
+  createAsyncRun,
+  createWorkflowRun,
+  getAsyncRun,
+  listAsyncRuns,
+} from './asyncRunApi';
+export type {
+  AsyncRunKind,
+  AsyncRunRecord,
+  AsyncRunStatus,
+  ListAsyncRunsOptions,
+  WorkflowRunStreamOptions,
+} from './asyncRunApi';
+export {
+  createModel,
+  createProvider,
+  deleteModel,
+  deleteProvider,
+  getDefaultConfig,
+  getModel,
+  getProvider,
+  getReasoningSupportedPatterns,
+  listModels,
+  listProviders,
+  setDefaultConfig,
+  testModelConnection,
+  updateModel,
+  updateProvider,
+} from './modelRegistryApi';
+export {
+  generateTitleManually,
+  getSearchConfig,
+  getTitleGenerationConfig,
+  getWebpageConfig,
+  updateSearchConfig,
+  updateTitleGenerationConfig,
+  updateWebpageConfig,
+} from './configApi';
+export type {
+  SearchConfig,
+  SearchConfigUpdate,
+  TitleGenerationConfig,
+  TitleGenerationConfigUpdate,
+  WebpageConfig,
+  WebpageConfigUpdate,
+} from './configApi';
+export {
+  createAssistant,
+  deleteAssistant,
+  fetchProviderModels,
+  getAssistant,
+  getBuiltinProvider,
+  getDefaultAssistant,
+  getDefaultAssistantId,
+  getModelCapabilities,
+  listAssistants,
+  listBuiltinProviders,
+  listProtocols,
+  listProviderEndpointProfiles,
+  probeProviderEndpoints,
+  setDefaultAssistant,
+  testProviderConnection,
+  testProviderStoredConnection,
+  updateAssistant,
+} from './assistantProviderApi';
+export {
+  createKnowledgeBase,
+  deleteDocument,
+  deleteKnowledgeBase,
+  getKnowledgeBase,
+  getRagConfig,
+  listDocuments,
+  listKnowledgeBaseChunks,
+  listKnowledgeBases,
+  reprocessDocument,
+  updateKnowledgeBase,
+  updateRagConfig,
+  uploadDocument,
+} from './knowledgeBaseApi';
 import type { MutableRefObject } from 'react';
+export {
+  createMemory,
+  deleteMemory,
+  getMemorySettings,
+  listMemories,
+  searchMemories,
+  updateMemory,
+  updateMemorySettings,
+} from './memoryApi';
 import type {
-  Workflow,
-  WorkflowCreate,
   WorkflowFlowEvent,
   WorkflowRunCallbacks,
-  WorkflowRunRecord,
-  WorkflowUpdate,
 } from '../types/workflow';
-import type {
-  MemoryCreateRequest,
-  MemoryItem,
-  MemoryListResponse,
-  MemorySearchRequest,
-  MemorySearchResponse,
-  MemorySettings,
-  MemorySettingsUpdate,
-  MemoryUpdateRequest,
-} from '../types/memory';
 
-const api = axios.create({
-  baseURL: API_BASE,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-/**
- * Create a new conversation session.
- */
-export async function createSession(
-  modelId?: string,
-  assistantId?: string,
-  contextType: string = 'chat',
-  projectId?: string,
-  temporary: boolean = false,
-  groupAssistants?: string[],
-  groupMode?: 'round_robin' | 'committee',
-  groupSettings?: Record<string, unknown>,
-  targetType?: 'assistant' | 'model'
-): Promise<string> {
-  const body: {
-    model_id?: string;
-    assistant_id?: string;
-    target_type?: 'assistant' | 'model';
-    temporary?: boolean;
-    group_assistants?: string[];
-    group_mode?: 'round_robin' | 'committee';
-    group_settings?: Record<string, unknown>;
-  } = {};
-  if (targetType) {
-    body.target_type = targetType;
-  }
-  if (assistantId) {
-    body.assistant_id = assistantId;
-  } else if (modelId) {
-    body.model_id = modelId;
-  }
-  if (temporary) {
-    body.temporary = true;
-  }
-  if (groupAssistants && groupAssistants.length >= 2) {
-    body.group_assistants = groupAssistants;
-    body.group_mode = groupMode || 'round_robin';
-    if (groupSettings && Object.keys(groupSettings).length > 0) {
-      body.group_settings = groupSettings;
-    }
-  }
-
-  // Build query params
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.post<{ session_id: string }>(
-    `/api/sessions?${params.toString()}`,
-    Object.keys(body).length > 0 ? body : undefined
-  );
-  return response.data.session_id;
-}
-
-/**
- * Get all conversation sessions.
- */
-export async function listSessions(contextType: string = 'chat', projectId?: string): Promise<Session[]> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.get<{ sessions: Session[] }>(`/api/sessions?${params.toString()}`);
-  return response.data.sessions;
-}
-
-/**
- * Get a specific session with full message history.
- */
-export async function getSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<SessionDetail> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.get<SessionDetail>(`/api/sessions/${sessionId}?${params.toString()}`);
-  return response.data;
-}
-
-/**
- * Delete a conversation session.
- */
-export async function deleteSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.delete(`/api/sessions/${sessionId}?${params.toString()}`);
-}
-
-/**
- * Search result from backend session search.
- */
-export interface SearchResult {
-  session_id: string;
-  title: string;
-  created_at: string;
-  message_count: number;
-  match_type: 'title' | 'content';
-  match_context: string;
-}
-
-/**
- * File search result with proximity scoring.
- */
-export interface FileSearchResult {
-  path: string;
-  name: string;
-  directory: string;
-  extension: string;
-  score: number;
-  proximityReason: 'same-dir' | 'child-dir' | 'parent-dir' | 'sibling' | 'project-wide' | 'no-match';
-}
-
-export interface ProjectTextSearchMatch {
-  file_path: string;
-  line_number: number;
-  line_text: string;
-  context_before: string[];
-  context_after: string[];
-}
-
-export interface ProjectTextSearchResponse {
-  ok: boolean;
-  query: string;
-  case_sensitive: boolean;
-  use_regex: boolean;
-  include_glob?: string | null;
-  exclude_glob?: string | null;
-  max_results: number;
-  results_count: number;
-  truncated: boolean;
-  scan_limit_hit: boolean;
-  scanned_files: number;
-  skipped_hidden_files: number;
-  skipped_binary_files: number;
-  skipped_large_files: number;
-  results: ProjectTextSearchMatch[];
-}
-
-export type ProjectWorkspaceItemType = 'file' | 'session' | 'run';
-
-export interface ProjectWorkspaceRecentItem {
-  type: ProjectWorkspaceItemType;
-  id: string;
-  title: string;
-  path?: string | null;
-  updated_at?: string | null;
-  meta: Record<string, unknown>;
-}
-
-export interface ProjectWorkspaceState {
-  version: number;
-  project_id: string;
-  updated_at?: string | null;
-  recent_items: ProjectWorkspaceRecentItem[];
-  extra: Record<string, unknown>;
-}
-
-export interface ProjectWorkspaceItemUpsertRequest {
-  type: ProjectWorkspaceItemType;
-  id: string;
-  title: string;
-  path?: string;
-  updated_at?: string;
-  meta?: Record<string, unknown>;
-}
-
-/**
- * Search sessions by title and message content.
- */
-export async function searchSessions(query: string, contextType: string = 'chat', projectId?: string): Promise<SearchResult[]> {
-  const params = new URLSearchParams();
-  params.append('q', query);
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.get<{ results: SearchResult[] }>(`/api/sessions/search?${params.toString()}`);
-  return response.data.results;
-}
-
-/**
- * Save a temporary session (convert to permanent).
- */
-export async function saveTemporarySession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.post(`/api/sessions/${sessionId}/save?${params.toString()}`);
-}
-
-/**
- * Update session title
- */
-export async function updateSessionTitle(sessionId: string, title: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/title?${params.toString()}`, { title });
-}
-
-/**
- * Duplicate a session
- */
-export async function duplicateSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.post<{ session_id: string; message: string }>(
-    `/api/sessions/${sessionId}/duplicate?${params.toString()}`
-  );
-  return response.data.session_id;
-}
-
-/**
- * Move a session between contexts (chat/projects).
- */
-export async function moveSession(
-  sessionId: string,
-  sourceContextType: string = 'chat',
-  sourceProjectId?: string,
-  targetContextType: string = 'chat',
-  targetProjectId?: string
-): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', sourceContextType);
-  if (sourceProjectId) {
-    params.append('project_id', sourceProjectId);
-  }
-
-  const body: { target_context_type: string; target_project_id?: string } = {
-    target_context_type: targetContextType,
-  };
-  if (targetProjectId) {
-    body.target_project_id = targetProjectId;
-  }
-
-  await api.post(`/api/sessions/${sessionId}/move?${params.toString()}`, body);
-}
-
-/**
- * Copy a session between contexts (chat/projects).
- */
-export async function copySession(
-  sessionId: string,
-  sourceContextType: string = 'chat',
-  sourceProjectId?: string,
-  targetContextType: string = 'chat',
-  targetProjectId?: string
-): Promise<string> {
-  const params = new URLSearchParams();
-  params.append('context_type', sourceContextType);
-  if (sourceProjectId) {
-    params.append('project_id', sourceProjectId);
-  }
-
-  const body: { target_context_type: string; target_project_id?: string } = {
-    target_context_type: targetContextType,
-  };
-  if (targetProjectId) {
-    body.target_project_id = targetProjectId;
-  }
-
-  const response = await api.post<{ session_id: string; message: string }>(
-    `/api/sessions/${sessionId}/copy?${params.toString()}`,
-    body
-  );
-  return response.data.session_id;
-}
-
-/**
- * Branch a session from a specific message
- */
-export async function branchSession(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<string> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.post<{ session_id: string; message: string }>(
-    `/api/sessions/${sessionId}/branch?${params.toString()}`,
-    { message_id: messageId }
-  );
-  return response.data.session_id;
-}
-
-/**
- * Prompt templates CRUD
- */
-export async function listPromptTemplates(): Promise<PromptTemplate[]> {
-  const response = await api.get<PromptTemplate[]>('/api/prompt-templates');
-  return response.data;
-}
-
-export async function getPromptTemplate(templateId: string): Promise<PromptTemplate> {
-  const response = await api.get<PromptTemplate>(`/api/prompt-templates/${templateId}`);
-  return response.data;
-}
-
-export async function createPromptTemplate(template: PromptTemplateCreate): Promise<void> {
-  await api.post('/api/prompt-templates', template);
-}
-
-export async function updatePromptTemplate(templateId: string, template: PromptTemplateUpdate): Promise<void> {
-  await api.put(`/api/prompt-templates/${templateId}`, template);
-}
-
-export async function deletePromptTemplate(templateId: string): Promise<void> {
-  await api.delete(`/api/prompt-templates/${templateId}`);
-}
-
-/**
- * Workflows CRUD
- */
-export async function listWorkflows(): Promise<Workflow[]> {
-  const response = await api.get<Workflow[]>('/api/workflows');
-  return response.data;
-}
-
-export async function getWorkflow(workflowId: string): Promise<Workflow> {
-  const response = await api.get<Workflow>(`/api/workflows/${workflowId}`);
-  return response.data;
-}
-
-export async function createWorkflow(workflow: WorkflowCreate): Promise<string> {
-  const response = await api.post<{ id: string }>('/api/workflows', workflow);
-  return response.data.id;
-}
-
-export async function updateWorkflow(workflowId: string, workflow: WorkflowUpdate): Promise<void> {
-  await api.put(`/api/workflows/${workflowId}`, workflow);
-}
-
-export async function deleteWorkflow(workflowId: string): Promise<void> {
-  await api.delete(`/api/workflows/${workflowId}`);
-}
-
-export async function listWorkflowRuns(workflowId: string, limit: number = 50): Promise<WorkflowRunRecord[]> {
-  const response = await api.get<WorkflowRunRecord[]>(`/api/workflows/${workflowId}/runs`, {
-    params: { limit },
-  });
-  return response.data;
-}
-
-export async function getWorkflowRun(workflowId: string, runId: string): Promise<WorkflowRunRecord> {
-  const response = await api.get<WorkflowRunRecord>(`/api/workflows/${workflowId}/runs/${runId}`);
-  return response.data;
-}
-
-/**
- * Delete a single message from a conversation.
- */
-export async function deleteMessage(sessionId: string, messageId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.delete(`/api/chat/message?${params.toString()}`, {
-    data: {
-      session_id: sessionId,
-      message_id: messageId,
-      context_type: contextType,
-      project_id: projectId,
-    },
-  });
-}
-
-/**
- * Update the content of a specific message (save only, no regeneration).
- */
-export async function updateMessageContent(
-  sessionId: string,
-  messageId: string,
-  content: string,
-  contextType: string = 'chat',
-  projectId?: string
-): Promise<void> {
-  await api.put('/api/chat/message', {
-    session_id: sessionId,
-    message_id: messageId,
-    content,
-    context_type: contextType,
-    project_id: projectId,
-  });
-}
-
-/**
- * Insert a separator into conversation to clear context
- */
-export async function insertSeparator(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.post<{ success: boolean; message_id: string }>(
-    `/api/chat/separator?${params.toString()}`,
-    {
-      session_id: sessionId,
-      context_type: contextType,
-      project_id: projectId,
-    }
-  );
-  return response.data.message_id;
-}
-
-/**
- * Clear all messages from conversation
- */
-export async function clearAllMessages(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.post(`/api/chat/clear?${params.toString()}`, {
-    session_id: sessionId,
-    context_type: contextType,
-    project_id: projectId,
-  });
-}
-
+export {
+  addProjectWorkspaceItem,
+  applyProjectChatDiff,
+  createFile,
+  createFolder,
+  createProjectBrowseDirectory,
+  deleteFile,
+  deleteFolder,
+  getFileTree,
+  getProjectWorkspaceState,
+  listProjectBrowseRoots,
+  listProjectDirectories,
+  readFile,
+  renameProjectPath,
+  searchProjectFiles,
+  searchProjectText,
+  writeFile,
+} from './projectFilesApi';
+export type {
+  ApplyProjectChatDiffRequest,
+  ApplyProjectChatDiffResponse,
+  FileSearchResult,
+  ProjectTextSearchMatch,
+  ProjectTextSearchResponse,
+  ProjectWorkspaceItemType,
+  ProjectWorkspaceItemUpsertRequest,
+  ProjectWorkspaceRecentItem,
+  ProjectWorkspaceState,
+} from './projectFilesApi';
 /**
  * Compress conversation context by summarizing messages via LLM.
  * Streams the summary as SSE events.
@@ -618,55 +314,6 @@ export async function translateText(
   });
 }
 
-/**
- * Run a workflow and consume flow_event SSE stream.
- */
-export interface WorkflowRunStreamOptions {
-  sessionId?: string;
-  contextType?: 'workflow' | 'chat' | 'project';
-  projectId?: string;
-  streamMode?: 'default' | 'editor_rewrite';
-  artifactTargetPath?: string;
-  writeMode?: 'none' | 'create' | 'overwrite';
-}
-
-export type AsyncRunKind = 'workflow' | 'chat';
-export type AsyncRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-
-export interface AsyncRunRecord {
-  run_id: string;
-  stream_id: string;
-  kind: AsyncRunKind;
-  status: AsyncRunStatus;
-  context_type: 'workflow' | 'chat' | 'project';
-  project_id?: string | null;
-  session_id?: string | null;
-  workflow_id?: string | null;
-  created_at: string;
-  updated_at: string;
-  started_at?: string | null;
-  finished_at?: string | null;
-  request_payload: Record<string, unknown>;
-  result_summary: Record<string, unknown>;
-  error?: string | null;
-  last_event_id?: string | null;
-  last_seq: number;
-}
-
-export interface ListAsyncRunsOptions {
-  limit?: number;
-  kind?: AsyncRunKind;
-  status?: AsyncRunStatus;
-  contextType?: 'workflow' | 'chat' | 'project';
-  projectId?: string;
-  sessionId?: string;
-  workflowId?: string;
-}
-
-interface AsyncRunListResponse {
-  runs: AsyncRunRecord[];
-}
-
 function extractErrorDetail(payload: unknown): string | null {
   const data = asRecord(payload);
   if (!data) {
@@ -691,64 +338,6 @@ async function getResponseErrorMessage(response: Response, fallback: string): Pr
   } catch {
     return fallback;
   }
-}
-
-export async function createAsyncRun(payload: {
-  kind: AsyncRunKind;
-  workflow_id?: string;
-  inputs?: Record<string, unknown>;
-  session_id?: string;
-  context_type?: 'workflow' | 'chat' | 'project';
-  project_id?: string;
-  stream_mode?: 'default' | 'editor_rewrite';
-  artifact_target_path?: string;
-  write_mode?: 'none' | 'create' | 'overwrite';
-}): Promise<AsyncRunRecord> {
-  const response = await api.post<AsyncRunRecord>('/api/runs', payload);
-  return response.data;
-}
-
-export async function createWorkflowRun(
-  workflowId: string,
-  inputs: Record<string, unknown>,
-  options?: WorkflowRunStreamOptions,
-): Promise<AsyncRunRecord> {
-  return createAsyncRun({
-    kind: 'workflow',
-    workflow_id: workflowId,
-    inputs,
-    session_id: options?.sessionId,
-    context_type: options?.contextType || 'workflow',
-    project_id: options?.projectId,
-    stream_mode: options?.streamMode || 'default',
-    artifact_target_path: options?.artifactTargetPath,
-    write_mode: options?.writeMode,
-  });
-}
-
-export async function listAsyncRuns(options?: ListAsyncRunsOptions): Promise<AsyncRunRecord[]> {
-  const response = await api.get<AsyncRunListResponse>('/api/runs', {
-    params: {
-      limit: options?.limit ?? 50,
-      kind: options?.kind,
-      status: options?.status,
-      context_type: options?.contextType,
-      project_id: options?.projectId,
-      session_id: options?.sessionId,
-      workflow_id: options?.workflowId,
-    },
-  });
-  return response.data.runs;
-}
-
-export async function getAsyncRun(runId: string): Promise<AsyncRunRecord> {
-  const response = await api.get<AsyncRunRecord>(`/api/runs/${runId}`);
-  return response.data;
-}
-
-export async function cancelAsyncRun(runId: string): Promise<AsyncRunRecord> {
-  const response = await api.post<AsyncRunRecord>(`/api/runs/${runId}/cancel`);
-  return response.data;
 }
 
 export async function runWorkflowStream(
@@ -1534,1270 +1123,5 @@ export async function sendCompareStream(
   }
 }
 
-/**
- * Check API health.
- */
-export async function checkHealth(): Promise<boolean> {
-  try {
-    const response = await api.get('/api/health');
-    return response.data.status === 'ok';
-  } catch {
-    return false;
-  }
-}
-
-
-/**
- * Upload a file attachment
- */
-export async function uploadFile(
-  sessionId: string,
-  file: File,
-  contextType: string = 'chat',
-  projectId?: string
-): Promise<UploadedFile> {
-  const formData = new FormData();
-  formData.append('session_id', sessionId);
-  formData.append('file', file);
-
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await fetch(`${API_BASE}/api/chat/upload?${params.toString()}`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Upload failed');
-  }
-
-  return response.json();
-}
-
-/**
- * Download a file attachment
- */
-export async function downloadFile(
-  sessionId: string,
-  messageIndex: number,
-  filename: string
-): Promise<Blob> {
-  const response = await fetch(
-    `${API_BASE}/api/chat/attachment/${sessionId}/${messageIndex}/${encodeURIComponent(filename)}`
-  );
-
-  if (!response.ok) {
-    throw new Error('Download failed');
-  }
-
-  return response.blob();
-}
-
-
-/**
- * List providers.
- */
-export async function listProviders(enabledOnly: boolean = false): Promise<Provider[]> {
-  const url = enabledOnly
-    ? '/api/models/providers?enabled_only=true'
-    : '/api/models/providers';
-  const response = await api.get<Provider[]>(url);
-  return response.data;
-}
-
-/**
- * Get provider details.
- */
-export async function getProvider(providerId: string, includeMaskedKey: boolean = false): Promise<Provider> {
-  const url = includeMaskedKey
-    ? `/api/models/providers/${providerId}?include_masked_key=true`
-    : `/api/models/providers/${providerId}`;
-  const response = await api.get<Provider>(url);
-  return response.data;
-}
-
-/**
- * Create a provider.
- */
-export async function createProvider(provider: Provider): Promise<void> {
-  await api.post('/api/models/providers', provider);
-}
-
-/**
- * Update a provider.
- */
-export async function updateProvider(providerId: string, provider: Provider): Promise<void> {
-  await api.put(`/api/models/providers/${providerId}`, provider);
-}
-
-/**
- * Delete a provider (and related models).
- */
-export async function deleteProvider(providerId: string): Promise<void> {
-  await api.delete(`/api/models/providers/${providerId}`);
-}
-
-/**
- * List models.
- */
-export async function listModels(providerId?: string, enabledOnly: boolean = false): Promise<Model[]> {
-  const params = new URLSearchParams();
-  if (providerId) {
-    params.append('provider_id', providerId);
-  }
-  if (enabledOnly) {
-    params.append('enabled_only', 'true');
-  }
-  const suffix = params.toString();
-  const url = suffix ? `/api/models/list?${suffix}` : '/api/models/list';
-  const response = await api.get<Model[]>(url);
-  return response.data;
-}
-
-/**
- * Get a model.
- */
-export async function getModel(modelId: string): Promise<Model> {
-  const response = await api.get<Model>(`/api/models/list/${modelId}`);
-  return response.data;
-}
-
-/**
- * Create a model.
- */
-export async function createModel(model: Model): Promise<void> {
-  await api.post('/api/models/list', model);
-}
-
-/**
- * Update a model.
- */
-export async function updateModel(modelId: string, model: Model): Promise<void> {
-  await api.put(`/api/models/list/${modelId}`, model);
-}
-
-/**
- * Delete a model.
- */
-export async function deleteModel(modelId: string): Promise<void> {
-  await api.delete(`/api/models/list/${modelId}`);
-}
-
-/**
- * Test model connection.
- */
-export async function testModelConnection(modelId: string): Promise<{ success: boolean; message: string }> {
-  const response = await api.post<{ success: boolean; message: string }>('/api/models/test-connection', {
-    model_id: modelId
-  });
-  return response.data;
-}
-
-/**
- * Get default model configuration.
- */
-export async function getDefaultConfig(): Promise<DefaultConfig> {
-  const response = await api.get<DefaultConfig>('/api/models/default');
-  return response.data;
-}
-
-/**
- * Set default model.
- */
-export async function setDefaultConfig(providerId: string, modelId: string): Promise<void> {
-  await api.put(`/api/models/default?provider_id=${providerId}&model_id=${modelId}`);
-}
-
-/**
- * Get reasoning supported patterns.
- */
-export async function getReasoningSupportedPatterns(): Promise<string[]> {
-  const response = await api.get<string[]>('/api/models/reasoning-patterns');
-  return response.data;
-}
-
-/**
- * Update session model.
- */
-export async function updateSessionModel(sessionId: string, modelId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/model?${params.toString()}`, { model_id: modelId });
-}
-
-/**
- * Update session assistant.
- */
-export async function updateSessionAssistant(sessionId: string, assistantId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/assistant?${params.toString()}`, { assistant_id: assistantId });
-}
-
-/**
- * Update session target (assistant or model).
- */
-export async function updateSessionTarget(
-  sessionId: string,
-  targetType: 'assistant' | 'model',
-  contextType: string = 'chat',
-  projectId?: string,
-  options?: { assistantId?: string; modelId?: string }
-): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/target?${params.toString()}`, {
-    target_type: targetType,
-    assistant_id: options?.assistantId,
-    model_id: options?.modelId,
-  });
-}
-
-/**
- * Update group assistant order for a session.
- */
-export async function updateGroupAssistants(
-  sessionId: string,
-  groupAssistants: string[],
-  contextType: string = 'chat',
-  projectId?: string
-): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/group-assistants?${params.toString()}`, {
-    group_assistants: groupAssistants,
-  });
-}
-
-/**
- * Update session parameter overrides.
- */
-export async function updateSessionParamOverrides(
-  sessionId: string,
-  paramOverrides: ParamOverrides,
-  contextType: string = 'chat',
-  projectId?: string
-): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/param-overrides?${params.toString()}`, { param_overrides: paramOverrides });
-}
-
-
-/**
- * List Assistants.
- */
-export async function listAssistants(enabledOnly: boolean = false): Promise<Assistant[]> {
-  const url = enabledOnly
-    ? '/api/assistants?enabled_only=true'
-    : '/api/assistants';
-  const response = await api.get<Assistant[]>(url);
-  return response.data;
-}
-
-/**
- * Get Assistant.
- */
-export async function getAssistant(assistantId: string): Promise<Assistant> {
-  const response = await api.get<Assistant>(`/api/assistants/${assistantId}`);
-  return response.data;
-}
-
-/**
- * Create Assistant.
- */
-export async function createAssistant(assistant: AssistantCreate): Promise<void> {
-  await api.post('/api/assistants', assistant);
-}
-
-/**
- * Update Assistant.
- */
-export async function updateAssistant(assistantId: string, assistant: AssistantUpdate): Promise<void> {
-  await api.put(`/api/assistants/${assistantId}`, assistant);
-}
-
-/**
- * Delete Assistant.
- */
-export async function deleteAssistant(assistantId: string): Promise<void> {
-  await api.delete(`/api/assistants/${assistantId}`);
-}
-
-/**
- * Get Default Assistant Id.
- */
-export async function getDefaultAssistantId(): Promise<string> {
-  const response = await api.get<{ default_assistant_id: string }>('/api/assistants/default/id');
-  return response.data.default_assistant_id;
-}
-
-/**
- * Get Default Assistant.
- */
-export async function getDefaultAssistant(): Promise<Assistant> {
-  const response = await api.get<Assistant>('/api/assistants/default/assistant');
-  return response.data;
-}
-
-/**
- * Set Default Assistant.
- */
-export async function setDefaultAssistant(assistantId: string): Promise<void> {
-  await api.put(`/api/assistants/default/${assistantId}`);
-}
-
-/**
- * Get memory settings.
- */
-export async function getMemorySettings(): Promise<MemorySettings> {
-  const response = await api.get<MemorySettings>('/api/memory/settings');
-  return response.data;
-}
-
-/**
- * Update memory settings.
- */
-export async function updateMemorySettings(updates: MemorySettingsUpdate): Promise<void> {
-  await api.put('/api/memory/settings', updates);
-}
-
-/**
- * List memory items.
- */
-export async function listMemories(params?: {
-  profile_id?: string;
-  scope?: 'global' | 'assistant';
-  assistant_id?: string;
-  layer?: string;
-  include_inactive?: boolean;
-  limit?: number;
-}): Promise<MemoryListResponse> {
-  const response = await api.get<MemoryListResponse>('/api/memory', { params });
-  return response.data;
-}
-
-/**
- * Create a memory item.
- */
-export async function createMemory(payload: MemoryCreateRequest): Promise<MemoryItem> {
-  const response = await api.post<{ message: string; item: MemoryItem }>('/api/memory', payload);
-  return response.data.item;
-}
-
-/**
- * Update a memory item.
- */
-export async function updateMemory(memoryId: string, payload: MemoryUpdateRequest): Promise<MemoryItem> {
-  const response = await api.put<{ message: string; item: MemoryItem }>(`/api/memory/${memoryId}`, payload);
-  return response.data.item;
-}
-
-/**
- * Delete a memory item.
- */
-export async function deleteMemory(memoryId: string): Promise<void> {
-  await api.delete(`/api/memory/${memoryId}`);
-}
-
-/**
- * Search memory items.
- */
-export async function searchMemories(payload: MemorySearchRequest): Promise<MemorySearchResponse> {
-  const response = await api.post<MemorySearchResponse>('/api/memory/search', payload);
-  return response.data;
-}
-
-
-/**
- * Test provider connection using a provided API key.
- */
-export async function testProviderConnection(
-  baseUrl: string,
-  apiKey: string,
-  providerId?: string,
-  modelId?: string
-): Promise<{ success: boolean; message: string }> {
-  const response = await api.post<{ success: boolean; message: string }>(
-    '/api/models/providers/test',
-    {
-      base_url: baseUrl,
-      api_key: apiKey,
-      provider_id: providerId,
-      model_id: modelId,
-    }
-  );
-  return response.data;
-}
-
-/**
- * Test provider connection using a stored API key.
- */
-export async function testProviderStoredConnection(
-  providerId: string,
-  baseUrl: string,
-  modelId?: string
-): Promise<{ success: boolean; message: string }> {
-  const response = await api.post<{ success: boolean; message: string }>(
-    '/api/models/providers/test-stored',
-    {
-      provider_id: providerId,
-      base_url: baseUrl,
-      model_id: modelId,
-    }
-  );
-  return response.data;
-}
-
-/**
- * Probe provider endpoints (auto/manual diagnostics).
- */
-export async function probeProviderEndpoints(
-  providerId: string,
-  payload: ProviderEndpointProbeRequest
-): Promise<ProviderEndpointProbeResponse> {
-  const response = await api.post<ProviderEndpointProbeResponse>(
-    `/api/models/providers/${providerId}/probe-endpoints`,
-    payload
-  );
-  return response.data;
-}
-
-/**
- * List endpoint profiles for a provider.
- */
-export async function listProviderEndpointProfiles(
-  providerId: string,
-  clientRegionHint: 'cn' | 'global' | 'unknown' = 'unknown'
-): Promise<ProviderEndpointProfilesResponse> {
-  const response = await api.get<ProviderEndpointProfilesResponse>(
-    `/api/models/providers/${providerId}/endpoint-profiles?client_region_hint=${clientRegionHint}`
-  );
-  return response.data;
-}
-
-
-/**
- * List built-in providers.
- */
-export async function listBuiltinProviders(): Promise<BuiltinProviderInfo[]> {
-  const response = await api.get<BuiltinProviderInfo[]>('/api/models/providers/builtin');
-  return response.data;
-}
-
-/**
- * Get built-in provider definition.
- */
-export async function getBuiltinProvider(providerId: string): Promise<BuiltinProviderInfo> {
-  const response = await api.get<BuiltinProviderInfo>(`/api/models/providers/builtin/${providerId}`);
-  return response.data;
-}
-
-/**
- * Fetch available models from provider API.
- */
-export async function fetchProviderModels(providerId: string): Promise<ModelInfo[]> {
-  const response = await api.post<ModelInfo[]>(`/api/models/providers/${providerId}/fetch-models`);
-  return response.data;
-}
-
-/**
- * Get model capabilities (provider defaults plus overrides).
- */
-export async function getModelCapabilities(modelId: string): Promise<CapabilitiesResponse> {
-  const response = await api.get<CapabilitiesResponse>(`/api/models/capabilities/${modelId}`);
-  return response.data;
-}
-
-/**
- * List supported API protocol types.
- */
-export async function listProtocols(): Promise<ProtocolInfo[]> {
-  const response = await api.get<ProtocolInfo[]>('/api/models/protocols');
-  return response.data;
-}
-
-// ==================== Search Config API ====================
-
-export interface SearchConfig {
-  provider: string;
-  max_results: number;
-  timeout_seconds: number;
-}
-
-export interface SearchConfigUpdate {
-  provider?: string;
-  max_results?: number;
-  timeout_seconds?: number;
-}
-
-/**
- * Get search configuration
- */
-export async function getSearchConfig(): Promise<SearchConfig> {
-  const response = await api.get<SearchConfig>('/api/search/config');
-  return response.data;
-}
-
-/**
- * Update search configuration
- */
-export async function updateSearchConfig(updates: SearchConfigUpdate): Promise<void> {
-  await api.put('/api/search/config', updates);
-}
-
-// ==================== Webpage Config API ====================
-
-export interface WebpageConfig {
-  enabled: boolean;
-  max_urls: number;
-  timeout_seconds: number;
-  max_bytes: number;
-  max_content_chars: number;
-  user_agent: string;
-  proxy?: string | null;
-  trust_env: boolean;
-  diagnostics_enabled: boolean;
-  diagnostics_timeout_seconds: number;
-}
-
-export interface WebpageConfigUpdate {
-  enabled?: boolean;
-  max_urls?: number;
-  timeout_seconds?: number;
-  max_bytes?: number;
-  max_content_chars?: number;
-  user_agent?: string;
-  proxy?: string | null;
-  trust_env?: boolean;
-  diagnostics_enabled?: boolean;
-  diagnostics_timeout_seconds?: number;
-}
-
-/**
- * Get webpage configuration
- */
-export async function getWebpageConfig(): Promise<WebpageConfig> {
-  const response = await api.get<WebpageConfig>('/api/webpage/config');
-  return response.data;
-}
-
-/**
- * Update webpage configuration
- */
-export async function updateWebpageConfig(updates: WebpageConfigUpdate): Promise<void> {
-  await api.put('/api/webpage/config', updates);
-}
-
-// ==================== Title Generation API ====================
-
-export interface TitleGenerationConfig {
-  enabled: boolean;
-  trigger_threshold: number;
-  model_id: string;
-  prompt_template: string;
-  max_context_rounds: number;
-  timeout_seconds: number;
-}
-
-export interface TitleGenerationConfigUpdate {
-  enabled?: boolean;
-  trigger_threshold?: number;
-  model_id?: string;
-  prompt_template?: string;
-  max_context_rounds?: number;
-  timeout_seconds?: number;
-}
-
-/**
- * Get title generation configuration
- */
-export async function getTitleGenerationConfig(): Promise<TitleGenerationConfig> {
-  const response = await api.get<TitleGenerationConfig>('/api/title-generation/config');
-  return response.data;
-}
-
-/**
- * Update title generation configuration
- */
-export async function updateTitleGenerationConfig(updates: TitleGenerationConfigUpdate): Promise<void> {
-  await api.put('/api/title-generation/config', updates);
-}
-
-/**
- * Manually trigger title generation for a session
- */
-export async function generateTitleManually(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<{ message: string; title: string }> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await api.post<{ message: string; title: string }>(`/api/title-generation/generate?${params.toString()}`, {
-    session_id: sessionId
-  });
-  return response.data;
-}
-
-// ==================== Project Management API ====================
-
-/**
- * Get all projects
- */
-export async function listProjects(): Promise<Project[]> {
-  const response = await api.get<Project[]>('/api/projects');
-  return response.data;
-}
-
-/**
- * Create a new project
- */
-export async function createProject(project: ProjectCreate): Promise<Project> {
-  const response = await api.post<Project>('/api/projects', project);
-  return response.data;
-}
-
-/**
- * Get a specific project
- */
-export async function getProject(id: string): Promise<Project> {
-  const response = await api.get<Project>(`/api/projects/${id}`);
-  return response.data;
-}
-
-/**
- * Update a project
- */
-export async function updateProject(id: string, data: ProjectUpdate): Promise<Project> {
-  const response = await api.put<Project>(`/api/projects/${id}`, data);
-  return response.data;
-}
-
-/**
- * Get the unified tool catalog used by project settings and other tool-aware UIs.
- */
-export async function getToolCatalog(): Promise<ProjectToolCatalogResponse> {
-  const response = await api.get<ProjectToolCatalogResponse>('/api/tools/catalog');
-  return response.data;
-}
-
-/**
- * Delete a project
- */
-export async function deleteProject(id: string): Promise<void> {
-  await api.delete(`/api/projects/${id}`);
-}
-
-/**
- * Get file tree for a project
- */
-export async function getFileTree(id: string, path?: string): Promise<FileNode> {
-  const url = path ? `/api/projects/${id}/tree?path=${encodeURIComponent(path)}` : `/api/projects/${id}/tree`;
-  const response = await api.get<FileNode>(url);
-  return response.data;
-}
-
-/**
- * Create a new file in a project
- */
-export async function createFile(
-  id: string,
-  path: string,
-  content: string = '',
-  encoding: string = 'utf-8'
-): Promise<FileContent> {
-  const response = await api.post<FileContent>(`/api/projects/${id}/files`, {
-    path,
-    content,
-    encoding
-  });
-  return response.data;
-}
-
-/**
- * Create a new folder in a project
- */
-export async function createFolder(id: string, path: string): Promise<FileNode> {
-  const response = await api.post<FileNode>(`/api/projects/${id}/directories`, {
-    path
-  });
-  return response.data;
-}
-
-/**
- * Delete a folder from a project
- */
-export async function deleteFolder(id: string, path: string, recursive: boolean = false): Promise<void> {
-  await api.delete(`/api/projects/${id}/directories`, {
-    params: {
-      path,
-      recursive
-    }
-  });
-}
-
-/**
- * Delete a file from a project
- */
-export async function deleteFile(id: string, path: string): Promise<void> {
-  await api.delete(`/api/projects/${id}/files`, {
-    params: {
-      path
-    }
-  });
-}
-/**
- * Read file content from a project
- */
-export async function readFile(id: string, path: string): Promise<FileContent> {
-  const response = await api.get<FileContent>(`/api/projects/${id}/files?path=${encodeURIComponent(path)}`);
-  return response.data;
-}
-
-/**
- * Write content to a file in a project
- */
-export async function writeFile(
-  id: string,
-  path: string,
-  content: string,
-  encoding: string = 'utf-8',
-  expectedHash?: string
-): Promise<FileContent> {
-  const response = await api.put<FileContent>(`/api/projects/${id}/files`, {
-    path,
-    content,
-    encoding,
-    expected_hash: expectedHash,
-  });
-  return response.data;
-}
-
-export interface ApplyProjectChatDiffRequest {
-  session_id: string;
-  pending_patch_id: string;
-  expected_hash?: string;
-}
-
-export interface ApplyProjectChatDiffResponse {
-  ok: boolean;
-  file_path: string;
-  new_content_hash: string;
-  updated_at: number;
-  content: string;
-}
-
-export async function applyProjectChatDiff(
-  id: string,
-  payload: ApplyProjectChatDiffRequest
-): Promise<ApplyProjectChatDiffResponse> {
-  const response = await api.post<ApplyProjectChatDiffResponse>(
-    `/api/projects/${id}/chat/apply-diff`,
-    payload
-  );
-  return response.data;
-}
-
-/**
- * Rename or move a file or directory in a project
- */
-export async function renameProjectPath(id: string, sourcePath: string, targetPath: string): Promise<FileRenameResult> {
-  const response = await api.put<FileRenameResult>(`/api/projects/${id}/paths/rename`, {
-    source_path: sourcePath,
-    target_path: targetPath
-  });
-  return response.data;
-}
-
-/**
- * Search project files with proximity-based scoring
- */
-export async function searchProjectFiles(
-  projectId: string,
-  query: string,
-  currentFile?: string | null
-): Promise<FileSearchResult[]> {
-  const params = new URLSearchParams({ query });
-  if (currentFile) {
-    params.append('current_file', currentFile);
-  }
-
-  const response = await api.get<FileSearchResult[]>(
-    `/api/projects/${projectId}/files/search?${params}`
-  );
-  return response.data;
-}
-
-export async function searchProjectText(
-  projectId: string,
-  query: string,
-  options?: {
-    caseSensitive?: boolean;
-    useRegex?: boolean;
-    includeGlob?: string;
-    excludeGlob?: string;
-    maxResults?: number;
-    contextLines?: number;
-    maxCharsPerLine?: number;
-  }
-): Promise<ProjectTextSearchResponse> {
-  const params = new URLSearchParams({ query });
-  if (options?.caseSensitive) {
-    params.append('case_sensitive', 'true');
-  }
-  if (options?.useRegex) {
-    params.append('use_regex', 'true');
-  }
-  if (options?.includeGlob) {
-    params.append('include_glob', options.includeGlob);
-  }
-  if (options?.excludeGlob) {
-    params.append('exclude_glob', options.excludeGlob);
-  }
-  if (typeof options?.maxResults === 'number') {
-    params.append('max_results', String(options.maxResults));
-  }
-  if (typeof options?.contextLines === 'number') {
-    params.append('context_lines', String(options.contextLines));
-  }
-  if (typeof options?.maxCharsPerLine === 'number') {
-    params.append('max_chars_per_line', String(options.maxCharsPerLine));
-  }
-
-  const response = await api.get<ProjectTextSearchResponse>(
-    `/api/projects/${projectId}/text/search?${params.toString()}`
-  );
-  return response.data;
-}
-
-export async function getProjectWorkspaceState(projectId: string): Promise<ProjectWorkspaceState> {
-  const response = await api.get<ProjectWorkspaceState>(`/api/projects/${projectId}/workspace-state`);
-  return response.data;
-}
-
-export async function addProjectWorkspaceItem(
-  projectId: string,
-  payload: ProjectWorkspaceItemUpsertRequest,
-): Promise<ProjectWorkspaceState> {
-  const response = await api.post<ProjectWorkspaceState>(`/api/projects/${projectId}/workspace-state/items`, payload);
-  return response.data;
-}
-
-/**
- * Generate follow-up questions for a session on demand
- */
-export async function generateFollowups(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<string[]> {
-  const params = new URLSearchParams();
-  params.append('session_id', sessionId);
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-  const response = await api.post<{ questions: string[] }>(`/api/followup/generate?${params.toString()}`);
-  return response.data.questions;
-}
-
-/**
- * Export a session as a clean Markdown file and trigger browser download.
- */
-export async function exportSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  const response = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/export?${params.toString()}`
-  );
-
-  if (!response.ok) {
-    throw new Error(`Export failed: ${response.status}`);
-  }
-
-  // Extract filename from Content-Disposition header
-  const disposition = response.headers.get('Content-Disposition') || '';
-  let filename = 'conversation.md';
-  const filenameMatch = disposition.match(/filename\*=UTF-8''(.+)/);
-  if (filenameMatch) {
-    filename = decodeURIComponent(filenameMatch[1]);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-export interface ChatGPTImportSessionSummary {
-  session_id: string;
-  title: string;
-  message_count: number;
-}
-
-export interface ChatGPTImportResult {
-  imported: number;
-  skipped: number;
-  sessions: ChatGPTImportSessionSummary[];
-  errors: string[];
-}
-
-/**
- * Import ChatGPT conversations from conversations.json export.
- */
-export async function importChatGPTConversations(file: File): Promise<ChatGPTImportResult> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch(`${API_BASE}/api/sessions/import/chatgpt`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    let message = `Import failed: ${response.status}`;
-    try {
-      const error = await response.json();
-      if (error?.detail) {
-        message = error.detail;
-      }
-    } catch {
-      // Ignore JSON parse error
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
-}
-
-/**
- * Import Markdown conversation file.
- */
-export async function importMarkdownConversation(file: File): Promise<ChatGPTImportResult> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch(`${API_BASE}/api/sessions/import/markdown`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    let message = `Import failed: ${response.status}`;
-    try {
-      const error = await response.json();
-      if (error?.detail) {
-        message = error.detail;
-      }
-    } catch {
-      // Ignore JSON parse error
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
-}
-
 export default api;
 
-/**
- * Synthesize text to speech via Edge TTS backend.
- * Returns audio as a Blob.
- */
-export async function synthesizeSpeech(
-  text: string,
-  voice?: string,
-  abortControllerRef?: MutableRefObject<AbortController | null>
-): Promise<Blob> {
-  const controller = new AbortController();
-  if (abortControllerRef) abortControllerRef.current = controller;
-
-  const response = await fetch(`${API_BASE}/api/tts/synthesize`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice }),
-    signal: controller.signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`TTS failed: ${response.status}`);
-  }
-  return response.blob();
-}
-
-// ==================== Knowledge Base API ====================
-
-/**
- * List all knowledge bases.
- */
-export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
-  const response = await api.get<KnowledgeBase[]>('/api/knowledge-bases');
-  return response.data;
-}
-
-/**
- * Get a specific knowledge base.
- */
-export async function getKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
-  const response = await api.get<KnowledgeBase>(`/api/knowledge-bases/${kbId}`);
-  return response.data;
-}
-
-/**
- * Create a new knowledge base.
- */
-export async function createKnowledgeBase(kb: KnowledgeBaseCreate): Promise<KnowledgeBase> {
-  const response = await api.post<KnowledgeBase>('/api/knowledge-bases', kb);
-  return response.data;
-}
-
-/**
- * Update a knowledge base.
- */
-export async function updateKnowledgeBase(kbId: string, kb: KnowledgeBaseUpdate): Promise<KnowledgeBase> {
-  const response = await api.put<KnowledgeBase>(`/api/knowledge-bases/${kbId}`, kb);
-  return response.data;
-}
-
-/**
- * Delete a knowledge base.
- */
-export async function deleteKnowledgeBase(kbId: string): Promise<void> {
-  await api.delete(`/api/knowledge-bases/${kbId}`);
-}
-
-/**
- * List documents in a knowledge base.
- */
-export async function listDocuments(kbId: string): Promise<KnowledgeBaseDocument[]> {
-  const response = await api.get<KnowledgeBaseDocument[]>(`/api/knowledge-bases/${kbId}/documents`);
-  return response.data;
-}
-
-/**
- * List chunks in a knowledge base for developer inspection.
- */
-export async function listKnowledgeBaseChunks(
-  kbId: string,
-  options?: { docId?: string; limit?: number }
-): Promise<KnowledgeBaseChunk[]> {
-  const params = new URLSearchParams();
-  if (options?.docId) {
-    params.append('doc_id', options.docId);
-  }
-  if (options?.limit) {
-    params.append('limit', options.limit.toString());
-  }
-
-  const suffix = params.toString();
-  const response = await api.get<KnowledgeBaseChunk[]>(
-    `/api/knowledge-bases/${kbId}/chunks${suffix ? `?${suffix}` : ''}`
-  );
-  return response.data;
-}
-
-/**
- * Upload a document to a knowledge base.
- */
-export async function uploadDocument(
-  kbId: string,
-  file: File,
-  onProgress?: (percent: number) => void
-): Promise<KnowledgeBaseDocument> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  try {
-    const response = await axios.post<KnowledgeBaseDocument>(
-      `${API_BASE}/api/knowledge-bases/${kbId}/documents/upload`,
-      formData,
-      {
-        onUploadProgress: (event) => {
-          const total = event.total ?? file.size;
-          if (!total || total <= 0) {
-            return;
-          }
-          const percent = Math.min(100, Math.round((event.loaded / total) * 100));
-          onProgress?.(percent);
-        },
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const data = error.response?.data;
-      if (data && typeof data === 'object' && 'detail' in data) {
-        const detailValue = (data as { detail?: unknown }).detail;
-        const detail = Array.isArray(detailValue)
-          ? detailValue
-              .map((item) => {
-                if (item && typeof item === 'object' && 'msg' in (item as Record<string, unknown>)) {
-                  return String((item as { msg?: unknown }).msg ?? '');
-                }
-                return String(item ?? '');
-              })
-              .filter(Boolean)
-              .join('; ')
-          : String(detailValue ?? '');
-        if (detail) {
-          throw new Error(detail);
-        }
-      }
-    }
-    throw error instanceof Error ? error : new Error('Upload failed');
-  }
-}
-
-/**
- * Delete a document from a knowledge base.
- */
-export async function deleteDocument(kbId: string, docId: string): Promise<void> {
-  await api.delete(`/api/knowledge-bases/${kbId}/documents/${docId}`);
-}
-
-/**
- * Reprocess a document.
- */
-export async function reprocessDocument(kbId: string, docId: string): Promise<void> {
-  await api.post(`/api/knowledge-bases/${kbId}/documents/${docId}/reprocess`);
-}
-
-// ==================== Projects Browse API ====================
-
-/**
- * List allowed server-side roots for project selection.
- */
-export async function listProjectBrowseRoots(): Promise<DirectoryEntry[]> {
-  const response = await api.get<DirectoryEntry[]>('/api/projects/browse/roots');
-  return response.data;
-}
-
-/**
- * List child directories for a server-side path.
- */
-export async function listProjectDirectories(path: string): Promise<DirectoryEntry[]> {
-  const params = new URLSearchParams();
-  params.append('path', path);
-  const response = await api.get<DirectoryEntry[]>(`/api/projects/browse?${params.toString()}`);
-  return response.data;
-}
-
-/**
- * Create a new directory in a server-side parent path while browsing.
- */
-export async function createProjectBrowseDirectory(parentPath: string, name: string): Promise<DirectoryEntry> {
-  const response = await api.post<DirectoryEntry>('/api/projects/browse/directories', {
-    parent_path: parentPath,
-    name,
-  });
-  return response.data;
-}
-
-// ==================== RAG Config API ====================
-
-/**
- * Get RAG configuration.
- */
-export async function getRagConfig(): Promise<RagConfig> {
-  const response = await api.get<RagConfig>('/api/rag/config');
-  return response.data;
-}
-
-/**
- * Update RAG configuration.
- */
-export async function updateRagConfig(config: Partial<RagConfig>): Promise<void> {
-  await api.put('/api/rag/config', config);
-}
-
-// ==================== Folder API ====================
-
-/**
- * List all chat folders.
- */
-export async function listChatFolders(): Promise<Folder[]> {
-  const response = await api.get<Folder[]>('/api/folders');
-  return response.data;
-}
-
-/**
- * Create a new chat folder.
- */
-export async function createChatFolder(name: string): Promise<Folder> {
-  const response = await api.post<Folder>('/api/folders', { name });
-  return response.data;
-}
-
-/**
- * Update chat folder name.
- */
-export async function updateChatFolder(folderId: string, name: string): Promise<Folder> {
-  const response = await api.put<Folder>(`/api/folders/${folderId}`, { name });
-  return response.data;
-}
-
-/**
- * Delete a chat folder.
- * Sessions in this folder will be moved to ungrouped.
- */
-export async function deleteChatFolder(folderId: string): Promise<void> {
-  await api.delete(`/api/folders/${folderId}`);
-}
-
-/**
- * Reorder a chat folder to a new position.
- */
-export async function reorderChatFolder(folderId: string, newOrder: number): Promise<Folder> {
-  const response = await api.patch<Folder>(`/api/folders/${folderId}/order`, { order: newOrder });
-  return response.data;
-}
-
-/**
- * Update session's folder assignment.
- */
-export async function updateSessionFolder(
-  sessionId: string,
-  folderId: string | null,
-  contextType: string = 'chat',
-  projectId?: string
-): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('context_type', contextType);
-  if (projectId) {
-    params.append('project_id', projectId);
-  }
-
-  await api.put(`/api/sessions/${sessionId}/folder?${params.toString()}`, { folder_id: folderId });
-}

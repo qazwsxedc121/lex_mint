@@ -50,8 +50,9 @@ export function deriveLastPromptTokens(messages: Message[]): number | null {
     if (!message) {
       continue;
     }
-    if (message.role === 'assistant' && message.usage?.prompt_tokens) {
-      return message.usage.prompt_tokens;
+    const promptTokens = message.usage?.prompt_tokens;
+    if (message.role === 'assistant' && promptTokens !== undefined) {
+      return promptTokens;
     }
   }
   return null;
