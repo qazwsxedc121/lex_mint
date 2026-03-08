@@ -2,10 +2,16 @@
 
 import pytest
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from types import SimpleNamespace
 
-from src.agents.simple_llm import call_llm, call_llm_stream, _build_reasoning_decision_payload
+from src.agents.simple_llm import (
+    call_llm,
+    call_llm_stream,
+    _build_reasoning_decision_payload,
+    _get_context_limit,
+    _truncate_by_rounds,
+)
 from src.providers.types import TokenUsage
 
 
@@ -124,6 +130,70 @@ class TestCallLLM:
 
         # Verify error was logged
         mock_llm_logger.log_error.assert_called_once()
+
+
+def test_get_context_limit_uses_small_config_window_instead_of_default():
+    llm = SimpleNamespace(profile=None)
+    capabilities = SimpleNamespace(context_length=2048)
+
+    budget, window = _get_context_limit(llm=llm, capabilities=capabilities)
+
+    assert window == 2048
+    assert budget == 1024
+
+
+def test_get_context_limit_prefers_profile_over_config():
+    llm = SimpleNamespace(profile={"max_input_tokens": 12000})
+    capabilities = SimpleNamespace(context_length=32000)
+
+    budget, window = _get_context_limit(llm=llm, capabilities=capabilities)
+
+    assert window == 12000
+    assert budget == 11400
+
+
+def test_truncate_by_rounds_preserves_all_leading_system_messages():
+    messages = [
+        SystemMessage(content="assistant-system"),
+        SystemMessage(content="compressed-summary"),
+        HumanMessage(content="u1"),
+        AIMessage(content="a1"),
+        HumanMessage(content="u2"),
+        AIMessage(content="a2"),
+        HumanMessage(content="u3"),
+    ]
+
+    result = _truncate_by_rounds(messages, max_rounds=1, system_prompt="assistant-system")
+
+    assert [msg.content for msg in result] == [
+        "assistant-system",
+        "compressed-summary",
+        "u3",
+    ]
+
+
+def test_truncate_by_rounds_keeps_last_user_anchored_rounds():
+    messages = [
+        SystemMessage(content="assistant-system"),
+        SystemMessage(content="compressed-summary"),
+        HumanMessage(content="u1"),
+        AIMessage(content="a1"),
+        HumanMessage(content="u2"),
+        AIMessage(content="a2"),
+        HumanMessage(content="u3"),
+        AIMessage(content="a3"),
+    ]
+
+    result = _truncate_by_rounds(messages, max_rounds=2, system_prompt="assistant-system")
+
+    assert [msg.content for msg in result] == [
+        "assistant-system",
+        "compressed-summary",
+        "u2",
+        "a2",
+        "u3",
+        "a3",
+    ]
 
 
 def test_build_reasoning_decision_payload_contains_effective_adapter_args():

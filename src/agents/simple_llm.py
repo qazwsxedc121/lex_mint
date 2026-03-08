@@ -79,7 +79,7 @@ def _get_context_limit(llm, capabilities) -> Tuple[int, int]:
 
     # Priority 2: capabilities from config
     config_limit = getattr(capabilities, "context_length", None)
-    if config_limit and isinstance(config_limit, int) and config_limit > DEFAULT_CONTEXT_LENGTH:
+    if config_limit and isinstance(config_limit, int) and config_limit > 0:
         reserve = _calculate_output_reserve(config_limit, from_profile=False)
         budget = config_limit - reserve
         logger.info(
@@ -1025,17 +1025,19 @@ def _truncate_by_rounds(
     Returns:
         Truncated message list
     """
-    # Separate system message and conversation messages
-    system_msg = None
-    conversation_messages = messages
+    # Preserve all leading system messages. This includes the assistant system prompt
+    # and any injected compressed-history summary block.
+    system_messages: List[Any] = []
+    conversation_messages = list(messages)
+    while conversation_messages and isinstance(conversation_messages[0], SystemMessage):
+        system_messages.append(conversation_messages.pop(0))
 
-    if system_prompt and len(messages) > 0 and isinstance(messages[0], SystemMessage):
-        system_msg = messages[0]
-        conversation_messages = messages[1:]
-
-    # Calculate current rounds (1 round = user + assistant)
-    # Note: May have incomplete rounds (only user message without assistant reply)
-    current_rounds = len(conversation_messages) // 2
+    # Count rounds by user messages so incomplete final rounds are preserved.
+    human_indexes = [
+        index for index, msg in enumerate(conversation_messages)
+        if isinstance(msg, HumanMessage)
+    ]
+    current_rounds = len(human_indexes)
 
     # If current rounds don't exceed limit, return directly
     if current_rounds <= max_rounds:
@@ -1043,18 +1045,16 @@ def _truncate_by_rounds(
 
     print(f"[WARN] Conversation rounds exceed limit ({current_rounds} > {max_rounds}), truncating to recent {max_rounds} rounds...")
 
-    # Keep the most recent max_rounds rounds
-    # Each round includes user + assistant, total max_rounds * 2 messages
-    keep_count = max_rounds * 2
-    kept_conversation = conversation_messages[-keep_count:]
+    # Keep the most recent max_rounds user-anchored rounds.
+    start_index = human_indexes[-max_rounds]
+    kept_conversation = conversation_messages[start_index:]
 
     # Reassemble
     result = []
-    if system_msg:
-        result.append(system_msg)
+    result.extend(system_messages)
     result.extend(kept_conversation)
 
-    print(f"      Truncation complete: kept {len(kept_conversation)} messages ({len(kept_conversation) // 2} rounds)")
+    print(f"      Truncation complete: kept {len(kept_conversation)} messages ({max_rounds} rounds)")
     return result
 
 
