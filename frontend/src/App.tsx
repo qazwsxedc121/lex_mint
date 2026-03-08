@@ -11,6 +11,7 @@ import { ProjectTabRedirect } from './modules/projects/ProjectTabRedirect';
 import { ProjectSearchView } from './modules/projects/ProjectSearchView';
 import { ProjectWorkflowsView } from './modules/projects/ProjectWorkflowsView';
 import { ProjectAgentView } from './modules/projects/ProjectAgentView';
+import { ProjectSettingsView } from './modules/projects/ProjectSettingsView';
 import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
 import { GetStartedPage } from './modules/settings/GetStartedPage';
@@ -62,6 +63,7 @@ function App() {
               <Route path="search" element={<ProjectSearchView />} />
               <Route path="workflows" element={<ProjectWorkflowsView />} />
               <Route path="agent" element={<ProjectAgentView />} />
+              <Route path="settings" element={<ProjectSettingsView />} />
             </Route>
           </Route>
           <Route path="workflows" element={<WorkflowsModule />} />
