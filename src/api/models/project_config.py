@@ -8,6 +8,40 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+class ProjectRagSettings(BaseModel):
+    """Project-scoped retrieval settings."""
+
+    knowledge_base_ids: List[str] = Field(default_factory=list, description="Knowledge base IDs available to this project")
+    knowledge_base_mode: Literal["append", "override"] = Field(
+        default="append",
+        description="How project knowledge bases interact with assistant-bound knowledge bases",
+    )
+
+    @field_validator('knowledge_base_ids', mode='before')
+    @classmethod
+    def normalize_knowledge_base_ids(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("knowledge_base_ids must be a list")
+
+        normalized: List[str] = []
+        seen = set()
+        for item in value:
+            kb_id = str(item or '').strip()
+            if not kb_id or kb_id in seen:
+                continue
+            normalized.append(kb_id)
+            seen.add(kb_id)
+        return normalized
+
+
+class ProjectSettings(BaseModel):
+    """Project-scoped settings persisted with the project config."""
+
+    rag: ProjectRagSettings = Field(default_factory=ProjectRagSettings)
+
+
 class Project(BaseModel):
     """Project configuration."""
 
@@ -15,6 +49,7 @@ class Project(BaseModel):
     name: str = Field(..., description="Project display name")
     root_path: str = Field(..., description="Absolute path to project root directory")
     description: Optional[str] = Field(default=None, description="Project description")
+    settings: ProjectSettings = Field(default_factory=ProjectSettings, description="Project-specific settings")
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
@@ -45,6 +80,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     root_path: str
     description: Optional[str] = Field(None, max_length=500)
+    settings: Optional[ProjectSettings] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -53,6 +89,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     root_path: Optional[str] = None
     description: Optional[str] = None
+    settings: Optional[ProjectSettings] = None
 
 
 class FileNode(BaseModel):

@@ -5,20 +5,32 @@ export interface Project {
   name: string;
   root_path: string;
   description?: string;
+  settings: ProjectSettings;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectRagSettings {
+  knowledge_base_ids: string[];
+  knowledge_base_mode: 'append' | 'override';
+}
+
+export interface ProjectSettings {
+  rag: ProjectRagSettings;
 }
 
 export interface ProjectCreate {
   name: string;
   root_path: string;
   description?: string;
+  settings?: ProjectSettings;
 }
 
 export interface ProjectUpdate {
   name?: string;
   root_path?: string;
   description?: string;
+  settings?: ProjectSettings;
 }
 
 export interface DirectoryEntry {

@@ -17,6 +17,7 @@ from ..services.project_document_tool_service import (
 from ..models.project_config import (
     Project,
     ProjectCreate,
+    ProjectSettings,
     ProjectUpdate,
     FileNode,
     FileContent,
@@ -148,7 +149,8 @@ async def create_project(project_data: ProjectCreate):
             id=project_id,
             name=project_data.name,
             root_path=project_data.root_path,
-            description=project_data.description
+            description=project_data.description,
+            settings=project_data.settings or ProjectSettings(),
         )
 
         # Add to storage
@@ -210,7 +212,8 @@ async def update_project(project_id: str, update_data: ProjectUpdate):
             project_id,
             name=update_data.name,
             root_path=update_data.root_path,
-            description=update_data.description
+            description=update_data.description,
+            settings=update_data.settings,
         )
 
         if updated is None:

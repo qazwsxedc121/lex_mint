@@ -455,6 +455,7 @@ class SingleChatFlowService:
         tool_executors: List[Any] = []
         try:
             from .model_config_service import ModelConfigService
+            from .project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
             from .project_document_tool_service import ProjectDocumentToolService
             from src.tools.registry import get_tool_registry
 
@@ -465,10 +466,15 @@ class SingleChatFlowService:
                 return llm_tools, None
 
             llm_tools = list(get_tool_registry().get_all_tools())
-            kb_ids_for_tools = list(getattr(assistant_obj, "knowledge_base_ids", None) or [])
-            if assistant_id and not is_legacy_assistant and kb_ids_for_tools:
+            kb_ids_for_tools = await ProjectKnowledgeBaseResolver().resolve_effective_kb_ids(
+                assistant_id=assistant_id,
+                assistant_obj=assistant_obj,
+                context_type=context_type,
+                project_id=project_id,
+            )
+            if kb_ids_for_tools:
                 rag_tool_service = RagToolService(
-                    assistant_id=assistant_id,
+                    assistant_id=assistant_id or (f"project::{project_id}" if project_id else "project::default"),
                     allowed_kb_ids=kb_ids_for_tools,
                     runtime_model_id=model_id,
                 )

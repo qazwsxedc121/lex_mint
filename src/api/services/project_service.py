@@ -14,6 +14,7 @@ from datetime import datetime
 
 from src.api.models.project_config import (
     Project,
+    ProjectSettings,
     ProjectsConfig,
     FileNode,
     FileContent,
@@ -268,7 +269,8 @@ class ProjectService:
         project_id: str,
         name: Optional[str] = None,
         root_path: Optional[str] = None,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        settings: Optional[ProjectSettings] = None,
     ) -> Optional[Project]:
         """Update an existing project.
 
@@ -277,6 +279,7 @@ class ProjectService:
             name: New name (optional)
             root_path: New root path (optional)
             description: New description (optional)
+            settings: New project settings (optional)
 
         Returns:
             Updated project if found, None otherwise
@@ -294,6 +297,8 @@ class ProjectService:
                     update_data['root_path'] = root_path
                 if description is not None:
                     update_data['description'] = description
+                if settings is not None:
+                    update_data['settings'] = settings
 
                 # Update timestamp
                 update_data['updated_at'] = datetime.now().isoformat()

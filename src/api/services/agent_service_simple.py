@@ -524,21 +524,28 @@ class AgentService:
         assistant_id: Optional[str],
         assistant_obj: Optional[AssistantLike] = None,
         runtime_model_id: Optional[str] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
     ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
-        """Build RAG context and source metadata for the current assistant."""
+        """Build RAG context and source metadata for the current assistant/project."""
         rag_sources: List[Dict[str, Any]] = []
-        if not assistant_id or assistant_id.startswith("__legacy_model_"):
-            return None, rag_sources
 
         try:
             assistant_for_rag = assistant_obj
-            if assistant_for_rag is None:
+            if assistant_for_rag is None and assistant_id and not assistant_id.startswith("__legacy_model_"):
                 from .assistant_config_service import AssistantConfigService
 
                 assistant_service = AssistantConfigService()
                 assistant_for_rag = await assistant_service.get_assistant(assistant_id)
 
-            kb_ids = list(getattr(assistant_for_rag, "knowledge_base_ids", None) or [])
+            from .project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+
+            kb_ids = await ProjectKnowledgeBaseResolver().resolve_effective_kb_ids(
+                assistant_id=assistant_id,
+                assistant_obj=assistant_for_rag,
+                context_type=context_type,
+                project_id=project_id,
+            )
             if not kb_ids:
                 return None, rag_sources
 

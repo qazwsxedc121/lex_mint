@@ -10,7 +10,7 @@ export const ProjectWorkspaceLayout: React.FC = () => {
   const { projectId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { projects, projectsLoading = false, onManageClick, onAddProjectClick } = useOutletContext<ProjectsOutletContext>();
+  const { projects, projectsLoading = false, refreshProjects, onManageClick, onAddProjectClick } = useOutletContext<ProjectsOutletContext>();
   const { setCurrentProject, setProjectTab } = useProjectWorkspaceStore();
 
   const currentProject = useMemo(
@@ -112,6 +112,7 @@ export const ProjectWorkspaceLayout: React.FC = () => {
             projectId,
             currentProject,
             projects,
+            refreshProjects,
             onManageClick,
             onAddProjectClick,
             onCloseProject: handleCloseProject,

@@ -12,7 +12,7 @@ type ManagementMode = 'manage' | 'create';
 export const ProjectsModule: React.FC = () => {
   const [showManagement, setShowManagement] = useState(false);
   const [managementMode, setManagementMode] = useState<ManagementMode>('manage');
-  const { projects, loading, createProject, updateProject, deleteProject } = useProjects();
+  const { projects, loading, createProject, updateProject, deleteProject, refreshProjects } = useProjects();
 
   const openManagement = () => {
     setManagementMode('manage');
@@ -29,6 +29,7 @@ export const ProjectsModule: React.FC = () => {
       <Outlet context={{
         projects,
         projectsLoading: loading,
+        refreshProjects,
         onManageClick: openManagement,
         onAddProjectClick: openCreateProject,
       }} />

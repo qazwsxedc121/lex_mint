@@ -28,6 +28,7 @@ export interface ProjectWorkflowLaunchContext {
 export interface ProjectsOutletContext {
   projects: Project[];
   projectsLoading?: boolean;
+  refreshProjects: () => Promise<void>;
   onManageClick: () => void;
   onAddProjectClick: () => void;
 }

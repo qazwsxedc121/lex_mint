@@ -148,6 +148,8 @@ class ContextAssemblyService:
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
             runtime_model_id=resolved_model_id,
+            context_type=context_type,
+            project_id=project_id,
         )
 
         all_sources = self._merge_all_sources(
