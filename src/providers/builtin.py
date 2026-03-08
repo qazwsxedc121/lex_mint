@@ -1,359 +1,84 @@
-"""
-Built-in Provider Definitions
+"""Built-in provider definitions loaded from tracked defaults config."""
 
-Pre-configured providers with default settings and capabilities.
-"""
-from .types import (
-    ProviderDefinition,
-    ModelCapabilities,
-    ApiProtocol,
-    EndpointProfile,
-)
+from __future__ import annotations
+
+from functools import lru_cache
+import logging
+from typing import Any
+
+import yaml
+
+from src.api.paths import config_defaults_dir
+
+from .types import ProviderDefinition
+
+logger = logging.getLogger(__name__)
 
 
-# Built-in provider definitions
-BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = {
-    "deepseek": ProviderDefinition(
-        id="deepseek",
-        name="DeepSeek",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.deepseek.com",
-        sdk_class="deepseek",  # Use dedicated DeepSeek SDK for reasoning_content support
-        default_capabilities=ModelCapabilities(
-            context_length=64000,
-            reasoning=True,
-            requires_interleaved_thinking=False,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
+def _load_builtin_provider_entries() -> list[dict[str, Any]]:
+    defaults_dir = config_defaults_dir()
+    provider_path = defaults_dir / "provider_config.yaml"
+    legacy_path = defaults_dir / "models_config.yaml"
 
-    "kimi": ProviderDefinition(
-        id="kimi",
-        name="Moonshot (Kimi)",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.moonshot.cn/v1",
-        sdk_class="kimi",
-        default_capabilities=ModelCapabilities(
-            context_length=262144,
-            vision=True,
-            reasoning=True,
-            requires_interleaved_thinking=False,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
+    source_path = provider_path if provider_path.exists() else legacy_path
+    if not source_path.exists():
+        logger.warning("Builtin provider defaults file not found: %s", provider_path)
+        return []
 
-    "zhipu": ProviderDefinition(
-        id="zhipu",
-        name="Zhipu (GLM)",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://open.bigmodel.cn/api/paas/v4",
-        sdk_class="zhipu",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            vision=False,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-        endpoint_profiles=[
-            EndpointProfile(
-                id="zhipu-cn",
-                label="China Mainland (.cn)",
-                base_url="https://open.bigmodel.cn/api/paas/v4",
-                region_tags=["cn"],
-                priority=10,
-            ),
-        ],
-        default_endpoint_profile_id="zhipu-cn",
-    ),
+    try:
+        with open(source_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as exc:
+        logger.warning("Failed to load builtin providers from %s: %s", source_path, exc)
+        return []
 
-    "gemini": ProviderDefinition(
-        id="gemini",
-        name="Google Gemini",
-        protocol=ApiProtocol.GEMINI,
-        base_url="https://generativelanguage.googleapis.com/v1beta",
-        sdk_class="gemini",
-        url_suffix="",
-        auto_append_path=False,
-        supports_model_list=True,
-        default_capabilities=ModelCapabilities(
-            context_length=1048576,
-            vision=True,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-    ),
+    providers = data.get("providers") if isinstance(data, dict) else None
+    return providers if isinstance(providers, list) else []
 
-    "volcengine": ProviderDefinition(
-        id="volcengine",
-        name="Volcano Engine (Doubao)",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://ark.cn-beijing.volces.com/api/v3",
-        sdk_class="volcengine",
-        url_suffix="",
-        auto_append_path=False,
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            vision=True,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
 
-    "openai": ProviderDefinition(
-        id="openai",
-        name="OpenAI",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.openai.com/v1",
-        sdk_class="openai",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            vision=True,
-            function_calling=True,
-            reasoning=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
+def _coerce_provider_definition(entry: dict[str, Any]) -> ProviderDefinition | None:
+    if not isinstance(entry, dict):
+        return None
+    if str(entry.get("type") or "builtin") != "builtin":
+        return None
 
-    "stepfun": ProviderDefinition(
-        id="stepfun",
-        name="StepFun",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.stepfun.com/v1",
-        sdk_class="openai",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-        endpoint_profiles=[
-            EndpointProfile(
-                id="stepfun-cn",
-                label="China Mainland (.com)",
-                base_url="https://api.stepfun.com/v1",
-                region_tags=["cn"],
-                priority=10,
-            ),
-            EndpointProfile(
-                id="stepfun-global",
-                label="Global (.ai)",
-                base_url="https://api.stepfun.ai/v1",
-                region_tags=["global"],
-                priority=20,
-            ),
-        ],
-        default_endpoint_profile_id="stepfun-cn",
-    ),
+    payload = {
+        key: value
+        for key, value in entry.items()
+        if key in ProviderDefinition.model_fields
+    }
+    default_profile_id = entry.get("default_endpoint_profile_id") or entry.get("endpoint_profile_id")
+    if default_profile_id and "default_endpoint_profile_id" not in payload:
+        payload["default_endpoint_profile_id"] = default_profile_id
 
-    "minimax": ProviderDefinition(
-        id="minimax",
-        name="MiniMax",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.minimax.chat/v1",
-        sdk_class="openai",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-        endpoint_profiles=[
-            EndpointProfile(
-                id="minimax-cn",
-                label="China Mainland (.chat)",
-                base_url="https://api.minimax.chat/v1",
-                region_tags=["cn"],
-                priority=10,
-            ),
-            EndpointProfile(
-                id="minimax-global",
-                label="Global (.io)",
-                base_url="https://api.minimax.io/v1",
-                region_tags=["global"],
-                priority=20,
-            ),
-        ],
-        default_endpoint_profile_id="minimax-cn",
-    ),
+    try:
+        return ProviderDefinition(**payload)
+    except Exception as exc:
+        logger.warning("Skipping invalid builtin provider definition %s: %s", entry.get("id"), exc)
+        return None
 
-    "openrouter": ProviderDefinition(
-        id="openrouter",
-        name="OpenRouter",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://openrouter.ai/api/v1",
-        sdk_class="openrouter",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
 
-    "anthropic": ProviderDefinition(
-        id="anthropic",
-        name="Anthropic",
-        protocol=ApiProtocol.ANTHROPIC,
-        base_url="https://api.anthropic.com",
-        sdk_class="anthropic",
-        default_capabilities=ModelCapabilities(
-            context_length=200000,
-            vision=True,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
+@lru_cache(maxsize=1)
+def _builtin_provider_map() -> dict[str, ProviderDefinition]:
+    providers: dict[str, ProviderDefinition] = {}
+    for entry in _load_builtin_provider_entries():
+        definition = _coerce_provider_definition(entry)
+        if definition is None:
+            continue
+        providers[definition.id] = definition
+    return providers
 
-    "local_gguf": ProviderDefinition(
-        id="local_gguf",
-        name="Local GGUF",
-        protocol=ApiProtocol.LOCAL_GGUF,
-        base_url="local://gguf",
-        sdk_class="local_gguf",
-        default_capabilities=ModelCapabilities(
-            context_length=8192,
-            streaming=True,
-        ),
-        supports_model_list=True,
-        auto_append_path=False,
-    ),
 
-    "ollama": ProviderDefinition(
-        id="ollama",
-        name="Ollama",
-        protocol=ApiProtocol.OLLAMA,
-        base_url="http://localhost:11434",
-        sdk_class="ollama",
-        default_capabilities=ModelCapabilities(
-            context_length=4096,
-            streaming=True,
-        ),
-        supports_model_list=True,
-        auto_append_path=False,  # Ollama uses different path structure
-    ),
-
-    "lmstudio": ProviderDefinition(
-        id="lmstudio",
-        name="LM Studio",
-        protocol=ApiProtocol.LMSTUDIO,
-        base_url="http://localhost:1234",
-        sdk_class="lmstudio",
-        default_capabilities=ModelCapabilities(
-            context_length=4096,
-            streaming=True,
-        ),
-        supports_model_list=True,
-        auto_append_path=False,
-    ),
-
-    "xai": ProviderDefinition(
-        id="xai",
-        name="xAI (Grok)",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.x.ai/v1",
-        sdk_class="xai",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
-
-    "together": ProviderDefinition(
-        id="together",
-        name="Together AI",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.together.xyz/v1",
-        sdk_class="openai",
-        default_capabilities=ModelCapabilities(
-            context_length=32000,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
-
-    "siliconflow": ProviderDefinition(
-        id="siliconflow",
-        name="SiliconFlow",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://api.siliconflow.cn/v1",
-        sdk_class="siliconflow",
-        default_capabilities=ModelCapabilities(
-            context_length=128000,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
-
-    "bailian": ProviderDefinition(
-        id="bailian",
-        name="Alibaba Cloud (Qwen)",
-        protocol=ApiProtocol.OPENAI,
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        sdk_class="bailian",
-        url_suffix="",
-        auto_append_path=False,
-        default_capabilities=ModelCapabilities(
-            context_length=131072,
-            vision=False,
-            reasoning=True,
-            function_calling=True,
-            streaming=True,
-        ),
-        supports_model_list=True,
-    ),
-}
+BUILTIN_PROVIDERS: dict[str, ProviderDefinition] = _builtin_provider_map()
 
 
 def get_builtin_provider(provider_id: str) -> ProviderDefinition | None:
-    """
-    Get a built-in provider definition by ID.
-
-    Args:
-        provider_id: The provider identifier
-
-    Returns:
-        ProviderDefinition if found, None otherwise
-    """
-    return BUILTIN_PROVIDERS.get(provider_id)
+    return _builtin_provider_map().get(provider_id)
 
 
 def get_all_builtin_providers() -> dict[str, ProviderDefinition]:
-    """
-    Get all built-in provider definitions.
-
-    Returns:
-        Dictionary of provider_id -> ProviderDefinition
-    """
-    return BUILTIN_PROVIDERS.copy()
+    return _builtin_provider_map().copy()
 
 
 def is_builtin_provider(provider_id: str) -> bool:
-    """
-    Check if a provider ID is a built-in provider.
-
-    Args:
-        provider_id: The provider identifier
-
-    Returns:
-        True if it's a built-in provider
-    """
-    return provider_id in BUILTIN_PROVIDERS
+    return provider_id in _builtin_provider_map()

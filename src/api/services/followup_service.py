@@ -17,6 +17,7 @@ from ..paths import (
     config_local_dir,
     legacy_config_dir,
     ensure_local_file,
+    resolve_layered_read_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,11 +55,10 @@ class FollowupService:
     """Service for generating follow-up question suggestions"""
 
     def __init__(self, config_path: Optional[str] = None):
-        self.defaults_path: Optional[Path] = None
+        self.defaults_path: Optional[Path] = config_defaults_dir() / "followup_config.yaml"
         self.legacy_paths: list[Path] = []
 
         if config_path is None:
-            self.defaults_path = config_defaults_dir() / "followup_config.yaml"
             self.config_path = config_local_dir() / "followup_config.yaml"
             self.legacy_paths = [legacy_config_dir() / "followup_config.yaml"]
         else:
@@ -72,32 +72,50 @@ class FollowupService:
         )
         self.config = self._load_config()
 
+    def _load_default_section(self) -> Dict:
+        """Load fallback defaults from the repo default config file."""
+        if self.defaults_path is None or not self.defaults_path.exists():
+            return {}
+
+        with open(self.defaults_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        return data.get('followup', {}) or {}
+
     def _load_config(self) -> FollowupConfig:
         """Load configuration from YAML file"""
+        default_config = self._load_default_section()
+        config_path = resolve_layered_read_path(
+            local_path=self.config_path,
+            defaults_path=self.defaults_path,
+            legacy_paths=self.legacy_paths,
+        )
+
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
 
             config_data = data.get('followup', {})
-            return FollowupConfig(
-                enabled=config_data.get('enabled', True),
-                count=config_data.get('count', 3),
-                model_id=config_data.get('model_id', 'deepseek:deepseek-chat'),
-                max_context_rounds=config_data.get('max_context_rounds', 3),
-                timeout_seconds=config_data.get('timeout_seconds', 15),
-                prompt_template=config_data.get('prompt_template', '')
-            )
         except Exception as e:
             logger.error(f"Failed to load followup config: {e}")
-            # Return default config
-            return FollowupConfig(
-                enabled=False,
-                count=3,
-                model_id='deepseek:deepseek-chat',
-                max_context_rounds=3,
-                timeout_seconds=15,
-                prompt_template=''
-            )
+            config_data = default_config
+
+        return FollowupConfig(
+            enabled=config_data.get('enabled', default_config.get('enabled', True)),
+            count=config_data.get('count', default_config.get('count', 3)),
+            model_id=config_data.get('model_id', default_config.get('model_id', '')),
+            max_context_rounds=config_data.get(
+                'max_context_rounds',
+                default_config.get('max_context_rounds', 3),
+            ),
+            timeout_seconds=config_data.get(
+                'timeout_seconds',
+                default_config.get('timeout_seconds', 15),
+            ),
+            prompt_template=config_data.get(
+                'prompt_template',
+                default_config.get('prompt_template', ''),
+            ),
+        )
 
     def reload_config(self):
         """Reload configuration from file"""

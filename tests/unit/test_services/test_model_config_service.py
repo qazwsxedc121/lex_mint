@@ -14,6 +14,22 @@ from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
 class TestModelConfigService:
     """Test cases for ModelConfigService class."""
 
+    @staticmethod
+    def _load_repo_defaults() -> dict:
+        defaults_dir = Path("config/defaults")
+        with open(defaults_dir / "provider_config.yaml", "r", encoding="utf-8") as f:
+            provider_data = yaml.safe_load(f) or {}
+        with open(defaults_dir / "models_catalog.yaml", "r", encoding="utf-8") as f:
+            model_data = yaml.safe_load(f) or {}
+        with open(defaults_dir / "app_defaults.yaml", "r", encoding="utf-8") as f:
+            app_data = yaml.safe_load(f) or {}
+        return {
+            "providers": provider_data.get("providers", []),
+            "models": model_data.get("models", []),
+            "default": app_data.get("default", {}),
+            "reasoning_supported_patterns": app_data.get("reasoning_supported_patterns", []),
+        }
+
     @pytest.fixture(autouse=True)
     def _disable_builtin_sync(self, monkeypatch, request):
         """Keep unit tests focused on local file behavior, not builtin auto-sync."""
@@ -29,15 +45,16 @@ class TestModelConfigService:
 
         service = ModelConfigService(config_path, keys_path)
 
-        assert config_path.exists()
+        assert (temp_config_dir / "provider_config.yaml").exists()
+        assert (temp_config_dir / "models_catalog.yaml").exists()
+        assert (temp_config_dir / "app_defaults.yaml").exists()
         assert keys_path.exists()
 
         # Verify default config structure
-        with open(config_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-            assert "default" in data
-            assert "providers" in data
-            assert "models" in data
+        data = await service.load_config()
+        assert data.default.provider
+        assert data.providers
+        assert data.models
 
     @pytest.mark.asyncio
     async def test_sync_builtin_supports_model_list_flag(self):
@@ -153,12 +170,124 @@ class TestModelConfigService:
         try:
             service = ModelConfigService(config_path, keys_path)
             config = await service.load_config()
+            defaults = self._load_repo_defaults()
+            default_config = defaults["default"]
+            default_model_entry = next(
+                model
+                for model in defaults["models"]
+                if model["provider_id"] == default_config["provider"] and model["id"] == default_config["model"]
+            )
 
+            assert config.default.provider == default_config["provider"]
+            assert config.default.model == default_config["model"]
+            assert len(config.models) == 1
+            assert config.models[0].provider_id == default_model_entry["provider_id"]
+            assert config.models[0].id == default_model_entry["id"]
+            assert config.reasoning_supported_patterns == defaults.get("reasoning_supported_patterns", [])
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_legacy_models_config_is_auto_migrated_to_split_files(self):
+        test_dir = Path(".tmp") / "test_legacy_models_config_is_auto_migrated_to_split_files"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        legacy_payload = {
+            "default": {"provider": "deepseek", "model": "deepseek-chat"},
+            "providers": [
+                {
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://api.deepseek.com",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "deepseek",
+                }
+            ],
+            "models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "provider_id": "deepseek",
+                    "enabled": True,
+                }
+            ],
+            "reasoning_supported_patterns": ["deepseek-chat"],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(legacy_payload, f, allow_unicode=True, sort_keys=False)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert (test_dir / "provider_config.yaml").exists()
+            assert (test_dir / "models_catalog.yaml").exists()
+            assert (test_dir / "app_defaults.yaml").exists()
+            assert list(test_dir.glob("models_config.yaml.bak.*"))
             assert config.default.provider == "deepseek"
             assert config.default.model == "deepseek-chat"
+            assert any(provider.id == "deepseek" for provider in config.providers)
+            assert any(model.id == "deepseek-chat" for model in config.models)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing(self):
+        """Builtin sync should reuse an existing enabled model before injecting bootstrap defaults."""
+        test_dir = Path(".tmp") / "test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "models_config.yaml"
+        keys_path = test_dir / "keys_config.yaml"
+
+        config_data = {
+            "default": {"provider": "missing", "model": "missing-model"},
+            "providers": [
+                {
+                    "id": "openrouter",
+                    "name": "OpenRouter",
+                    "type": "builtin",
+                    "protocol": "openai",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "enabled": True,
+                    "supports_model_list": True,
+                    "sdk_class": "openrouter",
+                }
+            ],
+            "models": [
+                {
+                    "id": "openai/gpt-5-nano",
+                    "name": "GPT-5 Nano",
+                    "provider_id": "openrouter",
+                    "tags": ["chat"],
+                    "enabled": True,
+                }
+            ],
+        }
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(config_data, f, sort_keys=False)
+            with open(keys_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"providers": {}}, f)
+
+            service = ModelConfigService(config_path, keys_path)
+            config = await service.load_config()
+
+            assert config.default.provider == "openrouter"
+            assert config.default.model == "openai/gpt-5-nano"
             assert len(config.models) == 1
-            assert config.models[0].provider_id == "deepseek"
-            assert config.models[0].id == "deepseek-chat"
+            assert config.models[0].provider_id == "openrouter"
+            assert config.models[0].id == "openai/gpt-5-nano"
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -220,7 +349,6 @@ class TestModelConfigService:
         local_dir.mkdir(parents=True, exist_ok=True)
         legacy_dir.mkdir(parents=True, exist_ok=True)
 
-        defaults_path = defaults_dir / "models_config.yaml"
         defaults_payload = {
             "default": {"provider": "deepseek", "model": "deepseek-chat"},
             "providers": [
@@ -250,8 +378,20 @@ class TestModelConfigService:
                 },
             ],
         }
-        with open(defaults_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(defaults_payload, f, allow_unicode=True, sort_keys=False)
+        with open(defaults_dir / "provider_config.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump({"providers": defaults_payload["providers"]}, f, allow_unicode=True, sort_keys=False)
+        with open(defaults_dir / "models_catalog.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump({"models": defaults_payload["models"]}, f, allow_unicode=True, sort_keys=False)
+        with open(defaults_dir / "app_defaults.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {
+                    "default": defaults_payload["default"],
+                    "reasoning_supported_patterns": [],
+                },
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
         monkeypatch.setattr("src.api.services.model_config_service.config_defaults_dir", lambda: defaults_dir)
         monkeypatch.setattr("src.api.services.model_config_service.config_local_dir", lambda: local_dir)
@@ -659,32 +799,33 @@ class TestModelConfigService:
             local_data = yaml.safe_load(f)
         assert local_data == shared_payload
 
-    def test_get_merged_capabilities_uses_model_rules_when_model_capability_missing(self, temp_config_dir):
+    def test_get_merged_capabilities_uses_local_qwen3_fallback_when_metadata_missing(self, temp_config_dir):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
-        model = Model(id="moonshotai/kimi-k2.5", name="Kimi", provider_id="openrouter", enabled=True)
+        model = Model(id="llm/qwen3-0.6b-q8_0.gguf", name="Qwen3", provider_id="local_gguf", enabled=True)
         provider = Provider(
-            id="openrouter",
-            name="OpenRouter",
+            id="local_gguf",
+            name="Local GGUF",
             type=ProviderType.BUILTIN,
-            protocol=ApiProtocol.OPENAI,
-            base_url="https://openrouter.ai/api/v1",
+            protocol=ApiProtocol.LOCAL_GGUF,
+            base_url="local://gguf",
             enabled=True,
-            default_capabilities=ModelCapabilities(requires_interleaved_thinking=False),
         )
 
         merged = service.get_merged_capabilities(model, provider)
-        assert merged.requires_interleaved_thinking is True
+
         assert merged.reasoning is True
+        assert merged.function_calling is True
+        assert merged.requires_interleaved_thinking is False
         assert merged.reasoning_controls is not None
-        assert merged.reasoning_controls.mode.value == "enum"
-        assert merged.reasoning_controls.options == ["minimal", "low", "medium", "high", "xhigh"]
+        assert merged.reasoning_controls.mode.value == "toggle"
+        assert merged.reasoning_controls.param == "enable_thinking"
 
-    def test_get_merged_capabilities_hard_interleaved_rule_overrides_model_false(self, temp_config_dir):
+    def test_get_merged_capabilities_explicit_model_metadata_beats_provider_defaults(self, temp_config_dir):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -692,53 +833,41 @@ class TestModelConfigService:
 
         service = ModelConfigService(config_path, keys_path)
         model = Model(
-            id="deepseek-chat",
-            name="DeepSeek Chat",
-            provider_id="openrouter",
+            id="gpt-4o-mini",
+            name="GPT-4o Mini",
+            provider_id="openai",
             enabled=True,
-            capabilities=ModelCapabilities(requires_interleaved_thinking=False),
+            capabilities=ModelCapabilities(reasoning=False, function_calling=False),
         )
         provider = Provider(
-            id="openrouter",
-            name="OpenRouter",
+            id="openai",
+            name="OpenAI",
             type=ProviderType.BUILTIN,
             protocol=ApiProtocol.OPENAI,
-            base_url="https://openrouter.ai/api/v1",
+            base_url="https://api.openai.com/v1",
             enabled=True,
-            default_capabilities=ModelCapabilities(requires_interleaved_thinking=False),
+            default_capabilities=ModelCapabilities.model_validate(
+                {
+                    "reasoning": True,
+                    "function_calling": True,
+                    "reasoning_controls": {
+                        "mode": "enum",
+                        "param": "reasoning.effort",
+                        "options": ["low", "medium", "high"],
+                        "default_option": "medium",
+                        "disable_supported": True,
+                    },
+                }
+            ),
         )
 
         merged = service.get_merged_capabilities(model, provider)
-        assert merged.requires_interleaved_thinking is True
 
-    def test_get_merged_capabilities_model_reasoning_override_wins_over_rules(self, temp_config_dir):
-        config_path = temp_config_dir / "models_config.yaml"
-        keys_path = temp_config_dir / "keys_config.yaml"
-        with open(keys_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"providers": {}}, f)
-
-        service = ModelConfigService(config_path, keys_path)
-        model = Model(
-            id="deepseek-chat",
-            name="DeepSeek Chat",
-            provider_id="openrouter",
-            enabled=True,
-            capabilities=ModelCapabilities(reasoning=False),
-        )
-        provider = Provider(
-            id="openrouter",
-            name="OpenRouter",
-            type=ProviderType.BUILTIN,
-            protocol=ApiProtocol.OPENAI,
-            base_url="https://openrouter.ai/api/v1",
-            enabled=True,
-            default_capabilities=ModelCapabilities(reasoning=False),
-        )
-
-        merged = service.get_merged_capabilities(model, provider)
         assert merged.reasoning is False
+        assert merged.function_calling is False
+        assert merged.reasoning_controls is None
 
-    def test_get_merged_capabilities_uses_provider_reasoning_controls_fallback(self, temp_config_dir):
+    def test_get_merged_capabilities_inherits_provider_reasoning_controls_from_metadata(self, temp_config_dir):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -753,11 +882,95 @@ class TestModelConfigService:
             protocol=ApiProtocol.OPENAI,
             base_url="https://api.openai.com/v1",
             enabled=True,
+            default_capabilities=ModelCapabilities.model_validate(
+                {
+                    "reasoning": True,
+                    "reasoning_controls": {
+                        "mode": "enum",
+                        "param": "reasoning.effort",
+                        "options": ["low", "medium", "high"],
+                        "default_option": "medium",
+                        "disable_supported": True,
+                    },
+                }
+            ),
         )
+
         merged = service.get_merged_capabilities(model, provider)
+
+        assert merged.reasoning is True
         assert merged.reasoning_controls is not None
         assert merged.reasoning_controls.mode.value == "enum"
         assert merged.reasoning_controls.options == ["low", "medium", "high"]
+
+    def test_get_merged_capabilities_inferred_local_fallback_does_not_override_explicit_model_metadata(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        with open(keys_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"providers": {}}, f)
+
+        service = ModelConfigService(config_path, keys_path)
+        model = Model(
+            id="llm/qwen3-0.6b-q8_0.gguf",
+            name="Qwen3",
+            provider_id="local_gguf",
+            enabled=True,
+            capabilities=ModelCapabilities(reasoning=False, function_calling=False),
+        )
+        provider = Provider(
+            id="local_gguf",
+            name="Local GGUF",
+            type=ProviderType.BUILTIN,
+            protocol=ApiProtocol.LOCAL_GGUF,
+            base_url="local://gguf",
+            enabled=True,
+            default_capabilities=ModelCapabilities(reasoning=False, function_calling=False),
+        )
+
+        merged = service.get_merged_capabilities(model, provider)
+
+        assert merged.reasoning is False
+        assert merged.function_calling is False
+        assert merged.reasoning_controls is None
+
+    def test_get_merged_capabilities_clears_provider_reasoning_controls_when_reasoning_disabled(self, temp_config_dir):
+        config_path = temp_config_dir / "models_config.yaml"
+        keys_path = temp_config_dir / "keys_config.yaml"
+        with open(keys_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"providers": {}}, f)
+
+        service = ModelConfigService(config_path, keys_path)
+        model = Model(
+            id="gpt-4o-mini",
+            name="GPT-4o Mini",
+            provider_id="openai",
+            enabled=True,
+            capabilities=ModelCapabilities(reasoning=False),
+        )
+        provider = Provider(
+            id="openai",
+            name="OpenAI",
+            type=ProviderType.BUILTIN,
+            protocol=ApiProtocol.OPENAI,
+            base_url="https://api.openai.com/v1",
+            enabled=True,
+            default_capabilities=ModelCapabilities.model_validate(
+                {
+                    "reasoning": True,
+                    "reasoning_controls": {
+                        "mode": "enum",
+                        "param": "reasoning.effort",
+                        "options": ["low", "medium", "high"],
+                        "default_option": "medium",
+                        "disable_supported": True,
+                    },
+                }
+            ),
+        )
+
+        merged = service.get_merged_capabilities(model, provider)
+        assert merged.reasoning is False
+        assert merged.reasoning_controls is None
 
     @pytest.mark.asyncio
     async def test_sync_builtin_sets_provider_interleaved_false_for_model_level_providers(self):
@@ -826,8 +1039,8 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_sync_builtin_backfills_stale_model_interleaved_false(self):
-        test_dir = Path(".tmp") / "test_sync_builtin_backfills_stale_model_interleaved_false"
+    async def test_sync_builtin_preserves_explicit_model_interleaved_false_for_non_local_models(self):
+        test_dir = Path(".tmp") / "test_sync_builtin_preserves_explicit_model_interleaved_false_for_non_local_models"
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         config_path = test_dir / "models_config.yaml"
@@ -872,7 +1085,7 @@ class TestModelConfigService:
             model = await service.get_model("deepseek-chat")
             assert model is not None
             assert model.capabilities is not None
-            assert model.capabilities.requires_interleaved_thinking is True
+            assert model.capabilities.requires_interleaved_thinking is False
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

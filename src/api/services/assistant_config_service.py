@@ -35,11 +35,10 @@ class AssistantConfigService:
             config_path: Configuration file path, defaults to project root assistants_config.yaml
             model_service: Model configuration service instance for validation
         """
-        self.defaults_path: Optional[Path] = None
+        self.defaults_path: Optional[Path] = config_defaults_dir() / "assistants_config.yaml"
         self.legacy_paths: list[Path] = []
 
         if config_path is None:
-            self.defaults_path = config_defaults_dir() / "assistants_config.yaml"
             self.config_path = config_local_dir() / "assistants_config.yaml"
             self.legacy_paths = [legacy_config_dir() / "assistants_config.yaml"]
         else:
@@ -67,114 +66,11 @@ class AssistantConfigService:
 
     def _get_default_config(self) -> dict:
         """Get default configuration"""
-        return {
-            "default": "general-assistant",
-            "assistants": [
-                {
-                    "id": "general-assistant",
-                    "name": "General Assistant",
-                    "description": "General purpose conversational AI",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": "You are a helpful AI assistant. Provide clear, accurate, and friendly responses.",
-                    "temperature": 0.7,
-                    "max_tokens": 4000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "code-assistant",
-                    "name": "Code Assistant",
-                    "description": "Specialized in programming and code analysis",
-                    "model_id": "deepseek:deepseek-coder",
-                    "system_prompt": "You are an expert programming assistant. Help users with code, debugging, and technical questions. Provide clear explanations and working code examples.",
-                    "temperature": 0.3,
-                    "max_tokens": 8000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "creative-writer",
-                    "name": "Creative Writer",
-                    "description": "Creative writing and storytelling",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": "You are a creative writing assistant. Help users with storytelling, creative writing, and imaginative content. Be creative and engaging.",
-                    "temperature": 0.9,
-                    "max_tokens": 4000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "novel-architect",
-                    "name": "Novel Architect",
-                    "description": "Builds charter and world bible for fiction projects",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": (
-                        "You are a senior fiction architect. Build coherent novel foundations with "
-                        "clear constraints, world rules, and implementation-ready structure."
-                    ),
-                    "temperature": 0.7,
-                    "max_tokens": 6000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "novel-plotter",
-                    "name": "Novel Plotter",
-                    "description": "Designs plot arcs and chapter cards",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": (
-                        "You design robust story structures with escalating conflict, clear beats, "
-                        "and chapter-level planning."
-                    ),
-                    "temperature": 0.75,
-                    "max_tokens": 6000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "novel-drafter",
-                    "name": "Novel Drafter",
-                    "description": "Drafts chapter prose from planning inputs",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": (
-                        "You draft polished fiction prose that follows provided plot and character "
-                        "constraints while maintaining narrative momentum."
-                    ),
-                    "temperature": 0.85,
-                    "max_tokens": 8000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "novel-continuity-reviewer",
-                    "name": "Novel Continuity Reviewer",
-                    "description": "Checks consistency across world, character, and timeline",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": (
-                        "You are a strict continuity reviewer. Detect contradictions with direct evidence "
-                        "and provide actionable rewrite instructions."
-                    ),
-                    "temperature": 0.2,
-                    "max_tokens": 5000,
-                    "enabled": True,
-                    "memory_enabled": False
-                },
-                {
-                    "id": "novel-style-editor",
-                    "name": "Novel Style Editor",
-                    "description": "Improves tone, rhythm, and dialogue consistency",
-                    "model_id": "deepseek:deepseek-chat",
-                    "system_prompt": (
-                        "You are a style editor for long-form fiction. Improve readability, rhythm, and "
-                        "voice consistency while preserving intent."
-                    ),
-                    "temperature": 0.5,
-                    "max_tokens": 6000,
-                    "enabled": True,
-                    "memory_enabled": False
-                }
-            ]
-        }
+        if self.defaults_path is not None and self.defaults_path.exists():
+            with open(self.defaults_path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {"default": "", "assistants": []}
+
+        return {"default": "", "assistants": []}
 
     async def load_config(self) -> AssistantsConfig:
         """Load configuration file"""

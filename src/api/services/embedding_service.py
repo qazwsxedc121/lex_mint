@@ -8,7 +8,6 @@ import logging
 import math
 import importlib
 from threading import Lock
-import yaml
 from pathlib import Path
 from typing import Any, Optional
 from pydantic import SecretStr
@@ -194,13 +193,9 @@ class EmbeddingService:
             return self._get_api_embeddings(model, config.api_base_url, config.api_key, config.batch_size)
 
     def _get_provider_base_url_sync(self, provider_id: str) -> Optional[str]:
-        """Read provider base_url directly from models_config.yaml (sync)"""
+        """Read provider base_url from the aggregated split model/provider config."""
         try:
-            config_path = self.model_config_service.config_path
-            if not config_path.exists():
-                return None
-            with open(config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
+            data = self.model_config_service._load_split_config()
             for provider in data.get('providers', []):
                 if provider.get('id') == provider_id:
                     return provider.get('base_url')

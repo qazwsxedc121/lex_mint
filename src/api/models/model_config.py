@@ -126,6 +126,28 @@ class ModelsConfig(BaseModel):
     )
 
 
+class ProviderConfigFile(BaseModel):
+    """Persisted provider definitions and local provider overrides."""
+
+    providers: List[Provider] = Field(default_factory=list)
+
+
+class ModelCatalogFile(BaseModel):
+    """Persisted model catalog entries."""
+
+    models: List[Model] = Field(default_factory=list)
+
+
+class AppDefaultsConfig(BaseModel):
+    """Persisted application defaults related to model/provider selection."""
+
+    default: DefaultConfig
+    reasoning_supported_patterns: List[str] = Field(
+        default_factory=list,
+        description="Supported reasoning pattern hints exposed by the app",
+    )
+
+
 class ProviderCreate(BaseModel):
     """创建提供商请求"""
     id: str = Field(..., description="提供商唯一标识")
