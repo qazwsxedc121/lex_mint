@@ -1,4 +1,7 @@
 import type {
+  Assistant,
+} from '../../../types/assistant';
+import type {
   ChatTargetType,
   CostInfo,
   GroupChatMode,
@@ -73,4 +76,56 @@ export function buildChatSessionSnapshot(
     groupMode: session.group_mode || (session.group_assistants && session.group_assistants.length >= 2 ? 'round_robin' : null),
     groupTimeline: [],
   };
+}
+
+export function enrichGroupAssistantMessages(
+  messages: Message[],
+  assistants: Assistant[],
+): Message[] {
+  const assistantMap = new Map(assistants.map((assistant) => [assistant.id, assistant]));
+
+  return messages.map((msg) => {
+    if (msg.role !== 'assistant' || !msg.assistant_id) {
+      return msg;
+    }
+
+    const modelParticipantMatch = msg.assistant_id.match(/^model::(.+)$/);
+    if (modelParticipantMatch) {
+      const modelCompositeId = modelParticipantMatch[1];
+      return {
+        ...msg,
+        assistant_name: msg.assistant_name || modelCompositeId,
+      };
+    }
+
+    const assistant = assistantMap.get(msg.assistant_id);
+    if (!assistant) {
+      return msg;
+    }
+
+    return {
+      ...msg,
+      assistant_name: msg.assistant_name || assistant.name,
+      assistant_icon: msg.assistant_icon || assistant.icon,
+    };
+  });
+}
+
+export function mergeCompareResponses(
+  messages: Message[],
+  compareData?: SessionDetail['compare_data'],
+): Message[] {
+  if (!compareData) {
+    return messages;
+  }
+
+  return messages.map((msg) => {
+    if (msg.role === 'assistant' && msg.message_id && compareData[msg.message_id]) {
+      return {
+        ...msg,
+        compareResponses: compareData[msg.message_id].responses,
+      };
+    }
+    return msg;
+  });
 }
