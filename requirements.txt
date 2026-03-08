@@ -34,3 +34,4 @@ pypdf>=4.0.0
 pymupdf>=1.27.0
 python-docx>=1.0.0
 jieba>=0.42.1
+pytest-asyncio>=0.23.0

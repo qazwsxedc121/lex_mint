@@ -65,65 +65,40 @@ class MemoryService:
     @staticmethod
     def _split_candidate_units(text: str) -> List[str]:
         cleaned = (text or "").replace("\r", "\n")
-        parts = re.split(r"(?<=[.!?。！？;；])\s+|\n+", cleaned)
+        parts = re.split(r"(?<=[.!?\u3002\uff01\uff1f])\s+|\n+", cleaned)
         return [part.strip(" -\t") for part in parts if part and part.strip(" -\t")]
 
-    @staticmethod
-    def _looks_like_instruction(unit: str) -> bool:
-        lowered = unit.lower()
-        instruction_markers = [
-            "please respond",
-            "please reply",
-            "please use",
-            "please write",
-            "please keep",
-            "respond in ",
-            "reply in ",
-            "write in ",
-            "use concise",
-            "use bullet",
-            "call me ",
-            "refer to me as",
-            "please call me",
-            "avoid ",
-            "请用",
-            "请使用",
-            "请以",
-            "请回复",
-            "请回答",
-            "请叫我",
-            "称呼我",
-            "请尽量",
-            "请保持",
-            "以后请",
-            "记住",
-        ]
-        return any(marker in lowered for marker in instruction_markers)
-
-    @staticmethod
-    def _looks_like_fact(unit: str) -> bool:
-        lowered = unit.lower()
-        fact_markers = [
-            "i am ",
-            "i'm ",
-            "my name is ",
-            "i work as ",
-            "i work at ",
-            "i live in ",
-            "my role is ",
-            "my timezone is ",
-            "我是",
-            "我叫",
-            "我的名字是",
-            "我住在",
-            "我在",
-            "我的工作是",
-        ]
-        return any(marker in lowered for marker in fact_markers)
 
     @staticmethod
     def _candidate_priority(layer: str) -> int:
         return 0 if layer == "instruction" else 1
+
+    @staticmethod
+    def _matches_any_marker(unit: str, markers: Sequence[str]) -> bool:
+        lowered = unit.lower()
+        return any(str(marker).strip().lower() in lowered for marker in markers if str(marker).strip())
+
+    def _matches_configured_instruction(self, unit: str) -> bool:
+        markers = self.memory_config_service.config.extraction.instruction_markers
+        return self._matches_any_marker(unit, markers)
+
+    def _matches_configured_fact(self, unit: str) -> bool:
+        markers = self.memory_config_service.config.extraction.fact_markers
+        return self._matches_any_marker(unit, markers)
+
+    def _configured_layer_extraction_scores(self, layer: str) -> Tuple[float, float]:
+        extraction_cfg = self.memory_config_service.config.extraction
+        if layer == "instruction":
+            return (
+                float(extraction_cfg.instruction_confidence),
+                float(extraction_cfg.instruction_importance),
+            )
+        if layer == "fact":
+            return (
+                float(extraction_cfg.fact_confidence),
+                float(extraction_cfg.fact_importance),
+            )
+        return 0.7, 0.6
 
     def _resolve_extraction_target(
         self,
@@ -864,14 +839,12 @@ class MemoryService:
             layer: Optional[str] = None
             confidence = 0.7
             importance = 0.6
-            if self._looks_like_instruction(normalized_unit):
+            if self._matches_configured_instruction(normalized_unit):
                 layer = "instruction"
-                confidence = 0.92
-                importance = 0.75
-            elif self._looks_like_fact(normalized_unit):
+                confidence, importance = self._configured_layer_extraction_scores(layer)
+            elif self._matches_configured_fact(normalized_unit):
                 layer = "fact"
-                confidence = 0.82
-                importance = 0.65
+                confidence, importance = self._configured_layer_extraction_scores(layer)
 
             if layer is None:
                 continue

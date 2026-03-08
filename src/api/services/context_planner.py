@@ -2,25 +2,37 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 
-_APPROX_CHARS_PER_TOKEN = 4
-_HISTORY_FLOOR_RATIO = 0.35
-_SUMMARY_MAX_RATIO = 0.15
-_OPTIONAL_SEGMENT_RATIOS: Dict[str, float] = {
-    "memory": 0.16,
-    "rag": 0.18,
-    "webpage": 0.10,
-    "search": 0.10,
-    "sources": 0.08,
-}
-_MIN_SEGMENT_TOKENS = 24
-_MIN_SUMMARY_TOKENS = 32
-_MIN_SEGMENT_TOKENS_BY_NAME: Dict[str, int] = {
-    "sources": 32,
-}
+def _default_optional_segment_ratios() -> Dict[str, float]:
+    return {
+        "memory": 0.16,
+        "rag": 0.18,
+        "webpage": 0.10,
+        "search": 0.10,
+        "sources": 0.08,
+    }
+
+
+def _default_min_segment_tokens_by_name() -> Dict[str, int]:
+    return {
+        "sources": 32,
+    }
+
+
+@dataclass(frozen=True)
+class ContextPlannerPolicy:
+    approx_chars_per_token: int = 4
+    history_floor_ratio: float = 0.35
+    min_history_floor_tokens: int = 128
+    summary_max_ratio: float = 0.15
+    min_summary_tokens: int = 32
+    optional_segment_ratios: Dict[str, float] = field(default_factory=_default_optional_segment_ratios)
+    default_optional_segment_ratio: float = 0.08
+    min_segment_tokens: int = 24
+    min_segment_tokens_by_name: Dict[str, int] = field(default_factory=_default_min_segment_tokens_by_name)
 
 
 @dataclass(frozen=True)
@@ -64,15 +76,17 @@ class ContextPlan:
 class ContextPlanner:
     """Plans prompt assembly before the final LangChain safety trim."""
 
-    @staticmethod
-    def _estimate_text_tokens(text: Optional[str]) -> int:
+    def __init__(self, *, policy: Optional[ContextPlannerPolicy] = None):
+        self.policy = policy or ContextPlannerPolicy()
+
+    def _estimate_text_tokens(self, text: Optional[str]) -> int:
         cleaned = (text or "").strip()
         if not cleaned:
             return 0
-        return max(1, len(cleaned) // _APPROX_CHARS_PER_TOKEN)
+        chars_per_token = max(1, int(self.policy.approx_chars_per_token or 1))
+        return max(1, len(cleaned) // chars_per_token)
 
-    @classmethod
-    def _estimate_message_tokens(cls, messages: Sequence[Dict[str, Any]]) -> int:
+    def _estimate_message_tokens(self, messages: Sequence[Dict[str, Any]]) -> int:
         total = 0
         for msg in messages:
             role = msg.get("role", "")
@@ -84,22 +98,22 @@ class ContextPlanner:
                 if isinstance(completion_tokens, int) and completion_tokens > 0:
                     total += completion_tokens
                     continue
-            total += cls._estimate_text_tokens(str(msg.get("content") or ""))
+            total += self._estimate_text_tokens(str(msg.get("content") or ""))
         return total
 
-    @classmethod
-    def _truncate_text_to_tokens(cls, text: Optional[str], max_tokens: int) -> str:
+    def _truncate_text_to_tokens(self, text: Optional[str], max_tokens: int) -> str:
         cleaned = (text or "").strip()
         if not cleaned:
             return ""
         if max_tokens <= 0:
             return ""
 
-        estimated = cls._estimate_text_tokens(cleaned)
+        estimated = self._estimate_text_tokens(cleaned)
         if estimated <= max_tokens:
             return cleaned
 
-        max_chars = max(1, max_tokens * _APPROX_CHARS_PER_TOKEN)
+        chars_per_token = max(1, int(self.policy.approx_chars_per_token or 1))
+        max_chars = max(1, max_tokens * chars_per_token)
         if len(cleaned) <= max_chars:
             return cleaned
         if max_chars <= 3:
@@ -121,9 +135,8 @@ class ContextPlanner:
         start_index = human_indexes[-max_rounds]
         return list(messages[start_index:])
 
-    @classmethod
     def _plan_segment(
-        cls,
+        self,
         *,
         name: str,
         kind: str,
@@ -131,7 +144,7 @@ class ContextPlanner:
         max_tokens: int,
         required: bool = False,
     ) -> PlannedSegment:
-        estimated_before = cls._estimate_text_tokens(content)
+        estimated_before = self._estimate_text_tokens(content)
         cleaned = (content or "").strip()
         if not cleaned:
             return PlannedSegment(
@@ -143,7 +156,7 @@ class ContextPlanner:
                 drop_reason="empty",
             )
 
-        min_tokens = _MIN_SEGMENT_TOKENS_BY_NAME.get(name, _MIN_SEGMENT_TOKENS)
+        min_tokens = self.policy.min_segment_tokens_by_name.get(name, self.policy.min_segment_tokens)
         if max_tokens < min_tokens and not required:
             return PlannedSegment(
                 name=name,
@@ -154,8 +167,8 @@ class ContextPlanner:
                 drop_reason="budget_exhausted",
             )
 
-        truncated_content = cls._truncate_text_to_tokens(cleaned, max_tokens)
-        estimated_after = cls._estimate_text_tokens(truncated_content)
+        truncated_content = self._truncate_text_to_tokens(cleaned, max_tokens)
+        estimated_after = self._estimate_text_tokens(truncated_content)
         return PlannedSegment(
             name=name,
             kind=kind,
@@ -202,8 +215,15 @@ class ContextPlanner:
             required=True,
         )
 
-        history_floor = min(history_tokens, max(128, int(budget * _HISTORY_FLOOR_RATIO))) if history_tokens else 0
-        summary_budget = max(_MIN_SUMMARY_TOKENS, int(budget * _SUMMARY_MAX_RATIO))
+        history_floor = (
+            min(
+                history_tokens,
+                max(self.policy.min_history_floor_tokens, int(budget * self.policy.history_floor_ratio)),
+            )
+            if history_tokens
+            else 0
+        )
+        summary_budget = max(self.policy.min_summary_tokens, int(budget * self.policy.summary_max_ratio))
         summary_segment = self._plan_segment(
             name="summary",
             kind="summary",
@@ -241,7 +261,10 @@ class ContextPlanner:
                 )
                 continue
 
-            cap_tokens = max(_MIN_SEGMENT_TOKENS, int(budget * _OPTIONAL_SEGMENT_RATIOS.get(name, 0.08)))
+            cap_tokens = max(
+                self.policy.min_segment_tokens,
+                int(budget * self.policy.optional_segment_ratios.get(name, self.policy.default_optional_segment_ratio)),
+            )
             allowance = min(cap_tokens, remaining_pool) if remaining_pool > 0 else 0
             segment = self._plan_segment(
                 name=name,
