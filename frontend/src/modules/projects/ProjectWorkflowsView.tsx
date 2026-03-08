@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BoltIcon } from '@heroicons/react/24/outline';
+import { BoltIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import {
@@ -30,6 +30,14 @@ const formatRunTime = (value: string): string => {
   return date.toLocaleString();
 };
 
+const truncateRunError = (value: string, maxLength = 140): string => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1)}...`;
+};
+
 export const ProjectWorkflowsView: React.FC = () => {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
@@ -55,6 +63,7 @@ export const ProjectWorkflowsView: React.FC = () => {
   const [recentRunsLoading, setRecentRunsLoading] = useState(false);
   const [recentRunsError, setRecentRunsError] = useState<string | null>(null);
   const [launchContext, setLaunchContext] = useState<ProjectWorkflowLaunchContext | null>(null);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const launchAppliedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -306,20 +315,27 @@ export const ProjectWorkflowsView: React.FC = () => {
 
   return (
     <div data-name="project-workflows-view" className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50 px-4 py-4 dark:bg-gray-950">
-      <div className="mb-4 flex items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900">
-        <div className="rounded-xl bg-amber-50 p-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="rounded-xl bg-amber-50 p-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
           <BoltIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('workspace.workflows.title')}</h2>
+            <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
+              {t('workspace.workflows.description', { projectName: currentProject?.name || 'project' })}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('workspace.workflows.title')}</h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            {t('workspace.workflows.description', { projectName: currentProject?.name || 'project' })}
-          </p>
-        </div>
+        {currentProject && (
+          <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+            {currentProject.name}
+          </div>
+        )}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-h-0 overflow-y-auto">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_300px]">
+        <div className="min-h-0 overflow-y-auto pr-1">
           <ProjectWorkflowPanel
             variant="page"
             projectId={projectId}
@@ -352,12 +368,19 @@ export const ProjectWorkflowsView: React.FC = () => {
         <aside className="min-h-0 overflow-hidden">
           <section
             data-name="project-workflows-recent-runs"
-            className="flex h-full min-h-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+            className="flex h-full min-h-[260px] flex-col rounded-2xl border border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95"
           >
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {t('workspace.workflows.recentRunsTitle')}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {t('workspace.workflows.recentRunsTitle')}
+                </h3>
+                {recentRuns.length > 0 && (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+                    {recentRuns.length}
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => void loadRecentRuns()}
@@ -380,6 +403,8 @@ export const ProjectWorkflowsView: React.FC = () => {
                 <div className="space-y-2">
                   {recentRuns.map((run) => {
                     const workflowName = run.workflow_id ? workflowNameMap.get(run.workflow_id) : null;
+                    const isExpanded = expandedRunId === run.run_id;
+                    const hasError = Boolean(run.error?.trim());
                     const statusClass =
                       run.status === 'succeeded'
                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
@@ -389,23 +414,37 @@ export const ProjectWorkflowsView: React.FC = () => {
                     return (
                       <div
                         key={run.run_id}
-                        className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/60"
+                        className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-950/60"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                               {workflowName || run.workflow_id || t('workspace.workflows.unknownWorkflow')}
                             </div>
-                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {formatRunTime(run.created_at)}
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <span>{formatRunTime(run.created_at)}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
+                                {run.status}
+                              </span>
                             </div>
                           </div>
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
-                            {run.status}
-                          </span>
+                          {hasError && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRunId(isExpanded ? null : run.run_id)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                              title={run.error || undefined}
+                            >
+                              {isExpanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+                            </button>
+                          )}
                         </div>
                         {run.error && (
-                          <div className="mt-2 text-xs text-red-600 dark:text-red-300">{run.error}</div>
+                          <div
+                            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-600 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300"
+                          >
+                            {isExpanded ? run.error : truncateRunError(run.error)}
+                          </div>
                         )}
                       </div>
                     );

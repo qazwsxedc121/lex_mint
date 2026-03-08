@@ -56,7 +56,7 @@ export const ProjectHomeView: React.FC = () => {
   };
 
   return (
-    <div data-name="project-home-view" className="flex h-full min-h-0 flex-col overflow-auto bg-gray-50 px-4 py-4 dark:bg-gray-950">
+    <div data-name="project-home-view" className="flex h-full min-h-0 w-full flex-1 flex-col overflow-auto bg-gray-50 px-4 py-4 dark:bg-gray-950">
       {!projectId && (
         <div className="mb-4 border-b border-gray-200 pb-3 dark:border-gray-800">
           <div className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-medium text-blue-700 shadow-sm ring-1 ring-blue-100 dark:bg-gray-900 dark:text-blue-200 dark:ring-blue-900/40">

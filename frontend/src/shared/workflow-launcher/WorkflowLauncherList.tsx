@@ -23,11 +23,13 @@ interface WorkflowLauncherListProps {
   onToggleFavorite: (workflowId: string) => void;
   renderItemActions?: (workflow: Workflow) => React.ReactNode;
   emptyMessage?: string;
+  itemLayout?: 'default' | 'dense';
 }
 
 const SEARCH_DEBOUNCE_MS = 150;
 const COMPACT_LIST_MAX_HEIGHT_CLASS = 'max-h-64 sm:max-h-72';
 const DEFAULT_LIST_MAX_HEIGHT_CLASS = 'max-h-96';
+const DENSE_LIST_MAX_HEIGHT_CLASS = 'max-h-[360px]';
 
 const buildSections = (
   workflows: Workflow[],
@@ -89,6 +91,7 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
   onToggleFavorite,
   renderItemActions,
   emptyMessage,
+  itemLayout = 'default',
 }) => {
   const { t } = useTranslation(namespace);
   const [searchInput, setSearchInput] = React.useState('');
@@ -147,9 +150,12 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
 
   const noMatch = !loading && workflows.length > 0 && visibleWorkflows.length === 0;
   const isEmpty = !loading && workflows.length === 0;
-  const listClassName = compact
-    ? `space-y-1.5 overflow-y-auto overscroll-contain pr-1 ${COMPACT_LIST_MAX_HEIGHT_CLASS}`
-    : `space-y-1 overflow-y-auto overscroll-contain pr-1 ${DEFAULT_LIST_MAX_HEIGHT_CLASS}`;
+  const isDenseLayout = itemLayout === 'dense';
+  const listClassName = isDenseLayout
+    ? `space-y-1 overflow-y-auto overscroll-contain pr-1 ${DENSE_LIST_MAX_HEIGHT_CLASS}`
+    : compact
+      ? `space-y-1.5 overflow-y-auto overscroll-contain pr-1 ${COMPACT_LIST_MAX_HEIGHT_CLASS}`
+      : `space-y-1 overflow-y-auto overscroll-contain pr-1 ${DEFAULT_LIST_MAX_HEIGHT_CLASS}`;
 
   const renderTabs = () => (
     <div className="flex items-center gap-1 overflow-x-auto" data-name="workflow-launcher-tabs">
@@ -223,14 +229,18 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
                         <div
                           data-name={`workflow-launcher-item-${workflow.id}`}
                           className={`rounded-md border ${
-                            compact ? 'px-2 py-1.5' : 'px-2.5 py-2'
+                            isDenseLayout
+                              ? 'px-3 py-2'
+                              : compact
+                                ? 'px-2 py-1.5'
+                                : 'px-2.5 py-2'
                           } ${
                             isSelected
                               ? 'border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/30'
                               : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40'
                           }`}
                         >
-                          <div className="flex items-start gap-2">
+                          <div className={`flex gap-2 ${isDenseLayout ? 'items-center justify-between' : 'items-start'}`}>
                             <button
                               type="button"
                               onClick={() => {
@@ -241,18 +251,67 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
                               disabled={selectionLocked}
                               className={`min-w-0 flex-1 text-left ${selectionLocked ? 'cursor-not-allowed opacity-70' : ''}`}
                             >
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                                  {workflow.name}
-                                </span>
-                                {!compact && workflow.is_system && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                    {t('workflowLauncher.badge.system')}
+                              <div className={`min-w-0 ${isDenseLayout ? 'space-y-0.5' : ''}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                                    {workflow.name}
                                   </span>
+                                  {!compact && !isDenseLayout && workflow.is_system && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                      {t('workflowLauncher.badge.system')}
+                                    </span>
+                                  )}
+                                  {!compact && !isDenseLayout && (
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                        workflow.enabled
+                                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                          : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                      }`}
+                                    >
+                                      {workflow.enabled
+                                        ? t('workflowLauncher.badge.enabled')
+                                        : t('workflowLauncher.badge.disabled')}
+                                    </span>
+                                  )}
+                                </div>
+                                {isDenseLayout ? (
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {workflow.description && (
+                                      <div className="min-w-0 truncate text-xs text-gray-600 dark:text-gray-300">
+                                        {workflow.description}
+                                      </div>
+                                    )}
+                                    <div className="hidden min-w-0 truncate text-[11px] text-gray-400 dark:text-gray-500 xl:block">
+                                      {workflow.id}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {!compact && (
+                                      <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                                        {workflow.id}
+                                      </div>
+                                    )}
+                                    {!compact && workflow.description && (
+                                      <div className="mt-1 line-clamp-2 text-xs text-gray-600 dark:text-gray-300">
+                                        {workflow.description}
+                                      </div>
+                                    )}
+                                  </>
                                 )}
-                                {!compact && (
+                              </div>
+                            </button>
+
+                            <div className={`flex shrink-0 ${isDenseLayout ? 'items-center gap-1.5' : 'items-start gap-2'}`}>
+                              {isDenseLayout && workflow.is_system && (
+                                <span className="rounded px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                  {t('workflowLauncher.badge.system')}
+                                </span>
+                              )}
+                              {isDenseLayout && (
                                 <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  className={`rounded px-1.5 py-0.5 text-[10px] ${
                                     workflow.enabled
                                       ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
                                       : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
@@ -262,45 +321,34 @@ export const WorkflowLauncherList: React.FC<WorkflowLauncherListProps> = ({
                                     ? t('workflowLauncher.badge.enabled')
                                     : t('workflowLauncher.badge.disabled')}
                                 </span>
+                              )}
+
+                              <button
+                                type="button"
+                                data-name={`workflow-launcher-favorite-${workflow.id}`}
+                                onClick={() => onToggleFavorite(workflow.id)}
+                                title={
+                                  isFavorite
+                                    ? t('workflowLauncher.favorite.remove')
+                                    : t('workflowLauncher.favorite.add')
+                                }
+                                className={`rounded p-1 ${
+                                  isFavorite
+                                    ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                                    : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                }`}
+                              >
+                                {isFavorite ? (
+                                  <StarSolidIcon className="h-4 w-4" />
+                                ) : (
+                                  <StarOutlineIcon className="h-4 w-4" />
                                 )}
-                              </div>
-                              {!compact && (
-                                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
-                                  {workflow.id}
-                                </div>
-                              )}
-                              {!compact && workflow.description && (
-                                <div className="mt-1 text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
-                                  {workflow.description}
-                                </div>
-                              )}
-                            </button>
+                              </button>
 
-                            <button
-                              type="button"
-                              data-name={`workflow-launcher-favorite-${workflow.id}`}
-                              onClick={() => onToggleFavorite(workflow.id)}
-                              title={
-                                isFavorite
-                                  ? t('workflowLauncher.favorite.remove')
-                                  : t('workflowLauncher.favorite.add')
-                              }
-                              className={`rounded p-1 ${
-                                isFavorite
-                                  ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                                  : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                              }`}
-                            >
-                              {isFavorite ? (
-                                <StarSolidIcon className="h-4 w-4" />
-                              ) : (
-                                <StarOutlineIcon className="h-4 w-4" />
-                              )}
-                            </button>
-
-                            {renderItemActions ? (
-                              <div className="flex-shrink-0">{renderItemActions(workflow)}</div>
-                            ) : null}
+                              {renderItemActions ? (
+                                <div className="flex-shrink-0">{renderItemActions(workflow)}</div>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                       </li>
