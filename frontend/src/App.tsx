@@ -21,8 +21,8 @@ import {
   ModelsEditPage,
   ProvidersCreatePage,
   ProvidersEditPage,
-  KnowledgeBasesCreatePage,
 } from './modules/settings/CrudPages';
+import { KnowledgeBaseCreatePage } from './modules/settings/KnowledgeBaseCreatePage';
 import { KnowledgeBaseEditPage } from './modules/settings/KnowledgeBaseEditPage';
 import { SearchSettings } from './modules/settings/SearchSettings';
 import { WebpageSettings } from './modules/settings/WebpageSettings';
@@ -75,7 +75,7 @@ function App() {
             <Route path="providers/new" element={<ProvidersCreatePage />} />
             <Route path="providers/:providerId" element={<ProvidersEditPage />} />
             <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
-            <Route path="knowledge-bases/new" element={<KnowledgeBasesCreatePage />} />
+            <Route path="knowledge-bases/new" element={<KnowledgeBaseCreatePage />} />
             <Route path="knowledge-bases/:kbId" element={<KnowledgeBaseEditPage />} />
             <Route path="prompt-templates" element={<PromptTemplatesPage />} />
             <Route path="memory" element={<MemorySettings />} />
