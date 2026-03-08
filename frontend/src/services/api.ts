@@ -14,6 +14,7 @@ export {
   createProject,
   deleteProject,
   getProject,
+  getToolCatalog,
   listProjects,
   updateProject,
 } from './projectApi';
@@ -1124,4 +1125,3 @@ export async function sendCompareStream(
 }
 
 export default api;
-

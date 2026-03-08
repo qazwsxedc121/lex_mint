@@ -211,7 +211,7 @@ test.describe('Workflows launcher', () => {
       projectId = created.projectId;
       tempRoot = created.tempRoot;
 
-      await page.goto(`/projects/${projectId}`);
+      await page.goto(`/projects/${projectId}/files`);
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
       await page.locator('[data-name="file-tree"]').getByText(created.topFileName, { exact: true }).click();
       await page.locator('.cm-content').click();

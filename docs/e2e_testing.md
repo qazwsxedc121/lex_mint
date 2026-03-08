@@ -66,4 +66,3 @@ npx playwright test --ui
 # Open HTML report
 npx playwright show-report
 ```
-

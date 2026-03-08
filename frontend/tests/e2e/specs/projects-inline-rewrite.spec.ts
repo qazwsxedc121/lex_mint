@@ -212,7 +212,9 @@ test.describe('Projects inline rewrite', () => {
       await expect(projectCard).toBeVisible();
       await projectCard.click();
 
-      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/project$`));
+      await page.getByRole('link', { name: 'Files' }).click();
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/files$`));
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
 
       const topFileNode = page.locator('[data-name="file-tree"]').getByText(created.topFileName, { exact: true });
@@ -326,7 +328,7 @@ test.describe('Projects inline rewrite', () => {
         },
       ]);
 
-      await page.goto(`/projects/${projectId}`);
+      await page.goto(`/projects/${projectId}/files`);
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
       const topFileNode = page.locator('[data-name="file-tree"]').getByText(created.topFileName, { exact: true });
       await expect(topFileNode).toBeVisible();
@@ -454,7 +456,7 @@ test.describe('Projects inline rewrite', () => {
         },
       ]);
 
-      await page.goto(`/projects/${projectId}`);
+      await page.goto(`/projects/${projectId}/files`);
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
       const topFileNode = page.locator('[data-name="file-tree"]').getByText(created.topFileName, { exact: true });
       await expect(topFileNode).toBeVisible();

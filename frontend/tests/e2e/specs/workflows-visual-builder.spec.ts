@@ -41,7 +41,7 @@ test.describe('Workflows visual builder', () => {
         {
           id: 'condition_a',
           type: 'condition',
-          expression: '{{inputs.input}}',
+          expression: 'inputs.input',
           true_next_id: 'llm_a',
           false_next_id: 'end_b',
         },
@@ -131,7 +131,14 @@ test.describe('Workflows visual builder', () => {
       input_schema: [{ key: 'target_node', type: 'node', required: true, default: 'end_b' }],
       entry_node_id: 'start_a',
       nodes: [
-        { id: 'start_a', type: 'start', next_id: 'llm_a' },
+        { id: 'start_a', type: 'start', next_id: 'condition_a' },
+        {
+          id: 'condition_a',
+          type: 'condition',
+          expression: "inputs.target_node == 'end_b'",
+          true_next_id: 'end_b',
+          false_next_id: 'llm_a',
+        },
         {
           id: 'llm_a',
           type: 'llm',
@@ -155,7 +162,7 @@ test.describe('Workflows visual builder', () => {
       await expect(page.locator('[data-name="workflow-input-schema-type-0"]')).toHaveValue('node');
       await expect(page.locator('[data-name="workflow-input-schema-default-0"]')).toHaveValue('end_b');
 
-      await page.fill('[data-name="workflow-node-id-3"]', 'end_renamed');
+      await page.fill('[data-name="workflow-node-id-4"]', 'end_renamed');
       await expect(page.locator('[data-name="workflow-input-schema-default-0"]')).toHaveValue('end_renamed');
       await Promise.all([
         page.waitForResponse((response) => {

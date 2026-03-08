@@ -109,7 +109,9 @@ async function openProjectAndSelectFile(
   await expect(projectCard).toBeVisible();
   await projectCard.click();
 
-  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/project$`));
+  await page.getByRole('link', { name: 'Files' }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/files$`));
   await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
   await expect(page.locator('[data-name="file-tree"]')).toBeVisible();
 

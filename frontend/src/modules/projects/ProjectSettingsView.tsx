@@ -600,7 +600,7 @@ export const ProjectSettingsView: React.FC = () => {
               )}
 
               {!loadingToolCatalog && !toolCatalogLoadError && groupedToolDefinitions.map(({
-                group,
+                key: group,
                 title_i18n_key,
                 description_i18n_key,
                 tools: items,

@@ -1,12 +1,25 @@
 import { api } from './apiClient';
 
-import type { Project, ProjectCreate, ProjectUpdate } from '../types/project';
+import type {
+  Project,
+  ProjectCreate,
+  ProjectToolCatalogResponse,
+  ProjectUpdate,
+} from '../types/project';
 
 /**
  * Get all projects.
  */
 export async function listProjects(): Promise<Project[]> {
   const response = await api.get<Project[]>('/api/projects');
+  return response.data;
+}
+
+/**
+ * Get the unified tool catalog used by project settings and tool-aware UIs.
+ */
+export async function getToolCatalog(): Promise<ProjectToolCatalogResponse> {
+  const response = await api.get<ProjectToolCatalogResponse>('/api/tools/catalog');
   return response.data;
 }
 

@@ -42,7 +42,9 @@ test.describe('Projects smoke', () => {
       await expect(projectCard).toBeVisible();
       await projectCard.click();
 
-      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/project$`));
+      await page.getByRole('link', { name: 'Files' }).click();
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/files$`));
       await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
       await expect(page.locator('[data-name="file-tree"]')).toBeVisible();
       await expect(page.locator('[data-name="file-viewer-panel"]')).toBeVisible();
@@ -95,19 +97,21 @@ test.describe('Projects smoke', () => {
       await expect(projectCard).toBeVisible();
       await projectCard.click();
 
-      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
-      await expect(page.locator('[data-name="project-explorer-root"]')).toBeVisible();
-      await expect(page.locator('[data-name="file-tree"]')).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/project$`));
+      await page.getByRole('link', { name: 'Search' }).click();
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/search$`));
+      await expect(page.locator('[data-name="project-search-view"]')).toBeVisible();
 
-      const textSearchInput = page.locator('[data-name="file-tree-text-search-input"]');
+      const textSearchInput = page.locator('[data-name="project-search-input"]');
       await expect(textSearchInput).toBeVisible();
       await textSearchInput.fill(searchToken);
 
-      const resultItem = page.locator('[data-name="file-tree-text-search-result-item"]').first();
+      const resultItem = page.locator('[data-name="project-search-result-item"]').first();
       await expect(resultItem).toBeVisible({ timeout: 10000 });
       await expect(resultItem).toContainText('src/app.py');
-      await resultItem.click();
+      await resultItem.locator('button').first().click();
 
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/files$`));
       await expect(page.locator('[data-name="file-viewer-breadcrumb-row"]')).toContainText('src');
       await expect(page.locator('[data-name="file-viewer-breadcrumb-row"]')).toContainText('app.py');
       await expect(page.locator('.cm-content')).toContainText(searchToken);

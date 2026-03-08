@@ -7,6 +7,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Write-Trace {
+    param([string]$Message)
+
+    $timestamp = Get-Date -Format "HH:mm:ss.fff"
+    Write-Host "[kill $timestamp] $Message"
+}
+
 function Resolve-EnvFilePath {
     param([string]$Path)
 
@@ -94,6 +101,13 @@ function Get-PortEntriesFromEnv {
 function Get-ListeningTcpPidMap {
     param([int[]]$TargetPorts)
 
+    $portsLabel = if ($TargetPorts -and $TargetPorts.Count -gt 0) {
+        ($TargetPorts | Sort-Object | ForEach-Object { $_.ToString() }) -join ", "
+    } else {
+        "(all)"
+    }
+    Write-Trace "Scanning listening TCP ports via netstat for: $portsLabel"
+
     $map = @{}
     foreach ($line in (netstat -ano -p tcp)) {
         if ($line -notmatch "^\s*TCP\s+(\S+):(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s*$") {
@@ -125,6 +139,7 @@ function Get-ListeningTcpPidMap {
 function Stop-ProcessTreeByPid {
     param([int]$ProcessId)
 
+    Write-Trace "Inspecting process tree for PID $ProcessId via Win32_Process"
     $all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId
     $childrenMap = @{}
     foreach ($item in $all) {
@@ -149,6 +164,8 @@ function Stop-ProcessTreeByPid {
             $queue.Enqueue($childPid)
         }
     }
+
+    Write-Trace "PID $ProcessId descendant count: $($descendants.Count)"
 
     $rootExists = $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
     if (-not $rootExists -and $descendants.Count -eq 0) {
@@ -201,9 +218,11 @@ function Stop-ProcessTreeByPid {
 }
 
 try {
+    Write-Trace "Starting port cleanup"
     $envResult = Get-PortEntriesFromEnv -Path $EnvFile
     $resolvedEnvFile = $envResult.Path
     $portEntries = $envResult.Entries
+    Write-Trace "Resolved env file: $resolvedEnvFile"
 
     if (-not $portEntries -or $portEntries.Count -eq 0) {
         Write-Host "No PORT-like variables with numeric values found in ${resolvedEnvFile}."
@@ -214,6 +233,7 @@ try {
     Write-Host "Ports from ${resolvedEnvFile}: $($targetPorts -join ', ')"
 
     for ($pass = 1; $pass -le $MaxPasses; $pass++) {
+        Write-Trace "Cleanup pass $pass/$MaxPasses"
         $listenerMap = Get-ListeningTcpPidMap -TargetPorts $targetPorts
         $pidToPorts = @{}
 
@@ -234,6 +254,7 @@ try {
         }
 
         if ($pidToPorts.Count -eq 0) {
+            Write-Trace "No matching PID listeners remain on pass $pass"
             if ($pass -eq 1) {
                 Write-Host "No matching listener processes found."
             } else {
@@ -251,6 +272,7 @@ try {
         foreach ($procId in ($pidToPorts.Keys | Sort-Object)) {
             $ports = @($pidToPorts[$procId]) | Sort-Object
             $portsText = $ports -join ", "
+            Write-Trace "Attempting to stop PID $procId for ports: $portsText"
 
             if ($DryRun) {
                 Write-Host "[DryRun] Would stop PID $procId (ports: $portsText)"
@@ -298,6 +320,7 @@ try {
     Write-Host "All matching listener processes are stopped."
 }
 catch {
+    Write-Trace "Cleanup failed in $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
     Write-Error $_.Exception.Message
     exit 1
 }
