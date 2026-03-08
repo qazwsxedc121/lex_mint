@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from src.agents.simple_llm import (
     call_llm,
     call_llm_stream,
+    _build_context_plan,
     _build_reasoning_decision_payload,
     _get_context_limit,
     _truncate_by_rounds,
@@ -194,6 +195,30 @@ def test_truncate_by_rounds_keeps_last_user_anchored_rounds():
         "u3",
         "a3",
     ]
+
+
+def test_build_context_plan_prefers_segmented_context_and_reports_history():
+    plan = _build_context_plan(
+        messages=[
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ],
+        system_prompt="legacy-system",
+        context_segments={
+            "base_system_prompt": "base-system",
+            "memory_context": "memory",
+            "rag_context": "rag",
+        },
+        summary_content="summary",
+        max_rounds=1,
+        context_budget_tokens=800,
+    )
+
+    assert [segment.name for segment in plan.system_segments[:4]] == ["system", "summary", "memory", "rag"]
+    assert plan.system_segments[0].content == "base-system"
+    assert [msg["content"] for msg in plan.chat_messages] == ["hello", "hi"]
+    history_report = next(segment for segment in plan.segment_reports if segment.name == "history")
+    assert history_report.included is True
 
 
 def test_build_reasoning_decision_payload_contains_effective_adapter_args():

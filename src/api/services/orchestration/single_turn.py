@@ -18,6 +18,7 @@ class SingleTurnSettings:
     model_id: str
     system_prompt: Optional[str]
     max_rounds: Optional[int]
+    context_segments: Dict[str, Optional[str]] = field(default_factory=dict)
     assistant_params: Dict[str, Any] = field(default_factory=dict)
     reasoning_effort: Optional[str] = None
     llm_tools: Optional[List[Any]] = None
@@ -62,6 +63,7 @@ class SingleTurnOrchestrator(BaseOrchestrator):
             session_id=request.session_id,
             model_id=settings.model_id,
             system_prompt=settings.system_prompt,
+            context_segments=settings.context_segments,
             max_rounds=settings.max_rounds,
             reasoning_effort=settings.reasoning_effort,
             file_service=self.file_service,

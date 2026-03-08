@@ -71,6 +71,10 @@ class SourcesEvent(_EventBase):
 class ContextInfoEvent(_EventBase):
     type: str = "context_info"
     context_budget: int
+    context_window: Optional[int] = None
+    estimated_prompt_tokens: Optional[int] = None
+    remaining_tokens: Optional[int] = None
+    segments: Optional[Any] = None
 
 
 class ThinkingDurationEvent(_EventBase):

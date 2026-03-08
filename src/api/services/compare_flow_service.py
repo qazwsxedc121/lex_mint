@@ -133,6 +133,14 @@ class CompareFlowService:
                 model_ids=model_ids,
                 system_prompt=ctx.system_prompt,
                 max_rounds=ctx.max_rounds,
+                context_segments={
+                    "base_system_prompt": ctx.base_system_prompt,
+                    "memory_context": ctx.memory_context,
+                    "webpage_context": ctx.webpage_context,
+                    "search_context": ctx.search_context,
+                    "rag_context": ctx.rag_context,
+                    "structured_source_context": ctx.structured_source_context,
+                },
                 assistant_params=ctx.assistant_params,
                 reasoning_effort=reasoning_effort,
             ),
@@ -195,4 +203,3 @@ class CompareFlowService:
             project_id=project_id,
         )
         return assistant_message_id
-

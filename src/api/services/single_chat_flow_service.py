@@ -55,6 +55,7 @@ class SingleChatRuntime:
     assistant_obj: Optional[AssistantLike]
     model_id: str
     system_prompt: Optional[str]
+    context_segments: Dict[str, Optional[str]]
     assistant_params: Dict[str, Any]
     all_sources: List[SourcePayload]
     max_rounds: Optional[int]
@@ -213,6 +214,14 @@ class SingleChatFlowService:
             assistant_obj=ctx.assistant_obj,
             model_id=ctx.model_id,
             system_prompt=ctx.system_prompt,
+            context_segments={
+                "base_system_prompt": ctx.base_system_prompt,
+                "memory_context": ctx.memory_context,
+                "webpage_context": ctx.webpage_context,
+                "search_context": ctx.search_context,
+                "rag_context": ctx.rag_context,
+                "structured_source_context": ctx.structured_source_context,
+            },
             assistant_params=ctx.assistant_params,
             all_sources=list(ctx.all_sources),
             max_rounds=ctx.max_rounds,
@@ -246,6 +255,7 @@ class SingleChatFlowService:
                 model_id=runtime.model_id,
                 system_prompt=runtime.system_prompt,
                 max_rounds=runtime.max_rounds,
+                context_segments=runtime.context_segments,
                 assistant_params=runtime.assistant_params,
                 reasoning_effort=reasoning_effort,
                 llm_tools=llm_tools,
@@ -507,4 +517,3 @@ class SingleChatFlowService:
             return None
 
         return llm_tools, _combined_tool_executor
-

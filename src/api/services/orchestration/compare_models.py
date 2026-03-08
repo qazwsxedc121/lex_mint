@@ -19,6 +19,7 @@ class CompareModelsSettings:
     model_ids: List[str]
     system_prompt: Optional[str]
     max_rounds: Optional[int]
+    context_segments: Dict[str, Optional[str]] = field(default_factory=dict)
     assistant_params: Dict[str, Any] = field(default_factory=dict)
     reasoning_effort: Optional[str] = None
 
@@ -76,6 +77,7 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     session_id=request.session_id,
                     model_id=model_id,
                     system_prompt=settings.system_prompt,
+                    context_segments=settings.context_segments,
                     max_rounds=settings.max_rounds,
                     reasoning_effort=settings.reasoning_effort,
                     file_service=self.file_service,

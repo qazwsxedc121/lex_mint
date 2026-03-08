@@ -62,10 +62,15 @@ class ContextAssemblyService:
         assistant_id = session.get("assistant_id")
         model_id = session.get("model_id")
 
-        system_prompt = None
+        base_system_prompt = None
         max_rounds = None
         assistant_params: Dict[str, Any] = {}
         assistant_obj: Optional[AssistantLike] = None
+        memory_context: Optional[str] = None
+        webpage_context: Optional[str] = None
+        search_context: Optional[str] = None
+        rag_context: Optional[str] = None
+        structured_source_context: Optional[str] = None
 
         if assistant_id and not assistant_id.startswith("__legacy_model_"):
             from .assistant_config_service import AssistantConfigService
@@ -74,7 +79,7 @@ class ContextAssemblyService:
             try:
                 assistant = await assistant_service.require_enabled_assistant(assistant_id)
                 assistant_obj = assistant
-                system_prompt = assistant.system_prompt
+                base_system_prompt = assistant.system_prompt
                 max_rounds = assistant.max_rounds
                 assistant_params = self._assistant_params_from_assistant(assistant)
             except ValueError:
@@ -114,8 +119,6 @@ class ContextAssemblyService:
                 include_global=True,
                 include_assistant=include_assistant_memory,
             )
-            if memory_context:
-                system_prompt = f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
         except Exception as e:
             logger.warning("Memory retrieval failed: %s", e)
 
@@ -124,8 +127,6 @@ class ContextAssemblyService:
             webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
             if webpage_source_models:
                 webpage_sources = [s.model_dump() for s in webpage_source_models]
-            if webpage_context:
-                system_prompt = f"{system_prompt}\n\n{webpage_context}" if system_prompt else webpage_context
         except Exception as e:
             logger.warning("Webpage parsing failed: %s", e)
 
@@ -139,10 +140,6 @@ class ContextAssemblyService:
                 search_sources = [s.model_dump() for s in sources]
                 if sources:
                     search_context = self.search_service.build_search_context(query, sources)
-                    if search_context:
-                        system_prompt = (
-                            f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-                        )
             except Exception as e:
                 logger.warning("Web search failed: %s", e)
 
@@ -152,8 +149,6 @@ class ContextAssemblyService:
             assistant_obj=assistant_obj,
             runtime_model_id=resolved_model_id,
         )
-        if rag_context:
-            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
 
         all_sources = self._merge_all_sources(
             memory_sources,
@@ -161,10 +156,17 @@ class ContextAssemblyService:
             search_sources,
             rag_sources,
         )
-        system_prompt = self._append_structured_source_context(
+        structured_source_context = self._build_structured_source_context(
             raw_user_message=raw_user_message,
-            system_prompt=system_prompt,
             all_sources=all_sources,
+        )
+        system_prompt = self._compose_system_prompt(
+            base_system_prompt,
+            memory_context,
+            webpage_context,
+            search_context,
+            rag_context,
+            structured_source_context,
         )
 
         return ContextPayload(
@@ -178,6 +180,12 @@ class ContextAssemblyService:
             is_legacy_assistant=is_legacy_assistant,
             assistant_memory_enabled=assistant_memory_enabled,
             max_rounds=max_rounds,
+            base_system_prompt=base_system_prompt,
+            memory_context=memory_context,
+            webpage_context=webpage_context,
+            search_context=search_context,
+            rag_context=rag_context,
+            structured_source_context=structured_source_context,
         )
 
     @staticmethod
@@ -213,27 +221,31 @@ class ContextAssemblyService:
             logger.warning("Failed to read structured source context setting: %s", e)
             return False
 
-    def _append_structured_source_context(
+    @staticmethod
+    def _compose_system_prompt(*segments: Optional[str]) -> Optional[str]:
+        parts = [str(segment).strip() for segment in segments if isinstance(segment, str) and segment.strip()]
+        return "\n\n".join(parts) if parts else None
+
+    def _build_structured_source_context(
         self,
         *,
         raw_user_message: str,
-        system_prompt: Optional[str],
         all_sources: List[SourcePayload],
     ) -> Optional[str]:
         if not all_sources or not self._is_structured_source_context_enabled():
-            return system_prompt
+            return None
         try:
             source_tags = self.source_context_service.build_source_tags(raw_user_message, all_sources)
             if not source_tags:
-                return system_prompt
+                return None
             structured_context = self.source_context_service.apply_template(raw_user_message, source_tags)
             if not structured_context:
-                return system_prompt
+                return None
             logger.info(
                 "[SOURCE_CONTEXT] structured source context injected: source_count=%d",
                 len(all_sources),
             )
-            return f"{system_prompt}\n\n{structured_context}" if system_prompt else structured_context
+            return structured_context
         except Exception as e:
             logger.warning("Structured source context injection failed: %s", e)
-            return system_prompt
+            return None

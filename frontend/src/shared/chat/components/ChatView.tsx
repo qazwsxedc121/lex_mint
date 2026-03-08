@@ -919,8 +919,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       {/* Context usage bar */}
       <ContextUsageBar
         promptTokens={lastPromptTokens}
-        contextBudget={contextInfo?.context_budget ?? null}
-        contextWindow={contextInfo?.context_window ?? null}
+        contextInfo={contextInfo}
       />
 
       {/* Input with toolbar */}

@@ -194,3 +194,9 @@ class ContextPayload:
     is_legacy_assistant: bool
     assistant_memory_enabled: bool
     max_rounds: Optional[int]
+    base_system_prompt: Optional[str] = None
+    memory_context: Optional[str] = None
+    webpage_context: Optional[str] = None
+    search_context: Optional[str] = None
+    rag_context: Optional[str] = None
+    structured_source_context: Optional[str] = None

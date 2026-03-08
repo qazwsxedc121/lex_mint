@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Base
 from src.utils.llm_logger import get_llm_logger
 from src.api.services.model_config_service import ModelConfigService
 from src.api.services.file_service import FileService
+from src.api.services.context_planner import ContextPlan, ContextPlanner
 from src.agents.stream_call_policy import (
     build_stream_kwargs,
     select_stream_llm,
@@ -262,6 +263,66 @@ def _estimate_total_tokens(messages: List[Dict]) -> int:
     return total
 
 
+def _estimate_langchain_messages_tokens(messages: List[BaseMessage]) -> int:
+    """Estimate prompt tokens for LangChain messages using the same rough heuristic."""
+    total = 0
+    for msg in messages:
+        content = getattr(msg, "content", "")
+        if isinstance(content, str):
+            total += max(1, len(content) // _APPROX_CHARS_PER_TOKEN) if content else 0
+        else:
+            total += max(1, len(str(content)) // _APPROX_CHARS_PER_TOKEN)
+    return total
+
+
+def _build_context_plan(
+    *,
+    messages: List[Dict[str, Any]],
+    system_prompt: Optional[str],
+    context_segments: Optional[Dict[str, Optional[str]]],
+    summary_content: Optional[str],
+    max_rounds: Optional[int],
+    context_budget_tokens: int,
+) -> ContextPlan:
+    segments = context_segments or {}
+    planner = ContextPlanner()
+    return planner.plan(
+        context_budget_tokens=context_budget_tokens,
+        base_system_prompt=segments.get("base_system_prompt", system_prompt),
+        compressed_history_summary=summary_content,
+        recent_messages=messages,
+        max_rounds=max_rounds,
+        memory_context=segments.get("memory_context"),
+        webpage_context=segments.get("webpage_context"),
+        search_context=segments.get("search_context"),
+        rag_context=segments.get("rag_context"),
+        structured_source_context=segments.get("structured_source_context"),
+    )
+
+
+def _build_context_info_event(
+    *,
+    context_plan: ContextPlan,
+    context_budget: int,
+    context_window: int,
+    estimated_prompt_tokens: int,
+) -> Dict[str, Any]:
+    return {
+        "type": "context_info",
+        "context_budget": context_budget,
+        "context_window": context_window,
+        "estimated_prompt_tokens": estimated_prompt_tokens,
+        "remaining_tokens": context_budget - estimated_prompt_tokens,
+        "segments": [segment.to_dict() for segment in context_plan.segment_reports],
+    }
+
+
+def _context_segment_to_system_content(name: str, content: str) -> str:
+    if name == "summary":
+        return f"<compressed_history_summary>\n{content}\n</compressed_history_summary>"
+    return content
+
+
 def _build_llm_request_params(
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -361,6 +422,7 @@ def call_llm(
     session_id: str = "unknown",
     model_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
+    context_segments: Optional[Dict[str, Optional[str]]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     top_p: Optional[float] = None,
@@ -416,13 +478,22 @@ def call_llm(
         print(f"[CONTEXT] Filtered messages: {len(messages)} -> {len(filtered_messages)}")
         logger.info(f"Context filtered: {len(messages)} -> {len(filtered_messages)} messages")
 
+    max_input_tokens, _context_window = _get_context_limit(llm=llm, capabilities=capabilities)
+    context_plan = _build_context_plan(
+        messages=filtered_messages,
+        system_prompt=system_prompt,
+        context_segments=context_segments,
+        summary_content=summary_content,
+        max_rounds=None,
+        context_budget_tokens=max_input_tokens,
+    )
+
     # Convert message format
-    langchain_messages = []
-    if system_prompt:
-        langchain_messages.append(SystemMessage(content=system_prompt))
-    if summary_content:
-        langchain_messages.append(SystemMessage(content=f"<compressed_history_summary>\n{summary_content}\n</compressed_history_summary>"))
-    for i, msg in enumerate(filtered_messages):
+    langchain_messages = [
+        SystemMessage(content=_context_segment_to_system_content(segment.name, segment.content))
+        for segment in context_plan.system_segments
+    ]
+    for i, msg in enumerate(context_plan.chat_messages):
         if msg.get("role") == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
             print(f"      Message {i+1}: user - {msg['content'][:50]}...")
@@ -431,7 +502,6 @@ def call_llm(
             print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
 
     # === Safety net: trim to context window limit ===
-    max_input_tokens, _context_window = _get_context_limit(llm=llm, capabilities=capabilities)
     langchain_messages = _trim_to_context_limit(langchain_messages, max_input_tokens)
 
     try:
@@ -474,6 +544,7 @@ async def call_llm_stream(
     session_id: str = "unknown",
     model_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
+    context_segments: Optional[Dict[str, Optional[str]]] = None,
     max_rounds: Optional[int] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -702,22 +773,27 @@ async def call_llm_stream(
             print(f"[CONTEXT] Summary context injected ({len(summary_content)} chars)")
             logger.info(f"Summary context injected: {len(summary_content)} chars")
 
+    max_input_tokens, context_window = _get_context_limit(llm=llm, capabilities=capabilities)
+    context_plan = _build_context_plan(
+        messages=filtered_messages,
+        system_prompt=system_prompt,
+        context_segments=context_segments,
+        summary_content=summary_content,
+        max_rounds=max_rounds,
+        context_budget_tokens=max_input_tokens,
+    )
+
     # Convert message format (with multimodal support if file_service provided)
-    langchain_messages = []
-
-    # Inject system prompt (if provided)
-    if system_prompt:
-        langchain_messages.append(SystemMessage(content=system_prompt))
-
-    # Inject summary context as a system message (if previous context was compressed)
-    if summary_content:
-        langchain_messages.append(SystemMessage(content=f"<compressed_history_summary>\n{summary_content}\n</compressed_history_summary>"))
+    langchain_messages = [
+        SystemMessage(content=_context_segment_to_system_content(segment.name, segment.content))
+        for segment in context_plan.system_segments
+    ]
 
     # Use multimodal conversion if file_service is available
     if file_service:
-        converted_messages = await convert_to_langchain_messages(filtered_messages, session_id, file_service)
+        converted_messages = await convert_to_langchain_messages(context_plan.chat_messages, session_id, file_service)
         langchain_messages.extend(converted_messages)
-        for i, msg in enumerate(filtered_messages):
+        for i, msg in enumerate(context_plan.chat_messages):
             # Check if message has image attachments
             attachments = msg.get("attachments", [])
             has_images = any(att.get("mime_type", "").startswith("image/") for att in attachments)
@@ -729,7 +805,7 @@ async def call_llm_stream(
                 print(f"      Message {i+1}: {role} - {content_preview}...")
     else:
         # Fallback to simple text conversion (no image support)
-        for i, msg in enumerate(filtered_messages):
+        for i, msg in enumerate(context_plan.chat_messages):
             if msg.get("role") == "user":
                 langchain_messages.append(HumanMessage(content=msg["content"]))
                 print(f"      Message {i+1}: user - {msg['content'][:50]}...")
@@ -737,21 +813,17 @@ async def call_llm_stream(
                 langchain_messages.append(AIMessage(content=msg["content"]))
                 print(f"      Message {i+1}: assistant - {msg['content'][:50]}...")
 
-    # Truncate by conversation rounds (if specified)
-    if max_rounds and max_rounds > 0:
-        langchain_messages = _truncate_by_rounds(langchain_messages, max_rounds, system_prompt)
-        print(f"      After truncation: {len(langchain_messages)} messages")
-
     # === Safety net: trim to context window limit ===
-    max_input_tokens, context_window = _get_context_limit(llm=llm, capabilities=capabilities)
     langchain_messages = _trim_to_context_limit(langchain_messages, max_input_tokens)
+    estimated_prompt_tokens = _estimate_langchain_messages_tokens(langchain_messages)
 
     # Yield context info so frontend can display usage bar
-    yield {
-        "type": "context_info",
-        "context_budget": max_input_tokens,
-        "context_window": context_window,
-    }
+    yield _build_context_info_event(
+        context_plan=context_plan,
+        context_budget=max_input_tokens,
+        context_window=context_window,
+        estimated_prompt_tokens=estimated_prompt_tokens,
+    )
 
     # Bind tools to LLM if provided
     llm_for_call = llm
