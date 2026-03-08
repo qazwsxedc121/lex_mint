@@ -676,16 +676,23 @@ class MemoryService:
             return "", []
 
         resolved_profile = self._resolve_profile_id(profile_id)
+        enabled_layers = {
+            str(layer).strip().lower()
+            for layer in (cfg.enabled_layers or [])
+            if str(layer).strip()
+        }
         lines: List[str] = []
         sources: List[Dict[str, Any]] = []
 
         # Phase 1: instruction layer - load ALL active items (always apply)
-        instructions = self._load_instruction_memories(
-            profile_id=resolved_profile,
-            assistant_id=assistant_id,
-            include_global=include_global,
-            include_assistant=include_assistant,
-        )
+        instructions: List[MemoryResult] = []
+        if not enabled_layers or "instruction" in enabled_layers:
+            instructions = self._load_instruction_memories(
+                profile_id=resolved_profile,
+                assistant_id=assistant_id,
+                include_global=include_global,
+                include_assistant=include_assistant,
+            )
         if instructions:
             lines.append("## User instructions (always apply):")
             for item in instructions:
@@ -705,15 +712,17 @@ class MemoryService:
                 )
 
         # Phase 2: fact layer - vector similarity search (inject when relevant)
-        fact_results = self.search_memories_for_scopes(
-            query=query,
-            assistant_id=assistant_id,
-            profile_id=profile_id,
-            include_global=include_global,
-            include_assistant=include_assistant,
-            layer="fact",
-            limit=cfg.retrieval.max_injected_items,
-        )
+        fact_results: List[Dict[str, Any]] = []
+        if not enabled_layers or "fact" in enabled_layers:
+            fact_results = self.search_memories_for_scopes(
+                query=query,
+                assistant_id=assistant_id,
+                profile_id=profile_id,
+                include_global=include_global,
+                include_assistant=include_assistant,
+                layer="fact",
+                limit=cfg.retrieval.max_injected_items,
+            )
         if fact_results:
             if lines:
                 lines.append("")
@@ -742,7 +751,7 @@ class MemoryService:
         return header + "\n".join(lines), sources
 
     def extract_memory_candidates(self, text: str) -> List[Dict[str, Any]]:
-        # Extraction disabled ¡ª placeholder for future LLM-based extraction.
+        # Extraction disabled - placeholder for future LLM-based extraction.
         return []
 
     async def extract_and_persist_from_turn(
@@ -756,7 +765,5 @@ class MemoryService:
         source_message_id: Optional[str] = None,
         assistant_memory_enabled: bool = True,
     ) -> List[Dict[str, Any]]:
-        # Extraction disabled ¡ª placeholder for future LLM-based extraction.
+        # Extraction disabled - placeholder for future LLM-based extraction.
         return []
-
-

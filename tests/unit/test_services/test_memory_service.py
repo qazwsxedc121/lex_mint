@@ -81,3 +81,50 @@ def test_extract_and_persist_from_turn_returns_empty(memory_service):
     )
 
     assert result == []
+
+
+def test_build_memory_context_respects_enabled_layers(memory_service, monkeypatch):
+    memory_service.memory_config_service.save_flat_config({"enabled_layers": ["instruction"]})
+
+    instruction_calls = {"count": 0}
+    fact_calls = {"count": 0}
+
+    def fake_load_instruction_memories(**kwargs):
+        _ = kwargs
+        instruction_calls["count"] += 1
+        return [
+            MemoryResult(
+                id="mem_instruction",
+                content="Respond with concise bullet points.",
+                score=None,
+                metadata={"scope": "global", "layer": "instruction"},
+            )
+        ]
+
+    def fake_search_memories_for_scopes(**kwargs):
+        _ = kwargs
+        fact_calls["count"] += 1
+        return [
+            {
+                "id": "mem_fact",
+                "content": "User works in finance.",
+                "score": 0.9,
+                "scope": "global",
+                "layer": "fact",
+            }
+        ]
+
+    monkeypatch.setattr(memory_service, "_load_instruction_memories", fake_load_instruction_memories)
+    monkeypatch.setattr(memory_service, "search_memories_for_scopes", fake_search_memories_for_scopes)
+
+    context, sources = memory_service.build_memory_context(
+        query="How should you reply?",
+        assistant_id="assistant-a",
+    )
+
+    assert instruction_calls["count"] == 1
+    assert fact_calls["count"] == 0
+    assert "## User instructions (always apply):" in context
+    assert "Respond with concise bullet points." in context
+    assert "## User context (relevant background):" not in context
+    assert [source["layer"] for source in sources] == ["instruction"]
