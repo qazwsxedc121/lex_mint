@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
+  BoltIcon,
   MagnifyingGlassIcon,
   ArrowsPointingOutIcon,
   HashtagIcon,
@@ -66,6 +67,11 @@ interface EditorToolbarProps {
   insertToChatDisabled: boolean;
   insertToChatTitle: string;
 
+  // Send editor context to Agent page
+  onSendToAgent: () => void;
+  sendToAgentDisabled: boolean;
+  sendToAgentTitle: string;
+
   // Inline rewrite
   onInlineRewrite: () => void;
   inlineRewriteDisabled: boolean;
@@ -112,6 +118,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onInsertToChat,
   insertToChatDisabled,
   insertToChatTitle,
+  onSendToAgent,
+  sendToAgentDisabled,
+  sendToAgentTitle,
   onInlineRewrite,
   inlineRewriteDisabled,
   inlineRewriteTitle,
@@ -325,6 +334,19 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
             }`}
           >
             <SparklesIcon className="h-4 w-4" />
+          </button>
+          <button
+            title={sendToAgentTitle}
+            onClick={onSendToAgent}
+            disabled={sendToAgentDisabled}
+            data-name="editor-send-agent-button"
+            className={`p-1.5 rounded ${
+              sendToAgentDisabled
+                ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            <BoltIcon className="h-4 w-4" />
           </button>
           <button
             title={projectWorkflowTitle}

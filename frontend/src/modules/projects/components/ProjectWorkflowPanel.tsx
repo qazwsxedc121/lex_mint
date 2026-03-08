@@ -51,6 +51,9 @@ interface ProjectWorkflowPanelProps {
   onStop: () => void;
   onClose?: () => void;
   onOpenWorkflows: () => void;
+  onSendOutputToAgent?: () => void;
+  sendOutputToAgentDisabled?: boolean;
+  sendOutputToAgentTitle?: string;
 }
 
 interface FileBackedInputMeta {
@@ -85,6 +88,9 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
   onStop,
   onClose,
   onOpenWorkflows,
+  onSendOutputToAgent,
+  sendOutputToAgentDisabled = false,
+  sendOutputToAgentTitle,
 }) => {
   const { t, i18n } = useTranslation('projects');
   const [pickerFieldKey, setPickerFieldKey] = useState<string | null>(null);
@@ -656,11 +662,25 @@ export const ProjectWorkflowPanel: React.FC<ProjectWorkflowPanelProps> = ({
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
             {t('projectWorkflow.output')}
           </div>
-          {isRunning && (
-            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-              {t('projectWorkflow.running')}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {onSendOutputToAgent && (
+              <button
+                type="button"
+                onClick={onSendOutputToAgent}
+                disabled={sendOutputToAgentDisabled}
+                title={sendOutputToAgentTitle}
+                data-name="project-workflow-send-output-to-agent"
+                className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                {t('workspace.agent.sendToAgent')}
+              </button>
+            )}
+            {isRunning && (
+              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                {t('projectWorkflow.running')}
+              </span>
+            )}
+          </div>
         </div>
 
         {output ? (

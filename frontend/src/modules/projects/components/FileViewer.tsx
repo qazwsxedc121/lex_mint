@@ -35,6 +35,7 @@ import { useWorkflowLauncherStorage } from '../../../shared/workflow-launcher/st
 import type { LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import { getProjectWorkspacePath } from '../workspace';
+import { buildFileAgentContextItem } from '../agentContext';
 import { CodeBlock } from '../../../shared/chat/components/CodeBlock';
 import { MermaidBlock } from '../../../shared/chat/components/MermaidBlock';
 import { SvgBlock } from '../../../shared/chat/components/SvgBlock';
@@ -306,7 +307,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setAutoSaveBeforeAgentSend,
   } = useEditorPreferences();
   const { notice, showError: showNoticeError, clearNotice } = useProjectNotice();
-  const { queueWorkflowLaunch } = useProjectWorkspaceStore();
+  const { queueWorkflowLaunch, addAgentContextItems } = useProjectWorkspaceStore();
 
   const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
@@ -1122,6 +1123,20 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     t,
   ]);
 
+  const handleSendToAgent = useCallback(() => {
+    if (!content) {
+      return;
+    }
+
+    const contextInfo = getEditorContext();
+    if (!contextInfo) {
+      return;
+    }
+
+    addAgentContextItems(projectId, [buildFileAgentContextItem(contextInfo)]);
+    navigate(getProjectWorkspacePath(projectId, 'agent'));
+  }, [addAgentContextItems, content, getEditorContext, navigate, projectId]);
+
   // Command handlers
   const handleUndo = useCallback(() => {
     if (editorViewRef.current) {
@@ -1563,6 +1578,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     : 'Insert selection or file to chat';
   const refreshTitle = refreshingProject ? t('fileViewer.refreshing') : t('fileViewer.refresh');
   const inlineRewriteTitle = t('inlineRewrite.button');
+  const sendToAgentTitle = t('workspace.agent.sendFileContextTitle');
 
   const renderBreadcrumbBar = (filePath?: string) => (
     <div data-name="file-viewer-breadcrumb-bar" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
@@ -1686,6 +1702,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onInsertToChat={handleInsertToChat}
         insertToChatDisabled={!content || isInsertingToChat}
         insertToChatTitle={insertToChatTitle}
+        onSendToAgent={handleSendToAgent}
+        sendToAgentDisabled={!content}
+        sendToAgentTitle={sendToAgentTitle}
         onInlineRewrite={handleToggleInlineRewrite}
         inlineRewriteDisabled={!content || inlineRewriteStreaming}
         inlineRewriteTitle={inlineRewriteTitle}

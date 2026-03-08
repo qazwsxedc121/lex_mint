@@ -10,6 +10,7 @@ import { ProjectWorkspaceLayout } from './modules/projects/ProjectWorkspaceLayou
 import { ProjectTabRedirect } from './modules/projects/ProjectTabRedirect';
 import { ProjectSearchView } from './modules/projects/ProjectSearchView';
 import { ProjectWorkflowsView } from './modules/projects/ProjectWorkflowsView';
+import { ProjectAgentView } from './modules/projects/ProjectAgentView';
 import { SettingsModule } from './modules/settings';
 import { AssistantsPage } from './modules/settings/AssistantsPage';
 import { GetStartedPage } from './modules/settings/GetStartedPage';
@@ -60,6 +61,7 @@ function App() {
               <Route path="files" element={<ProjectExplorer />} />
               <Route path="search" element={<ProjectSearchView />} />
               <Route path="workflows" element={<ProjectWorkflowsView />} />
+              <Route path="agent" element={<ProjectAgentView />} />
             </Route>
           </Route>
           <Route path="workflows" element={<WorkflowsModule />} />

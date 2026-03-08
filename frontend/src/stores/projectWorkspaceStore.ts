@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ProjectWorkflowLaunchContext, ProjectWorkspaceTab } from '../modules/projects/workspace';
+import type { ProjectAgentContextItem, ProjectWorkflowLaunchContext, ProjectWorkspaceTab } from '../modules/projects/workspace';
 
 interface ProjectWorkspaceState {
   // Current opened project ID
@@ -19,6 +19,15 @@ interface ProjectWorkspaceState {
 
   // Map of projectId -> sessionId for each project's last session
   projectSessionMap: Record<string, string>;
+
+  // Map of projectId -> sessionId for each project's last agent session
+  agentSessionMap: Record<string, string>;
+
+  // Map of projectId -> accumulated Agent context items
+  agentContextMap: Record<string, ProjectAgentContextItem[]>;
+
+  // One-shot context queue when jumping into project Agent
+  pendingAgentContextMap: Record<string, ProjectAgentContextItem[]>;
 
   // Map of projectId -> last active workspace tab
   projectTabMap: Record<string, ProjectWorkspaceTab>;
@@ -37,8 +46,14 @@ interface ProjectWorkspaceState {
   getCurrentFile: (projectId: string) => string | null;
   setProjectSession: (projectId: string, sessionId: string | null) => void;
   getProjectSession: (projectId: string) => string | null;
+  setAgentSession: (projectId: string, sessionId: string | null) => void;
+  getAgentSession: (projectId: string) => string | null;
   setProjectTab: (projectId: string, tab: ProjectWorkspaceTab) => void;
   getProjectTab: (projectId: string) => ProjectWorkspaceTab;
+  addAgentContextItems: (projectId: string, items: ProjectAgentContextItem[]) => void;
+  getAgentContextItems: (projectId: string) => ProjectAgentContextItem[];
+  consumePendingAgentContext: (projectId: string) => ProjectAgentContextItem[];
+  clearAgentContextItems: (projectId: string) => void;
   queueWorkflowLaunch: (projectId: string, context: ProjectWorkflowLaunchContext) => void;
   consumeWorkflowLaunch: (projectId: string) => ProjectWorkflowLaunchContext | null;
   toggleChatSidebar: () => void;
@@ -52,6 +67,9 @@ const DEFAULT_WORKSPACE_STATE = {
   currentProjectId: null,
   projectFileMap: {},
   projectSessionMap: {},
+  agentSessionMap: {},
+  agentContextMap: {},
+  pendingAgentContextMap: {},
   projectTabMap: {},
   pendingWorkflowLaunchMap: {},
   chatSidebarOpen: false,
@@ -99,6 +117,22 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
         return get().projectSessionMap[projectId] || null;
       },
 
+      setAgentSession: (projectId, sessionId) => {
+        set((state) => {
+          const newMap = { ...state.agentSessionMap };
+          if (sessionId === null) {
+            delete newMap[projectId];
+          } else {
+            newMap[projectId] = sessionId;
+          }
+          return { agentSessionMap: newMap };
+        });
+      },
+
+      getAgentSession: (projectId) => {
+        return get().agentSessionMap[projectId] || null;
+      },
+
       setProjectTab: (projectId, tab) => {
         set((state) => ({
           projectTabMap: {
@@ -110,6 +144,60 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
 
       getProjectTab: (projectId) => {
         return get().projectTabMap[projectId] || 'project';
+      },
+
+      addAgentContextItems: (projectId, items) => {
+        if (!items.length) {
+          return;
+        }
+
+        set((state) => {
+          const existing = state.agentContextMap[projectId] || [];
+          const merged = [...existing, ...items].slice(-20);
+          const pending = [...(state.pendingAgentContextMap[projectId] || []), ...items].slice(-20);
+
+          return {
+            agentContextMap: {
+              ...state.agentContextMap,
+              [projectId]: merged,
+            },
+            pendingAgentContextMap: {
+              ...state.pendingAgentContextMap,
+              [projectId]: pending,
+            },
+          };
+        });
+      },
+
+      getAgentContextItems: (projectId) => {
+        return get().agentContextMap[projectId] || [];
+      },
+
+      consumePendingAgentContext: (projectId) => {
+        const items = get().pendingAgentContextMap[projectId] || [];
+        if (items.length === 0) {
+          return [];
+        }
+
+        set((state) => {
+          const next = { ...state.pendingAgentContextMap };
+          delete next[projectId];
+          return { pendingAgentContextMap: next };
+        });
+        return items;
+      },
+
+      clearAgentContextItems: (projectId) => {
+        set((state) => {
+          const nextContext = { ...state.agentContextMap };
+          const nextPending = { ...state.pendingAgentContextMap };
+          delete nextContext[projectId];
+          delete nextPending[projectId];
+          return {
+            agentContextMap: nextContext,
+            pendingAgentContextMap: nextPending,
+          };
+        });
       },
 
       queueWorkflowLaunch: (projectId, context) => {
@@ -156,11 +244,13 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
     }),
     {
       name: 'project-workspace-storage', // localStorage key
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         currentProjectId: state.currentProjectId,
         projectFileMap: state.projectFileMap,
         projectSessionMap: state.projectSessionMap,
+        agentSessionMap: state.agentSessionMap,
+        agentContextMap: state.agentContextMap,
         projectTabMap: state.projectTabMap,
         chatSidebarOpen: state.chatSidebarOpen,
         fileTreeOpen: state.fileTreeOpen,
@@ -176,6 +266,9 @@ export const useProjectWorkspaceStore = create<ProjectWorkspaceState>()(
           currentProjectId: typeof state.currentProjectId === 'string' ? state.currentProjectId : null,
           projectFileMap: state.projectFileMap ?? {},
           projectSessionMap: state.projectSessionMap ?? {},
+          agentSessionMap: state.agentSessionMap ?? {},
+          agentContextMap: state.agentContextMap ?? {},
+          pendingAgentContextMap: {},
           projectTabMap: state.projectTabMap ?? {},
           pendingWorkflowLaunchMap: {},
           chatSidebarOpen: state.chatSidebarOpen ?? false,

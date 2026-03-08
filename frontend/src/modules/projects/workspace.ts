@@ -1,6 +1,21 @@
 import type { Project } from '../../types/project';
 
-export type ProjectWorkspaceTab = 'project' | 'files' | 'search' | 'workflows';
+export type ProjectWorkspaceTab = 'project' | 'files' | 'search' | 'workflows' | 'agent';
+
+export interface ProjectAgentContextItem {
+  id: string;
+  title: string;
+  content: string;
+  kind?: 'context' | 'note';
+  language?: string;
+  source?: {
+    filePath: string;
+    startLine: number;
+    endLine: number;
+  };
+  origin: 'file' | 'search' | 'workflow';
+  createdAt: number;
+}
 
 export interface ProjectWorkflowLaunchContext {
   source: 'file-viewer';
@@ -23,10 +38,10 @@ export interface ProjectWorkspaceOutletContext extends ProjectsOutletContext {
   onCloseProject: () => void;
 }
 
-export const PROJECT_WORKSPACE_TABS: ProjectWorkspaceTab[] = ['project', 'files', 'search', 'workflows'];
+export const PROJECT_WORKSPACE_TABS: ProjectWorkspaceTab[] = ['project', 'files', 'search', 'workflows', 'agent'];
 
 export const isProjectWorkspaceTab = (value: string | null | undefined): value is ProjectWorkspaceTab => {
-  return value === 'project' || value === 'files' || value === 'search' || value === 'workflows';
+  return value === 'project' || value === 'files' || value === 'search' || value === 'workflows' || value === 'agent';
 };
 
 export const getProjectWorkspacePath = (projectId: string, tab: ProjectWorkspaceTab): string => {

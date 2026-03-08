@@ -16,13 +16,14 @@ import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import { useWorkflowLauncherStorage } from '../../shared/workflow-launcher/storage';
 import type { LauncherRecommendationContext } from '../../shared/workflow-launcher/types';
 import { ProjectWorkflowPanel } from './components/ProjectWorkflowPanel';
+import { buildWorkflowAgentContextItem } from './agentContext';
 import {
   applyProjectWorkflowLaunchContext,
   buildProjectWorkflowDefaultInputs,
   getWorkflowNodeIds,
   validateProjectWorkflowInputs,
 } from './projectWorkflowUtils';
-import type { ProjectWorkflowLaunchContext, ProjectWorkspaceOutletContext } from './workspace';
+import { getProjectWorkspacePath, type ProjectWorkflowLaunchContext, type ProjectWorkspaceOutletContext } from './workspace';
 
 const formatRunTime = (value: string): string => {
   const date = new Date(value);
@@ -48,6 +49,7 @@ export const ProjectWorkflowsView: React.FC = () => {
     getCurrentFile,
     getProjectSession,
     consumeWorkflowLaunch,
+    addAgentContextItems,
   } = useProjectWorkspaceStore();
   const { favoritesSet, recents, toggleFavorite, addRecent } = useWorkflowLauncherStorage();
   const [workflowsLoading, setWorkflowsLoading] = useState(true);
@@ -352,6 +354,21 @@ export const ProjectWorkflowsView: React.FC = () => {
     }
   }, [activeWorkflow, addRecent, artifactPath, currentSessionId, inputValues, loadRecentRuns, projectId, running, t, writeMode]);
 
+  const handleSendOutputToAgent = useCallback(() => {
+    if (!activeWorkflow || !output.trim()) {
+      return;
+    }
+
+    addAgentContextItems(projectId, [
+      buildWorkflowAgentContextItem({
+        workflowId: activeWorkflow.id,
+        workflowName: activeWorkflow.name || activeWorkflow.id,
+        output,
+      }),
+    ]);
+    navigate(getProjectWorkspacePath(projectId, 'agent'));
+  }, [activeWorkflow, addAgentContextItems, navigate, output, projectId]);
+
   return (
     <div data-name="project-workflows-view" className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-gray-50 px-4 py-4 dark:bg-gray-950">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
@@ -401,6 +418,9 @@ export const ProjectWorkflowsView: React.FC = () => {
             onRun={handleRun}
             onStop={handleStop}
             onOpenWorkflows={() => navigate('/workflows')}
+            onSendOutputToAgent={handleSendOutputToAgent}
+            sendOutputToAgentDisabled={!output.trim()}
+            sendOutputToAgentTitle={t('workspace.agent.sendWorkflowOutputTitle')}
           />
         </div>
 

@@ -7,12 +7,13 @@ import type { ProjectTextSearchMatch } from '../../services/api';
 import { useProjectWorkspaceStore } from '../../stores/projectWorkspaceStore';
 import type { ProjectWorkspaceOutletContext } from './workspace';
 import { getProjectWorkspacePath } from './workspace';
+import { buildSearchAgentContextItem } from './agentContext';
 
 export const ProjectSearchView: React.FC = () => {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
   const { projectId, currentProject } = useOutletContext<ProjectWorkspaceOutletContext>();
-  const { setCurrentFile } = useProjectWorkspaceStore();
+  const { setCurrentFile, addAgentContextItems } = useProjectWorkspaceStore();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,11 @@ export const ProjectSearchView: React.FC = () => {
         },
       }));
     }, 50);
+  };
+
+  const handleSendResultToAgent = (item: ProjectTextSearchMatch) => {
+    addAgentContextItems(projectId, [buildSearchAgentContextItem(item, query.trim())]);
+    navigate(getProjectWorkspacePath(projectId, 'agent'));
   };
 
   return (
@@ -123,23 +129,38 @@ export const ProjectSearchView: React.FC = () => {
             </div>
 
             {results.map((item, index) => (
-              <button
+              <div
                 key={`${item.file_path}:${item.line_number}:${index}`}
-                type="button"
-                onClick={() => handleOpenResult(item)}
                 data-name="project-search-result-item"
-                className="block w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                className="rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
               >
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {item.file_path}
+                <div className="flex items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenResult(item)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {item.file_path}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {t('workspace.search.lineLabel', { line: item.line_number })}
+                    </div>
+                    <div className="mt-2 break-words text-sm text-gray-700 dark:text-gray-300">
+                      {item.line_text}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSendResultToAgent(item)}
+                    className="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    data-name="project-search-send-to-agent"
+                  >
+                    {t('workspace.agent.sendToAgent')}
+                  </button>
                 </div>
-                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {t('workspace.search.lineLabel', { line: item.line_number })}
-                </div>
-                <div className="mt-2 break-words text-sm text-gray-700 dark:text-gray-300">
-                  {item.line_text}
-                </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

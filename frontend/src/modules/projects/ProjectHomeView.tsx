@@ -193,6 +193,15 @@ export const ProjectHomeView: React.FC = () => {
                 <CommandLineIcon className="h-4 w-4" />
                 {t('projectHome.openWorkflows')}
               </button>
+              <button
+                type="button"
+                onClick={() => openPath(getProjectWorkspacePath(projectId, 'agent'))}
+                className="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-700 transition hover:border-blue-400 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200 dark:hover:border-blue-700 dark:hover:bg-blue-950/50"
+                data-name="project-home-open-agent"
+              >
+                <SparklesIcon className="h-4 w-4" />
+                {t('workspace.agent.title')}
+              </button>
             </div>
           </div>
 
