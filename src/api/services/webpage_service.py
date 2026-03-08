@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import asyncio
 import html
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -37,6 +38,11 @@ try:
 except Exception:
     trafilatura = None
     extract_metadata = None
+
+try:
+    from curl_cffi import requests as curl_requests
+except Exception:
+    curl_requests = None
 
 URL_PATTERN = re.compile(r"https?://[^\s<>()\"']+", re.IGNORECASE)
 TRAILING_PUNCTUATION = ".,);:]}>\"'"
@@ -73,6 +79,24 @@ class WebpageResult:
     error: Optional[str] = None
     status_code: Optional[int] = None
     content_type: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class _FetchAttempt:
+    name: str
+    proxy: Optional[str]
+    trust_env: bool
+    headers: dict[str, str]
+
+
+@dataclass
+class _FetchedPage:
+    final_url: str
+    status_code: int
+    content_type: str
+    encoding: str
+    body: bytes
+    truncated_bytes: bool
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -327,18 +351,103 @@ class WebpageService:
             )
 
         timeout = httpx.Timeout(self.config.timeout_seconds)
-        headers = {
-            "User-Agent": self.config.user_agent,
-            "Accept": "text/html, text/plain;q=0.9,*/*;q=0.1",
-        }
-        start_time = time.monotonic()
-
+        headers = self._browser_navigation_headers(url=url)
         proxy = self._resolve_proxy()
         http2_enabled = self._http2_supported()
         verify = self._ssl_verify_context()
 
+        fetched: Optional[_FetchedPage] = None
+        last_error: Optional[WebpageResult] = None
+        attempts = self._build_fetch_attempts(url=url, headers=headers, proxy=proxy)
+        for attempt in attempts:
+            candidate = await self._fetch_once(
+                url=url,
+                timeout=timeout,
+                http2_enabled=http2_enabled,
+                verify=verify,
+                attempt=attempt,
+            )
+            if isinstance(candidate, WebpageResult):
+                last_error = candidate
+                if not self._should_retry_after_error(url=url, result=candidate):
+                    return candidate
+                continue
+            fetched = candidate
+            break
+
+        if fetched is None and self._should_try_curl_impersonation(url=url, last_error=last_error):
+            curl_candidate = await self._fetch_with_curl_impersonation(
+                url=url,
+                proxy=proxy,
+                timeout_seconds=float(self.config.timeout_seconds),
+            )
+            if isinstance(curl_candidate, _FetchedPage):
+                fetched = curl_candidate
+            elif curl_candidate is not None:
+                last_error = curl_candidate
+
+        if fetched is None:
+            return last_error or WebpageResult(
+                url=url,
+                final_url=url,
+                title="",
+                text="",
+                truncated=False,
+                error="Fetch failed",
+                status_code=None,
+                content_type=None,
+            )
+
+        raw_text = fetched.body[: self.config.max_bytes].decode(fetched.encoding, errors="ignore")
+        title, text, description = self._extract_text(raw_text, fetched.content_type)
+        text = self._normalize_text(text)
+        if (not text or len(text) < 200) and description:
+            text = description.strip()
+
+        if not text:
+            return WebpageResult(
+                url=url,
+                final_url=fetched.final_url,
+                title=title,
+                text="",
+                truncated=False,
+                error="Empty content after parsing",
+                status_code=fetched.status_code,
+                content_type=fetched.content_type or None,
+            )
+
+        truncated = False
+        if len(text) > self.config.max_content_chars:
+            text = text[: self.config.max_content_chars].rstrip() + "..."
+            truncated = True
+
+        if fetched.truncated_bytes:
+            truncated = True
+
+        return WebpageResult(
+            url=url,
+            final_url=fetched.final_url,
+            title=title,
+            text=text,
+            truncated=truncated,
+            error=None,
+            status_code=fetched.status_code,
+            content_type=fetched.content_type or None,
+        )
+
+    async def _fetch_once(
+        self,
+        *,
+        url: str,
+        timeout: httpx.Timeout,
+        http2_enabled: bool,
+        verify: ssl.SSLContext,
+        attempt: _FetchAttempt,
+    ) -> _FetchedPage | WebpageResult:
+        start_time = time.monotonic()
+
         try:
-            logger.info(f"[Webpage] Fetching {url}")
+            logger.info("[Webpage] Fetching %s via %s", url, attempt.name)
             transport = httpx.AsyncHTTPTransport(retries=2)
             async with httpx.AsyncClient(
                 timeout=timeout,
@@ -346,15 +455,15 @@ class WebpageService:
                 transport=transport,
                 http2=http2_enabled,
                 verify=verify,
-                proxy=proxy,
-                trust_env=self.config.trust_env,
+                proxy=attempt.proxy,
+                trust_env=attempt.trust_env,
             ) as client:
-                async with client.stream("GET", url, headers=headers) as response:
+                async with client.stream("GET", url, headers=attempt.headers) as response:
                     status_code = response.status_code
                     content_type = (response.headers.get("content-type") or "").lower()
                     if status_code >= 400:
-                        error_detail = f"HTTP {status_code}"
-                        logger.warning(f"[Webpage] {url} failed: {error_detail}")
+                        error_detail = f"HTTP {status_code} [{attempt.name}]"
+                        logger.warning("[Webpage] %s failed: %s", url, error_detail)
                         return WebpageResult(
                             url=url,
                             final_url=str(response.url),
@@ -365,9 +474,9 @@ class WebpageService:
                             status_code=status_code,
                             content_type=content_type or None,
                         )
-                    if "text/html" not in content_type and not content_type.startswith("text/"):
-                        error_detail = f"Unsupported content type: {content_type or 'unknown'}"
-                        logger.warning(f"[Webpage] {url} failed: {error_detail}")
+                    if not self._is_supported_content_type(url=url, content_type=content_type):
+                        error_detail = f"Unsupported content type: {content_type or 'unknown'} [{attempt.name}]"
+                        logger.warning("[Webpage] %s failed: %s", url, error_detail)
                         return WebpageResult(
                             url=url,
                             final_url=str(response.url),
@@ -387,29 +496,38 @@ class WebpageService:
                             truncated_bytes = True
                             break
 
-            encoding = response.encoding or "utf-8"
-            html_text = body[: self.config.max_bytes].decode(encoding, errors="ignore")
-            logger.info(
-                "[Webpage] Fetched %s status=%s content_type=%s bytes=%s truncated=%s",
-                url,
-                status_code,
-                content_type or "unknown",
-                len(body),
-                truncated_bytes,
-            )
-        except httpx.TimeoutException as e:
+                    encoding = response.encoding or "utf-8"
+                    logger.info(
+                        "[Webpage] Fetched %s via=%s status=%s content_type=%s bytes=%s truncated=%s",
+                        url,
+                        attempt.name,
+                        status_code,
+                        content_type or "unknown",
+                        len(body),
+                        truncated_bytes,
+                    )
+                    return _FetchedPage(
+                        final_url=str(response.url),
+                        status_code=status_code,
+                        content_type=content_type,
+                        encoding=encoding,
+                        body=bytes(body),
+                        truncated_bytes=truncated_bytes,
+                    )
+        except httpx.TimeoutException as exc:
             elapsed = time.monotonic() - start_time
             host = urlparse(url).hostname or ""
             diag = await self._network_diagnostics(url)
             error_detail = (
-                f"Timeout ({e.__class__.__name__}) after {elapsed:.2f}s host={host}"
+                f"Timeout ({exc.__class__.__name__}) after {elapsed:.2f}s host={host}"
                 f"{self._format_timeout_detail(timeout)}"
+                f" [{attempt.name}]"
                 f"{diag}"
             )
-            logger.warning(f"[Webpage] {url} failed: {error_detail}")
+            logger.warning("[Webpage] %s failed: %s", url, error_detail)
             return WebpageResult(
                 url=url,
-                final_url=str(e.request.url) if e.request else url,
+                final_url=str(exc.request.url) if exc.request else url,
                 title="",
                 text="",
                 truncated=False,
@@ -417,30 +535,20 @@ class WebpageService:
                 status_code=None,
                 content_type=None,
             )
-        except httpx.HTTPStatusError as e:
-            status = e.response.status_code if e.response else None
-            error_detail = f"HTTP {status}" if status else "HTTP status error"
-            logger.warning(f"[Webpage] {url} failed: {error_detail}")
-            return WebpageResult(
-                url=url,
-                final_url=str(e.response.url) if e.response else url,
-                title="",
-                text="",
-                truncated=False,
-                error=error_detail,
-                status_code=status,
-                content_type=(e.response.headers.get('content-type') if e.response else None),
-            )
-        except httpx.RequestError as e:
+        except httpx.RequestError as exc:
             elapsed = time.monotonic() - start_time
             host = urlparse(url).hostname or ""
-            message = str(e).strip() or repr(e)
+            message = str(exc).strip() or repr(exc)
             diag = await self._network_diagnostics(url)
-            error_detail = f"Request error ({e.__class__.__name__}) after {elapsed:.2f}s host={host}: {message}{diag}"
-            logger.warning(f"[Webpage] {url} failed: {error_detail}")
+            error_detail = (
+                f"Request error ({exc.__class__.__name__}) after {elapsed:.2f}s host={host}: {message}"
+                f" [{attempt.name}]"
+                f"{diag}"
+            )
+            logger.warning("[Webpage] %s failed: %s", url, error_detail)
             return WebpageResult(
                 url=url,
-                final_url=url,
+                final_url=str(exc.request.url) if exc.request else url,
                 title="",
                 text="",
                 truncated=False,
@@ -448,10 +556,10 @@ class WebpageService:
                 status_code=None,
                 content_type=None,
             )
-        except Exception as e:
+        except Exception as exc:
             elapsed = time.monotonic() - start_time
-            error_detail = f"Fetch failed after {elapsed:.2f}s: {e}"
-            logger.warning(f"[Webpage] {url} failed: {error_detail}")
+            error_detail = f"Fetch failed after {elapsed:.2f}s [{attempt.name}]: {exc}"
+            logger.warning("[Webpage] %s failed: %s", url, error_detail)
             return WebpageResult(
                 url=url,
                 final_url=url,
@@ -463,43 +571,165 @@ class WebpageService:
                 content_type=None,
             )
 
-        title, text, description = self._extract_text(html_text, content_type)
-        text = self._normalize_text(text)
-        if (not text or len(text) < 200) and description:
-            text = description.strip()
+    def _build_fetch_attempts(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        proxy: Optional[str],
+    ) -> List[_FetchAttempt]:
+        attempts: List[_FetchAttempt] = []
 
-        if not text:
-            return WebpageResult(
-                url=url,
-                final_url=str(response.url),
-                title=title,
-                text="",
-                truncated=False,
-                error="Empty content after parsing",
-                status_code=status_code,
-                content_type=content_type or None,
+        if self._is_wikimedia_url(url):
+            direct_headers = dict(headers)
+            direct_headers.setdefault("Accept-Language", "en-US,en;q=0.9")
+            direct_headers.setdefault("Referer", "https://www.wikipedia.org/")
+            attempts.append(
+                _FetchAttempt(
+                    name="wikimedia_direct",
+                    proxy=None,
+                    trust_env=False,
+                    headers=direct_headers,
+                )
             )
 
-        truncated = False
-        if len(text) > self.config.max_content_chars:
-            text = text[: self.config.max_content_chars].rstrip() + "..."
-            truncated = True
-
-        if truncated_bytes:
-            truncated = True
-
-        return WebpageResult(
-            url=url,
-            final_url=str(response.url),
-            title=title,
-            text=text,
-            truncated=truncated,
-            error=None,
-            status_code=status_code,
-            content_type=content_type or None,
+        attempts.append(
+            _FetchAttempt(
+                name="default",
+                proxy=proxy,
+                trust_env=self.config.trust_env,
+                headers=dict(headers),
+            )
         )
 
+        deduped: List[_FetchAttempt] = []
+        seen: set[tuple[Optional[str], bool]] = set()
+        for attempt in attempts:
+            key = (attempt.proxy, attempt.trust_env)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(attempt)
+        return deduped
+
+    @staticmethod
+    def _should_try_curl_impersonation(
+        *,
+        url: str,
+        last_error: Optional[WebpageResult],
+    ) -> bool:
+        if curl_requests is None:
+            return False
+        if WebpageService._is_wikimedia_url(url):
+            return True
+        if last_error is None:
+            return False
+        if last_error.status_code in {403, 429}:
+            return True
+        return False
+
+    async def _fetch_with_curl_impersonation(
+        self,
+        *,
+        url: str,
+        proxy: Optional[str],
+        timeout_seconds: float,
+    ) -> _FetchedPage | WebpageResult | None:
+        if curl_requests is None:
+            return None
+
+        headers = self._browser_navigation_headers(url=url)
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+
+        def _do_request() -> _FetchedPage | WebpageResult:
+            start_time = time.monotonic()
+            try:
+                response = curl_requests.get(
+                    url,
+                    impersonate="chrome",
+                    proxies=proxies,
+                    timeout=timeout_seconds,
+                    verify=True,
+                    headers=headers,
+                )
+                status_code = int(response.status_code)
+                content_type = str(response.headers.get("content-type") or "").lower()
+                if status_code >= 400:
+                    return WebpageResult(
+                        url=url,
+                        final_url=str(response.url),
+                        title="",
+                        text="",
+                        truncated=False,
+                        error=f"HTTP {status_code} [curl_impersonate]",
+                        status_code=status_code,
+                        content_type=content_type or None,
+                    )
+                if not self._is_supported_content_type(url=url, content_type=content_type):
+                    return WebpageResult(
+                        url=url,
+                        final_url=str(response.url),
+                        title="",
+                        text="",
+                        truncated=False,
+                        error=f"Unsupported content type: {content_type or 'unknown'} [curl_impersonate]",
+                        status_code=status_code,
+                        content_type=content_type or None,
+                    )
+
+                body = response.content or b""
+                truncated_bytes = len(body) >= self.config.max_bytes
+                if truncated_bytes:
+                    body = body[: self.config.max_bytes]
+                encoding = response.charset or response.encoding or "utf-8"
+                logger.info(
+                    "[Webpage] Fetched %s via=curl_impersonate status=%s content_type=%s bytes=%s truncated=%s",
+                    url,
+                    status_code,
+                    content_type or "unknown",
+                    len(body),
+                    truncated_bytes,
+                )
+                return _FetchedPage(
+                    final_url=str(response.url),
+                    status_code=status_code,
+                    content_type=content_type,
+                    encoding=encoding,
+                    body=body,
+                    truncated_bytes=truncated_bytes,
+                )
+            except Exception as exc:
+                elapsed = time.monotonic() - start_time
+                error_detail = f"Fetch failed after {elapsed:.2f}s [curl_impersonate]: {exc}"
+                logger.warning("[Webpage] %s failed: %s", url, error_detail)
+                return WebpageResult(
+                    url=url,
+                    final_url=url,
+                    title="",
+                    text="",
+                    truncated=False,
+                    error=error_detail,
+                    status_code=None,
+                    content_type=None,
+                )
+
+        return await asyncio.to_thread(_do_request)
+
+    @staticmethod
+    def _should_retry_after_error(*, url: str, result: WebpageResult) -> bool:
+        if result.error is None:
+            return False
+        if WebpageService._is_wikimedia_url(url):
+            return True
+        if result.status_code in {403, 408, 425, 429, 500, 502, 503, 504}:
+            return True
+        if result.status_code is None:
+            return True
+        return False
+
     def _extract_text(self, html_text: str, content_type: str) -> Tuple[str, str, str]:
+        if self._is_json_content_type(content_type):
+            return self._extract_json_text(html_text)
         if "text/html" in content_type:
             if trafilatura:
                 try:
@@ -531,10 +761,73 @@ class WebpageService:
         return "", html_text, ""
 
     @staticmethod
+    def _is_json_content_type(content_type: str) -> bool:
+        return "application/json" in (content_type or "").lower()
+
+    @classmethod
+    def _is_supported_content_type(cls, *, url: str, content_type: str) -> bool:
+        lowered = (content_type or "").lower()
+        if "text/html" in lowered or lowered.startswith("text/"):
+            return True
+        if cls._is_wikimedia_url(url) and cls._is_json_content_type(lowered):
+            return True
+        return False
+
+    @staticmethod
+    def _extract_json_text(raw_text: str) -> Tuple[str, str, str]:
+        try:
+            payload = json.loads(raw_text)
+        except Exception:
+            return "", raw_text, ""
+
+        if isinstance(payload, dict):
+            title = str(payload.get("title") or "").strip()
+            description = str(payload.get("description") or "").strip()
+            extract = str(payload.get("extract") or "").strip()
+            if extract:
+                return title, extract, description
+
+            query = payload.get("query")
+            if isinstance(query, dict):
+                pages = query.get("pages")
+                if isinstance(pages, dict):
+                    for page in pages.values():
+                        if not isinstance(page, dict):
+                            continue
+                        page_title = str(page.get("title") or title).strip()
+                        page_extract = str(page.get("extract") or "").strip()
+                        if page_extract:
+                            return page_title, page_extract, description
+
+        return "", raw_text, ""
+
+    @staticmethod
     def _normalize_text(text: str) -> str:
         text = re.sub(r"[ \t]+", " ", text or "")
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
+
+    def _browser_navigation_headers(self, *, url: str) -> dict[str, str]:
+        host = urlparse(url).hostname or ""
+        headers = {
+            "User-Agent": self.config.user_agent,
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,image/apng,*/*;q=0.8"
+            ),
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+        }
+        if host.endswith("wikipedia.org") or host.endswith("wikimedia.org"):
+            headers["Referer"] = "https://www.wikipedia.org/"
+        return headers
 
     @staticmethod
     def _http2_supported() -> bool:
@@ -578,6 +871,11 @@ class WebpageService:
 
     def _resolve_proxy(self) -> Optional[str]:
         return self.config.proxy or None
+
+    @staticmethod
+    def _is_wikimedia_url(url: str) -> bool:
+        host = (urlparse(url).hostname or "").lower()
+        return host.endswith("wikipedia.org") or host.endswith("wikimedia.org")
 
     @staticmethod
     def _redact_proxy(proxy_url: str) -> str:

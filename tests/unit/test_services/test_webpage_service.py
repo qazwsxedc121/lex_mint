@@ -83,3 +83,54 @@ def test_http2_supported_reflects_optional_h2_dependency(monkeypatch, tmp_path):
 
     monkeypatch.setattr("src.api.services.webpage_service.importlib.util.find_spec", lambda name: object())
     assert service._http2_supported() is True
+
+
+def test_build_fetch_attempts_prefers_direct_for_wikimedia_with_proxy(tmp_path):
+    service = WebpageService(config_path=tmp_path / "webpage_config.yaml")
+    headers = {"User-Agent": "test-agent", "Accept": "text/html"}
+
+    attempts = service._build_fetch_attempts(
+        url="https://en.wikipedia.org/wiki/OpenAI",
+        headers=headers,
+        proxy="http://127.0.0.1:7897",
+    )
+
+    assert [attempt.name for attempt in attempts] == ["wikimedia_direct", "default"]
+    assert attempts[0].proxy is None
+    assert attempts[0].trust_env is False
+    assert attempts[1].proxy == "http://127.0.0.1:7897"
+
+
+def test_extract_json_text_supports_wikimedia_summary_payload(tmp_path):
+    service = WebpageService(config_path=tmp_path / "webpage_config.yaml")
+
+    title, text, description = service._extract_text(
+        '{"title":"OpenAI","description":"AI research","extract":"OpenAI is an AI company."}',
+        "application/json",
+    )
+
+    assert title == "OpenAI"
+    assert text == "OpenAI is an AI company."
+    assert description == "AI research"
+
+
+def test_browser_navigation_headers_include_browser_like_fields(tmp_path):
+    service = WebpageService(config_path=tmp_path / "webpage_config.yaml")
+
+    headers = service._browser_navigation_headers(url="https://en.wikipedia.org/wiki/OpenAI")
+
+    assert headers["Upgrade-Insecure-Requests"] == "1"
+    assert headers["Sec-Fetch-Dest"] == "document"
+    assert headers["Sec-Fetch-Mode"] == "navigate"
+    assert headers["Referer"] == "https://www.wikipedia.org/"
+
+
+def test_should_try_curl_impersonation_for_wikimedia_even_without_error(tmp_path):
+    service = WebpageService(config_path=tmp_path / "webpage_config.yaml")
+
+    result = service._should_try_curl_impersonation(
+        url="https://en.wikipedia.org/wiki/OpenAI",
+        last_error=None,
+    )
+
+    assert result is True

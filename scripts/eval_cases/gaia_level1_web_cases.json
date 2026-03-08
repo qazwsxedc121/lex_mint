@@ -1,0 +1,47 @@
+[
+  {
+    "id": "gaia_q1_mercedes_sosa",
+    "source_question_id": "8e867cd7-cff9-4e6c-867a-ff5ddc2550be",
+    "title": "Mercedes Sosa studio albums 2000-2009",
+    "question": "How many studio albums were published by Mercedes Sosa between 2000 and 2009 (included)? You can use the latest 2022 version of english wikipedia.",
+    "source_url": "https://agents-course-unit4-scoring.hf.space/questions",
+    "expected_answer": "6",
+    "match_type": "numeric",
+    "notes": "Reference answer validated from accessible discography pages that list 2003, 2003, 2005, 2008, 2009, 2009 releases.",
+    "tags": ["gaia", "level1", "web_search", "read_webpage", "scored"]
+  },
+  {
+    "id": "gaia_q11_polish_raymond",
+    "source_question_id": "305ac316-eef6-4446-960a-92d80d542f82",
+    "title": "Polish Raymond to Magda M role",
+    "question": "Who did the actor who played Ray in the Polish-language version of Everybody Loves Raymond play in Magda M.? Give only the first name.",
+    "source_url": "https://agents-course-unit4-scoring.hf.space/questions",
+    "expected_answer": "Wojciech",
+    "match_type": "exact_ci",
+    "notes": "The actor is Bartlomiej Kasprzykowski; public cast references list his Magda M. role as Wojciech.",
+    "tags": ["gaia", "level1", "web_search", "multi_hop", "scored"]
+  },
+  {
+    "id": "gaia_q17_1928_olympics",
+    "source_question_id": "cf106601-ab4f-4af9-b045-5295fe67b37d",
+    "title": "1928 Olympics least athletes",
+    "question": "What country had the least number of athletes at the 1928 Summer Olympics? If there's a tie for a number of athletes, return the first in alphabetical order. Give the IOC country code as your answer.",
+    "source_url": "https://agents-course-unit4-scoring.hf.space/questions",
+    "expected_answer": "CUB",
+    "match_type": "exact_ci",
+    "notes": "Reference answer derived from the public Olympedia athlete count page for the 1928 Summer Olympics.",
+    "tags": ["gaia", "level1", "web_search", "read_webpage", "table_like", "scored"]
+  },
+  {
+    "id": "gaia_q15_universe_today_paper",
+    "source_question_id": "840bfca7-4f7b-481a-8794-c560c340185d",
+    "title": "Universe Today linked paper support award",
+    "question": "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article mentions a team that produced a paper about their observations, linked at the bottom of the article. Find this paper. Under what NASA award number was the work performed by R. G. Arendt supported by?",
+    "source_url": "https://agents-course-unit4-scoring.hf.space/questions",
+    "expected_answer": null,
+    "match_type": "exact_ci",
+    "notes": "Manual review case. Good for testing iterative search and deep page reading.",
+    "tags": ["gaia", "level1", "web_search", "read_webpage", "manual_review"]
+  }
+]
+
