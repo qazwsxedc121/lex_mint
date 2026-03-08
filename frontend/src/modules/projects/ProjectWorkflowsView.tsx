@@ -353,7 +353,7 @@ export const ProjectWorkflowsView: React.FC = () => {
   }, [activeWorkflow, addRecent, artifactPath, currentSessionId, inputValues, loadRecentRuns, projectId, running, t, writeMode]);
 
   return (
-    <div data-name="project-workflows-view" className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50 px-4 py-4 dark:bg-gray-950">
+    <div data-name="project-workflows-view" className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-gray-50 px-4 py-4 dark:bg-gray-950">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
         <div className="flex min-w-0 items-start gap-3">
           <div className="rounded-xl bg-amber-50 p-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
