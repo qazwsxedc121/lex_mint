@@ -4,7 +4,7 @@
 
 import axios from 'axios';
 import { API_BASE } from './apiBase';
-import { postFlowEventStream } from './flowEventStreamClient';
+import { consumeFlowEventResponse, postFlowEventStream } from './flowEventStreamClient';
 import { asNumber, asRecord, asString, iterateSSEData, parseFlowEvent, sleep } from './flowEvents';
 import i18n from '../i18n';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
@@ -762,55 +762,46 @@ export async function runWorkflowStream(
     const resumeDelaysMs = [500, 1500];
 
     const consumeResponse = async (response: Response): Promise<'done' | 'disconnected'> => {
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
+      let streamFinished = false;
       try {
-        try {
-          for await (const dataStr of iterateSSEData(reader)) {
-            try {
-              const data = JSON.parse(dataStr);
-              const flowEvent = parseFlowEvent(data.flow_event);
-              if (!flowEvent) {
-                callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
-                return 'done';
-              }
+        await consumeFlowEventResponse({
+          response,
+          onInvalidPayload: () => {
+            callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
+            streamFinished = true;
+          },
+          onStreamError: (message) => {
+            callbacks.onError?.(message || i18n.t('workflow:errors.runFailed'));
+            streamFinished = true;
+          },
+          onFlowEvent: (flowEvent) => {
+            lastEventId = flowEvent.event_id;
+            const workflowEvent = flowEvent as WorkflowFlowEvent;
+            callbacks.onEvent?.(workflowEvent);
 
-              lastEventId = flowEvent.event_id;
-              const workflowEvent = flowEvent as WorkflowFlowEvent;
-              callbacks.onEvent?.(workflowEvent);
-
-              if (workflowEvent.event_type === 'stream_error') {
-                callbacks.onError?.(asString(workflowEvent.payload.error) || i18n.t('workflow:errors.runFailed'));
-                return 'done';
+            if (workflowEvent.event_type === 'text_delta') {
+              const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
+              if (textChunk) {
+                callbacks.onChunk?.(textChunk, workflowEvent);
               }
-
-              if (workflowEvent.event_type === 'text_delta') {
-                const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
-                if (textChunk) {
-                  callbacks.onChunk?.(textChunk, workflowEvent);
-                }
-                continue;
-              }
-
-              if (workflowEvent.event_type === 'stream_ended') {
-                callbacks.onComplete?.();
-                return 'done';
-              }
-            } catch {
-              continue;
+              return 'continue';
             }
-          }
-          return 'disconnected';
-        } catch (streamError: unknown) {
-          if (streamError instanceof Error && streamError.name === 'AbortError') {
-            throw streamError;
-          }
-          return 'disconnected';
+
+            if (workflowEvent.event_type === 'stream_ended') {
+              callbacks.onComplete?.();
+              streamFinished = true;
+              return 'stop';
+            }
+
+            return 'continue';
+          },
+        });
+        return streamFinished ? 'done' : 'disconnected';
+      } catch (streamError: unknown) {
+        if (streamError instanceof Error && streamError.name === 'AbortError') {
+          throw streamError;
         }
-      } finally {
-        reader.releaseLock();
+        return 'disconnected';
       }
     };
 
