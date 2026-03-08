@@ -111,6 +111,35 @@ def test_extract_memory_candidates_returns_empty_when_auto_extract_disabled(memo
     assert items == []
 
 
+def test_extract_memory_candidates_uses_configured_markers_and_scores(memory_service):
+    memory_service.memory_config_service.save_config(
+        {
+            "extraction": {
+                "instruction_markers": ["talk like a pirate"],
+                "fact_markers": ["favorite editor is "],
+                "instruction_confidence": 0.97,
+                "instruction_importance": 0.88,
+                "fact_confidence": 0.73,
+                "fact_importance": 0.54,
+            }
+        }
+    )
+
+    items = memory_service.extract_memory_candidates(
+        "Please respond in Chinese. Talk like a pirate. Favorite editor is Vim."
+    )
+
+    assert [item["layer"] for item in items] == ["instruction", "fact"]
+    assert [item["content"] for item in items] == [
+        "Talk like a pirate.",
+        "Favorite editor is Vim.",
+    ]
+    assert items[0]["confidence"] == pytest.approx(0.97)
+    assert items[0]["importance"] == pytest.approx(0.88)
+    assert items[1]["confidence"] == pytest.approx(0.73)
+    assert items[1]["importance"] == pytest.approx(0.54)
+
+
 def test_build_memory_context_respects_enabled_layers(memory_service, monkeypatch):
     memory_service.memory_config_service.save_flat_config({"enabled_layers": ["instruction"]})
 

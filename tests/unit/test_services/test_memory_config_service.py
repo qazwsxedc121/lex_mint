@@ -41,3 +41,31 @@ def test_memory_config_service_updates_flat_values(temp_config_dir):
     assert flat["score_threshold"] == 0.5
     assert flat["assistant_enabled"] is False
     assert flat["enabled_layers"] == ["fact"]
+
+
+def test_memory_config_service_persists_extraction_rules(temp_config_dir):
+    config_path = temp_config_dir / "memory_config.yaml"
+    service = MemoryConfigService(config_path=str(config_path))
+
+    service.save_config(
+        {
+            "extraction": {
+                "instruction_markers": ["talk like a pirate"],
+                "fact_markers": ["favorite editor is "],
+                "instruction_confidence": 0.97,
+                "instruction_importance": 0.88,
+                "fact_confidence": 0.73,
+                "fact_importance": 0.54,
+            }
+        }
+    )
+
+    reloaded = MemoryConfigService(config_path=str(config_path))
+    extraction = reloaded.config.extraction
+
+    assert extraction.instruction_markers == ["talk like a pirate"]
+    assert extraction.fact_markers == ["favorite editor is "]
+    assert extraction.instruction_confidence == 0.97
+    assert extraction.instruction_importance == 0.88
+    assert extraction.fact_confidence == 0.73
+    assert extraction.fact_importance == 0.54

@@ -17,6 +17,55 @@ from ..paths import data_state_dir, legacy_config_dir, ensure_local_file
 logger = logging.getLogger(__name__)
 
 
+def _default_instruction_markers() -> List[str]:
+    return [
+        "please respond",
+        "please reply",
+        "please use",
+        "please write",
+        "please keep",
+        "respond in ",
+        "reply in ",
+        "write in ",
+        "use concise",
+        "use bullet",
+        "call me ",
+        "refer to me as",
+        "please call me",
+        "avoid ",
+        "\u8bf7\u7528",
+        "\u8bf7\u4f7f\u7528",
+        "\u8bf7\u4ee5",
+        "\u8bf7\u56de\u7b54",
+        "\u8bf7\u56de\u590d",
+        "\u8bf7\u53eb\u6211",
+        "\u79f0\u547c\u6211",
+        "\u8bf7\u5c3d\u91cf",
+        "\u8bf7\u4fdd\u6301",
+        "\u4ee5\u540e\u8bf7",
+        "\u8bb0\u4f4f",
+    ]
+
+
+def _default_fact_markers() -> List[str]:
+    return [
+        "i am ",
+        "i'm ",
+        "my name is ",
+        "i work as ",
+        "i work at ",
+        "i live in ",
+        "my role is ",
+        "my timezone is ",
+        "\u6211\u662f",
+        "\u6211\u53eb",
+        "\u6211\u7684\u540d\u5b57\u662f",
+        "\u6211\u4f4f\u5728",
+        "\u6211\u5728",
+        "\u6211\u7684\u5de5\u4f5c\u662f",
+    ]
+
+
 @dataclass
 class MemoryRetrievalConfig:
     top_k: int = 8
@@ -30,6 +79,12 @@ class MemoryExtractionConfig:
     enabled: bool = True
     min_text_length: int = 8
     max_items_per_turn: int = 3
+    instruction_markers: List[str] = field(default_factory=_default_instruction_markers)
+    fact_markers: List[str] = field(default_factory=_default_fact_markers)
+    instruction_confidence: float = 0.92
+    instruction_importance: float = 0.75
+    fact_confidence: float = 0.82
+    fact_importance: float = 0.65
 
 
 @dataclass
@@ -82,6 +137,12 @@ class MemoryConfigService:
                     "enabled": True,
                     "min_text_length": 8,
                     "max_items_per_turn": 3,
+                    "instruction_markers": _default_instruction_markers(),
+                    "fact_markers": _default_fact_markers(),
+                    "instruction_confidence": 0.92,
+                    "instruction_importance": 0.75,
+                    "fact_confidence": 0.82,
+                    "fact_importance": 0.65,
                 },
                 "scopes": {
                     "global_enabled": True,
@@ -123,6 +184,20 @@ class MemoryConfigService:
                     enabled=bool(extraction.get("enabled", True)),
                     min_text_length=int(extraction.get("min_text_length", 8)),
                     max_items_per_turn=int(extraction.get("max_items_per_turn", 3)),
+                    instruction_markers=[
+                        str(marker)
+                        for marker in extraction.get("instruction_markers", _default_instruction_markers())
+                        if str(marker).strip()
+                    ],
+                    fact_markers=[
+                        str(marker)
+                        for marker in extraction.get("fact_markers", _default_fact_markers())
+                        if str(marker).strip()
+                    ],
+                    instruction_confidence=float(extraction.get("instruction_confidence", 0.92)),
+                    instruction_importance=float(extraction.get("instruction_importance", 0.75)),
+                    fact_confidence=float(extraction.get("fact_confidence", 0.82)),
+                    fact_importance=float(extraction.get("fact_importance", 0.65)),
                 ),
                 scopes=MemoryScopeConfig(
                     global_enabled=bool(scopes.get("global_enabled", True)),
