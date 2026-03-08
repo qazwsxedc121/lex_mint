@@ -1345,7 +1345,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     if (!exists) {
       setReasoningEffort('default');
     }
-  }, [reasoningEffort, reasoningOptions]);
+  }, [reasoningEffort, reasoningOptions, setReasoningEffort]);
 
   const currentOption = reasoningOptions.find((o) => o.value === reasoningEffort) || reasoningOptions[0];
   const blocksMessage = buildBlocksMessage();

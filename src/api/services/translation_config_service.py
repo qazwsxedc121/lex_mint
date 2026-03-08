@@ -10,12 +10,12 @@ from dataclasses import dataclass
 
 import yaml
 
+from .yaml_config_utils import load_default_yaml_section, load_layered_yaml_section, save_yaml_section_updates
 from ..paths import (
     config_defaults_dir,
     config_local_dir,
     legacy_config_dir,
     ensure_local_file,
-    resolve_layered_read_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,30 +71,18 @@ class TranslationConfigService:
 
     def _load_default_section(self) -> Dict:
         """Load fallback defaults from the repo default config file."""
-        if self.defaults_path is None or not self.defaults_path.exists():
-            return {}
-
-        with open(self.defaults_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-        return data.get('translation', {}) or {}
+        return load_default_yaml_section(self.defaults_path, 'translation')
 
     def _load_config(self) -> TranslationConfig:
         """Load configuration from YAML file"""
-        default_config = self._load_default_section()
-        config_path = resolve_layered_read_path(
-            local_path=self.config_path,
+        default_config, config_data = load_layered_yaml_section(
+            config_path=self.config_path,
             defaults_path=self.defaults_path,
             legacy_paths=self.legacy_paths,
+            section_name='translation',
+            logger=logger,
+            error_label='translation config',
         )
-
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-
-            config_data = data.get('translation', {})
-        except Exception as e:
-            logger.error(f"Failed to load translation config: {e}")
-            config_data = default_config
 
         return TranslationConfig(
             enabled=config_data.get('enabled', default_config.get('enabled', True)),
@@ -137,19 +125,11 @@ class TranslationConfigService:
     def save_config(self, updates: Dict):
         """Save updated configuration to file"""
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-
-            if 'translation' not in data:
-                data['translation'] = {}
-
-            for key, value in updates.items():
-                if value is not None:
-                    data['translation'][key] = value
-
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-
+            save_yaml_section_updates(
+                config_path=self.config_path,
+                section_name='translation',
+                updates=updates,
+            )
             self.reload_config()
             logger.info("Translation config updated successfully")
         except Exception as e:

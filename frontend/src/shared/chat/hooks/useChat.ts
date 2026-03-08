@@ -15,6 +15,24 @@ import type {
   ChatTargetType,
 } from '../../../types/message';
 import { useChatServices } from '../services/ChatServiceProvider';
+import {
+  buildGroupTimelineEvent,
+  loadToolCallCache,
+  mergeToolCallsFromCache as mergeToolCallsFromCacheItems,
+  nowTimestamp,
+  persistToolCallCache,
+  rememberToolCallsInCache,
+} from './useChatHelpers';
+import {
+  buildChatSessionSnapshot,
+  createEmptyChatSessionSnapshot,
+  enrichGroupAssistantMessages,
+  mergeCompareResponses,
+} from './useChatSessionHelpers';
+import {
+  applyGroupProjectionEvent,
+  type GroupTimelineProjectionInput,
+} from './useChatGroupProjection';
 
 type SendMessageOptions = {
   reasoningEffort?: string;
@@ -25,18 +43,8 @@ type SendMessageOptions = {
 
 type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
 
-const TOOL_CALL_CACHE_STORAGE_KEY = 'lex-mint.tool-calls.cache.v1';
-const TOOL_CALL_CACHE_LIMIT = 300;
-
 export function useChat(sessionId: string | null) {
   const { api } = useChatServices();
-
-  /** Generate current timestamp in YYYY-MM-DD HH:MM:SS format */
-  const nowTimestamp = () => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  };
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,132 +68,72 @@ export function useChat(sessionId: string | null) {
   const isProcessingRef = useRef(false);
   const toolCallsByMessageIdRef = useRef<Record<string, NonNullable<Message['toolCalls']>>>({});
 
-  const persistToolCallCache = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      window.sessionStorage.setItem(
-        TOOL_CALL_CACHE_STORAGE_KEY,
-        JSON.stringify(toolCallsByMessageIdRef.current)
-      );
-    } catch {
-      // Ignore storage quota/availability errors.
-    }
+  const applySessionSnapshot = useCallback((snapshot: ReturnType<typeof createEmptyChatSessionSnapshot>) => {
+    setMessages(snapshot.messages);
+    setCurrentModelId(snapshot.currentModelId);
+    setCurrentAssistantId(snapshot.currentAssistantId);
+    setCurrentTargetType(snapshot.currentTargetType);
+    setTotalUsage(snapshot.totalUsage);
+    setTotalCost(snapshot.totalCost);
+    setLastPromptTokens(snapshot.lastPromptTokens);
+    setParamOverrides(snapshot.paramOverrides);
+    setIsTemporary(snapshot.isTemporary);
+    setGroupAssistants(snapshot.groupAssistants);
+    setGroupMode(snapshot.groupMode);
+    setGroupTimeline(snapshot.groupTimeline);
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      const raw = window.sessionStorage.getItem(TOOL_CALL_CACHE_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') {
-        return;
-      }
-      const hydrated: Record<string, NonNullable<Message['toolCalls']>> = {};
-      for (const [messageId, value] of Object.entries(parsed)) {
-        if (!messageId || !Array.isArray(value) || value.length === 0) {
-          continue;
-        }
-        hydrated[messageId] = value as NonNullable<Message['toolCalls']>;
-      }
-      toolCallsByMessageIdRef.current = hydrated;
-    } catch {
-      // Ignore malformed persisted cache.
-    }
+    toolCallsByMessageIdRef.current = loadToolCallCache();
   }, []);
 
   const rememberToolCalls = useCallback((items: Message[]) => {
-    let updated = false;
-    for (const item of items) {
-      if (
-        item.role === 'assistant' &&
-        item.message_id &&
-        Array.isArray(item.toolCalls) &&
-        item.toolCalls.length > 0
-      ) {
-        toolCallsByMessageIdRef.current[item.message_id] = item.toolCalls;
-        updated = true;
-      }
-    }
+    const updated = rememberToolCallsInCache(toolCallsByMessageIdRef.current, items);
     if (!updated) {
       return;
     }
-    const messageIds = Object.keys(toolCallsByMessageIdRef.current);
-    if (messageIds.length > TOOL_CALL_CACHE_LIMIT) {
-      const trimCount = messageIds.length - TOOL_CALL_CACHE_LIMIT;
-      for (let i = 0; i < trimCount; i += 1) {
-        delete toolCallsByMessageIdRef.current[messageIds[i]];
-      }
-    }
-    persistToolCallCache();
-  }, [persistToolCallCache]);
-
-  const mergeToolCallsFromCache = useCallback((items: Message[]): Message[] => {
-    return items.map((item) => {
-      if (item.role !== 'assistant' || !item.message_id || (item.toolCalls && item.toolCalls.length > 0)) {
-        return item;
-      }
-      const cachedToolCalls = toolCallsByMessageIdRef.current[item.message_id];
-      if (!cachedToolCalls || cachedToolCalls.length === 0) {
-        return item;
-      }
-      return {
-        ...item,
-        toolCalls: cachedToolCalls,
-      };
-    });
+    persistToolCallCache(toolCallsByMessageIdRef.current);
   }, []);
 
-  const appendGroupTimelineEvent = (event: {
-    type: string;
-    mode?: string;
-    round?: number;
-    max_rounds?: number;
-    action?: string;
-    reason?: string;
-    supervisor_id?: string;
-    supervisor_name?: string;
-    assistant_id?: string;
-    assistant_name?: string;
-    assistant_ids?: string[];
-    assistant_names?: string[];
-    instruction?: string;
-    rounds?: number;
-  }) => {
-    const eventType = event.type;
-    if (
-      eventType !== 'group_round_start' &&
-      eventType !== 'group_action' &&
-      eventType !== 'group_done'
-    ) {
+  const mergeToolCallsFromCache = useCallback((items: Message[]): Message[] => {
+    return mergeToolCallsFromCacheItems(items, toolCallsByMessageIdRef.current);
+  }, []);
+
+  const appendGroupTimelineEvent = useCallback((event: GroupTimelineProjectionInput) => {
+    const timelineEvent = buildGroupTimelineEvent(event);
+    if (!timelineEvent) {
       return;
     }
-    const timelineEvent: GroupTimelineEvent = {
-      event_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-      created_at: nowTimestamp(),
-      type: eventType,
-      mode: event.mode,
-      round: event.round,
-      max_rounds: event.max_rounds,
-      action: event.action,
-      reason: event.reason,
-      supervisor_id: event.supervisor_id,
-      supervisor_name: event.supervisor_name,
-      assistant_id: event.assistant_id,
-      assistant_name: event.assistant_name,
-      assistant_ids: event.assistant_ids,
-      assistant_names: event.assistant_names,
-      instruction: event.instruction,
-      rounds: event.rounds,
-    };
     setGroupTimeline(prev => [...prev.slice(-39), timelineEvent]);
-  };
+  }, []);
+
+  const applyGroupEventProjection = useCallback((
+    event: Record<string, unknown>,
+    runtimeIsGroupChat: boolean,
+    activateRuntimeGroupChatMode: () => void,
+    updateAssistantMessage: (
+      updater: (message: Message) => Message,
+      options?: { assistantTurnId?: string | null; allowSingleFallback?: boolean },
+    ) => void,
+    activeAssistantTurnIdRef: { current: string | null },
+  ) => {
+    applyGroupProjectionEvent({
+      event,
+      activateRuntimeGroupChatMode,
+      runtimeIsGroupChat,
+      appendGroupTimelineEvent,
+      updateAssistantMessage,
+      setMessages,
+      setTotalUsage,
+      setTotalCost,
+      setLastPromptTokens,
+      getActiveAssistantTurnId: () => activeAssistantTurnIdRef.current,
+      setActiveAssistantTurnId: (value) => {
+        activeAssistantTurnIdRef.current = value;
+      },
+      nowTimestamp,
+    });
+  }, [appendGroupTimelineEvent, setLastPromptTokens, setMessages, setTotalCost, setTotalUsage]);
 
   // Extract loadSession as a standalone function so it can be called after sending messages
   const loadSession = useCallback(async () => {
@@ -199,20 +147,9 @@ export function useChat(sessionId: string | null) {
     setIsCompressing(false);
 
     if (!sessionId) {
-      setMessages([]);
-      setCurrentModelId(null);
-      setCurrentAssistantId(null);
-      setCurrentTargetType('model');
-      setTotalUsage(null);
-      setTotalCost(null);
+      applySessionSnapshot(createEmptyChatSessionSnapshot());
       setFollowupQuestions([]);
       setContextInfo(null);
-      setLastPromptTokens(null);
-      setParamOverrides({});
-      setIsTemporary(false);
-      setGroupAssistants(null);
-      setGroupMode(null);
-      setGroupTimeline([]);
       return;
     }
 
@@ -234,97 +171,26 @@ export function useChat(sessionId: string | null) {
         if (needsAssistantMetadata) {
           try {
             const assistants = await api.listAssistants();
-            const assistantMap = new Map(assistants.map((assistant) => [assistant.id, assistant]));
-            loadedMessages = loadedMessages.map((msg) => {
-              if (msg.role !== 'assistant' || !msg.assistant_id) {
-                return msg;
-              }
-              const modelParticipantMatch = msg.assistant_id.match(/^model::(.+)$/);
-              if (modelParticipantMatch) {
-                const modelCompositeId = modelParticipantMatch[1];
-                return {
-                  ...msg,
-                  assistant_name: msg.assistant_name || modelCompositeId,
-                };
-              }
-              const assistant = assistantMap.get(msg.assistant_id);
-              if (!assistant) {
-                return msg;
-              }
-              return {
-                ...msg,
-                assistant_name: msg.assistant_name || assistant.name,
-                assistant_icon: msg.assistant_icon || assistant.icon,
-              };
-            });
+            loadedMessages = enrichGroupAssistantMessages(loadedMessages, assistants);
           } catch {
             // Keep loaded messages as-is when assistant metadata cannot be fetched.
           }
         }
       }
 
-      // Merge comparison data into messages
-      if (session.compare_data) {
-        loadedMessages = loadedMessages.map(msg => {
-          if (msg.role === 'assistant' && msg.message_id && session.compare_data![msg.message_id]) {
-            return {
-              ...msg,
-              compareResponses: session.compare_data![msg.message_id].responses,
-            };
-          }
-          return msg;
-        });
-      }
+      loadedMessages = mergeCompareResponses(loadedMessages, session.compare_data);
 
       loadedMessages = mergeToolCallsFromCache(loadedMessages);
-      setMessages(loadedMessages);
       rememberToolCalls(loadedMessages);
-      setCurrentModelId(session.model_id || null);
-      setCurrentAssistantId(session.assistant_id || null);
-      const inferredTargetType: ChatTargetType =
-        session.target_type ||
-        (session.assistant_id && !session.assistant_id.startsWith('__legacy_model_') ? 'assistant' : 'model');
-      setCurrentTargetType(inferredTargetType);
-      setTotalUsage(session.total_usage || null);
-      setTotalCost(session.total_cost || null);
-      setParamOverrides(session.param_overrides || {});
-      setIsTemporary(session.temporary || false);
-      setGroupAssistants(session.group_assistants || null);
-      setGroupMode(
-        session.group_mode ||
-        (session.group_assistants && session.group_assistants.length >= 2 ? 'round_robin' : null)
-      );
-      setGroupTimeline([]);
-
-      // Derive lastPromptTokens from last assistant message's usage
-      const msgs = session.state.messages;
-      let derivedPromptTokens: number | null = null;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'assistant' && msgs[i].usage?.prompt_tokens) {
-          derivedPromptTokens = msgs[i].usage!.prompt_tokens;
-          break;
-        }
-      }
-      setLastPromptTokens(derivedPromptTokens);
+      applySessionSnapshot(buildChatSessionSnapshot(session, loadedMessages));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load session');
-      setMessages([]);
-      setCurrentModelId(null);
-      setCurrentAssistantId(null);
-      setCurrentTargetType('model');
-      setTotalUsage(null);
-      setTotalCost(null);
+      applySessionSnapshot(createEmptyChatSessionSnapshot());
       setContextInfo(null);
-      setLastPromptTokens(null);
-      setParamOverrides({});
-      setIsTemporary(false);
-      setGroupAssistants(null);
-      setGroupMode(null);
-      setGroupTimeline([]);
     } finally {
       setLoading(false);
     }
-  }, [api, mergeToolCallsFromCache, rememberToolCalls, sessionId]);
+  }, [api, applySessionSnapshot, mergeToolCallsFromCache, rememberToolCalls, sessionId]);
 
   useEffect(() => {
     rememberToolCalls(messages);
@@ -748,166 +614,17 @@ export function useChat(sessionId: string | null) {
           // Controlled by onGroupEvent when available.
         },
         (event) => {
-          const isGroupEventType = (
-            event.type === 'assistant_start' ||
-            event.type === 'assistant_chunk' ||
-            event.type === 'assistant_done' ||
-            event.type === 'assistant_message_id' ||
-            event.type === 'usage' ||
-            event.type === 'sources' ||
-            event.type === 'thinking_duration'
+          const activeAssistantTurnIdRef = {
+            get current() { return activeAssistantTurnId; },
+            set current(value: string | null) { activeAssistantTurnId = value; },
+          };
+          applyGroupEventProjection(
+            event,
+            runtimeIsGroupChat,
+            activateRuntimeGroupChatMode,
+            updateAssistantMessage,
+            activeAssistantTurnIdRef,
           );
-          const isGroupOrchestrationEvent = (
-            event.type === 'group_round_start' ||
-            event.type === 'group_action' ||
-            event.type === 'group_done'
-          );
-          const hasGroupIdentity =
-            typeof event.assistant_turn_id === 'string' ||
-            typeof event.assistant_id === 'string';
-          if ((isGroupEventType && hasGroupIdentity) || isGroupOrchestrationEvent) {
-            activateRuntimeGroupChatMode();
-          }
-          if (!runtimeIsGroupChat) {
-            return;
-          }
-          if (isGroupOrchestrationEvent) {
-            appendGroupTimelineEvent({
-              type: event.type,
-              mode: typeof event.mode === 'string' ? event.mode : undefined,
-              round: typeof event.round === 'number' ? event.round : undefined,
-              max_rounds: typeof event.max_rounds === 'number' ? event.max_rounds : undefined,
-              action: typeof event.action === 'string' ? event.action : undefined,
-              reason: typeof event.reason === 'string' ? event.reason : undefined,
-              supervisor_id: typeof event.supervisor_id === 'string' ? event.supervisor_id : undefined,
-              supervisor_name: typeof event.supervisor_name === 'string' ? event.supervisor_name : undefined,
-              assistant_id: typeof event.assistant_id === 'string' ? event.assistant_id : undefined,
-              assistant_name: typeof event.assistant_name === 'string' ? event.assistant_name : undefined,
-              assistant_ids: Array.isArray(event.assistant_ids)
-                ? event.assistant_ids.filter((value): value is string => typeof value === 'string')
-                : undefined,
-              assistant_names: Array.isArray(event.assistant_names)
-                ? event.assistant_names.filter((value): value is string => typeof value === 'string')
-                : undefined,
-              instruction: typeof event.instruction === 'string' ? event.instruction : undefined,
-              rounds: typeof event.rounds === 'number' ? event.rounds : undefined,
-            });
-            return;
-          }
-          switch (event.type) {
-            case 'assistant_start': {
-              const assistantId = typeof event.assistant_id === 'string' ? event.assistant_id : null;
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const assistantName = typeof event.name === 'string' ? event.name : '';
-              const assistantIcon = typeof event.icon === 'string' ? event.icon : undefined;
-              if (!assistantId || !assistantTurnId) {
-                return;
-              }
-              activeAssistantTurnId = assistantTurnId;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const exists = newMessages.some(
-                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
-                );
-                if (exists) {
-                  return prev;
-                }
-                newMessages.push({
-                  role: 'assistant',
-                  content: '',
-                  created_at: nowTimestamp(),
-                  assistant_id: assistantId,
-                  assistant_turn_id: assistantTurnId,
-                  assistant_name: assistantName || undefined,
-                  assistant_icon: assistantIcon,
-                });
-                return newMessages;
-              });
-              return;
-            }
-            case 'assistant_chunk': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const chunk = typeof event.chunk === 'string' ? event.chunk : '';
-              if (!assistantTurnId || !chunk) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'usage': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const usage = event.usage as TokenUsage | undefined;
-              const cost = event.cost as CostInfo | undefined;
-              if (!assistantTurnId || !usage) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, usage, cost }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              setTotalUsage(prev => prev ? {
-                prompt_tokens: prev.prompt_tokens + usage.prompt_tokens,
-                completion_tokens: prev.completion_tokens + usage.completion_tokens,
-                total_tokens: prev.total_tokens + usage.total_tokens,
-              } : usage);
-              if (cost) {
-                setTotalCost(prev => prev ? {
-                  ...prev,
-                  total_cost: prev.total_cost + cost.total_cost,
-                } : cost);
-              }
-              setLastPromptTokens(usage.prompt_tokens);
-              return;
-            }
-            case 'sources': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const sources = event.sources as Message['sources'];
-              if (!assistantTurnId || !sources) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, sources }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'thinking_duration': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const durationMs = typeof event.duration_ms === 'number' ? event.duration_ms : null;
-              if (!assistantTurnId || durationMs === null) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, thinkingDurationMs: durationMs }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_message_id': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const messageId = typeof event.message_id === 'string' ? event.message_id : null;
-              if (!assistantTurnId || !messageId) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, message_id: messageId }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_done': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              if (assistantTurnId && activeAssistantTurnId === assistantTurnId) {
-                activeAssistantTurnId = null;
-              }
-              return;
-            }
-            default:
-              return;
-          }
         }
       );
     } catch (err) {
@@ -1560,155 +1277,17 @@ export function useChat(sessionId: string | null) {
           // Controlled by onGroupEvent when available.
         },
         (event) => {
-          const isGroupEventType = (
-            event.type === 'assistant_start' ||
-            event.type === 'assistant_chunk' ||
-            event.type === 'assistant_done' ||
-            event.type === 'assistant_message_id' ||
-            event.type === 'usage' ||
-            event.type === 'sources' ||
-            event.type === 'thinking_duration'
+          const activeAssistantTurnIdRef = {
+            get current() { return activeAssistantTurnId; },
+            set current(value: string | null) { activeAssistantTurnId = value; },
+          };
+          applyGroupEventProjection(
+            event,
+            runtimeIsGroupChat,
+            activateRuntimeGroupChatMode,
+            updateAssistantMessage,
+            activeAssistantTurnIdRef,
           );
-          const isGroupOrchestrationEvent = (
-            event.type === 'group_round_start' ||
-            event.type === 'group_action' ||
-            event.type === 'group_done'
-          );
-          const hasGroupIdentity =
-            typeof event.assistant_turn_id === 'string' ||
-            typeof event.assistant_id === 'string';
-          if ((isGroupEventType && hasGroupIdentity) || isGroupOrchestrationEvent) {
-            activateRuntimeGroupChatMode();
-          }
-          if (!runtimeIsGroupChat) {
-            return;
-          }
-          if (isGroupOrchestrationEvent) {
-            appendGroupTimelineEvent({
-              type: event.type,
-              mode: typeof event.mode === 'string' ? event.mode : undefined,
-              round: typeof event.round === 'number' ? event.round : undefined,
-              max_rounds: typeof event.max_rounds === 'number' ? event.max_rounds : undefined,
-              action: typeof event.action === 'string' ? event.action : undefined,
-              reason: typeof event.reason === 'string' ? event.reason : undefined,
-              supervisor_id: typeof event.supervisor_id === 'string' ? event.supervisor_id : undefined,
-              supervisor_name: typeof event.supervisor_name === 'string' ? event.supervisor_name : undefined,
-              assistant_id: typeof event.assistant_id === 'string' ? event.assistant_id : undefined,
-              assistant_name: typeof event.assistant_name === 'string' ? event.assistant_name : undefined,
-              assistant_ids: Array.isArray(event.assistant_ids)
-                ? event.assistant_ids.filter((value): value is string => typeof value === 'string')
-                : undefined,
-              assistant_names: Array.isArray(event.assistant_names)
-                ? event.assistant_names.filter((value): value is string => typeof value === 'string')
-                : undefined,
-              instruction: typeof event.instruction === 'string' ? event.instruction : undefined,
-              rounds: typeof event.rounds === 'number' ? event.rounds : undefined,
-            });
-            return;
-          }
-          switch (event.type) {
-            case 'assistant_start': {
-              const assistantId = typeof event.assistant_id === 'string' ? event.assistant_id : null;
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const assistantName = typeof event.name === 'string' ? event.name : '';
-              const assistantIcon = typeof event.icon === 'string' ? event.icon : undefined;
-              if (!assistantId || !assistantTurnId) {
-                return;
-              }
-              activeAssistantTurnId = assistantTurnId;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const exists = newMessages.some(
-                  (message) => message.role === 'assistant' && message.assistant_turn_id === assistantTurnId
-                );
-                if (exists) {
-                  return prev;
-                }
-                newMessages.push({
-                  role: 'assistant',
-                  content: '',
-                  created_at: nowTimestamp(),
-                  assistant_id: assistantId,
-                  assistant_turn_id: assistantTurnId,
-                  assistant_name: assistantName || undefined,
-                  assistant_icon: assistantIcon,
-                });
-                return newMessages;
-              });
-              return;
-            }
-            case 'assistant_chunk': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const chunk = typeof event.chunk === 'string' ? event.chunk : '';
-              if (!assistantTurnId || !chunk) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, content: `${message.content || ''}${chunk}` }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'usage': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const usage = event.usage as TokenUsage | undefined;
-              const cost = event.cost as CostInfo | undefined;
-              if (!assistantTurnId || !usage) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, usage, cost }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              setLastPromptTokens(usage.prompt_tokens);
-              return;
-            }
-            case 'sources': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const sources = event.sources as Message['sources'];
-              if (!assistantTurnId || !sources) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, sources }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'thinking_duration': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const durationMs = typeof event.duration_ms === 'number' ? event.duration_ms : null;
-              if (!assistantTurnId || durationMs === null) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, thinkingDurationMs: durationMs }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_message_id': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              const messageIdFromEvent = typeof event.message_id === 'string' ? event.message_id : null;
-              if (!assistantTurnId || !messageIdFromEvent) {
-                return;
-              }
-              updateAssistantMessage(
-                (message) => ({ ...message, message_id: messageIdFromEvent }),
-                { assistantTurnId, allowSingleFallback: false }
-              );
-              return;
-            }
-            case 'assistant_done': {
-              const assistantTurnId = typeof event.assistant_turn_id === 'string' ? event.assistant_turn_id : null;
-              if (assistantTurnId && activeAssistantTurnId === assistantTurnId) {
-                activeAssistantTurnId = null;
-              }
-              return;
-            }
-            default:
-              return;
-          }
         }
       );
     } catch (err) {

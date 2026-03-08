@@ -4,6 +4,8 @@
 
 import axios from 'axios';
 import { API_BASE } from './apiBase';
+import { consumeFlowEventResponse, postFlowEventStream } from './flowEventStreamClient';
+import { asNumber, asRecord, asString, iterateSSEData, parseFlowEvent, sleep } from './flowEvents';
 import i18n from '../i18n';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
 import type {
@@ -49,129 +51,6 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
-
-async function* iterateSSEData(
-  reader: ReadableStreamDefaultReader<Uint8Array>
-): AsyncGenerator<string, void, unknown> {
-  let buffer = '';
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-    buffer = buffer.replace(/\r\n/g, '\n');
-
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary !== -1) {
-      const rawEvent = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-
-      const dataLines = rawEvent
-        .split('\n')
-        .map((line) => line.trimEnd())
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart());
-
-      if (dataLines.length > 0) {
-        yield dataLines.join('\n');
-      }
-
-      boundary = buffer.indexOf('\n\n');
-    }
-
-    if (done) {
-      break;
-    }
-  }
-
-  const trailing = buffer.trim();
-  if (!trailing) {
-    return;
-  }
-
-  const trailingDataLines = trailing
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice(5).trimStart());
-
-  if (trailingDataLines.length > 0) {
-    yield trailingDataLines.join('\n');
-  }
-}
-
-type FlowEventStage = 'transport' | 'content' | 'tool' | 'orchestration' | 'meta';
-
-export interface FlowEvent {
-  event_id: string;
-  seq: number;
-  ts: number;
-  stream_id: string;
-  conversation_id?: string;
-  turn_id?: string;
-  event_type: string;
-  stage: FlowEventStage;
-  payload: Record<string, unknown>;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function parseFlowEvent(value: unknown): FlowEvent | null {
-  const record = asRecord(value);
-  if (!record) {
-    return null;
-  }
-  const stage = record.stage;
-  if (
-    stage !== 'transport' &&
-    stage !== 'content' &&
-    stage !== 'tool' &&
-    stage !== 'orchestration' &&
-    stage !== 'meta'
-  ) {
-    return null;
-  }
-
-  const eventId = asString(record.event_id);
-  const eventType = asString(record.event_type);
-  const streamId = asString(record.stream_id);
-  const seq = asNumber(record.seq);
-  const ts = asNumber(record.ts);
-  const payload = asRecord(record.payload) || {};
-
-  if (!eventId || !eventType || !streamId || seq === undefined || ts === undefined) {
-    return null;
-  }
-
-  return {
-    event_id: eventId,
-    seq,
-    ts,
-    stream_id: streamId,
-    conversation_id: asString(record.conversation_id),
-    turn_id: asString(record.turn_id),
-    event_type: eventType,
-    stage,
-    payload,
-  };
-}
 
 /**
  * Create a new conversation session.
@@ -631,90 +510,52 @@ export async function compressContext(
   projectId?: string,
   abortControllerRef?: MutableRefObject<AbortController | null>
 ): Promise<void> {
-  const controller = new AbortController();
-  if (abortControllerRef) {
-    abortControllerRef.current = controller;
-  }
+  await postFlowEventStream({
+    url: `${API_BASE}/api/chat/compress`,
+    body: {
+      session_id: sessionId,
+      context_type: contextType,
+      project_id: projectId,
+    },
+    abortControllerRef,
+    onAbort: () => {
+      console.log('Compression aborted by user');
+    },
+    onInvalidPayload: () => {
+      onError('Invalid stream event payload: missing flow_event');
+    },
+    onStreamError: (message) => {
+      onError(message || 'Compression stream error');
+    },
+    onFlowEvent: (flowEvent) => {
+      if (flowEvent.event_type === 'stream_ended') {
+        return 'stop';
+      }
 
-  try {
-    const response = await fetch(`${API_BASE}/api/chat/compress`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: sessionId,
-        context_type: contextType,
-        project_id: projectId,
-      }),
-      signal: controller.signal,
-    });
+      if (flowEvent.event_type === 'compression_completed') {
+        const payload = flowEvent.payload;
+        onComplete({
+          message_id: asString(payload.message_id) || '',
+          compressed_count: asNumber(payload.compressed_count) || 0,
+        });
+        return 'continue';
+      }
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (!flowEvent) {
-            onError('Invalid stream event payload: missing flow_event');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_error') {
-            onError(asString(flowEvent.payload.error) || 'Compression stream error');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_ended') {
-            return;
-          }
-
-          if (flowEvent.event_type === 'compression_completed') {
-            const payload = flowEvent.payload;
-            onComplete({
-              message_id: asString(payload.message_id) || '',
-              compressed_count: asNumber(payload.compressed_count) || 0,
-            });
-            continue;
-          }
-
-          if (flowEvent.event_type === 'text_delta') {
-            const text = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
-            if (text) {
-              onChunk(text);
-            }
-          }
-        } catch {
-          // Ignore malformed SSE event payloads.
-          continue;
+      if (flowEvent.event_type === 'text_delta') {
+        const text = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
+        if (text) {
+          onChunk(text);
         }
       }
-    } finally {
-      reader.releaseLock();
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log('Compression aborted by user');
-      return;
-    }
-    throw error;
-  } finally {
-    if (abortControllerRef) {
-      abortControllerRef.current = null;
-    }
-  }
+
+      return 'continue';
+    },
+  });
 }
 
 /**
  * Translate text via LLM streaming.
+
  * Streams the translation as SSE events.
  */
 export async function translateText(
@@ -727,83 +568,44 @@ export async function translateText(
   abortControllerRef?: MutableRefObject<AbortController | null>,
   useInputTargetLanguage?: boolean
 ): Promise<void> {
-  const controller = new AbortController();
-  if (abortControllerRef) {
-    abortControllerRef.current = controller;
-  }
+  const body: Record<string, unknown> = { text };
+  if (targetLanguage) body.target_language = targetLanguage;
+  if (modelId) body.model_id = modelId;
+  if (useInputTargetLanguage) body.use_input_target_language = true;
 
-  try {
-    const body: any = { text };
-    if (targetLanguage) body.target_language = targetLanguage;
-    if (modelId) body.model_id = modelId;
-    if (useInputTargetLanguage) body.use_input_target_language = true;
+  await postFlowEventStream({
+    url: `${API_BASE}/api/translate`,
+    body,
+    abortControllerRef,
+    onAbort: () => {
+      console.log('Translation aborted by user');
+    },
+    onInvalidPayload: () => {
+      onError('Invalid stream event payload: missing flow_event');
+    },
+    onStreamError: (message) => {
+      onError(message || 'Translation stream error');
+    },
+    onFlowEvent: (flowEvent) => {
+      if (flowEvent.event_type === 'stream_ended') {
+        onComplete();
+        return 'stop';
+      }
 
-    const response = await fetch(`${API_BASE}/api/translate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+      if (flowEvent.event_type === 'translation_completed' || flowEvent.event_type === 'language_detected') {
+        return 'continue';
+      }
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (!flowEvent) {
-            onError('Invalid stream event payload: missing flow_event');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_error') {
-            onError(asString(flowEvent.payload.error) || 'Translation stream error');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_ended') {
-            onComplete();
-            return;
-          }
-
-          if (flowEvent.event_type === 'translation_completed' || flowEvent.event_type === 'language_detected') {
-            continue;
-          }
-
-          if (flowEvent.event_type === 'text_delta') {
-            const textChunk = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
-            if (textChunk) {
-              onChunk(textChunk);
-            }
-          }
-        } catch {
-          // Ignore malformed SSE event payloads.
-          continue;
+      if (flowEvent.event_type === 'text_delta') {
+        const textChunk = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
+        if (textChunk) {
+          onChunk(textChunk);
         }
       }
-    } finally {
-      reader.releaseLock();
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log('Translation aborted by user');
-      return;
-    }
-    throw error;
-  } finally {
-    if (abortControllerRef) {
-      abortControllerRef.current = null;
-    }
-  }
+
+      return 'continue';
+    },
+  });
 }
 
 /**
@@ -960,55 +762,46 @@ export async function runWorkflowStream(
     const resumeDelaysMs = [500, 1500];
 
     const consumeResponse = async (response: Response): Promise<'done' | 'disconnected'> => {
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
+      let streamFinished = false;
       try {
-        try {
-          for await (const dataStr of iterateSSEData(reader)) {
-            try {
-              const data = JSON.parse(dataStr);
-              const flowEvent = parseFlowEvent(data.flow_event);
-              if (!flowEvent) {
-                callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
-                return 'done';
-              }
+        await consumeFlowEventResponse({
+          response,
+          onInvalidPayload: () => {
+            callbacks.onError?.(i18n.t('workflow:errors.runStreamInvalidPayload'));
+            streamFinished = true;
+          },
+          onStreamError: (message) => {
+            callbacks.onError?.(message || i18n.t('workflow:errors.runFailed'));
+            streamFinished = true;
+          },
+          onFlowEvent: (flowEvent) => {
+            lastEventId = flowEvent.event_id;
+            const workflowEvent = flowEvent as WorkflowFlowEvent;
+            callbacks.onEvent?.(workflowEvent);
 
-              lastEventId = flowEvent.event_id;
-              const workflowEvent = flowEvent as WorkflowFlowEvent;
-              callbacks.onEvent?.(workflowEvent);
-
-              if (workflowEvent.event_type === 'stream_error') {
-                callbacks.onError?.(asString(workflowEvent.payload.error) || i18n.t('workflow:errors.runFailed'));
-                return 'done';
+            if (workflowEvent.event_type === 'text_delta') {
+              const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
+              if (textChunk) {
+                callbacks.onChunk?.(textChunk, workflowEvent);
               }
-
-              if (workflowEvent.event_type === 'text_delta') {
-                const textChunk = asString(workflowEvent.payload.text) || asString(workflowEvent.payload.chunk);
-                if (textChunk) {
-                  callbacks.onChunk?.(textChunk, workflowEvent);
-                }
-                continue;
-              }
-
-              if (workflowEvent.event_type === 'stream_ended') {
-                callbacks.onComplete?.();
-                return 'done';
-              }
-            } catch {
-              continue;
+              return 'continue';
             }
-          }
-          return 'disconnected';
-        } catch (streamError: unknown) {
-          if (streamError instanceof Error && streamError.name === 'AbortError') {
-            throw streamError;
-          }
-          return 'disconnected';
+
+            if (workflowEvent.event_type === 'stream_ended') {
+              callbacks.onComplete?.();
+              streamFinished = true;
+              return 'stop';
+            }
+
+            return 'continue';
+          },
+        });
+        return streamFinished ? 'done' : 'disconnected';
+      } catch (streamError: unknown) {
+        if (streamError instanceof Error && streamError.name === 'AbortError') {
+          throw streamError;
         }
-      } finally {
-        reader.releaseLock();
+        return 'disconnected';
       }
     };
 
