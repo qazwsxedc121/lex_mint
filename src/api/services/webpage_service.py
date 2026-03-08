@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html.parser import HTMLParser
+import importlib.util
 from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
@@ -333,6 +334,8 @@ class WebpageService:
         start_time = time.monotonic()
 
         proxy = self._resolve_proxy()
+        http2_enabled = self._http2_supported()
+        verify = self._ssl_verify_context()
 
         try:
             logger.info(f"[Webpage] Fetching {url}")
@@ -341,7 +344,8 @@ class WebpageService:
                 timeout=timeout,
                 follow_redirects=True,
                 transport=transport,
-                http2=True,
+                http2=http2_enabled,
+                verify=verify,
                 proxy=proxy,
                 trust_env=self.config.trust_env,
             ) as client:
@@ -531,6 +535,16 @@ class WebpageService:
         text = re.sub(r"[ \t]+", " ", text or "")
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
+
+    @staticmethod
+    def _http2_supported() -> bool:
+        """Enable HTTP/2 only when the optional h2 dependency is available."""
+        return importlib.util.find_spec("h2") is not None
+
+    @staticmethod
+    def _ssl_verify_context() -> ssl.SSLContext:
+        """Use the platform trust store so local/proxied cert chains can validate on Windows."""
+        return ssl.create_default_context()
 
     @staticmethod
     def _label_for_result(result: WebpageResult) -> str:
