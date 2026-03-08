@@ -4,6 +4,7 @@
 
 import axios from 'axios';
 import { API_BASE } from './apiBase';
+import { postFlowEventStream } from './flowEventStreamClient';
 import { asNumber, asRecord, asString, iterateSSEData, parseFlowEvent, sleep } from './flowEvents';
 import i18n from '../i18n';
 import type { Session, SessionDetail, ChatRequest, ChatResponse, TokenUsage, CostInfo, UploadedFile, SearchSource, ParamOverrides, ContextInfo } from '../types/message';
@@ -509,90 +510,52 @@ export async function compressContext(
   projectId?: string,
   abortControllerRef?: MutableRefObject<AbortController | null>
 ): Promise<void> {
-  const controller = new AbortController();
-  if (abortControllerRef) {
-    abortControllerRef.current = controller;
-  }
+  await postFlowEventStream({
+    url: `${API_BASE}/api/chat/compress`,
+    body: {
+      session_id: sessionId,
+      context_type: contextType,
+      project_id: projectId,
+    },
+    abortControllerRef,
+    onAbort: () => {
+      console.log('Compression aborted by user');
+    },
+    onInvalidPayload: () => {
+      onError('Invalid stream event payload: missing flow_event');
+    },
+    onStreamError: (message) => {
+      onError(message || 'Compression stream error');
+    },
+    onFlowEvent: (flowEvent) => {
+      if (flowEvent.event_type === 'stream_ended') {
+        return 'stop';
+      }
 
-  try {
-    const response = await fetch(`${API_BASE}/api/chat/compress`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: sessionId,
-        context_type: contextType,
-        project_id: projectId,
-      }),
-      signal: controller.signal,
-    });
+      if (flowEvent.event_type === 'compression_completed') {
+        const payload = flowEvent.payload;
+        onComplete({
+          message_id: asString(payload.message_id) || '',
+          compressed_count: asNumber(payload.compressed_count) || 0,
+        });
+        return 'continue';
+      }
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (!flowEvent) {
-            onError('Invalid stream event payload: missing flow_event');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_error') {
-            onError(asString(flowEvent.payload.error) || 'Compression stream error');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_ended') {
-            return;
-          }
-
-          if (flowEvent.event_type === 'compression_completed') {
-            const payload = flowEvent.payload;
-            onComplete({
-              message_id: asString(payload.message_id) || '',
-              compressed_count: asNumber(payload.compressed_count) || 0,
-            });
-            continue;
-          }
-
-          if (flowEvent.event_type === 'text_delta') {
-            const text = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
-            if (text) {
-              onChunk(text);
-            }
-          }
-        } catch {
-          // Ignore malformed SSE event payloads.
-          continue;
+      if (flowEvent.event_type === 'text_delta') {
+        const text = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
+        if (text) {
+          onChunk(text);
         }
       }
-    } finally {
-      reader.releaseLock();
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log('Compression aborted by user');
-      return;
-    }
-    throw error;
-  } finally {
-    if (abortControllerRef) {
-      abortControllerRef.current = null;
-    }
-  }
+
+      return 'continue';
+    },
+  });
 }
 
 /**
  * Translate text via LLM streaming.
+
  * Streams the translation as SSE events.
  */
 export async function translateText(
@@ -605,83 +568,44 @@ export async function translateText(
   abortControllerRef?: MutableRefObject<AbortController | null>,
   useInputTargetLanguage?: boolean
 ): Promise<void> {
-  const controller = new AbortController();
-  if (abortControllerRef) {
-    abortControllerRef.current = controller;
-  }
+  const body: Record<string, unknown> = { text };
+  if (targetLanguage) body.target_language = targetLanguage;
+  if (modelId) body.model_id = modelId;
+  if (useInputTargetLanguage) body.use_input_target_language = true;
 
-  try {
-    const body: any = { text };
-    if (targetLanguage) body.target_language = targetLanguage;
-    if (modelId) body.model_id = modelId;
-    if (useInputTargetLanguage) body.use_input_target_language = true;
+  await postFlowEventStream({
+    url: `${API_BASE}/api/translate`,
+    body,
+    abortControllerRef,
+    onAbort: () => {
+      console.log('Translation aborted by user');
+    },
+    onInvalidPayload: () => {
+      onError('Invalid stream event payload: missing flow_event');
+    },
+    onStreamError: (message) => {
+      onError(message || 'Translation stream error');
+    },
+    onFlowEvent: (flowEvent) => {
+      if (flowEvent.event_type === 'stream_ended') {
+        onComplete();
+        return 'stop';
+      }
 
-    const response = await fetch(`${API_BASE}/api/translate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+      if (flowEvent.event_type === 'translation_completed' || flowEvent.event_type === 'language_detected') {
+        return 'continue';
+      }
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    try {
-      for await (const dataStr of iterateSSEData(reader)) {
-        try {
-          const data = JSON.parse(dataStr);
-          const flowEvent = parseFlowEvent(data.flow_event);
-          if (!flowEvent) {
-            onError('Invalid stream event payload: missing flow_event');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_error') {
-            onError(asString(flowEvent.payload.error) || 'Translation stream error');
-            return;
-          }
-
-          if (flowEvent.event_type === 'stream_ended') {
-            onComplete();
-            return;
-          }
-
-          if (flowEvent.event_type === 'translation_completed' || flowEvent.event_type === 'language_detected') {
-            continue;
-          }
-
-          if (flowEvent.event_type === 'text_delta') {
-            const textChunk = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
-            if (textChunk) {
-              onChunk(textChunk);
-            }
-          }
-        } catch {
-          // Ignore malformed SSE event payloads.
-          continue;
+      if (flowEvent.event_type === 'text_delta') {
+        const textChunk = asString(flowEvent.payload.text) || asString(flowEvent.payload.chunk);
+        if (textChunk) {
+          onChunk(textChunk);
         }
       }
-    } finally {
-      reader.releaseLock();
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log('Translation aborted by user');
-      return;
-    }
-    throw error;
-  } finally {
-    if (abortControllerRef) {
-      abortControllerRef.current = null;
-    }
-  }
+
+      return 'continue';
+    },
+  });
 }
 
 /**
