@@ -16,12 +16,14 @@ def memory_service(temp_config_dir):
     return MemoryService(memory_config_service=cfg)
 
 
-def test_extract_memory_candidates_returns_empty(memory_service):
+def test_extract_memory_candidates_extracts_fact_and_instruction(memory_service):
     text = "I am a backend engineer. Please respond in Chinese."
 
     items = memory_service.extract_memory_candidates(text)
 
-    assert items == []
+    assert [item["layer"] for item in items] == ["instruction", "fact"]
+    assert items[0]["content"] == "Please respond in Chinese."
+    assert items[1]["content"] == "I am a backend engineer."
 
 
 def test_search_memories_for_scopes_merges_and_dedups(memory_service, monkeypatch):
@@ -68,7 +70,15 @@ def test_search_memories_for_scopes_merges_and_dedups(memory_service, monkeypatc
     assert items[0]["score"] == pytest.approx(0.9)
 
 
-def test_extract_and_persist_from_turn_returns_empty(memory_service):
+def test_extract_and_persist_from_turn_persists_candidates(memory_service, monkeypatch):
+    calls = []
+
+    def fake_upsert_memory(**kwargs):
+        calls.append(kwargs)
+        return {"id": f"mem_{len(calls)}", **kwargs}
+
+    monkeypatch.setattr(memory_service, "upsert_memory", fake_upsert_memory)
+
     result = asyncio.run(
         memory_service.extract_and_persist_from_turn(
             user_message="I am a data analyst. Please respond in Chinese.",
@@ -80,4 +90,69 @@ def test_extract_and_persist_from_turn_returns_empty(memory_service):
         )
     )
 
-    assert result == []
+    assert len(result) == 2
+    assert calls[0]["layer"] == "instruction"
+    assert calls[0]["scope"] == "assistant"
+    assert calls[0]["assistant_id"] == "assistant-a"
+    assert calls[1]["layer"] == "fact"
+    assert calls[1]["scope"] == "global"
+    assert calls[1]["assistant_id"] is None
+    assert all(call["source_session_id"] == "s1" for call in calls)
+    assert all(call["source_message_id"] == "m1" for call in calls)
+
+
+def test_extract_memory_candidates_returns_empty_when_auto_extract_disabled(memory_service):
+    memory_service.memory_config_service.save_flat_config({"auto_extract_enabled": False})
+
+    items = memory_service.extract_memory_candidates(
+        "I am a backend engineer. Please respond in Chinese."
+    )
+
+    assert items == []
+
+
+def test_build_memory_context_respects_enabled_layers(memory_service, monkeypatch):
+    memory_service.memory_config_service.save_flat_config({"enabled_layers": ["instruction"]})
+
+    instruction_calls = {"count": 0}
+    fact_calls = {"count": 0}
+
+    def fake_load_instruction_memories(**kwargs):
+        _ = kwargs
+        instruction_calls["count"] += 1
+        return [
+            MemoryResult(
+                id="mem_instruction",
+                content="Respond with concise bullet points.",
+                score=None,
+                metadata={"scope": "global", "layer": "instruction"},
+            )
+        ]
+
+    def fake_search_memories_for_scopes(**kwargs):
+        _ = kwargs
+        fact_calls["count"] += 1
+        return [
+            {
+                "id": "mem_fact",
+                "content": "User works in finance.",
+                "score": 0.9,
+                "scope": "global",
+                "layer": "fact",
+            }
+        ]
+
+    monkeypatch.setattr(memory_service, "_load_instruction_memories", fake_load_instruction_memories)
+    monkeypatch.setattr(memory_service, "search_memories_for_scopes", fake_search_memories_for_scopes)
+
+    context, sources = memory_service.build_memory_context(
+        query="How should you reply?",
+        assistant_id="assistant-a",
+    )
+
+    assert instruction_calls["count"] == 1
+    assert fact_calls["count"] == 0
+    assert "## User instructions (always apply):" in context
+    assert "Respond with concise bullet points." in context
+    assert "## User context (relevant background):" not in context
+    assert [source["layer"] for source in sources] == ["instruction"]

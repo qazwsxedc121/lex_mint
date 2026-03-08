@@ -110,6 +110,12 @@ async def test_prepare_context_builds_prompt_and_sources():
     assert ctx.assistant_id is None
     assert ctx.is_legacy_assistant is False
     assert ctx.assistant_memory_enabled is True
+    assert ctx.base_system_prompt is None
+    assert ctx.memory_context == "MEM"
+    assert ctx.webpage_context == "WEB"
+    assert ctx.search_context == "SEARCH"
+    assert ctx.rag_context == "RAG"
+    assert ctx.structured_source_context == "STRUCT:hello:4"
     assert ctx.system_prompt == "MEM\n\nWEB\n\nSEARCH\n\nRAG\n\nSTRUCT:hello:4"
     assert [s["type"] for s in ctx.all_sources] == ["memory", "webpage", "search", "rag"]
 
@@ -137,4 +143,6 @@ async def test_prepare_context_honors_param_overrides_and_disabled_structured_co
 
     assert ctx.model_id == "provider:model-b"
     assert ctx.max_rounds == 5
+    assert ctx.search_context is None
+    assert ctx.structured_source_context is None
     assert ctx.system_prompt == "MEM\n\nWEB\n\nRAG"

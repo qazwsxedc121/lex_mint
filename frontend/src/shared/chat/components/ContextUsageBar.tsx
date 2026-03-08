@@ -3,11 +3,11 @@
  */
 
 import React from 'react';
+import type { ContextInfo } from '../../../types/message';
 
 interface ContextUsageBarProps {
   promptTokens: number | null;
-  contextBudget: number | null;
-  contextWindow: number | null;
+  contextInfo: ContextInfo | null;
 }
 
 function formatNumber(n: number): string {
@@ -16,17 +16,21 @@ function formatNumber(n: number): string {
 
 export const ContextUsageBar: React.FC<ContextUsageBarProps> = ({
   promptTokens,
-  contextBudget,
-  contextWindow,
+  contextInfo,
 }) => {
-  if (promptTokens == null || contextBudget == null || contextBudget <= 0) {
+  const contextBudget = contextInfo?.context_budget ?? null;
+  const contextWindow = contextInfo?.context_window ?? null;
+  const effectivePromptTokens = promptTokens ?? contextInfo?.estimated_prompt_tokens ?? null;
+
+  if (effectivePromptTokens == null || contextBudget == null || contextBudget <= 0) {
     return null;
   }
 
-  const percentage = Math.min((promptTokens / contextBudget) * 100, 100);
+  const percentage = Math.min((effectivePromptTokens / contextBudget) * 100, 100);
   const contextLabel = contextWindow && contextWindow > 0
     ? `${formatNumber(contextBudget)} / ${formatNumber(contextWindow)}`
     : formatNumber(contextBudget);
+  const segmentReports = contextInfo?.segments ?? [];
 
   // Color: green < 50%, yellow 50-75%, red > 75%
   let barColor: string;
@@ -52,9 +56,35 @@ export const ContextUsageBar: React.FC<ContextUsageBarProps> = ({
           />
         </div>
         <span className={`text-xs whitespace-nowrap ${textColor}`}>
-          Context: {formatNumber(promptTokens)} / {contextLabel} ({percentage.toFixed(0)}%)
+          Context: {formatNumber(effectivePromptTokens)} / {contextLabel} ({percentage.toFixed(0)}%)
         </span>
       </div>
+      {segmentReports.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" data-name="context-usage-segments">
+          {segmentReports.map((segment) => {
+            const stateLabel = !segment.included
+              ? (segment.drop_reason || 'dropped')
+              : segment.truncated
+                ? 'trimmed'
+                : 'kept';
+            const chipClassName = !segment.included
+              ? 'border-gray-300 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+              : segment.truncated
+                ? 'border-yellow-300 text-yellow-700 dark:border-yellow-700 dark:text-yellow-300'
+                : 'border-green-300 text-green-700 dark:border-green-700 dark:text-green-300';
+            return (
+              <span
+                key={segment.name}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${chipClassName}`}
+              >
+                <span className="font-medium">{segment.name}</span>
+                <span>{formatNumber(segment.estimated_tokens_after)}</span>
+                <span className="opacity-75">{stateLabel}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

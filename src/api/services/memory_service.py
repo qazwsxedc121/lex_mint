@@ -62,6 +62,94 @@ class MemoryService:
     def _clean_text(text: str) -> str:
         return re.sub(r"\s+", " ", (text or "")).strip()
 
+    @staticmethod
+    def _split_candidate_units(text: str) -> List[str]:
+        cleaned = (text or "").replace("\r", "\n")
+        parts = re.split(r"(?<=[.!?。！？;；])\s+|\n+", cleaned)
+        return [part.strip(" -\t") for part in parts if part and part.strip(" -\t")]
+
+    @staticmethod
+    def _looks_like_instruction(unit: str) -> bool:
+        lowered = unit.lower()
+        instruction_markers = [
+            "please respond",
+            "please reply",
+            "please use",
+            "please write",
+            "please keep",
+            "respond in ",
+            "reply in ",
+            "write in ",
+            "use concise",
+            "use bullet",
+            "call me ",
+            "refer to me as",
+            "please call me",
+            "avoid ",
+            "请用",
+            "请使用",
+            "请以",
+            "请回复",
+            "请回答",
+            "请叫我",
+            "称呼我",
+            "请尽量",
+            "请保持",
+            "以后请",
+            "记住",
+        ]
+        return any(marker in lowered for marker in instruction_markers)
+
+    @staticmethod
+    def _looks_like_fact(unit: str) -> bool:
+        lowered = unit.lower()
+        fact_markers = [
+            "i am ",
+            "i'm ",
+            "my name is ",
+            "i work as ",
+            "i work at ",
+            "i live in ",
+            "my role is ",
+            "my timezone is ",
+            "我是",
+            "我叫",
+            "我的名字是",
+            "我住在",
+            "我在",
+            "我的工作是",
+        ]
+        return any(marker in lowered for marker in fact_markers)
+
+    @staticmethod
+    def _candidate_priority(layer: str) -> int:
+        return 0 if layer == "instruction" else 1
+
+    def _resolve_extraction_target(
+        self,
+        *,
+        layer: str,
+        assistant_id: Optional[str],
+        assistant_memory_enabled: bool,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        cfg = self.memory_config_service.config
+
+        if (
+            layer == "instruction"
+            and assistant_id
+            and assistant_memory_enabled
+            and cfg.scopes.assistant_enabled
+        ):
+            return "assistant", assistant_id
+
+        if cfg.scopes.global_enabled:
+            return "global", None
+
+        if assistant_id and assistant_memory_enabled and cfg.scopes.assistant_enabled:
+            return "assistant", assistant_id
+
+        return None, None
+
     def _resolve_profile_id(self, profile_id: Optional[str]) -> str:
         if profile_id:
             return profile_id
@@ -676,16 +764,23 @@ class MemoryService:
             return "", []
 
         resolved_profile = self._resolve_profile_id(profile_id)
+        enabled_layers = {
+            str(layer).strip().lower()
+            for layer in (cfg.enabled_layers or [])
+            if str(layer).strip()
+        }
         lines: List[str] = []
         sources: List[Dict[str, Any]] = []
 
         # Phase 1: instruction layer - load ALL active items (always apply)
-        instructions = self._load_instruction_memories(
-            profile_id=resolved_profile,
-            assistant_id=assistant_id,
-            include_global=include_global,
-            include_assistant=include_assistant,
-        )
+        instructions: List[MemoryResult] = []
+        if not enabled_layers or "instruction" in enabled_layers:
+            instructions = self._load_instruction_memories(
+                profile_id=resolved_profile,
+                assistant_id=assistant_id,
+                include_global=include_global,
+                include_assistant=include_assistant,
+            )
         if instructions:
             lines.append("## User instructions (always apply):")
             for item in instructions:
@@ -705,15 +800,17 @@ class MemoryService:
                 )
 
         # Phase 2: fact layer - vector similarity search (inject when relevant)
-        fact_results = self.search_memories_for_scopes(
-            query=query,
-            assistant_id=assistant_id,
-            profile_id=profile_id,
-            include_global=include_global,
-            include_assistant=include_assistant,
-            layer="fact",
-            limit=cfg.retrieval.max_injected_items,
-        )
+        fact_results: List[Dict[str, Any]] = []
+        if not enabled_layers or "fact" in enabled_layers:
+            fact_results = self.search_memories_for_scopes(
+                query=query,
+                assistant_id=assistant_id,
+                profile_id=profile_id,
+                include_global=include_global,
+                include_assistant=include_assistant,
+                layer="fact",
+                limit=cfg.retrieval.max_injected_items,
+            )
         if fact_results:
             if lines:
                 lines.append("")
@@ -742,8 +839,60 @@ class MemoryService:
         return header + "\n".join(lines), sources
 
     def extract_memory_candidates(self, text: str) -> List[Dict[str, Any]]:
-        # Extraction disabled �� placeholder for future LLM-based extraction.
-        return []
+        cfg = self.memory_config_service.config
+        extraction_cfg = cfg.extraction
+        if not cfg.enabled or not extraction_cfg.enabled:
+            return []
+
+        clean_text = self._clean_text(text)
+        if len(clean_text) < extraction_cfg.min_text_length:
+            return []
+
+        enabled_layers = {
+            str(layer).strip().lower()
+            for layer in (cfg.enabled_layers or [])
+            if str(layer).strip()
+        }
+
+        candidates: List[Dict[str, Any]] = []
+        seen: set[Tuple[str, str]] = set()
+        for unit in self._split_candidate_units(clean_text):
+            normalized_unit = self._clean_text(unit)
+            if len(normalized_unit) < extraction_cfg.min_text_length:
+                continue
+
+            layer: Optional[str] = None
+            confidence = 0.7
+            importance = 0.6
+            if self._looks_like_instruction(normalized_unit):
+                layer = "instruction"
+                confidence = 0.92
+                importance = 0.75
+            elif self._looks_like_fact(normalized_unit):
+                layer = "fact"
+                confidence = 0.82
+                importance = 0.65
+
+            if layer is None:
+                continue
+            if enabled_layers and layer not in enabled_layers:
+                continue
+
+            key = (layer, normalized_unit.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(
+                {
+                    "content": normalized_unit,
+                    "layer": layer,
+                    "confidence": confidence,
+                    "importance": importance,
+                }
+            )
+
+        candidates.sort(key=lambda item: (self._candidate_priority(str(item.get("layer") or "")), -float(item.get("confidence") or 0.0)))
+        return candidates[: max(1, extraction_cfg.max_items_per_turn)]
 
     async def extract_and_persist_from_turn(
         self,
@@ -756,7 +905,39 @@ class MemoryService:
         source_message_id: Optional[str] = None,
         assistant_memory_enabled: bool = True,
     ) -> List[Dict[str, Any]]:
-        # Extraction disabled �� placeholder for future LLM-based extraction.
-        return []
+        _ = assistant_message
 
+        cfg = self.memory_config_service.config
+        if not cfg.enabled or not cfg.extraction.enabled:
+            return []
 
+        candidates = self.extract_memory_candidates(user_message)
+        if not candidates:
+            return []
+
+        persisted: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            layer = str(candidate.get("layer") or "fact")
+            scope, target_assistant_id = self._resolve_extraction_target(
+                layer=layer,
+                assistant_id=assistant_id,
+                assistant_memory_enabled=assistant_memory_enabled,
+            )
+            if not scope:
+                continue
+
+            item = self.upsert_memory(
+                content=str(candidate.get("content") or ""),
+                scope=scope,
+                layer=layer,
+                assistant_id=target_assistant_id,
+                profile_id=profile_id,
+                confidence=float(candidate.get("confidence") or 0.8),
+                importance=float(candidate.get("importance") or 0.6),
+                source_session_id=source_session_id,
+                source_message_id=source_message_id,
+            )
+            if item:
+                persisted.append(item)
+
+        return persisted
