@@ -453,10 +453,12 @@ class SingleChatFlowService:
         """Resolve function-calling tools and optional assistant-scoped RAG tool executor."""
         llm_tools: Optional[List[Any]] = None
         tool_executors: List[Any] = []
+        allowed_tool_names: set[str] = set()
         try:
             from .model_config_service import ModelConfigService
             from .project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
             from .project_document_tool_service import ProjectDocumentToolService
+            from .project_tool_policy_resolver import ProjectToolPolicyResolver
             from src.tools.registry import get_tool_registry
 
             model_service = ModelConfigService()
@@ -503,6 +505,14 @@ class SingleChatFlowService:
                         f"[TOOLS] Added project document tools: {len(doc_tools)} "
                         f"(project={project_id}, file={active_file_log})"
                     )
+
+            allowed_tool_names = await ProjectToolPolicyResolver().get_allowed_tool_names(
+                context_type=context_type,
+                project_id=project_id,
+                candidate_tool_names=[tool.name for tool in llm_tools],
+            )
+            if context_type == "project" and project_id:
+                llm_tools = [tool for tool in llm_tools if tool.name in allowed_tool_names]
             print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
@@ -511,6 +521,9 @@ class SingleChatFlowService:
             return llm_tools, None
 
         async def _combined_tool_executor(name: str, args: Dict[str, Any]) -> Optional[str]:
+            if context_type == "project" and project_id and name not in allowed_tool_names:
+                logger.info("Blocked project tool by policy: %s (project=%s)", name, project_id)
+                return f"Error: Tool '{name}' is disabled for this project"
             for executor in tool_executors:
                 try:
                     maybe_result = executor(name, args)

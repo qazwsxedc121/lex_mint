@@ -5,6 +5,7 @@ import {
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
   TrashIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useOutletContext } from 'react-router-dom';
@@ -19,11 +20,63 @@ type FeedbackState =
   | { type: 'error'; message: string }
   | null;
 
+type ProjectToolGroup = 'builtin' | 'projectDocuments' | 'knowledge';
+
+interface ProjectToolDefinition {
+  key: string;
+  group: ProjectToolGroup;
+  requiresProjectKnowledge?: boolean;
+}
+
+const DEFAULT_PROJECT_TOOL_ENABLED_MAP: Record<string, boolean> = {
+  get_current_time: false,
+  simple_calculator: false,
+  read_project_document: true,
+  read_current_document: true,
+  search_project_text: true,
+  apply_diff_project_document: false,
+  apply_diff_current_document: false,
+  search_knowledge: true,
+  read_knowledge: true,
+};
+
+const PROJECT_TOOL_GROUPS: ProjectToolGroup[] = ['builtin', 'projectDocuments', 'knowledge'];
+
+const PROJECT_TOOL_DEFINITIONS: ProjectToolDefinition[] = [
+  { key: 'get_current_time', group: 'builtin' },
+  { key: 'simple_calculator', group: 'builtin' },
+  { key: 'read_project_document', group: 'projectDocuments' },
+  { key: 'read_current_document', group: 'projectDocuments' },
+  { key: 'search_project_text', group: 'projectDocuments' },
+  { key: 'apply_diff_project_document', group: 'projectDocuments' },
+  { key: 'apply_diff_current_document', group: 'projectDocuments' },
+  { key: 'search_knowledge', group: 'knowledge', requiresProjectKnowledge: true },
+  { key: 'read_knowledge', group: 'knowledge', requiresProjectKnowledge: true },
+];
+
 const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
   rag: {
     knowledge_base_ids: [],
     knowledge_base_mode: 'append',
   },
+  tools: {
+    tool_enabled_map: { ...DEFAULT_PROJECT_TOOL_ENABLED_MAP },
+  },
+};
+
+const normalizeToolEnabledMap = (value?: Record<string, boolean> | null): Record<string, boolean> => {
+  const merged = { ...DEFAULT_PROJECT_TOOL_ENABLED_MAP };
+  if (!value) {
+    return merged;
+  }
+
+  for (const [toolKey, enabled] of Object.entries(value)) {
+    if (!toolKey) {
+      continue;
+    }
+    merged[toolKey] = Boolean(enabled);
+  }
+  return merged;
 };
 
 const normalizeProjectSettings = (settings?: ProjectSettings | null): ProjectSettings => ({
@@ -31,7 +84,38 @@ const normalizeProjectSettings = (settings?: ProjectSettings | null): ProjectSet
     knowledge_base_ids: settings?.rag?.knowledge_base_ids || [],
     knowledge_base_mode: settings?.rag?.knowledge_base_mode || 'append',
   },
+  tools: {
+    tool_enabled_map: normalizeToolEnabledMap(settings?.tools?.tool_enabled_map),
+  },
 });
+
+const areToolMapsEqual = (left: Record<string, boolean>, right: Record<string, boolean>): boolean => {
+  for (const definition of PROJECT_TOOL_DEFINITIONS) {
+    if (Boolean(left[definition.key]) !== Boolean(right[definition.key])) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const renderFeedback = (feedback: FeedbackState, dataName: string) => {
+  if (!feedback) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`mt-4 rounded-xl border px-3 py-2 text-sm ${
+        feedback.type === 'success'
+          ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-950/20 dark:text-green-300'
+          : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
+      }`}
+      data-name={dataName}
+    >
+      {feedback.message}
+    </div>
+  );
+};
 
 export const ProjectSettingsView: React.FC = () => {
   const { t } = useTranslation('projects');
@@ -46,9 +130,11 @@ export const ProjectSettingsView: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [knowledgeBaseFeedback, setKnowledgeBaseFeedback] = useState<FeedbackState>(null);
+  const [toolFeedback, setToolFeedback] = useState<FeedbackState>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(true);
   const [savingKnowledgeBases, setSavingKnowledgeBases] = useState(false);
+  const [savingTools, setSavingTools] = useState(false);
   const [knowledgeBaseLoadError, setKnowledgeBaseLoadError] = useState<string | null>(null);
   const [draftSettings, setDraftSettings] = useState<ProjectSettings>(DEFAULT_PROJECT_SETTINGS);
 
@@ -91,6 +177,11 @@ export const ProjectSettingsView: React.FC = () => {
   useEffect(() => {
     void loadKnowledgeBaseOptions();
   }, [loadKnowledgeBaseOptions]);
+
+  const persistProjectSettings = useCallback(async (nextSettings: ProjectSettings) => {
+    await updateProject(projectId, { settings: nextSettings });
+    await refreshProjects();
+  }, [projectId, refreshProjects]);
 
   const handleDeleteAllConversations = useCallback(async () => {
     const confirmed = window.confirm(
@@ -147,6 +238,16 @@ export const ProjectSettingsView: React.FC = () => {
   const isKnowledgeBaseDirty =
     currentSettings.rag.knowledge_base_mode !== draftSettings.rag.knowledge_base_mode
     || currentSettings.rag.knowledge_base_ids.join('|') !== normalizedSelection.join('|');
+  const knowledgeToolsDefinitelyUnavailable =
+    draftSettings.rag.knowledge_base_mode === 'override' && normalizedSelection.length === 0;
+  const isToolDirty = !areToolMapsEqual(currentSettings.tools.tool_enabled_map, draftSettings.tools.tool_enabled_map);
+  const groupedToolDefinitions = useMemo(
+    () => PROJECT_TOOL_GROUPS.map((group) => ({
+      group,
+      items: PROJECT_TOOL_DEFINITIONS.filter((item) => item.group === group),
+    })),
+    []
+  );
 
   useEffect(() => {
     if (knowledgeBaseSelection.length !== normalizedSelection.length) {
@@ -188,9 +289,12 @@ export const ProjectSettingsView: React.FC = () => {
   }, []);
 
   const handleResetKnowledgeBases = useCallback(() => {
-    setDraftSettings(currentSettings);
+    setDraftSettings((prev) => ({
+      ...prev,
+      rag: currentSettings.rag,
+    }));
     setKnowledgeBaseFeedback(null);
-  }, [currentSettings]);
+  }, [currentSettings.rag]);
 
   const handleSaveKnowledgeBases = useCallback(async () => {
     const nextSettings: ProjectSettings = {
@@ -198,13 +302,15 @@ export const ProjectSettingsView: React.FC = () => {
         knowledge_base_mode: draftSettings.rag.knowledge_base_mode,
         knowledge_base_ids: normalizedSelection,
       },
+      tools: {
+        tool_enabled_map: { ...draftSettings.tools.tool_enabled_map },
+      },
     };
 
     setSavingKnowledgeBases(true);
     setKnowledgeBaseFeedback(null);
     try {
-      await updateProject(projectId, { settings: nextSettings });
-      await refreshProjects();
+      await persistProjectSettings(nextSettings);
       setKnowledgeBaseFeedback({
         type: 'success',
         message: t('workspace.settings.knowledgeBasesSaveSuccess'),
@@ -218,7 +324,60 @@ export const ProjectSettingsView: React.FC = () => {
     } finally {
       setSavingKnowledgeBases(false);
     }
-  }, [draftSettings.rag.knowledge_base_mode, normalizedSelection, projectId, refreshProjects, t]);
+  }, [draftSettings.rag.knowledge_base_mode, draftSettings.tools.tool_enabled_map, normalizedSelection, persistProjectSettings, t]);
+
+  const handleToolToggle = useCallback((toolKey: string) => {
+    setDraftSettings((prev) => ({
+      ...prev,
+      tools: {
+        tool_enabled_map: {
+          ...prev.tools.tool_enabled_map,
+          [toolKey]: !prev.tools.tool_enabled_map[toolKey],
+        },
+      },
+    }));
+    setToolFeedback(null);
+  }, []);
+
+  const handleResetTools = useCallback(() => {
+    setDraftSettings((prev) => ({
+      ...prev,
+      tools: {
+        tool_enabled_map: { ...currentSettings.tools.tool_enabled_map },
+      },
+    }));
+    setToolFeedback(null);
+  }, [currentSettings.tools.tool_enabled_map]);
+
+  const handleSaveTools = useCallback(async () => {
+    const nextSettings: ProjectSettings = {
+      rag: {
+        knowledge_base_mode: draftSettings.rag.knowledge_base_mode,
+        knowledge_base_ids: normalizedSelection,
+      },
+      tools: {
+        tool_enabled_map: { ...draftSettings.tools.tool_enabled_map },
+      },
+    };
+
+    setSavingTools(true);
+    setToolFeedback(null);
+    try {
+      await persistProjectSettings(nextSettings);
+      setToolFeedback({
+        type: 'success',
+        message: t('workspace.settings.toolsSaveSuccess'),
+      });
+    } catch (error) {
+      console.error('Failed to save project tool settings:', error);
+      setToolFeedback({
+        type: 'error',
+        message: t('workspace.settings.toolsSaveFailed'),
+      });
+    } finally {
+      setSavingTools(false);
+    }
+  }, [draftSettings.rag.knowledge_base_mode, draftSettings.tools.tool_enabled_map, normalizedSelection, persistProjectSettings, t]);
 
   return (
     <div
@@ -392,20 +551,126 @@ export const ProjectSettingsView: React.FC = () => {
                   </div>
                 </div>
 
-                {knowledgeBaseFeedback && (
-                  <div
-                    className={`mt-4 rounded-xl border px-3 py-2 text-sm ${
-                      knowledgeBaseFeedback.type === 'success'
-                        ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-950/20 dark:text-green-300'
-                        : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
-                    }`}
-                    data-name="project-settings-kb-feedback"
-                  >
-                    {knowledgeBaseFeedback.message}
-                  </div>
-                )}
+                {renderFeedback(knowledgeBaseFeedback, 'project-settings-kb-feedback')}
               </div>
             </div>
+          </section>
+
+          <section
+            data-name="project-settings-tools"
+            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+          >
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-gray-100 p-2 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <WrenchScrewdriverIcon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {t('workspace.settings.toolsTitle')}
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-300">
+                  {t('workspace.settings.toolsDescription')}
+                </p>
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+                  {t('workspace.settings.toolsDefaultHint')}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {groupedToolDefinitions.map(({ group, items }) => (
+                <section
+                  key={group}
+                  className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/30"
+                  data-name={`project-settings-tool-group-${group}`}
+                >
+                  <div className="mb-3">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {t(`workspace.settings.toolGroups.${group}.title`)}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {t(`workspace.settings.toolGroups.${group}.description`)}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {items.map((tool) => {
+                      const enabled = Boolean(draftSettings.tools.tool_enabled_map[tool.key]);
+                      const disabledByContext = Boolean(tool.requiresProjectKnowledge && knowledgeToolsDefinitelyUnavailable);
+                      const reason = disabledByContext ? t('workspace.settings.toolUnavailableKnowledge') : null;
+                      return (
+                        <div
+                          key={tool.key}
+                          className={`rounded-xl border px-4 py-3 ${
+                            disabledByContext
+                              ? 'border-gray-200 bg-gray-100/80 opacity-70 dark:border-gray-800 dark:bg-gray-900/60'
+                              : enabled
+                                ? 'border-blue-200 bg-blue-50/80 dark:border-blue-900/50 dark:bg-blue-950/20'
+                                : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'
+                          }`}
+                          data-name="project-settings-tool-item"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                {t(`workspace.settings.tools.${tool.key}.title`)}
+                              </div>
+                              <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                {t(`workspace.settings.tools.${tool.key}.description`)}
+                              </div>
+                              {reason && (
+                                <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{reason}</div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleToolToggle(tool.key)}
+                              disabled={disabledByContext || savingTools}
+                              className={`inline-flex min-w-[88px] items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                enabled
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400'
+                                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
+                              } disabled:cursor-not-allowed disabled:opacity-70`}
+                              data-name={`project-settings-toggle-tool-${tool.key}`}
+                            >
+                              {enabled ? t('workspace.settings.enabled') : t('workspace.settings.disabled')}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {t('workspace.settings.toolsScopeHint')}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetTools}
+                  disabled={savingTools || !isToolDirty}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  data-name="project-settings-reset-tools"
+                >
+                  {t('workspace.settings.reset')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveTools()}
+                  disabled={savingTools || !isToolDirty}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                  data-name="project-settings-save-tools"
+                >
+                  {savingTools ? t('workspace.settings.saving') : t('workspace.settings.save')}
+                </button>
+              </div>
+            </div>
+
+            {renderFeedback(toolFeedback, 'project-settings-tool-feedback')}
           </section>
 
           <section
@@ -462,18 +727,7 @@ export const ProjectSettingsView: React.FC = () => {
                 </button>
               </div>
 
-              {feedback && (
-                <div
-                  className={`mt-4 rounded-xl border px-3 py-2 text-sm ${
-                    feedback.type === 'success'
-                      ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-950/20 dark:text-green-300'
-                      : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
-                  }`}
-                  data-name="project-settings-feedback"
-                >
-                  {feedback.message}
-                </div>
-              )}
+              {renderFeedback(feedback, 'project-settings-feedback')}
             </div>
           </section>
         </div>

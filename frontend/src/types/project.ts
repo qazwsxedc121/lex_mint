@@ -15,8 +15,13 @@ export interface ProjectRagSettings {
   knowledge_base_mode: 'append' | 'override';
 }
 
+export interface ProjectToolSettings {
+  tool_enabled_map: Record<string, boolean>;
+}
+
 export interface ProjectSettings {
   rag: ProjectRagSettings;
+  tools: ProjectToolSettings;
 }
 
 export interface ProjectCreate {

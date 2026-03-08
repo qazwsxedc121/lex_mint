@@ -8,6 +8,23 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+DEFAULT_PROJECT_TOOL_ENABLED_MAP: Dict[str, bool] = {
+    "get_current_time": False,
+    "simple_calculator": False,
+    "read_project_document": True,
+    "read_current_document": True,
+    "search_project_text": True,
+    "apply_diff_project_document": False,
+    "apply_diff_current_document": False,
+    "search_knowledge": True,
+    "read_knowledge": True,
+}
+
+
+def get_default_project_tool_enabled_map() -> Dict[str, bool]:
+    return dict(DEFAULT_PROJECT_TOOL_ENABLED_MAP)
+
+
 class ProjectRagSettings(BaseModel):
     """Project-scoped retrieval settings."""
 
@@ -40,6 +57,32 @@ class ProjectSettings(BaseModel):
     """Project-scoped settings persisted with the project config."""
 
     rag: ProjectRagSettings = Field(default_factory=ProjectRagSettings)
+    tools: 'ProjectToolSettings' = Field(default_factory=lambda: ProjectToolSettings())
+
+
+class ProjectToolSettings(BaseModel):
+    """Project-scoped tool availability settings."""
+
+    tool_enabled_map: Dict[str, bool] = Field(
+        default_factory=get_default_project_tool_enabled_map,
+        description="Per-tool enablement for project-scoped chat and agent flows",
+    )
+
+    @field_validator('tool_enabled_map', mode='before')
+    @classmethod
+    def normalize_tool_enabled_map(cls, value: Any) -> Dict[str, bool]:
+        merged = get_default_project_tool_enabled_map()
+        if value is None:
+            return merged
+        if not isinstance(value, dict):
+            raise ValueError("tool_enabled_map must be an object")
+
+        for raw_key, raw_enabled in value.items():
+            key = str(raw_key or '').strip()
+            if not key:
+                continue
+            merged[key] = bool(raw_enabled)
+        return merged
 
 
 class Project(BaseModel):
