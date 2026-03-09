@@ -25,7 +25,7 @@ The main symptoms are:
   only "agent objects" rather than runtime execution.
 - A normal chat request currently crosses too many thin intermediate layers, which makes the
   main path harder to reason about.
-- Some names are historical and misleading, such as `simple_llm.py`.
+- Some names are historical and still show up in older docs and tests.
 
 This means the codebase is not unstructured, but it does not yet express one consistent
 architecture vocabulary.
@@ -428,10 +428,10 @@ Its contents should gradually be classified into:
 
 It should not be treated as a permanent architecture concept.
 
-### Compatibility shims
+### Compatibility exports
 
-Files like `src/agents/simple_llm.py` are allowed only as temporary migration shims.
-They should not regain real implementation responsibilities.
+Temporary compatibility should prefer package-level re-exports over whole legacy files.
+When callers are migrated, the old filenames should be removed instead of kept alive indefinitely.
 
 
 ## Non-Goals

@@ -76,7 +76,7 @@ and group chat.
 ### Scope
 
 - keep all model-call execution logic inside `src/agents/llm_runtime/`
-- keep `simple_llm.py` as compatibility shim only
+- remove legacy runtime shim files once tests and callers migrate
 - move any remaining pure runtime helpers out of application services if they are
   only about model invocation behavior
 - make runtime entrypoints explicit and narrow
@@ -93,18 +93,18 @@ and group chat.
 
 ### Risks
 
-- tests still patch old import paths
+- tests may still patch old import paths
 - helper functions may still be shared in awkward ways
 
 ### Mitigation
 
-- keep compatibility exports during transition
+- keep compatibility exports on the runtime package during transition
 - migrate production imports before test imports
 
 ### Exit Criteria
 
 - production code no longer depends on legacy runtime filenames
-- compatibility shim contains no real implementation
+- legacy shim files are removed
 - runtime-related tests remain green
 
 

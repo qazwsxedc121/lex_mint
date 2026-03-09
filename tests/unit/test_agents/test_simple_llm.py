@@ -1,11 +1,11 @@
-"""Unit tests for simple_llm module."""
+"""Unit tests for llm_runtime public entrypoints."""
 
 import pytest
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from types import SimpleNamespace
 
-from src.agents.simple_llm import (
+from src.agents.llm_runtime import (
     call_llm,
     call_llm_stream,
     _build_context_plan,
@@ -19,8 +19,8 @@ from src.providers.types import TokenUsage
 class TestCallLLM:
     """Test cases for call_llm function."""
 
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     def test_call_llm_success(self, mock_model_service_class, mock_logger):
         """Test successful LLM call."""
         # Mock LLM response
@@ -59,8 +59,8 @@ class TestCallLLM:
         mock_llm.invoke.assert_called_once()
         mock_llm_logger.log_interaction.assert_called_once()
 
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     def test_call_llm_with_history(self, mock_model_service_class, mock_logger):
         """Test LLM call with conversation history."""
         mock_llm = Mock()
@@ -100,8 +100,8 @@ class TestCallLLM:
         assert isinstance(call_args[1], AIMessage)
         assert isinstance(call_args[2], HumanMessage)
 
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     def test_call_llm_error(self, mock_model_service_class, mock_logger):
         """Test LLM call error handling."""
         mock_llm = Mock()
@@ -257,8 +257,8 @@ class TestCallLLMStream:
     """Test cases for call_llm_stream function."""
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_success(self, mock_model_service_class, mock_logger):
         """Test successful streaming LLM call."""
         # Mock model and provider config
@@ -344,8 +344,8 @@ class TestCallLLMStream:
         assert usage_chunks[0]["usage"].total_tokens == 30
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_prefers_chunk_usage_over_merged_raw_usage(
         self, mock_model_service_class, mock_logger
     ):
@@ -407,8 +407,8 @@ class TestCallLLMStream:
         assert usage_chunks[0]["usage"].total_tokens == 535
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_with_system_prompt(self, mock_model_service_class, mock_logger):
         """Test streaming with system prompt."""
         mock_model = Mock()
@@ -463,8 +463,8 @@ class TestCallLLMStream:
         assert "Response" in "".join([c for c in chunks if isinstance(c, str)])
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_with_thinking(self, mock_model_service_class, mock_logger):
         """Test streaming with thinking/reasoning mode."""
         mock_model = Mock()
@@ -531,8 +531,8 @@ class TestCallLLMStream:
 
     @pytest.mark.asyncio
     @patch('src.tools.registry.get_tool_registry')
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_forces_final_answer_after_max_tool_rounds(
         self,
         mock_model_service_class,
@@ -623,8 +623,8 @@ class TestCallLLMStream:
         assert tool_executor.call_count == 3
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_injects_read_compensation_for_evidence_requests(
         self,
         mock_model_service_class,
@@ -739,8 +739,8 @@ class TestCallLLMStream:
         ]
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_injects_fallback_when_final_answer_empty(
         self,
         mock_model_service_class,
@@ -821,8 +821,8 @@ class TestCallLLMStream:
         assert diagnostics[0]["tool_finalize_reason"] == "fallback_empty_answer"
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_expands_tool_round_budget_for_web_research(
         self,
         mock_model_service_class,
@@ -914,8 +914,8 @@ class TestCallLLMStream:
         assert diagnostics[0]["max_tool_rounds"] == 6
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_injects_read_webpage_compensation_for_web_research(
         self,
         mock_model_service_class,
@@ -1033,8 +1033,8 @@ class TestCallLLMStream:
         ]
 
     @pytest.mark.asyncio
-    @patch('src.agents.simple_llm.get_llm_logger')
-    @patch('src.agents.simple_llm.ModelConfigService')
+    @patch('src.agents.llm_runtime.get_llm_logger')
+    @patch('src.agents.llm_runtime.ModelConfigService')
     async def test_call_llm_stream_error(self, mock_model_service_class, mock_logger):
         """Test streaming error handling."""
         mock_model = Mock()

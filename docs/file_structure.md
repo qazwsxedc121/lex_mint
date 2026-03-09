@@ -47,7 +47,7 @@ agents-17dcab8b61/
 ### Agent Layer (`src/agents/`)
 
 - `simple_agent.py` - LangGraph state machine with chat node
-- `simple_llm.py` - LLM interface with streaming and token tracking
+- `llm_runtime/` - LLM runtime entrypoints, context shaping, reasoning, and streaming clients
 
 ### State Management (`src/state/`)
 
@@ -211,7 +211,7 @@ Response content...
 | API Endpoints | `src/api/routers/` |
 | Business Logic | `src/api/services/` |
 | Configuration | `config/` |
-| LLM Integration | `src/agents/simple_llm.py`, `src/providers/adapters/` |
+| LLM Integration | `src/agents/llm_runtime/`, `src/providers/adapters/` |
 | Conversation Storage | `src/api/services/conversation_storage.py` |
 | Frontend UI | `frontend/src/modules/` |
 | Type Definitions | `frontend/src/types/`, `src/api/models/` |
