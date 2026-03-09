@@ -52,6 +52,8 @@ agents-17dcab8b61/
 - `chat/group_chat_service.py` - Group chat application flow
 - `chat/single_chat_flow_service.py` - Single chat application flow
 - `chat/compare_flow_service.py` - Compare chat application flow
+- `chat/context_assembly_service.py` - Shared context preparation for chat application flows
+- `chat/post_turn_service.py` - Post-turn persistence and follow-up side effects
 
 ### Agent Layer (`src/agents/`)
 

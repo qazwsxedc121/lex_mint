@@ -279,12 +279,16 @@ Infrastructure-oriented:
   - group chat service
   - single chat flow service
   - compare flow service
+  - context assembly service
+  - post-turn service
 - `single_chat_flow_service.py` and `compare_flow_service.py` now physically live under
+  `src/application/chat/`
+- `context_assembly_service.py` and `post_turn_service.py` now physically live under
   `src/application/chat/`
 
 ### Remaining Work
 
-- continue extracting application-owned modules such as context assembly and post-turn logic
+- continue extracting remaining application-owned modules such as workflow execution logic
 - start carving out at least one infrastructure package so storage/file/config ownership is
   also reflected physically
 

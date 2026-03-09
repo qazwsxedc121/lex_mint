@@ -11,7 +11,6 @@ from src.agents.llm_runtime import call_llm, call_llm_stream
 from src.api.config import settings
 from src.api.services.chat_input_service import ChatInputService
 from src.api.services.comparison_storage import ComparisonStorage
-from src.api.services.context_assembly_service import ContextAssemblyService
 from src.api.services.file_reference_config_service import FileReferenceConfigService
 from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
 from src.api.services.file_service import FileService
@@ -27,7 +26,6 @@ from src.api.services.orchestration.log_utils import (
     build_messages_preview_for_log,
     truncate_log_text,
 )
-from src.api.services.post_turn_service import PostTurnService
 from src.api.services.pricing_service import PricingService
 from src.api.services.rag_config_service import RagConfigService
 from src.api.services.rag_context_builder_service import RagContextBuilderService
@@ -40,7 +38,9 @@ from .factory import (
     build_compare_flow_service,
     build_single_chat_flow_service,
 )
+from .context_assembly_service import ContextAssemblyService
 from .group_chat_service import GroupChatDeps, GroupChatService
+from .post_turn_service import PostTurnService
 from .service import ChatApplicationService
 
 logger = logging.getLogger(__name__)

@@ -149,6 +149,8 @@ Examples in current codebase:
 - `src/application/chat/group_chat_service.py`
 - `src/application/chat/single_chat_flow_service.py`
 - `src/application/chat/compare_flow_service.py`
+- `src/application/chat/context_assembly_service.py`
+- `src/application/chat/post_turn_service.py`
 - transitional compatibility shims in `src/api/services/chat_application_service.py`
 - transitional compatibility shims in `src/api/services/single_chat_flow_service.py`
 - transitional compatibility shims in `src/api/services/compare_flow_service.py`
