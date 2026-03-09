@@ -6,6 +6,7 @@ drives the real chat HTTP API and captures tool traces from the SSE stream.
 Default case catalog:
 
 - `scripts/eval_cases/gaia_level1_web_cases.json`
+- `scripts/eval_cases/gaia_level1_web_cases_top10.json`
 
 Runner:
 
@@ -31,6 +32,12 @@ If you want to target a specific model:
 ./venv/Scripts/python scripts/run_gaia_web_eval.py --model-id openai:gpt-4.1 --scored-only
 ```
 
+If you want to run the broader 10-case exploratory set:
+
+```powershell
+./venv/Scripts/python scripts/run_gaia_web_eval.py --cases-path scripts/eval_cases/gaia_level1_web_cases_top10.json
+```
+
 If you want to run in project context and also enable the two web tools first:
 
 ```powershell
@@ -47,4 +54,3 @@ Current bundled cases are intentionally small and biased toward:
 
 This is meant to answer a narrow question first: can the current agent complete
 multi-round web research tasks with the two web tools enabled?
-
