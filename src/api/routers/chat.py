@@ -10,12 +10,10 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
-from ..dependencies import get_agent_service as get_shared_agent_service
+from ..dependencies import get_chat_application_service as get_shared_chat_application_service
 from ..dependencies import get_file_service as get_shared_file_service
-from ..services.agent_service_simple import AgentService
+from ..services.chat_application_service import ChatApplicationService
 
-# 使用简化版 AgentService（不使用 LangGraph）
-from ..services.agent_service_simple import AgentService
 from ..services.conversation_storage import create_storage_with_project_resolver
 from ..services.file_service import FileService
 from ..services.flow_event_emitter import FlowEventEmitter
@@ -144,9 +142,9 @@ class ResumeStreamRequest(BaseModel):
     project_id: Optional[str] = None
 
 
-def get_agent_service() -> AgentService:
-    """Dependency injection for AgentService."""
-    return get_shared_agent_service()
+def get_chat_application_service() -> ChatApplicationService:
+    """Dependency injection for chat application entry service."""
+    return get_shared_chat_application_service()
 
 
 def get_file_service() -> FileService:
@@ -264,7 +262,7 @@ def _map_compress_event_to_flow_payload(
 
 async def _build_stream_fn(
     request: ChatRequest,
-    agent: AgentService,
+    agent: ChatApplicationService,
 ):
     if request.truncate_after_index is not None:
         print(f"[SSE] Truncating messages to index {request.truncate_after_index}")
@@ -321,7 +319,7 @@ async def _build_stream_fn(
 async def _run_chat_stream_producer(
     *,
     request: ChatRequest,
-    agent: AgentService,
+    agent: ChatApplicationService,
     runtime: FlowStreamRuntime,
     stream_id: str,
 ) -> None:
@@ -369,7 +367,7 @@ async def _run_chat_stream_producer(
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Send a message and receive AI response.
 
@@ -453,7 +451,7 @@ async def chat(
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
-    agent: AgentService = Depends(get_agent_service),
+    agent: ChatApplicationService = Depends(get_chat_application_service),
     runtime: FlowStreamRuntime = Depends(get_flow_stream_runtime),
 ):
     """流式发送消息并接收 AI 响应.
@@ -706,7 +704,7 @@ async def download_attachment(
 @router.delete("/chat/message")
 async def delete_message(
     request: DeleteMessageRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Delete a single message from conversation.
 
@@ -769,7 +767,7 @@ async def delete_message(
 @router.put("/chat/message")
 async def update_message(
     request: UpdateMessageRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Update the content of a specific message."""
     if request.context_type == "project" and not request.project_id:
@@ -797,7 +795,7 @@ async def update_message(
 @router.post("/chat/separator")
 async def insert_separator(
     request: InsertSeparatorRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """
     Insert a context separator into conversation.
@@ -839,7 +837,7 @@ async def insert_separator(
 @router.post("/chat/clear")
 async def clear_all_messages(
     request: ClearMessagesRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """
     Clear all messages from the conversation.
@@ -880,7 +878,7 @@ async def clear_all_messages(
 @router.post("/chat/compress")
 async def compress_context(
     request: CompressContextRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Compress conversation context by summarizing messages via LLM.
 
@@ -956,7 +954,7 @@ async def compress_context(
 @router.post("/chat/compare")
 async def chat_compare(
     request: CompareRequest,
-    agent: AgentService = Depends(get_agent_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Stream compare responses from multiple models.
 

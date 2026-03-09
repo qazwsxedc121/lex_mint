@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from .chat_input_service import ChatInputService
 from .comparison_storage import ComparisonStorage
 from .file_service import FileService
+from .file_reference_context_builder import FileReferenceContextBuilder
 from .file_reference_config_service import FileReferenceConfigService
 from .orchestration import CommitteePolicy
 from .memory_service import MemoryService
@@ -39,6 +40,9 @@ def bootstrap_agent_service(service: "AgentService", storage: "ConversationStora
     service.source_context_service = SourceContextService()
     service.comparison_storage = ComparisonStorage(service.storage)
     service.chat_input_service = ChatInputService(service.storage, service.file_service)
+    service.file_reference_context_builder = FileReferenceContextBuilder(
+        service.file_reference_config_service
+    )
     service.post_turn_service = service._create_post_turn_service()
     service.context_assembly_service = service._create_context_assembly_service()
     service._committee_policy = CommitteePolicy()
@@ -48,4 +52,5 @@ def bootstrap_agent_service(service: "AgentService", storage: "ConversationStora
     service._group_chat_service = service._create_group_chat_service()
     service._single_chat_flow_service = service._create_single_chat_flow_service()
     service._compare_flow_service = service._create_compare_flow_service()
+    service._chat_application_service = service._create_chat_application_service()
 

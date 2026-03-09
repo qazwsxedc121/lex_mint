@@ -82,7 +82,6 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
             )
         ),
         build_file_context_block=lambda _refs: _return_async(""),
-        merge_tool_diagnostics_into_sources=lambda all_sources, _diag: all_sources,
     )
     service = SingleChatFlowService(deps)
     monkeypatch.setattr(
@@ -115,6 +114,15 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
     assert len(post_turn.finalize_calls) == 1
     assert post_turn.finalize_calls[0]["assistant_message"] == "hello"
 
+    response, sources = await service.process_message(
+        session_id="s1",
+        user_message="hello",
+        context_type="chat",
+        project_id=None,
+    )
+    assert response == "hello"
+    assert sources == [{"type": "memory"}]
+
 
 async def _return_async(value):
     return value
@@ -136,7 +144,6 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         single_turn_orchestrator=_FakeSingleTurnOrchestrator(),
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
-        merge_tool_diagnostics_into_sources=lambda all_sources, _diag: all_sources,
     )
     service = SingleChatFlowService(deps)
 
@@ -170,7 +177,6 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
         single_turn_orchestrator=_FakeSingleTurnOrchestrator(),
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
-        merge_tool_diagnostics_into_sources=lambda all_sources, _diag: all_sources,
     )
     service = SingleChatFlowService(deps)
 
@@ -266,7 +272,6 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
             )
         ),
         build_file_context_block=lambda _refs: _return_async(""),
-        merge_tool_diagnostics_into_sources=lambda all_sources, _diag: all_sources,
     )
     service = SingleChatFlowService(deps)
 

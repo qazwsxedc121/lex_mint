@@ -7,6 +7,7 @@ from typing import Optional
 from .config import settings
 from .services.agent_service_simple import AgentService
 from .services.assistant_config_service import AssistantConfigService
+from .services.chat_application_service import ChatApplicationService
 from .services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from .services.file_service import FileService
 from .services.model_config_service import ModelConfigService
@@ -75,3 +76,6 @@ def get_agent_service() -> AgentService:
         _agent_service = AgentService(get_storage())
     return _agent_service
 
+
+def get_chat_application_service() -> ChatApplicationService:
+    return get_agent_service()._get_chat_application_service()

@@ -12,10 +12,15 @@ from types import SimpleNamespace
 from src.agents.llm_runtime import call_llm, call_llm_stream
 from .agent_service_bootstrap import bootstrap_agent_service
 from .chat_input_service import ChatInputService
-from .compare_flow_service import CompareFlowDeps, CompareFlowService
+from .chat_application_service import ChatApplicationService
+from .chat_service_factory import (
+    build_chat_application_service,
+    build_compare_flow_service,
+    build_single_chat_flow_service,
+)
+from .compare_flow_service import CompareFlowService
 from .context_assembly_service import ContextAssemblyService
 from .conversation_storage import ConversationStorage
-from .file_reference_config_service import FileReferenceConfig
 from .group_participants import parse_group_participant
 from .group_chat_service import GroupChatDeps, GroupChatService
 from .orchestration import (
@@ -29,7 +34,7 @@ from .orchestration import (
     CommitteeTurnExecutor,
 )
 from .post_turn_service import PostTurnService
-from .service_contracts import AssistantLike, ContextPayload
+from .service_contracts import AssistantLike
 from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
 from .orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
@@ -76,11 +81,6 @@ class AgentService:
         bootstrap_agent_service(self, storage)
         logger.info("AgentService initialized (simplified version)")
 
-    _FILE_CONTEXT_CHUNK_SIZE = 2500
-    _FILE_CONTEXT_MAX_CHUNKS = 6
-    _FILE_CONTEXT_PREVIEW_CHARS = 600
-    _FILE_CONTEXT_PREVIEW_LINES = 40
-    _FILE_CONTEXT_TOTAL_BUDGET_CHARS = 18000
     _GROUP_TRACE_PREVIEW_CHARS = 1600
 
     # Runtime-initialized service dependencies (set by bootstrap).
@@ -91,6 +91,7 @@ class AgentService:
     webpage_service: Any
     memory_service: Any
     file_reference_config_service: Any
+    file_reference_context_builder: Any
     rag_config_service: Any
     source_context_service: Any
     comparison_storage: Any
@@ -249,7 +250,7 @@ class AgentService:
                 chat_input_service=cast(ChatInputService, chat_input_service),
                 post_turn_service=cast(PostTurnService, post_turn_service),
                 search_service=cast(Any, search_service),
-                build_file_context_block=self._build_file_context_block,
+                build_file_context_block=self.file_reference_context_builder.build_context_block,
                 build_group_runtime_assistant=self._build_group_runtime_assistant,
                 resolve_group_settings=self._resolve_group_settings,
                 create_committee_orchestrator=self._create_committee_orchestrator,
@@ -269,18 +270,32 @@ class AgentService:
             self._group_chat_service = service
         return service
 
+    def _create_chat_application_service(self) -> ChatApplicationService:
+        """Build application-facing chat entry service for API routes."""
+        return build_chat_application_service(
+            storage=self.storage,
+            single_chat_flow_service=self._get_single_chat_flow_service(),
+            compare_flow_service=self._get_compare_flow_service(),
+            group_chat_service=self._get_group_chat_service(),
+        )
+
+    def _get_chat_application_service(self) -> ChatApplicationService:
+        """Lazily initialize chat application service for tests using __new__."""
+        service = getattr(self, "_chat_application_service", None)
+        if service is None:
+            service = self._create_chat_application_service()
+            self._chat_application_service = service
+        return service
+
     def _create_single_chat_flow_service(self) -> SingleChatFlowService:
         """Build single-chat flow service facade for standard chat stream."""
-        return SingleChatFlowService(
-            SingleChatFlowDeps(
-                storage=self.storage,
-                chat_input_service=self._get_chat_input_service(),
-                post_turn_service=self._get_post_turn_service(),
-                single_turn_orchestrator=self._get_single_turn_orchestrator(),
-                prepare_context=self._prepare_context,
-                build_file_context_block=self._build_file_context_block,
-                merge_tool_diagnostics_into_sources=self._merge_tool_diagnostics_into_sources,
-            )
+        return build_single_chat_flow_service(
+            storage=self.storage,
+            chat_input_service=self._get_chat_input_service(),
+            post_turn_service=self._get_post_turn_service(),
+            single_turn_orchestrator=self._get_single_turn_orchestrator(),
+            prepare_context=self._get_context_assembly_service().prepare_context,
+            build_file_context_block=self.file_reference_context_builder.build_context_block,
         )
 
     def _get_single_chat_flow_service(self) -> SingleChatFlowService:
@@ -293,15 +308,13 @@ class AgentService:
 
     def _create_compare_flow_service(self) -> CompareFlowService:
         """Build compare flow service facade for compare-model stream."""
-        return CompareFlowService(
-            CompareFlowDeps(
-                storage=self.storage,
-                comparison_storage=self.comparison_storage,
-                chat_input_service=self._get_chat_input_service(),
-                compare_models_orchestrator=self._get_compare_models_orchestrator(),
-                prepare_context=self._prepare_context,
-                build_file_context_block=self._build_file_context_block,
-            )
+        return build_compare_flow_service(
+            storage=self.storage,
+            comparison_storage=self.comparison_storage,
+            chat_input_service=self._get_chat_input_service(),
+            compare_models_orchestrator=self._get_compare_models_orchestrator(),
+            prepare_context=self._get_context_assembly_service().prepare_context,
+            build_file_context_block=self.file_reference_context_builder.build_context_block,
         )
 
     def _get_compare_flow_service(self) -> CompareFlowService:
@@ -359,165 +372,6 @@ class AgentService:
             self.context_assembly_service = service
         return service
 
-    def _get_file_reference_config(self) -> FileReferenceConfig:
-        """Load latest runtime limits; fall back to hardcoded defaults on error."""
-        try:
-            self.file_reference_config_service.reload_config()
-            return self.file_reference_config_service.config
-        except Exception as e:
-            logger.warning("Failed to refresh file reference config, using defaults: %s", e)
-            return FileReferenceConfig(
-                ui_preview_max_chars=1200,
-                ui_preview_max_lines=28,
-                injection_preview_max_chars=self._FILE_CONTEXT_PREVIEW_CHARS,
-                injection_preview_max_lines=self._FILE_CONTEXT_PREVIEW_LINES,
-                chunk_size=self._FILE_CONTEXT_CHUNK_SIZE,
-                max_chunks=self._FILE_CONTEXT_MAX_CHUNKS,
-                total_budget_chars=self._FILE_CONTEXT_TOTAL_BUDGET_CHARS,
-            )
-
-    @staticmethod
-    def _format_file_reference_block(title: str, body: str) -> str:
-        """Wrap file reference context in the same block format used by frontend blocks."""
-        return f"[Block: {title}]\n```text\n{body}\n```"
-
-    @staticmethod
-    def _abbreviate_chunk_text(text: str, max_chars: int, max_lines: int) -> str:
-        """Return a compact preview bounded by lines and chars."""
-        safe_max_chars = max(1, max_chars)
-        safe_max_lines = max(1, max_lines)
-        lines = text.splitlines()
-        if len(lines) > safe_max_lines:
-            text = "\n".join(lines[:safe_max_lines])
-
-        if len(text) <= safe_max_chars:
-            return text
-        head = int(safe_max_chars * 0.65)
-        tail = safe_max_chars - head
-        return f"{text[:head]}\n...\n{text[-tail:]}"
-
-    @staticmethod
-    def _select_chunk_indexes(total_chunks: int, max_chunks: int) -> List[int]:
-        """Select representative chunk indexes across the whole file."""
-        if total_chunks <= max_chunks:
-            return list(range(total_chunks))
-        if max_chunks <= 1:
-            return [0]
-
-        selected = {0, total_chunks - 1}
-        middle_slots = max_chunks - 2
-        if middle_slots > 0:
-            for i in range(1, middle_slots + 1):
-                idx = round(i * (total_chunks - 1) / (middle_slots + 1))
-                selected.add(idx)
-
-        ordered = sorted(selected)
-        while len(ordered) > max_chunks:
-            ordered.pop(len(ordered) // 2)
-        return ordered
-
-    async def _read_file_reference(
-        self,
-        project_id: str,
-        file_path: str,
-        cfg: FileReferenceConfig,
-    ) -> str:
-        """Read file and return chunked, abbreviated context (safe for large files)."""
-        try:
-            from ..dependencies import get_project_service
-
-            service = get_project_service()
-
-            # Use existing read_file method
-            file_content = await service.read_file(project_id, file_path)
-            content = file_content.content or ""
-
-            # Empty file guard
-            if not content:
-                return self._format_file_reference_block(
-                    f"File Reference: {file_path}",
-                    "[Content Summary] empty file",
-                )
-
-            chunk_size = max(1, cfg.chunk_size)
-            max_chunks = max(1, cfg.max_chunks)
-            preview_max_chars = max(1, cfg.injection_preview_max_chars)
-            preview_max_lines = max(1, cfg.injection_preview_max_lines)
-
-            chunks = [
-                content[i:i + chunk_size]
-                for i in range(0, len(content), chunk_size)
-            ]
-            total_chunks = len(chunks)
-            selected_indexes = self._select_chunk_indexes(total_chunks, max_chunks)
-
-            chunk_blocks: List[str] = []
-            for idx in selected_indexes:
-                chunk = chunks[idx]
-                start_char = idx * chunk_size + 1
-                end_char = min((idx + 1) * chunk_size, len(content))
-                preview = self._abbreviate_chunk_text(
-                    chunk,
-                    preview_max_chars,
-                    preview_max_lines,
-                )
-                chunk_blocks.append(
-                    f"[Chunk {idx + 1}/{total_chunks} | chars {start_char}-{end_char}]\n{preview}"
-                )
-            block_body = (
-                f"[Content Summary] {len(content)} chars, {total_chunks} chunks; "
-                f"showing {len(selected_indexes)} abbreviated chunks "
-                f"(<= {preview_max_lines} lines and <= {preview_max_chars} chars each).\n\n"
-                f"{chr(10).join(chunk_blocks)}\n\n"
-                "[Hint] Ask for a specific chunk number or keyword range if you need more detail."
-            )
-            return self._format_file_reference_block(f"File Reference: {file_path}", block_body)
-        except Exception as e:
-            logger.warning(f"Failed to read file {file_path} from project {project_id}: {e}")
-            return self._format_file_reference_block(
-                f"File Reference: {file_path}",
-                "[Error] Could not read file",
-            )
-
-    async def _build_file_context_block(
-        self,
-        file_references: Optional[List[Dict[str, str]]]
-    ) -> str:
-        """Build bounded context from referenced files to avoid context explosion."""
-        if not file_references:
-            return ""
-
-        cfg = self._get_file_reference_config()
-        total_budget_chars = max(1, cfg.total_budget_chars)
-        parts: List[str] = []
-        used_chars = 0
-
-        for index, ref in enumerate(file_references):
-            ref_project_id = ref.get("project_id")
-            ref_path = ref.get("path")
-            if not ref_project_id or not ref_path:
-                continue
-            file_context = await self._read_file_reference(
-                ref_project_id,
-                ref_path,
-                cfg,
-            )
-
-            if used_chars + len(file_context) > total_budget_chars:
-                skipped = len(file_references) - index
-                parts.append(
-                    self._format_file_reference_block(
-                        "File Reference Budget",
-                        f"[File Context Truncated] budget reached; skipped {skipped} remaining file reference(s).",
-                    )
-                )
-                break
-
-            parts.append(file_context)
-            used_chars += len(file_context)
-
-        return "\n\n".join(parts)
-
     async def _build_rag_context_and_sources(
         self,
         *,
@@ -569,64 +423,6 @@ class AgentService:
             logger.warning(f"RAG retrieval failed: {e}")
             return None, rag_sources
 
-    @staticmethod
-    def _merge_tool_diagnostics_into_sources(
-        all_sources: List[Dict[str, Any]],
-        tool_diagnostics: Optional[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-        if not tool_diagnostics:
-            return all_sources
-
-        payload = {
-            "tool_search_count": int(tool_diagnostics.get("tool_search_count", 0) or 0),
-            "tool_search_unique_count": int(
-                tool_diagnostics.get("tool_search_unique_count", 0) or 0
-            ),
-            "tool_search_duplicate_count": int(
-                tool_diagnostics.get("tool_search_duplicate_count", 0) or 0
-            ),
-            "tool_read_count": int(tool_diagnostics.get("tool_read_count", 0) or 0),
-            "tool_finalize_reason": str(
-                tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
-            ),
-        }
-
-        diagnostics_source: Optional[Dict[str, Any]] = None
-        for source in reversed(all_sources):
-            if str(source.get("type", "")) == "rag_diagnostics":
-                diagnostics_source = source
-                break
-
-        should_create_new = (
-            payload["tool_search_count"] > 0
-            or payload["tool_read_count"] > 0
-            or payload["tool_search_duplicate_count"] > 0
-            or payload["tool_finalize_reason"] != "normal_no_tools"
-        )
-        if diagnostics_source is None:
-            if not should_create_new:
-                return all_sources
-            diagnostics_source = {
-                "type": "rag_diagnostics",
-                "title": "RAG Diagnostics",
-                "snippet": "Tool diagnostics",
-            }
-            all_sources.append(diagnostics_source)
-
-        diagnostics_source.update(payload)
-        tool_snippet = (
-            f"tool s:{payload['tool_search_count']} "
-            f"u:{payload['tool_search_unique_count']} "
-            f"d:{payload['tool_search_duplicate_count']} "
-            f"r:{payload['tool_read_count']} "
-            f"f:{payload['tool_finalize_reason']}"
-        )
-        existing_snippet = str(diagnostics_source.get("snippet", "") or "").strip()
-        diagnostics_source["snippet"] = (
-            f"{existing_snippet} | {tool_snippet}" if existing_snippet else tool_snippet
-        )
-        return all_sources
-
     async def process_message(
         self,
         session_id: str,
@@ -639,28 +435,12 @@ class AgentService:
         active_file_path: Optional[str] = None,
         active_file_hash: Optional[str] = None,
     ) -> tuple[str, List[Dict[str, Any]]]:
-        """Process a user message and return AI response.
+        """Compatibility wrapper around ChatApplicationService.process_message.
 
-        Args:
-            session_id: Session UUID
-            user_message: User's input text
-            context_type: Context type ("chat" or "project")
-            project_id: Project ID (required when context_type="project")
-            use_web_search: Whether to use web search
-            search_query: Optional explicit search query
-            file_references: List of {path, project_id} for @file references
-
-        Returns:
-            AI assistant's response text and sources
-
-        Raises:
-            FileNotFoundError: If session doesn't exist
-            ValueError: If context parameters are invalid
+        Kept only for compatibility while API routes migrate to the dedicated
+        chat application entry service.
         """
-        response_chunks: List[str] = []
-        latest_sources: List[Dict[str, Any]] = []
-
-        async for event in self.process_message_stream(
+        return await self._get_chat_application_service().process_message(
             session_id=session_id,
             user_message=user_message,
             context_type=context_type,
@@ -670,16 +450,7 @@ class AgentService:
             file_references=file_references,
             active_file_path=active_file_path,
             active_file_hash=active_file_hash,
-        ):
-            if isinstance(event, str):
-                response_chunks.append(event)
-                continue
-            if isinstance(event, dict) and event.get("type") == "sources":
-                sources = event.get("sources")
-                if isinstance(sources, list):
-                    latest_sources = sources
-
-        return "".join(response_chunks), latest_sources
+        )
 
     async def process_message_stream(
         self,
@@ -696,29 +467,12 @@ class AgentService:
         active_file_path: Optional[str] = None,
         active_file_hash: Optional[str] = None,
     ) -> AsyncIterator[Any]:
-        """Stream process user message and return AI response stream.
+        """Compatibility wrapper around ChatApplicationService.process_message_stream.
 
-        Args:
-            session_id: Session UUID
-            user_message: User's input text
-            skip_user_append: Whether to skip appending user message (for regeneration)
-            reasoning_effort: Reasoning effort level: "low", "medium", "high"
-            attachments: List of file attachments with {filename, size, mime_type, temp_path}
-            context_type: Context type ("chat" or "project")
-            project_id: Project ID (required when context_type="project")
-            use_web_search: Whether to use web search
-            search_query: Optional explicit search query
-            file_references: List of {path, project_id} for @file references
-
-        Yields:
-            String tokens during streaming, or dict events:
-            - {"type": "usage", "usage": {...}, "cost": {...}} at the end
-
-        Raises:
-            FileNotFoundError: If session doesn't exist
-            ValueError: If context parameters are invalid
+        Kept only for compatibility while API routes migrate to the dedicated
+        chat application entry service.
         """
-        async for event in self._get_single_chat_flow_service().process_message_stream(
+        async for event in self._get_chat_application_service().process_message_stream(
             session_id=session_id,
             user_message=user_message,
             skip_user_append=skip_user_append,
@@ -733,25 +487,6 @@ class AgentService:
             active_file_hash=active_file_hash,
         ):
             yield event
-
-    async def _prepare_context(
-        self,
-        session_id: str,
-        raw_user_message: str,
-        context_type: str = "chat",
-        project_id: Optional[str] = None,
-        use_web_search: bool = False,
-        search_query: Optional[str] = None,
-    ) -> ContextPayload:
-        """Prepare shared context for LLM calls."""
-        return await self._get_context_assembly_service().prepare_context(
-            session_id=session_id,
-            raw_user_message=raw_user_message,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-        )
 
     @staticmethod
     def _build_group_identity_prompt(
@@ -1160,8 +895,8 @@ class AgentService:
         search_query: Optional[str] = None,
         file_references: Optional[List[Dict[str, str]]] = None
     ) -> AsyncIterator[Any]:
-        """Stream process user message with multiple assistants (group chat)."""
-        async for event in self._get_group_chat_service().process_group_message_stream(
+        """Compatibility wrapper around ChatApplicationService.process_group_message_stream."""
+        async for event in self._get_chat_application_service().process_group_message_stream(
             session_id=session_id,
             user_message=user_message,
             group_assistants=group_assistants,
@@ -1191,11 +926,8 @@ class AgentService:
         search_query: Optional[str] = None,
         file_references: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncIterator[Any]:
-        """Stream compare responses from multiple models.
-
-        Yields SSE events tagged by model_id.
-        """
-        async for event in self._get_compare_flow_service().process_compare_stream(
+        """Compatibility wrapper around ChatApplicationService.process_compare_stream."""
+        async for event in self._get_chat_application_service().process_compare_stream(
             session_id=session_id,
             user_message=user_message,
             model_ids=model_ids,

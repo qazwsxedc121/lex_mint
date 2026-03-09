@@ -35,10 +35,6 @@ class SingleChatFlowDeps:
     single_turn_orchestrator: Any
     prepare_context: Callable[..., Awaitable[ContextPayload]]
     build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
-    merge_tool_diagnostics_into_sources: Callable[
-        [List[SourcePayload], Optional[Dict[str, Any]]],
-        List[SourcePayload],
-    ]
 
 
 @dataclass
@@ -81,6 +77,44 @@ class SingleChatFlowService:
 
     def __init__(self, deps: SingleChatFlowDeps):
         self.deps = deps
+
+    async def process_message(
+        self,
+        *,
+        session_id: str,
+        user_message: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None,
+        active_file_path: Optional[str] = None,
+        active_file_hash: Optional[str] = None,
+    ) -> Tuple[str, List[SourcePayload]]:
+        """Collect the single-chat stream into one final response payload."""
+        response_chunks: List[str] = []
+        latest_sources: List[SourcePayload] = []
+
+        async for event in self.process_message_stream(
+            session_id=session_id,
+            user_message=user_message,
+            context_type=context_type,
+            project_id=project_id,
+            use_web_search=use_web_search,
+            search_query=search_query,
+            file_references=file_references,
+            active_file_path=active_file_path,
+            active_file_hash=active_file_hash,
+        ):
+            if isinstance(event, str):
+                response_chunks.append(event)
+                continue
+            if isinstance(event, dict) and event.get("type") == "sources":
+                sources = event.get("sources")
+                if isinstance(sources, list):
+                    latest_sources = sources
+
+        return "".join(response_chunks), latest_sources
 
     async def process_message_stream(
         self,
@@ -399,7 +433,7 @@ class SingleChatFlowService:
         print(f"[Step 4] Saving complete AI response to file...")
         logger.info(f"[Step 4] Saving complete AI response")
         if outcome.tool_diagnostics:
-            runtime.all_sources = self.deps.merge_tool_diagnostics_into_sources(
+            runtime.all_sources = self._merge_tool_diagnostics_into_sources(
                 runtime.all_sources,
                 outcome.tool_diagnostics,
             )
@@ -443,6 +477,64 @@ class SingleChatFlowService:
         )
         if followup_questions:
             yield {"type": "followup_questions", "questions": followup_questions}
+
+    @staticmethod
+    def _merge_tool_diagnostics_into_sources(
+        all_sources: List[SourcePayload],
+        tool_diagnostics: Optional[Dict[str, Any]],
+    ) -> List[SourcePayload]:
+        if not tool_diagnostics:
+            return all_sources
+
+        payload = {
+            "tool_search_count": int(tool_diagnostics.get("tool_search_count", 0) or 0),
+            "tool_search_unique_count": int(
+                tool_diagnostics.get("tool_search_unique_count", 0) or 0
+            ),
+            "tool_search_duplicate_count": int(
+                tool_diagnostics.get("tool_search_duplicate_count", 0) or 0
+            ),
+            "tool_read_count": int(tool_diagnostics.get("tool_read_count", 0) or 0),
+            "tool_finalize_reason": str(
+                tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
+            ),
+        }
+
+        diagnostics_source: Optional[SourcePayload] = None
+        for source in reversed(all_sources):
+            if str(source.get("type", "")) == "rag_diagnostics":
+                diagnostics_source = source
+                break
+
+        should_create_new = (
+            payload["tool_search_count"] > 0
+            or payload["tool_read_count"] > 0
+            or payload["tool_search_duplicate_count"] > 0
+            or payload["tool_finalize_reason"] != "normal_no_tools"
+        )
+        if diagnostics_source is None:
+            if not should_create_new:
+                return all_sources
+            diagnostics_source = {
+                "type": "rag_diagnostics",
+                "title": "RAG Diagnostics",
+                "snippet": "Tool diagnostics",
+            }
+            all_sources.append(diagnostics_source)
+
+        diagnostics_source.update(payload)
+        tool_snippet = (
+            f"tool s:{payload['tool_search_count']} "
+            f"u:{payload['tool_search_unique_count']} "
+            f"d:{payload['tool_search_duplicate_count']} "
+            f"r:{payload['tool_read_count']} "
+            f"f:{payload['tool_finalize_reason']}"
+        )
+        existing_snippet = str(diagnostics_source.get("snippet", "") or "").strip()
+        diagnostics_source["snippet"] = (
+            f"{existing_snippet} | {tool_snippet}" if existing_snippet else tool_snippet
+        )
+        return all_sources
 
     async def _maybe_auto_compress(
         self,
