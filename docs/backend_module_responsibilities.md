@@ -416,6 +416,12 @@ That is acceptable short-term, but it should trend toward one of these roles:
 
 It should not continue growing as a "god service".
 
+Current direction:
+
+- production API routes now resolve `ChatApplicationService` directly
+- `agent_service_simple.py` is becoming a compatibility/composition layer instead of the
+  normal API entrypoint
+
 ### `src/api/services/`
 
 This directory is transitional.
@@ -466,4 +472,3 @@ If a future change conflicts with this document, either:
 
 - update the code to match the guide, or
 - revise the guide explicitly before adding more code
-

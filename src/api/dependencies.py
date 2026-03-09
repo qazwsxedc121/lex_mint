@@ -7,6 +7,7 @@ from typing import Optional
 from .config import settings
 from .services.agent_service_simple import AgentService
 from .services.assistant_config_service import AssistantConfigService
+from .services.chat_application_bootstrap import build_default_chat_application_service
 from .services.chat_application_service import ChatApplicationService
 from .services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from .services.file_service import FileService
@@ -21,6 +22,7 @@ _project_workspace_state_service: Optional[ProjectWorkspaceStateService] = None
 _storage: Optional[ConversationStorage] = None
 _file_service: Optional[FileService] = None
 _agent_service: Optional[AgentService] = None
+_chat_application_service: Optional[ChatApplicationService] = None
 
 
 def get_model_service() -> ModelConfigService:
@@ -78,4 +80,10 @@ def get_agent_service() -> AgentService:
 
 
 def get_chat_application_service() -> ChatApplicationService:
-    return get_agent_service()._get_chat_application_service()
+    global _chat_application_service
+    if _chat_application_service is None:
+        _chat_application_service = build_default_chat_application_service(
+            storage=get_storage(),
+            file_service=get_file_service(),
+        )
+    return _chat_application_service

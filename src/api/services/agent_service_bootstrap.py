@@ -14,6 +14,7 @@ from .group_runtime_support_service import GroupRuntimeSupportService
 from .memory_service import MemoryService
 from .pricing_service import PricingService
 from .rag_config_service import RagConfigService
+from .rag_context_builder_service import RagContextBuilderService
 from .search_service import SearchService
 from .source_context_service import SourceContextService
 from .webpage_service import WebpageService
@@ -44,13 +45,14 @@ def bootstrap_agent_service(service: "AgentService", storage: "ConversationStora
     service.file_reference_context_builder = FileReferenceContextBuilder(
         service.file_reference_config_service
     )
+    service.rag_context_builder_service = RagContextBuilderService()
     service.group_runtime_support_service = GroupRuntimeSupportService()
     service.group_orchestration_support_service = GroupOrchestrationSupportService(
         storage=service.storage,
         pricing_service=service.pricing_service,
         memory_service=service.memory_service,
         file_service=service.file_service,
-        build_rag_context_and_sources=service._build_rag_context_and_sources,
+        build_rag_context_and_sources=service.rag_context_builder_service.build_context_and_sources,
         truncate_log_text=service._truncate_log_text,
         build_messages_preview_for_log=service._build_messages_preview_for_log,
         log_group_trace=service._log_group_trace,

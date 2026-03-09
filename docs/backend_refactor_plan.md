@@ -122,6 +122,11 @@ A normal single chat currently passes through:
 
 This works, but some of these layers are too thin and their ownership is not sharp enough.
 
+Current progress:
+
+- production router dependencies now resolve `ChatApplicationService` directly
+- `AgentService` still exists as a transitional facade and compatibility surface
+
 ### Scope
 
 - decide the long-term owner of the single-chat use case
@@ -382,4 +387,3 @@ The refactor is successful if:
 - `src/api/services/` no longer grows as a catch-all
 - runtime behavior is isolated from application orchestration
 - naming reflects actual ownership rather than history
-

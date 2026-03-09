@@ -1,0 +1,184 @@
+"""Bootstrap the production ChatApplicationService without AgentService."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+from typing import Any, Dict, Optional
+
+from src.agents.llm_runtime import call_llm, call_llm_stream
+
+from ..config import settings
+from .chat_application_service import ChatApplicationService
+from .chat_input_service import ChatInputService
+from .chat_service_factory import (
+    build_chat_application_service,
+    build_compare_flow_service,
+    build_single_chat_flow_service,
+)
+from .comparison_storage import ComparisonStorage
+from .context_assembly_service import ContextAssemblyService
+from .file_reference_config_service import FileReferenceConfigService
+from .file_reference_context_builder import FileReferenceContextBuilder
+from .file_service import FileService
+from .group_chat_service import GroupChatDeps, GroupChatService
+from .group_orchestration_support_service import GroupOrchestrationSupportService
+from .group_runtime_support_service import GroupRuntimeSupportService
+from .memory_service import MemoryService
+from .orchestration import (
+    CommitteePolicy,
+    CompareModelsOrchestrator,
+    SingleTurnOrchestrator,
+)
+from .orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
+from .post_turn_service import PostTurnService
+from .pricing_service import PricingService
+from .rag_config_service import RagConfigService
+from .rag_context_builder_service import RagContextBuilderService
+from .search_service import SearchService
+from .source_context_service import SourceContextService
+from .webpage_service import WebpageService
+
+logger = logging.getLogger(__name__)
+
+_GROUP_TRACE_PREVIEW_CHARS = 1600
+
+
+def _is_group_trace_enabled() -> bool:
+    value = os.getenv("LEX_MINT_GROUP_TRACE", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _log_group_trace(trace_id: str, stage: str, payload: Dict[str, Any]) -> None:
+    if not _is_group_trace_enabled():
+        return
+    try:
+        serialized = json.dumps(payload, ensure_ascii=True, default=str)
+    except Exception:
+        serialized = str(payload)
+    logger.info("[GroupTrace][%s][%s] %s", trace_id, stage, serialized)
+
+
+def _resolve_compare_model_name(model_id: str) -> str:
+    try:
+        from .model_config_service import ModelConfigService
+
+        model_service = ModelConfigService()
+        parts = model_id.split(":", 1)
+        simple_id = parts[1] if len(parts) > 1 else model_id
+        model_cfg, _ = model_service.get_model_and_provider_sync(model_id)
+        return getattr(model_cfg, "name", simple_id) if model_cfg else simple_id
+    except Exception:
+        return model_id
+
+
+def build_default_chat_application_service(
+    *,
+    storage: Any,
+    file_service: Optional[FileService] = None,
+) -> ChatApplicationService:
+    """Build the production chat application service graph directly."""
+    pricing_service = PricingService()
+    resolved_file_service = file_service or FileService(
+        settings.attachments_dir,
+        settings.max_file_size_mb,
+    )
+    search_service = SearchService()
+    webpage_service = WebpageService()
+    memory_service = MemoryService()
+    file_reference_config_service = FileReferenceConfigService()
+    file_reference_context_builder = FileReferenceContextBuilder(file_reference_config_service)
+    rag_config_service = RagConfigService()
+    source_context_service = SourceContextService()
+    comparison_storage = ComparisonStorage(storage)
+    chat_input_service = ChatInputService(storage, resolved_file_service)
+    rag_context_builder_service = RagContextBuilderService()
+
+    post_turn_service = PostTurnService(
+        storage=storage,
+        memory_service=memory_service,
+    )
+    context_assembly_service = ContextAssemblyService(
+        storage=storage,
+        memory_service=memory_service,
+        webpage_service=webpage_service,
+        search_service=search_service,
+        source_context_service=source_context_service,
+        rag_config_service=rag_config_service,
+        rag_context_builder=rag_context_builder_service.build_context_and_sources,
+    )
+
+    group_orchestration_support_service = GroupOrchestrationSupportService(
+        storage=storage,
+        pricing_service=pricing_service,
+        memory_service=memory_service,
+        file_service=resolved_file_service,
+        build_rag_context_and_sources=rag_context_builder_service.build_context_and_sources,
+        truncate_log_text=truncate_log_text,
+        build_messages_preview_for_log=build_messages_preview_for_log,
+        log_group_trace=_log_group_trace,
+        group_trace_preview_chars=_GROUP_TRACE_PREVIEW_CHARS,
+    )
+    committee_turn_executor = group_orchestration_support_service.create_committee_turn_executor()
+    group_runtime_support_service = GroupRuntimeSupportService()
+
+    single_turn_orchestrator = SingleTurnOrchestrator(
+        call_llm_stream=call_llm_stream,
+        pricing_service=pricing_service,
+        file_service=resolved_file_service,
+    )
+    compare_models_orchestrator = CompareModelsOrchestrator(
+        call_llm_stream=call_llm_stream,
+        pricing_service=pricing_service,
+        file_service=resolved_file_service,
+        resolve_model_name=_resolve_compare_model_name,
+    )
+    group_chat_service = GroupChatService(
+        GroupChatDeps(
+            chat_input_service=chat_input_service,
+            post_turn_service=post_turn_service,
+            search_service=search_service,
+            build_file_context_block=file_reference_context_builder.build_context_block,
+            build_group_runtime_assistant=group_runtime_support_service.build_group_runtime_assistant,
+            resolve_group_settings=lambda **kwargs: group_runtime_support_service.resolve_group_settings(
+                **kwargs,
+                resolve_round_policy=CommitteePolicy.resolve_committee_round_policy,
+            ),
+            create_committee_orchestrator=lambda: group_orchestration_support_service.create_committee_orchestrator(
+                llm_call=call_llm,
+                stream_group_assistant_turn=committee_turn_executor.stream_group_assistant_turn,
+                get_message_content_by_id=committee_turn_executor.get_message_content_by_id,
+            ),
+            create_round_robin_orchestrator=lambda: group_orchestration_support_service.create_round_robin_orchestrator(
+                stream_group_assistant_turn=committee_turn_executor.stream_group_assistant_turn,
+            ),
+            is_group_trace_enabled=_is_group_trace_enabled,
+            log_group_trace=_log_group_trace,
+            truncate_log_text=truncate_log_text,
+            group_trace_preview_chars=_GROUP_TRACE_PREVIEW_CHARS,
+        )
+    )
+
+    single_chat_flow_service = build_single_chat_flow_service(
+        storage=storage,
+        chat_input_service=chat_input_service,
+        post_turn_service=post_turn_service,
+        single_turn_orchestrator=single_turn_orchestrator,
+        prepare_context=context_assembly_service.prepare_context,
+        build_file_context_block=file_reference_context_builder.build_context_block,
+    )
+    compare_flow_service = build_compare_flow_service(
+        storage=storage,
+        comparison_storage=comparison_storage,
+        chat_input_service=chat_input_service,
+        compare_models_orchestrator=compare_models_orchestrator,
+        prepare_context=context_assembly_service.prepare_context,
+        build_file_context_block=file_reference_context_builder.build_context_block,
+    )
+    return build_chat_application_service(
+        storage=storage,
+        single_chat_flow_service=single_chat_flow_service,
+        compare_flow_service=compare_flow_service,
+        group_chat_service=group_chat_service,
+    )

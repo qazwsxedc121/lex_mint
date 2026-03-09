@@ -71,6 +71,7 @@ class AgentService:
     rag_config_service: Any
     source_context_service: Any
     comparison_storage: Any
+    rag_context_builder_service: Any
     group_runtime_support_service: Any
     group_orchestration_support_service: Any
 
@@ -374,45 +375,20 @@ class AgentService:
         project_id: Optional[str] = None,
     ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
         """Build RAG context and source metadata for the current assistant/project."""
-        rag_sources: List[Dict[str, Any]] = []
+        builder = getattr(self, "rag_context_builder_service", None)
+        if builder is None:
+            from .rag_context_builder_service import RagContextBuilderService
 
-        try:
-            assistant_for_rag = assistant_obj
-            if assistant_for_rag is None and assistant_id and not assistant_id.startswith("__legacy_model_"):
-                from .assistant_config_service import AssistantConfigService
-
-                assistant_service = AssistantConfigService()
-                assistant_for_rag = await assistant_service.get_assistant(assistant_id)
-
-            from .project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
-
-            kb_ids = await ProjectKnowledgeBaseResolver().resolve_effective_kb_ids(
-                assistant_id=assistant_id,
-                assistant_obj=assistant_for_rag,
-                context_type=context_type,
-                project_id=project_id,
-            )
-            if not kb_ids:
-                return None, rag_sources
-
-            from .rag_service import RagService
-
-            rag_service = RagService()
-            rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(
-                raw_user_message,
-                kb_ids,
-                runtime_model_id=runtime_model_id,
-            )
-            rag_sources.append(rag_service.build_rag_diagnostics_source(rag_diagnostics))
-            if not rag_results:
-                return None, rag_sources
-
-            rag_context = rag_service.build_rag_context(raw_user_message, rag_results)
-            rag_sources.extend([r.to_dict() for r in rag_results])
-            return rag_context, rag_sources
-        except Exception as e:
-            logger.warning(f"RAG retrieval failed: {e}")
-            return None, rag_sources
+            builder = RagContextBuilderService()
+            self.rag_context_builder_service = builder
+        return await builder.build_context_and_sources(
+            raw_user_message=raw_user_message,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            runtime_model_id=runtime_model_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
 
     async def process_message(
         self,
