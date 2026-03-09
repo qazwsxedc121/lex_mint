@@ -46,7 +46,7 @@ Note: V1 uses internal defaults in service code; UI-exposed knobs can be added i
 
 - No API contract break for `/api/chat/compress`.
 - Stored summary format unchanged (still one `summary` message).
-- Existing auto-compress trigger remains in `AgentService`.
+- Existing auto-compress trigger remains in `SingleChatFlowService`.
 
 ## 6) Milestones
 

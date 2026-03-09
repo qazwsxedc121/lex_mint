@@ -38,7 +38,8 @@ agents-17dcab8b61/
 **Business Logic (`src/api/services/`):**
 - `conversation_storage.py` - Markdown file-based conversation persistence
 - `agent_service.py` - LangGraph-based agent orchestration (legacy)
-- `agent_service_simple.py` - Simplified agent service (currently used)
+- `chat_application_service.py` - Application-level chat entry service
+- `chat_application_bootstrap.py` - Production chat service composition root
 - `model_config_service.py` - Model and provider configuration management
 - `assistant_config_service.py` - Assistant configuration management
 - `pricing_service.py` - Token usage and cost calculation

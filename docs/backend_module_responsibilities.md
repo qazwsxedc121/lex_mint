@@ -25,7 +25,7 @@ The main symptoms are:
   only "agent objects" rather than runtime execution.
 - A normal chat request currently crosses too many thin intermediate layers, which makes the
   main path harder to reason about.
-- Some names are historical and misleading, such as `simple_llm.py` and `agent_service_simple.py`.
+- Some names are historical and misleading, such as `simple_llm.py`.
 
 This means the codebase is not unstructured, but it does not yet express one consistent
 architecture vocabulary.
@@ -133,7 +133,7 @@ Should not contain:
 
 Examples in current codebase:
 
-- `src/api/services/agent_service_simple.py`
+- `src/api/services/chat_application_service.py`
 - `src/api/services/single_chat_flow_service.py`
 - `src/api/services/compare_flow_service.py`
 - `src/api/services/workflow_execution_service.py`
@@ -406,21 +406,16 @@ When adding a new file, use these rules:
 
 ## Boundaries That Need Special Discipline
 
-### `agent_service_simple.py`
+### Chat Application Entry
 
-This file currently acts as a facade plus a composition root plus some orchestration logic.
-That is acceptable short-term, but it should trend toward one of these roles:
+The production API path now resolves `ChatApplicationService` directly.
 
-- a thin facade that wires application services together
-- or a fully replaced application entry service with smaller focused collaborators
+This is the intended direction:
 
-It should not continue growing as a "god service".
-
-Current direction:
-
-- production API routes now resolve `ChatApplicationService` directly
-- `agent_service_simple.py` is becoming a compatibility/composition layer instead of the
-  normal API entrypoint
+- API routes should depend on application entry services directly
+- compatibility facades should be removed once tests and old callers migrate
+- application composition should live in explicit bootstrap/factory modules instead of a
+  generic god service
 
 ### `src/api/services/`
 

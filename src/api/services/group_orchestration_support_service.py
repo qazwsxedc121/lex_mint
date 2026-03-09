@@ -65,7 +65,7 @@ class GroupOrchestrationSupportService:
         stream_group_assistant_turn: Any,
         get_message_content_by_id: Any,
     ) -> CommitteeOrchestrator:
-        """Build committee orchestrator using AgentService-owned runtime callbacks."""
+        """Build committee orchestrator using shared runtime callbacks."""
         return CommitteeOrchestrator(
             llm_call=llm_call,
             assistant_params_from_config=self.assistant_params_from_config,

@@ -1,12 +1,17 @@
-"""Unit tests for committee mode orchestration in AgentService."""
+"""Unit tests for committee orchestration behavior."""
 
 from dataclasses import dataclass
 from typing import List, Optional
 
 import pytest
 
-import src.api.services.agent_service_simple as agent_service_module
-from src.api.services.agent_service_simple import AgentService
+from src.api.services.group_orchestration_support_service import GroupOrchestrationSupportService
+from src.api.services.orchestration import (
+    CommitteeOrchestrator,
+    CommitteePolicy,
+    OrchestrationRequest,
+    ResolvedCommitteeSettings,
+)
 from src.api.services.service_contracts import AssistantLike
 
 
@@ -53,18 +58,71 @@ async def _collect_events(async_iter):
     return events
 
 
+def _build_orchestrator(*, llm_call, stream_group_assistant_turn, get_message_content_by_id):
+    support = GroupOrchestrationSupportService(
+        storage=object(),
+        pricing_service=object(),
+        memory_service=object(),
+        file_service=object(),
+        build_rag_context_and_sources=None,
+        truncate_log_text=lambda text, _limit: text or "",
+        build_messages_preview_for_log=lambda messages: messages,
+        log_group_trace=lambda *_args, **_kwargs: None,
+    )
+    return CommitteeOrchestrator(
+        llm_call=llm_call,
+        assistant_params_from_config=support.assistant_params_from_config,
+        stream_group_assistant_turn=stream_group_assistant_turn,
+        get_message_content_by_id=get_message_content_by_id,
+        build_structured_turn_summary=support.build_structured_turn_summary,
+        build_committee_turn_packet=support.build_committee_turn_packet,
+        detect_group_role_drift=support.detect_group_role_drift,
+        build_role_retry_instruction=support.build_role_retry_instruction,
+        truncate_log_text=lambda text, _limit: text or "",
+        log_group_trace=lambda *_args, **_kwargs: None,
+    )
+
+
+def _build_request(
+    *,
+    raw_user_message: str,
+    group_assistants: List[str],
+    assistant_name_map,
+    assistant_config_map,
+    settings: Optional[ResolvedCommitteeSettings] = None,
+):
+    return OrchestrationRequest(
+        session_id="s1",
+        mode="committee",
+        user_message=raw_user_message,
+        participants=group_assistants,
+        assistant_name_map=assistant_name_map,
+        assistant_config_map=assistant_config_map,
+        settings=settings
+        or ResolvedCommitteeSettings(
+            supervisor_id=group_assistants[0] if group_assistants else "a1",
+            max_rounds=2,
+            min_member_turns_before_finish=1,
+            min_total_rounds_before_finish=1 if len(group_assistants) > 1 else 0,
+            max_parallel_speakers=3,
+            role_retry_limit=1,
+        ),
+        context_type="chat",
+        project_id=None,
+        search_context=None,
+        search_sources=[],
+    )
+
+
 def test_committee_round_policy_requires_depth_for_multi_member():
-    policy = AgentService._resolve_committee_round_policy(3, participant_count=4)
+    policy = CommitteePolicy.resolve_committee_round_policy(3, participant_count=4)
     assert policy["min_member_turns_before_finish"] == 2
     assert policy["min_total_rounds_before_finish"] == 6
     assert policy["max_rounds"] >= 6
 
 
 @pytest.mark.asyncio
-async def test_committee_groupchat_speak_then_finish(monkeypatch):
-    """Supervisor can schedule a speaker and then finish with summary synthesis."""
-    service = AgentService.__new__(AgentService)
-
+async def test_committee_orchestrator_speak_then_finish():
     supervisor_outputs = iter(
         [
             (
@@ -81,8 +139,6 @@ async def test_committee_groupchat_speak_then_finish(monkeypatch):
     def fake_call_llm(_messages, **_kwargs):
         return next(supervisor_outputs)
 
-    monkeypatch.setattr(agent_service_module, "call_llm", fake_call_llm)
-
     turn_calls = []
 
     async def fake_stream_group_assistant_turn(**kwargs):
@@ -90,47 +146,31 @@ async def test_committee_groupchat_speak_then_finish(monkeypatch):
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
-        yield {
-            "type": "assistant_message_id",
-            "assistant_id": assistant_id,
-            "message_id": message_id,
-        }
+        yield {"type": "assistant_message_id", "assistant_id": assistant_id, "message_id": message_id}
         yield {"type": "assistant_done", "assistant_id": assistant_id}
 
     async def fake_get_message_content_by_id(**kwargs):
         return f"preview for {kwargs['message_id']}"
-
-    monkeypatch.setattr(service, "_stream_group_assistant_turn", fake_stream_group_assistant_turn)
-    monkeypatch.setattr(service, "_get_message_content_by_id", fake_get_message_content_by_id)
-    monkeypatch.setattr(
-        service,
-        "_resolve_committee_round_policy",
-        lambda _raw_limit, participant_count: {
-            "max_rounds": 2,
-            "min_member_turns_before_finish": 1,
-            "min_total_rounds_before_finish": 1 if participant_count > 1 else 0,
-        },
-    )
 
     assistant_config_map = {
         "a1": _build_assistant("Supervisor", "deepseek:chat", max_rounds=3),
         "a2": _build_assistant("Architect", "deepseek:chat", max_rounds=3),
     }
     assistant_name_map = {"a1": "Supervisor", "a2": "Architect"}
+    orchestrator = _build_orchestrator(
+        llm_call=fake_call_llm,
+        stream_group_assistant_turn=fake_stream_group_assistant_turn,
+        get_message_content_by_id=fake_get_message_content_by_id,
+    )
 
     events = await _collect_events(
-        service._process_committee_group_message_stream(
-            session_id="s1",
-            raw_user_message="How should we implement committee mode?",
-            group_assistants=["a1", "a2"],
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
-            group_settings=None,
-            reasoning_effort=None,
-            context_type="chat",
-            project_id=None,
-            search_context=None,
-            search_sources=[],
+        orchestrator.stream(
+            _build_request(
+                raw_user_message="How should we implement committee mode?",
+                group_assistants=["a1", "a2"],
+                assistant_name_map=assistant_name_map,
+                assistant_config_map=assistant_config_map,
+            )
         )
     )
 
@@ -148,9 +188,7 @@ async def test_committee_groupchat_speak_then_finish(monkeypatch):
     assert turn_calls[0]["assistant_id"] == "a2"
     assert turn_calls[0]["instruction"] == "Focus on backend risks."
     assert turn_calls[1]["assistant_id"] == "a1"
-    assert "Committee orchestration is ending (reason: discussion_complete)." in turn_calls[1][
-        "instruction"
-    ]
+    assert "Committee orchestration is ending (reason: discussion_complete)." in turn_calls[1]["instruction"]
 
     assert events[-1] == {
         "type": "group_done",
@@ -161,14 +199,9 @@ async def test_committee_groupchat_speak_then_finish(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_committee_groupchat_invalid_supervisor_output_uses_fallback(monkeypatch):
-    """Invalid supervisor JSON falls back to a valid speaker and forced summary finish."""
-    service = AgentService.__new__(AgentService)
-
+async def test_committee_orchestrator_invalid_supervisor_output_uses_fallback():
     def fake_call_llm(_messages, **_kwargs):
         return "this is not valid json"
-
-    monkeypatch.setattr(agent_service_module, "call_llm", fake_call_llm)
 
     turn_calls = []
 
@@ -177,38 +210,39 @@ async def test_committee_groupchat_invalid_supervisor_output_uses_fallback(monke
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
-        yield {
-            "type": "assistant_message_id",
-            "assistant_id": assistant_id,
-            "message_id": message_id,
-        }
+        yield {"type": "assistant_message_id", "assistant_id": assistant_id, "message_id": message_id}
         yield {"type": "assistant_done", "assistant_id": assistant_id}
 
     async def fake_get_message_content_by_id(**_kwargs):
         return "fallback content preview"
-
-    monkeypatch.setattr(service, "_stream_group_assistant_turn", fake_stream_group_assistant_turn)
-    monkeypatch.setattr(service, "_get_message_content_by_id", fake_get_message_content_by_id)
 
     assistant_config_map = {
         "a1": _build_assistant("Supervisor", "deepseek:chat", max_rounds=1),
         "a2": _build_assistant("Implementer", "deepseek:chat", max_rounds=1),
     }
     assistant_name_map = {"a1": "Supervisor", "a2": "Implementer"}
+    orchestrator = _build_orchestrator(
+        llm_call=fake_call_llm,
+        stream_group_assistant_turn=fake_stream_group_assistant_turn,
+        get_message_content_by_id=fake_get_message_content_by_id,
+    )
 
     events = await _collect_events(
-        service._process_committee_group_message_stream(
-            session_id="s2",
-            raw_user_message="Need a rollout plan.",
-            group_assistants=["a1", "a2"],
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
-            group_settings=None,
-            reasoning_effort=None,
-            context_type="chat",
-            project_id=None,
-            search_context=None,
-            search_sources=[],
+        orchestrator.stream(
+            _build_request(
+                raw_user_message="Need a rollout plan.",
+                group_assistants=["a1", "a2"],
+                assistant_name_map=assistant_name_map,
+                assistant_config_map=assistant_config_map,
+                settings=ResolvedCommitteeSettings(
+                    supervisor_id="a1",
+                    max_rounds=1,
+                    min_member_turns_before_finish=1,
+                    min_total_rounds_before_finish=1,
+                    max_parallel_speakers=3,
+                    role_retry_limit=1,
+                ),
+            )
         )
     )
 
@@ -216,14 +250,12 @@ async def test_committee_groupchat_invalid_supervisor_output_uses_fallback(monke
     assert action_event["action"] == "speak"
     assert action_event["assistant_id"] == "a2"
     assert action_event["reason"] == "invalid_supervisor_output"
-    assert "Please contribute your best analysis as Implementer." == action_event["instruction"]
+    assert action_event["instruction"] == "Please contribute your best analysis as Implementer."
 
     assert len(turn_calls) == 2
     assert turn_calls[0]["assistant_id"] == "a2"
     assert turn_calls[1]["assistant_id"] == "a1"
-    assert "Committee orchestration is ending (reason: max_rounds_reached)." in turn_calls[1][
-        "instruction"
-    ]
+    assert "Committee orchestration is ending (reason: max_rounds_reached)." in turn_calls[1]["instruction"]
 
     assert events[-1]["type"] == "group_done"
     assert events[-1]["reason"] == "max_rounds_reached"
@@ -231,22 +263,36 @@ async def test_committee_groupchat_invalid_supervisor_output_uses_fallback(monke
 
 
 @pytest.mark.asyncio
-async def test_committee_groupchat_no_valid_participants():
-    service = AgentService.__new__(AgentService)
+async def test_committee_orchestrator_no_valid_participants():
+    async def fake_stream_group_assistant_turn(**_kwargs):
+        if False:
+            yield {}
+
+    async def fake_get_message_content_by_id(**_kwargs):
+        return ""
+
+    orchestrator = _build_orchestrator(
+        llm_call=lambda *_args, **_kwargs: "",
+        stream_group_assistant_turn=fake_stream_group_assistant_turn,
+        get_message_content_by_id=fake_get_message_content_by_id,
+    )
 
     events = await _collect_events(
-        service._process_committee_group_message_stream(
-            session_id="s3",
-            raw_user_message="Hello",
-            group_assistants=["ghost-assistant"],
-            assistant_name_map={},
-            assistant_config_map={},
-            group_settings=None,
-            reasoning_effort=None,
-            context_type="chat",
-            project_id=None,
-            search_context=None,
-            search_sources=[],
+        orchestrator.stream(
+            _build_request(
+                raw_user_message="Hello",
+                group_assistants=["ghost-assistant"],
+                assistant_name_map={},
+                assistant_config_map={},
+                settings=ResolvedCommitteeSettings(
+                    supervisor_id="ghost-assistant",
+                    max_rounds=1,
+                    min_member_turns_before_finish=1,
+                    min_total_rounds_before_finish=0,
+                    max_parallel_speakers=3,
+                    role_retry_limit=1,
+                ),
+            )
         )
     )
 
@@ -261,9 +307,7 @@ async def test_committee_groupchat_no_valid_participants():
 
 
 @pytest.mark.asyncio
-async def test_committee_groupchat_role_drift_retries_once(monkeypatch):
-    service = AgentService.__new__(AgentService)
-
+async def test_committee_orchestrator_role_drift_retries_once():
     supervisor_outputs = iter(
         [
             '{"action":"speak","assistant_id":"a2","instruction":"Provide implementation details.","reason":"need specialist"}',
@@ -274,8 +318,6 @@ async def test_committee_groupchat_role_drift_retries_once(monkeypatch):
     def fake_call_llm(_messages, **_kwargs):
         return next(supervisor_outputs)
 
-    monkeypatch.setattr(agent_service_module, "call_llm", fake_call_llm)
-
     turn_calls = []
 
     async def fake_stream_group_assistant_turn(**kwargs):
@@ -283,11 +325,7 @@ async def test_committee_groupchat_role_drift_retries_once(monkeypatch):
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
-        yield {
-            "type": "assistant_message_id",
-            "assistant_id": assistant_id,
-            "message_id": message_id,
-        }
+        yield {"type": "assistant_message_id", "assistant_id": assistant_id, "message_id": message_id}
         yield {"type": "assistant_done", "assistant_id": assistant_id}
 
     async def fake_get_message_content_by_id(**kwargs):
@@ -296,28 +334,25 @@ async def test_committee_groupchat_role_drift_retries_once(monkeypatch):
             return "[As Supervisor] Here is my review."
         return "Implementation specialist response."
 
-    monkeypatch.setattr(service, "_stream_group_assistant_turn", fake_stream_group_assistant_turn)
-    monkeypatch.setattr(service, "_get_message_content_by_id", fake_get_message_content_by_id)
-
     assistant_config_map = {
         "a1": _build_assistant("Supervisor", "deepseek:chat", max_rounds=3),
         "a2": _build_assistant("Implementer", "deepseek:chat", max_rounds=3),
     }
     assistant_name_map = {"a1": "Supervisor", "a2": "Implementer"}
+    orchestrator = _build_orchestrator(
+        llm_call=fake_call_llm,
+        stream_group_assistant_turn=fake_stream_group_assistant_turn,
+        get_message_content_by_id=fake_get_message_content_by_id,
+    )
 
     events = await _collect_events(
-        service._process_committee_group_message_stream(
-            session_id="s4",
-            raw_user_message="Need committee implementation advice.",
-            group_assistants=["a1", "a2"],
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
-            group_settings=None,
-            reasoning_effort=None,
-            context_type="chat",
-            project_id=None,
-            search_context=None,
-            search_sources=[],
+        orchestrator.stream(
+            _build_request(
+                raw_user_message="Need committee implementation advice.",
+                group_assistants=["a1", "a2"],
+                assistant_name_map=assistant_name_map,
+                assistant_config_map=assistant_config_map,
+            )
         )
     )
 
@@ -337,9 +372,7 @@ async def test_committee_groupchat_role_drift_retries_once(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_committee_groupchat_parallel_speak_then_finish(monkeypatch):
-    service = AgentService.__new__(AgentService)
-
+async def test_committee_orchestrator_parallel_speak_then_finish():
     supervisor_outputs = iter(
         [
             (
@@ -353,8 +386,6 @@ async def test_committee_groupchat_parallel_speak_then_finish(monkeypatch):
 
     def fake_call_llm(_messages, **_kwargs):
         return next(supervisor_outputs)
-
-    monkeypatch.setattr(agent_service_module, "call_llm", fake_call_llm)
 
     turn_calls = []
     call_index = {"value": 0}
@@ -377,38 +408,26 @@ async def test_committee_groupchat_parallel_speak_then_finish(monkeypatch):
     async def fake_get_message_content_by_id(**kwargs):
         return f"parallel content for {kwargs['message_id']}"
 
-    monkeypatch.setattr(service, "_stream_group_assistant_turn", fake_stream_group_assistant_turn)
-    monkeypatch.setattr(service, "_get_message_content_by_id", fake_get_message_content_by_id)
-    monkeypatch.setattr(
-        service,
-        "_resolve_committee_round_policy",
-        lambda _raw_limit, participant_count: {
-            "max_rounds": 2,
-            "min_member_turns_before_finish": 1,
-            "min_total_rounds_before_finish": 1 if participant_count > 1 else 0,
-        },
-    )
-
     assistant_config_map = {
         "a1": _build_assistant("Supervisor", "deepseek:chat", max_rounds=4),
         "a2": _build_assistant("Architect", "deepseek:chat", max_rounds=4),
         "a3": _build_assistant("Risk", "deepseek:chat", max_rounds=4),
     }
     assistant_name_map = {"a1": "Supervisor", "a2": "Architect", "a3": "Risk"}
+    orchestrator = _build_orchestrator(
+        llm_call=fake_call_llm,
+        stream_group_assistant_turn=fake_stream_group_assistant_turn,
+        get_message_content_by_id=fake_get_message_content_by_id,
+    )
 
     events = await _collect_events(
-        service._process_committee_group_message_stream(
-            session_id="s5",
-            raw_user_message="Need plan and risks.",
-            group_assistants=["a1", "a2", "a3"],
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
-            group_settings=None,
-            reasoning_effort=None,
-            context_type="chat",
-            project_id=None,
-            search_context=None,
-            search_sources=[],
+        orchestrator.stream(
+            _build_request(
+                raw_user_message="Need plan and risks.",
+                group_assistants=["a1", "a2", "a3"],
+                assistant_name_map=assistant_name_map,
+                assistant_config_map=assistant_config_map,
+            )
         )
     )
 

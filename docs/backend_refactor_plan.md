@@ -118,21 +118,18 @@ Reduce the number of thin layers in the normal single-chat chain.
 
 A normal single chat currently passes through:
 
-`router -> AgentService -> SingleChatFlowService -> SingleTurnOrchestrator -> llm_runtime`
+`router -> ChatApplicationService -> SingleChatFlowService -> SingleTurnOrchestrator -> llm_runtime`
 
 This works, but some of these layers are too thin and their ownership is not sharp enough.
 
 Current progress:
 
 - production router dependencies now resolve `ChatApplicationService` directly
-- `AgentService` still exists as a transitional facade and compatibility surface
+- `AgentService` has been removed from the production chat path
 
 ### Scope
 
 - decide the long-term owner of the single-chat use case
-- make `AgentService` either:
-  - a thin facade/composition root, or
-  - disappear from the single-chat path
 - make `SingleChatFlowService` the clear application owner for single chat,
   or merge it into a better-named application service
 - keep orchestrators only where they add real value
@@ -147,7 +144,6 @@ with persistence/context/tool preparation remaining in the application service.
 
 ### Candidate cleanup items
 
-- extract single-chat-only responsibilities from `agent_service_simple.py`
 - keep group chat and compare chat behind separate entry services
 - evaluate whether `SingleTurnOrchestrator` should remain as a reusable abstraction
   or become an internal helper of the single-chat application layer
@@ -165,7 +161,6 @@ with persistence/context/tool preparation remaining in the application service.
 ### Exit Criteria
 
 - there is one obvious owner for the single-chat application flow
-- `agent_service_simple.py` is materially smaller or narrower
 - normal chat call chain is shorter and easier to explain
 
 
@@ -246,7 +241,6 @@ Bring non-single-chat flows under the same structural vocabulary.
 
 ### Candidate cleanup items
 
-- extract group chat composition out of `agent_service_simple.py`
 - isolate committee/round-robin orchestration behind clearly named application modules
 - ensure compare and workflow flows share runtime invocation contracts instead of custom wrappers
 
@@ -263,7 +257,7 @@ Bring non-single-chat flows under the same structural vocabulary.
 ### Exit Criteria
 
 - group/compare/workflow flows follow the same high-level layering model
-- `agent_service_simple.py` is no longer the main coordination hub for everything
+- no legacy facade remains as the main coordination hub for everything
 
 
 ## Stage 5 - Naming Cleanup
@@ -279,7 +273,6 @@ Renaming should happen after boundaries are already real.
 
 ### Candidate renames
 
-- `agent_service_simple.py` -> a name that reflects its final role
 - `src/agents/` -> `src/llm_runtime/` if runtime ownership fully dominates
 - compatibility shims removed after callers migrate
 
@@ -361,7 +354,7 @@ After the current baseline commit, the first real refactor slice should be:
 
 1. finish Stage 1 runtime cleanup
 2. decide the final owner of single-chat orchestration
-3. shrink `agent_service_simple.py`
+3. continue reducing transitional application bootstrapping code
 
 This is the smallest high-leverage slice because it improves the most important path
 without requiring immediate repo-wide directory moves.

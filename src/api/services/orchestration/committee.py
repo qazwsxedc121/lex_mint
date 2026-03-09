@@ -1,4 +1,4 @@
-"""Committee orchestration loop extracted from AgentService."""
+"""Committee orchestration loop."""
 
 import asyncio
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Optional
 
 from .config import settings
-from .services.agent_service_simple import AgentService
 from .services.assistant_config_service import AssistantConfigService
 from .services.chat_application_bootstrap import build_default_chat_application_service
 from .services.chat_application_service import ChatApplicationService
@@ -21,7 +20,6 @@ _project_service: Optional[ProjectService] = None
 _project_workspace_state_service: Optional[ProjectWorkspaceStateService] = None
 _storage: Optional[ConversationStorage] = None
 _file_service: Optional[FileService] = None
-_agent_service: Optional[AgentService] = None
 _chat_application_service: Optional[ChatApplicationService] = None
 
 
@@ -70,13 +68,6 @@ def get_file_service() -> FileService:
     if _file_service is None:
         _file_service = FileService(settings.attachments_dir, settings.max_file_size_mb)
     return _file_service
-
-
-def get_agent_service() -> AgentService:
-    global _agent_service
-    if _agent_service is None:
-        _agent_service = AgentService(get_storage())
-    return _agent_service
 
 
 def get_chat_application_service() -> ChatApplicationService:

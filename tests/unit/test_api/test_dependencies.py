@@ -3,7 +3,7 @@
 from src.api import dependencies
 
 
-def test_get_chat_application_service_builds_directly_without_agent_service(monkeypatch):
+def test_get_chat_application_service_builds_directly(monkeypatch):
     sentinel_storage = object()
     sentinel_file_service = object()
     sentinel_chat_application_service = object()
@@ -17,12 +17,6 @@ def test_get_chat_application_service_builds_directly_without_agent_service(monk
         "build_default_chat_application_service",
         lambda **kwargs: calls.append(kwargs) or sentinel_chat_application_service,
     )
-    monkeypatch.setattr(
-        dependencies,
-        "get_agent_service",
-        lambda: (_ for _ in ()).throw(AssertionError("get_agent_service should not be used")),
-    )
-
     result = dependencies.get_chat_application_service()
 
     assert result is sentinel_chat_application_service

@@ -1,4 +1,4 @@
-"""Compare-chat streaming flow orchestration extracted from AgentService."""
+"""Compare-chat streaming flow orchestration."""
 
 from __future__ import annotations
 

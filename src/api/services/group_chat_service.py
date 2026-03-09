@@ -1,4 +1,4 @@
-"""Group chat execution service extracted from AgentService."""
+"""Group chat execution service."""
 
 from __future__ import annotations
 

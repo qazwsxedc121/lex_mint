@@ -1,4 +1,4 @@
-"""Bootstrap the production ChatApplicationService without AgentService."""
+"""Bootstrap the production ChatApplicationService graph."""
 
 from __future__ import annotations
 
