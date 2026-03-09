@@ -1,10 +1,7 @@
 """Agent service for processing chat messages - Simplified version (without LangGraph)"""
 
-from dataclasses import dataclass
 from typing import Dict, AsyncIterator, Optional, Any, List, Tuple, cast
 import logging
-import uuid
-import re
 import os
 import json
 from types import SimpleNamespace
@@ -21,13 +18,13 @@ from .chat_service_factory import (
 from .compare_flow_service import CompareFlowService
 from .context_assembly_service import ContextAssemblyService
 from .conversation_storage import ConversationStorage
-from .group_participants import parse_group_participant
 from .group_chat_service import GroupChatDeps, GroupChatService
+from .group_orchestration_support_service import GroupOrchestrationSupportService
+from .group_runtime_support_service import GroupRuntimeSupportService
 from .orchestration import (
     CompareModelsOrchestrator,
-    CommitteeOrchestrator,
     CommitteePolicy,
-    GroupSettingsResolver,
+    CommitteeOrchestrator,
     RoundRobinOrchestrator,
     SingleTurnOrchestrator,
     CommitteeRuntimeState,
@@ -39,27 +36,6 @@ from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
 from .orchestration.log_utils import build_messages_preview_for_log, truncate_log_text
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class _RuntimeAssistant:
-    id: str
-    name: str
-    model_id: str
-    icon: str
-    description: str
-    system_prompt: Optional[str]
-    temperature: Optional[float]
-    max_tokens: Optional[int]
-    top_p: Optional[float]
-    top_k: Optional[int]
-    frequency_penalty: Optional[float]
-    presence_penalty: Optional[float]
-    max_rounds: Optional[int]
-    memory_enabled: bool
-    knowledge_base_ids: Optional[List[str]]
-    enabled: bool
-
 
 class AgentService:
     """Service layer for agent interactions with conversation storage.
@@ -95,7 +71,8 @@ class AgentService:
     rag_config_service: Any
     source_context_service: Any
     comparison_storage: Any
-    _committee_policy: CommitteePolicy
+    group_runtime_support_service: Any
+    group_orchestration_support_service: Any
 
     @staticmethod
     def _truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
@@ -134,21 +111,29 @@ class AgentService:
 
     def _create_committee_turn_executor(self) -> CommitteeTurnExecutor:
         """Build turn executor with service dependencies and prompt/context callbacks."""
-        return CommitteeTurnExecutor(
-            storage=self.storage,
-            pricing_service=self.pricing_service,
-            memory_service=self.memory_service,
-            file_service=self.file_service,
-            assistant_params_from_config=self._assistant_params_from_config,
-            build_group_history_hint=self._build_group_history_hint,
-            build_group_identity_prompt=self._build_group_identity_prompt,
-            build_group_instruction_prompt=self._build_group_instruction_prompt,
+        return self._get_group_orchestration_support_service().create_committee_turn_executor()
+
+    def _create_group_orchestration_support_service(self) -> GroupOrchestrationSupportService:
+        """Build group orchestration helper service with runtime dependencies."""
+        return GroupOrchestrationSupportService(
+            storage=getattr(self, "storage", None),
+            pricing_service=getattr(self, "pricing_service", None),
+            memory_service=getattr(self, "memory_service", None),
+            file_service=getattr(self, "file_service", None),
             build_rag_context_and_sources=self._build_rag_context_and_sources,
             truncate_log_text=self._truncate_log_text,
             build_messages_preview_for_log=self._build_messages_preview_for_log,
             log_group_trace=self._log_group_trace,
             group_trace_preview_chars=self._GROUP_TRACE_PREVIEW_CHARS,
         )
+
+    def _get_group_orchestration_support_service(self) -> GroupOrchestrationSupportService:
+        """Lazily initialize group orchestration support for tests using __new__."""
+        service = getattr(self, "group_orchestration_support_service", None)
+        if service is None:
+            service = self._create_group_orchestration_support_service()
+            self.group_orchestration_support_service = service
+        return service
 
     def _get_committee_turn_executor(self) -> CommitteeTurnExecutor:
         """Lazily initialize turn executor for tests that construct AgentService via __new__."""
@@ -160,23 +145,15 @@ class AgentService:
 
     def _create_committee_orchestrator(self) -> CommitteeOrchestrator:
         """Build committee orchestrator from current service callbacks."""
-        return CommitteeOrchestrator(
+        return self._get_group_orchestration_support_service().create_committee_orchestrator(
             llm_call=call_llm,
-            assistant_params_from_config=self._assistant_params_from_config,
             stream_group_assistant_turn=self._stream_group_assistant_turn,
             get_message_content_by_id=self._get_message_content_by_id,
-            build_structured_turn_summary=self._build_structured_turn_summary,
-            build_committee_turn_packet=self._build_committee_turn_packet,
-            detect_group_role_drift=self._detect_group_role_drift,
-            build_role_retry_instruction=self._build_role_retry_instruction,
-            truncate_log_text=self._truncate_log_text,
-            log_group_trace=self._log_group_trace,
-            group_trace_preview_chars=self._GROUP_TRACE_PREVIEW_CHARS,
         )
 
     def _create_round_robin_orchestrator(self) -> RoundRobinOrchestrator:
         """Build round-robin orchestrator from current service callbacks."""
-        return RoundRobinOrchestrator(
+        return self._get_group_orchestration_support_service().create_round_robin_orchestrator(
             stream_group_assistant_turn=self._stream_group_assistant_turn,
         )
 
@@ -245,14 +222,28 @@ class AgentService:
                 build_search_context=lambda _query, _sources: None,
             )
 
+        file_reference_context_builder = getattr(self, "file_reference_context_builder", None)
+        if file_reference_context_builder is None:
+            async def _empty_context_block(_references):
+                return ""
+
+            file_reference_context_builder = SimpleNamespace(build_context_block=_empty_context_block)
+
+        group_runtime_support_service = getattr(self, "group_runtime_support_service", None)
+        if group_runtime_support_service is None:
+            group_runtime_support_service = GroupRuntimeSupportService()
+
         return GroupChatService(
             GroupChatDeps(
                 chat_input_service=cast(ChatInputService, chat_input_service),
                 post_turn_service=cast(PostTurnService, post_turn_service),
                 search_service=cast(Any, search_service),
-                build_file_context_block=self.file_reference_context_builder.build_context_block,
-                build_group_runtime_assistant=self._build_group_runtime_assistant,
-                resolve_group_settings=self._resolve_group_settings,
+                build_file_context_block=file_reference_context_builder.build_context_block,
+                build_group_runtime_assistant=group_runtime_support_service.build_group_runtime_assistant,
+                resolve_group_settings=lambda **kwargs: group_runtime_support_service.resolve_group_settings(
+                    **kwargs,
+                    resolve_round_policy=self._resolve_committee_round_policy,
+                ),
                 create_committee_orchestrator=self._create_committee_orchestrator,
                 create_round_robin_orchestrator=self._create_round_robin_orchestrator,
                 is_group_trace_enabled=self._is_group_trace_enabled,
@@ -496,22 +487,11 @@ class AgentService:
         assistant_name_map: Dict[str, str],
     ) -> str:
         """Build explicit role and participant instructions for group chat rounds."""
-        participants: List[str] = []
-        for index, participant_id in enumerate(group_assistants, start=1):
-            participant_name = assistant_name_map.get(participant_id, participant_id)
-            marker = " (you)" if participant_id == current_assistant_id else ""
-            participants.append(f"{index}. {participant_name} [{participant_id}]{marker}")
-
-        participants_block = "\n".join(participants) if participants else "unknown"
-        return (
-            "Group chat identity:\n"
-            f"You are {current_assistant_name} [{current_assistant_id}] in a multi-assistant discussion.\n"
-            "Participants and speaking order:\n"
-            f"{participants_block}\n\n"
-            "Role rules:\n"
-            "- Do not claim other assistants' statements as your own.\n"
-            "- When responding, continue from your own perspective and style.\n"
-            "- Never output internal role labels or metadata markers to the user."
+        return GroupOrchestrationSupportService.build_group_identity_prompt(
+            current_assistant_id=current_assistant_id,
+            current_assistant_name=current_assistant_name,
+            group_assistants=group_assistants,
+            assistant_name_map=assistant_name_map,
         )
 
     @staticmethod
@@ -522,44 +502,17 @@ class AgentService:
         max_turns: int = 12,
     ) -> str:
         """Build a compact speaker-labeled assistant turn summary for disambiguation."""
-        turn_lines: List[str] = []
-        for message in messages:
-            if message.get("role") != "assistant":
-                continue
-
-            speaker_id = message.get("assistant_id")
-            if not speaker_id:
-                continue
-
-            speaker_name = assistant_name_map.get(speaker_id, speaker_id)
-            ownership = "self" if speaker_id == current_assistant_id else "other"
-            content = (message.get("content") or "").replace("\n", " ").strip()
-            if len(content) > 120:
-                content = f"{content[:120]}..."
-            turn_lines.append(f"- {speaker_name} ({ownership}): {content}")
-
-        if not turn_lines:
-            return ""
-
-        recent_lines = turn_lines[-max_turns:]
-        return (
-            "Assistant turn history:\n"
-            "Use this speaker mapping to distinguish your own prior replies from other assistants:\n"
-            f"{chr(10).join(recent_lines)}\n"
-            "These labels are internal guidance only; do not output them verbatim."
+        return GroupOrchestrationSupportService.build_group_history_hint(
+            messages=messages,
+            current_assistant_id=current_assistant_id,
+            assistant_name_map=assistant_name_map,
+            max_turns=max_turns,
         )
 
     @staticmethod
     def _assistant_params_from_config(assistant_obj: AssistantLike) -> Dict[str, Any]:
         """Extract generation params from assistant config object."""
-        return {
-            "temperature": assistant_obj.temperature,
-            "max_tokens": assistant_obj.max_tokens,
-            "top_p": assistant_obj.top_p,
-            "top_k": assistant_obj.top_k,
-            "frequency_penalty": assistant_obj.frequency_penalty,
-            "presence_penalty": assistant_obj.presence_penalty,
-        }
+        return GroupOrchestrationSupportService.assistant_params_from_config(assistant_obj)
 
     @staticmethod
     def _resolve_compare_model_name(model_id: str) -> str:
@@ -576,152 +529,23 @@ class AgentService:
             return model_id
 
     @staticmethod
-    def _extract_model_template_params(model_obj: Any) -> Dict[str, Any]:
-        """Extract per-model chat template params for runtime participant creation."""
-        template = getattr(model_obj, "chat_template", None)
-        if not template:
-            return {}
-        if hasattr(template, "model_dump"):
-            raw_template = template.model_dump(exclude_none=True)
-        elif isinstance(template, dict):
-            raw_template = {k: v for k, v in template.items() if v is not None}
-        else:
-            return {}
-        return {
-            "temperature": raw_template.get("temperature"),
-            "max_tokens": raw_template.get("max_tokens"),
-            "top_p": raw_template.get("top_p"),
-            "top_k": raw_template.get("top_k"),
-            "frequency_penalty": raw_template.get("frequency_penalty"),
-            "presence_penalty": raw_template.get("presence_penalty"),
-        }
-
-    async def _build_group_runtime_assistant(
-        self,
-        participant_token: str,
-    ) -> Optional[Tuple[str, AssistantLike, str]]:
-        """Resolve assistant/model participant token to runtime assistant object."""
-        try:
-            participant = parse_group_participant(participant_token)
-        except ValueError:
-            return None
-
-        if participant.kind == "assistant":
-            from .assistant_config_service import AssistantConfigService
-
-            assistant_service = AssistantConfigService()
-            try:
-                assistant_obj = await assistant_service.require_enabled_assistant(participant.value)
-            except ValueError:
-                return None
-            return participant.token, assistant_obj, assistant_obj.name
-
-        from .model_config_service import ModelConfigService
-
-        model_service = ModelConfigService()
-        try:
-            model_obj, _provider_obj = await model_service.require_enabled_model(participant.value)
-        except ValueError:
-            return None
-
-        composite_model_id = f"{model_obj.provider_id}:{model_obj.id}"
-        template_params = self._extract_model_template_params(model_obj)
-        runtime_assistant = _RuntimeAssistant(
-            id=participant.token,
-            name=model_obj.name or model_obj.id,
-            icon="CpuChip",
-            description=f"Direct model participant: {composite_model_id}",
-            model_id=composite_model_id,
-            system_prompt=None,
-            temperature=template_params.get("temperature", 0.7),
-            max_tokens=template_params.get("max_tokens"),
-            top_p=template_params.get("top_p"),
-            top_k=template_params.get("top_k"),
-            frequency_penalty=template_params.get("frequency_penalty"),
-            presence_penalty=template_params.get("presence_penalty"),
-            max_rounds=None,
-            memory_enabled=False,
-            knowledge_base_ids=[],
-            enabled=True,
-        )
-        return participant.token, runtime_assistant, runtime_assistant.name
-
-    @staticmethod
-    def _resolve_group_round_limit(raw_limit: Optional[int], *, fallback: int = 3, hard_cap: int = 6) -> int:
-        """Normalize assistant max_rounds for committee orchestration loops."""
-        return CommitteePolicy.resolve_group_round_limit(
-            raw_limit,
-            fallback=fallback,
-            hard_cap=hard_cap,
-        )
-
-    @staticmethod
-    def _resolve_committee_round_policy(
-        raw_limit: Optional[int],
-        *,
-        participant_count: int,
-    ) -> Dict[str, int]:
-        """Derive round/depth policy for committee mode to avoid premature convergence."""
-        return CommitteePolicy.resolve_committee_round_policy(
-            raw_limit,
-            participant_count=participant_count,
-        )
-
-    def _resolve_group_settings(
-        self,
-        *,
-        group_mode: Optional[str],
-        group_assistants: List[str],
-        group_settings: Optional[Dict[str, Any]],
-        assistant_config_map: Dict[str, AssistantLike],
-    ):
-        """Resolve runtime group settings with backward-compatible defaults."""
-        return GroupSettingsResolver.resolve(
-            group_mode=group_mode,
-            group_assistants=group_assistants,
-            group_settings=group_settings,
-            assistant_config_map=assistant_config_map,
-            resolve_round_policy=self._resolve_committee_round_policy,
-        )
-
-    @staticmethod
     def _build_group_instruction_prompt(
         instruction: Optional[str],
         structured_packet: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
         """Wrap internal directives; optionally attach structured committee turn packet."""
-        if not instruction and not structured_packet:
-            return None
-
-        sections: List[str] = []
-        if instruction:
-            cleaned = instruction.strip()
-            if cleaned:
-                sections.append(
-                    "Committee instruction:\n"
-                    f"{cleaned}\n\n"
-                    "Follow this instruction while keeping role consistency and factual grounding."
-                )
-        if structured_packet:
-            try:
-                payload = json.dumps(structured_packet, ensure_ascii=True, default=str)
-            except Exception:
-                payload = str(structured_packet)
-            sections.append(
-                "Committee turn packet (JSON):\n"
-                f"```json\n{payload}\n```\n\n"
-                "Use this packet for planning and role consistency. "
-                "Do not output JSON unless the user explicitly asks for it."
-            )
-
-        if not sections:
-            return None
-        return "\n\n".join(sections)
+        return GroupOrchestrationSupportService.build_group_instruction_prompt(
+            instruction=instruction,
+            structured_packet=structured_packet,
+        )
 
     @staticmethod
     def _extract_bullet_items(text: str, *, limit: int = 5) -> List[str]:
         """Extract concise bullet-like items from free-form text."""
-        return CommitteeTurnExecutor.extract_bullet_items(text, limit=limit)
+        return GroupOrchestrationSupportService.extract_bullet_items(
+            text,
+            limit=limit,
+        )
 
     @staticmethod
     def _extract_keyword_sentences(
@@ -731,7 +555,7 @@ class AgentService:
         limit: int = 4,
     ) -> List[str]:
         """Extract short sentences containing any keyword."""
-        return CommitteeTurnExecutor.extract_keyword_sentences(
+        return GroupOrchestrationSupportService.extract_keyword_sentences(
             text,
             keywords=keywords,
             limit=limit,
@@ -739,7 +563,7 @@ class AgentService:
 
     def _build_structured_turn_summary(self, content: str) -> Dict[str, Any]:
         """Build lightweight structured summary from assistant natural-language output."""
-        return CommitteeTurnExecutor.build_structured_turn_summary(content)
+        return self._get_group_orchestration_support_service().build_structured_turn_summary(content)
 
     def _build_committee_turn_packet(
         self,
@@ -750,7 +574,7 @@ class AgentService:
         instruction: Optional[str],
     ) -> Dict[str, Any]:
         """Build structured per-turn packet used as internal context for committee members."""
-        return CommitteeTurnExecutor.build_committee_turn_packet(
+        return self._get_group_orchestration_support_service().build_committee_turn_packet(
             state=state,
             target_assistant_id=target_assistant_id,
             assistant_name_map=assistant_name_map,
@@ -760,7 +584,7 @@ class AgentService:
     @staticmethod
     def _normalize_identity_token(value: str) -> str:
         """Normalize identity labels for lightweight role-drift checks."""
-        return CommitteeTurnExecutor.normalize_identity_token(value)
+        return GroupOrchestrationSupportService.normalize_identity_token(value)
 
     def _detect_group_role_drift(
         self,
@@ -771,11 +595,23 @@ class AgentService:
         participant_name_map: Dict[str, str],
     ) -> Optional[str]:
         """Detect obvious cases where a speaker claims another participant identity."""
-        return CommitteeTurnExecutor.detect_group_role_drift(
+        return self._get_group_orchestration_support_service().detect_group_role_drift(
             content=content,
             expected_assistant_id=expected_assistant_id,
             expected_assistant_name=expected_assistant_name,
             participant_name_map=participant_name_map,
+        )
+
+    @staticmethod
+    def _resolve_committee_round_policy(
+        raw_limit: Optional[int],
+        *,
+        participant_count: int,
+    ) -> Dict[str, int]:
+        """Compatibility wrapper for committee round policy resolution."""
+        return CommitteePolicy.resolve_committee_round_policy(
+            raw_limit,
+            participant_count=participant_count,
         )
 
     @staticmethod
@@ -784,7 +620,7 @@ class AgentService:
         base_instruction: Optional[str],
         expected_assistant_name: str,
     ) -> str:
-        return CommitteeTurnExecutor.build_role_retry_instruction(
+        return GroupOrchestrationSupportService.build_role_retry_instruction(
             base_instruction=base_instruction,
             expected_assistant_name=expected_assistant_name,
         )

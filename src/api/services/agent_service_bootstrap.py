@@ -8,8 +8,9 @@ from .chat_input_service import ChatInputService
 from .comparison_storage import ComparisonStorage
 from .file_service import FileService
 from .file_reference_context_builder import FileReferenceContextBuilder
+from .group_orchestration_support_service import GroupOrchestrationSupportService
 from .file_reference_config_service import FileReferenceConfigService
-from .orchestration import CommitteePolicy
+from .group_runtime_support_service import GroupRuntimeSupportService
 from .memory_service import MemoryService
 from .pricing_service import PricingService
 from .rag_config_service import RagConfigService
@@ -43,9 +44,20 @@ def bootstrap_agent_service(service: "AgentService", storage: "ConversationStora
     service.file_reference_context_builder = FileReferenceContextBuilder(
         service.file_reference_config_service
     )
+    service.group_runtime_support_service = GroupRuntimeSupportService()
+    service.group_orchestration_support_service = GroupOrchestrationSupportService(
+        storage=service.storage,
+        pricing_service=service.pricing_service,
+        memory_service=service.memory_service,
+        file_service=service.file_service,
+        build_rag_context_and_sources=service._build_rag_context_and_sources,
+        truncate_log_text=service._truncate_log_text,
+        build_messages_preview_for_log=service._build_messages_preview_for_log,
+        log_group_trace=service._log_group_trace,
+        group_trace_preview_chars=service._GROUP_TRACE_PREVIEW_CHARS,
+    )
     service.post_turn_service = service._create_post_turn_service()
     service.context_assembly_service = service._create_context_assembly_service()
-    service._committee_policy = CommitteePolicy()
     service._committee_turn_executor = service._create_committee_turn_executor()
     service._single_turn_orchestrator = service._create_single_turn_orchestrator()
     service._compare_models_orchestrator = service._create_compare_models_orchestrator()
