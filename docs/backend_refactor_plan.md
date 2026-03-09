@@ -42,7 +42,7 @@ And toward this ownership model:
 - Stage 0 - done
 - Stage 1 - done
 - Stage 2 - partial
-- Stage 3 - not started
+- Stage 3 - partial
 - Stage 4 - partial
 - Stage 5 - partial
 - Stage 6 - partial
@@ -206,7 +206,7 @@ with persistence/context/tool preparation remaining in the application service.
 
 ### Status
 
-Not started.
+Partial.
 
 ### Goal
 
@@ -267,10 +267,26 @@ Infrastructure-oriented:
 - fewer unrelated modules are added to `src/api/services/`
 - at least one application package and one infrastructure package exist
 
-### Current Gap
+### Current Progress
 
-- ownership is clearer, but package boundaries still have not moved
-- `src/api/services/` remains the physical home for application and infrastructure code
+- `src/application/chat/` has been introduced as the new application package
+- production API entrypoints now import chat application composition and types from
+  `src.application.chat`
+- legacy files under `src/api/services/` now act as compatibility re-export shims for:
+  - chat application bootstrap
+  - chat application service
+  - chat service factory
+  - group chat service
+  - single chat flow service
+  - compare flow service
+- `single_chat_flow_service.py` and `compare_flow_service.py` now physically live under
+  `src/application/chat/`
+
+### Remaining Work
+
+- continue extracting application-owned modules such as context assembly and post-turn logic
+- start carving out at least one infrastructure package so storage/file/config ownership is
+  also reflected physically
 
 
 ## Stage 4 - Reorganize Group, Compare, and Workflow Flows

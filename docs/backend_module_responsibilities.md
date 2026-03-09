@@ -34,10 +34,12 @@ architecture vocabulary.
 ## Current Status Snapshot
 
 - API entry now resolves `ChatApplicationService` directly
+- production bootstrap now comes from `src/application/chat/`
 - legacy `AgentService` has been removed
 - legacy `simple_llm.py` has been removed
 - runtime code is centered in `src/agents/llm_runtime/`
-- package placement is still transitional because most code remains under `src/api/services/`
+- `src/api/services/` still contains many transitional modules, but some chat application
+  ownership has already moved into `src/application/chat/`
 
 
 ## Core Principles
@@ -142,9 +144,14 @@ Should not contain:
 
 Examples in current codebase:
 
-- `src/api/services/chat_application_service.py`
-- `src/api/services/single_chat_flow_service.py`
-- `src/api/services/compare_flow_service.py`
+- `src/application/chat/service.py`
+- `src/application/chat/bootstrap.py`
+- `src/application/chat/group_chat_service.py`
+- `src/application/chat/single_chat_flow_service.py`
+- `src/application/chat/compare_flow_service.py`
+- transitional compatibility shims in `src/api/services/chat_application_service.py`
+- transitional compatibility shims in `src/api/services/single_chat_flow_service.py`
+- transitional compatibility shims in `src/api/services/compare_flow_service.py`
 - `src/api/services/workflow_execution_service.py`
 
 
@@ -422,6 +429,8 @@ The production API path now resolves `ChatApplicationService` directly.
 This is the intended direction:
 
 - API routes should depend on application entry services directly
+- API dependency composition should import from `src/application/...` instead of bouncing
+  through legacy `src/api/services/...` files
 - compatibility facades should be removed once tests and old callers migrate
 - application composition should live in explicit bootstrap/factory modules instead of a
   generic god service
@@ -441,6 +450,7 @@ It should not be treated as a permanent architecture concept.
 
 Temporary compatibility should prefer package-level re-exports over whole legacy files.
 When callers are migrated, the old filenames should be removed instead of kept alive indefinitely.
+The current chat package split already follows this pattern for the main chat application entry.
 
 
 ## Non-Goals

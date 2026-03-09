@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Optional
 
 from .config import settings
+from src.application.chat import (
+    ChatApplicationService,
+    build_default_chat_application_service,
+)
 from .services.assistant_config_service import AssistantConfigService
-from .services.chat_application_bootstrap import build_default_chat_application_service
-from .services.chat_application_service import ChatApplicationService
 from .services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from .services.file_service import FileService
 from .services.model_config_service import ModelConfigService

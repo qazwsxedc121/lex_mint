@@ -35,14 +35,23 @@ agents-17dcab8b61/
 - `models.py` - Model management endpoints
 - `assistants.py` - Assistant management endpoints
 
-**Business Logic (`src/api/services/`):**
+**Transport and Transitional Services (`src/api/services/`):**
 - `conversation_storage.py` - Markdown file-based conversation persistence
-- `agent_service.py` - LangGraph-based agent orchestration (legacy)
-- `chat_application_service.py` - Application-level chat entry service
-- `chat_application_bootstrap.py` - Production chat service composition root
+- `chat_application_service.py` - Compatibility shim re-exporting the chat application entry service
+- `chat_application_bootstrap.py` - Compatibility shim re-exporting the production chat composition root
 - `model_config_service.py` - Model and provider configuration management
 - `assistant_config_service.py` - Assistant configuration management
 - `pricing_service.py` - Token usage and cost calculation
+
+### Application Layer (`src/application/`)
+
+- `chat/` - Chat application package
+- `chat/service.py` - Chat application entry service
+- `chat/bootstrap.py` - Production chat service composition root
+- `chat/factory.py` - Application-level factory functions
+- `chat/group_chat_service.py` - Group chat application flow
+- `chat/single_chat_flow_service.py` - Single chat application flow
+- `chat/compare_flow_service.py` - Compare chat application flow
 
 ### Agent Layer (`src/agents/`)
 

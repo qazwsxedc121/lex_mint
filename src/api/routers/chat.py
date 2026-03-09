@@ -10,9 +10,10 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
+from src.application.chat import ChatApplicationService
+
 from ..dependencies import get_chat_application_service as get_shared_chat_application_service
 from ..dependencies import get_file_service as get_shared_file_service
-from ..services.chat_application_service import ChatApplicationService
 
 from ..services.conversation_storage import create_storage_with_project_resolver
 from ..services.file_service import FileService
