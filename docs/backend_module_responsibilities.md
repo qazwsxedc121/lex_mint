@@ -31,6 +31,15 @@ This means the codebase is not unstructured, but it does not yet express one con
 architecture vocabulary.
 
 
+## Current Status Snapshot
+
+- API entry now resolves `ChatApplicationService` directly
+- legacy `AgentService` has been removed
+- legacy `simple_llm.py` has been removed
+- runtime code is centered in `src/agents/llm_runtime/`
+- package placement is still transitional because most code remains under `src/api/services/`
+
+
 ## Core Principles
 
 ### 1. One layer, one reason to change

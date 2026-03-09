@@ -37,6 +37,17 @@ And toward this ownership model:
 - infrastructure-oriented modules: storage, file, retrieval, config access
 
 
+## Status Snapshot
+
+- Stage 0 - done
+- Stage 1 - done
+- Stage 2 - partial
+- Stage 3 - not started
+- Stage 4 - partial
+- Stage 5 - partial
+- Stage 6 - partial
+
+
 ## Stage 0 - Baseline and Safety Rails
 
 ### Goal
@@ -45,7 +56,7 @@ Create a stable baseline before larger refactors.
 
 ### Status
 
-In progress / immediate next checkpoint.
+Done.
 
 ### Scope
 
@@ -60,8 +71,18 @@ In progress / immediate next checkpoint.
 - refactor plan doc exists
 - current tree is committed as a rollback point
 
+### Current Result
+
+- baseline architecture docs exist
+- early refactor checkpoints have been committed
+- staged rollback points already exist in git history
+
 
 ## Stage 1 - Stabilize the LLM Runtime Boundary
+
+### Status
+
+Done.
 
 ### Goal
 
@@ -107,8 +128,18 @@ and group chat.
 - legacy shim files are removed
 - runtime-related tests remain green
 
+### Current Result
+
+- runtime implementation lives under `src/agents/llm_runtime/`
+- legacy `simple_llm.py` shim has been removed
+- production imports use `src.agents.llm_runtime`
+
 
 ## Stage 2 - Flatten the Single Chat Path
+
+### Status
+
+Partial.
 
 ### Goal
 
@@ -126,6 +157,7 @@ Current progress:
 
 - production router dependencies now resolve `ChatApplicationService` directly
 - `AgentService` has been removed from the production chat path
+- `SingleChatFlowService` is now the clear single-chat application flow owner
 
 ### Scope
 
@@ -163,8 +195,18 @@ with persistence/context/tool preparation remaining in the application service.
 - there is one obvious owner for the single-chat application flow
 - normal chat call chain is shorter and easier to explain
 
+### Remaining Work
+
+- decide whether `SingleTurnOrchestrator` remains a durable abstraction
+- decide whether `SingleChatFlowService` should stay public or be folded into a narrower application package structure
+- reduce residual composition code still living under `src/api/services/`
+
 
 ## Stage 3 - Split `src/api/services/` by Real Ownership
+
+### Status
+
+Not started.
 
 ### Goal
 
@@ -225,8 +267,17 @@ Infrastructure-oriented:
 - fewer unrelated modules are added to `src/api/services/`
 - at least one application package and one infrastructure package exist
 
+### Current Gap
+
+- ownership is clearer, but package boundaries still have not moved
+- `src/api/services/` remains the physical home for application and infrastructure code
+
 
 ## Stage 4 - Reorganize Group, Compare, and Workflow Flows
+
+### Status
+
+Partial.
 
 ### Goal
 
@@ -259,8 +310,23 @@ Bring non-single-chat flows under the same structural vocabulary.
 - group/compare/workflow flows follow the same high-level layering model
 - no legacy facade remains as the main coordination hub for everything
 
+### Current Progress
+
+- group flow has dedicated services and orchestration support
+- compare flow has a dedicated application service
+- group and compare no longer route through a legacy compatibility facade
+
+### Remaining Work
+
+- workflow execution path still needs alignment with the same vocabulary
+- group and compare modules still live in transitional package locations
+
 
 ## Stage 5 - Naming Cleanup
+
+### Status
+
+Partial.
 
 ### Goal
 
@@ -290,8 +356,22 @@ Renaming should happen after boundaries are already real.
 - directory and module names describe real ownership
 - no major compatibility shim remains for historical names
 
+### Current Progress
+
+- `AgentService` has been removed
+- `simple_llm.py` has been removed
+
+### Remaining Work
+
+- decide whether `src/agents/` should be renamed to `src/llm_runtime/`
+- rename outdated test/module names that still reflect deleted structures
+
 
 ## Stage 6 - Test Structure Alignment
+
+### Status
+
+Partial.
 
 ### Goal
 
@@ -313,6 +393,16 @@ Make tests mirror the new ownership model.
 ### Exit Criteria
 
 - tests reinforce architecture instead of hiding legacy structure
+
+### Current Progress
+
+- legacy committee tests were moved to orchestration-focused tests
+- runtime tests already target `src.agents.llm_runtime`
+
+### Remaining Work
+
+- split legacy-named runtime test files such as `test_simple_llm.py`
+- reorganize tests to mirror application/runtime/infrastructure ownership
 
 
 ## Delivery Order
