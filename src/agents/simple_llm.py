@@ -846,13 +846,27 @@ async def call_llm_stream(
         full_reasoning = ""
         final_usage: Optional[TokenUsage] = None
 
-        tool_loop_runner = ToolLoopRunner(max_tool_rounds=3)
-        tool_loop_state = ToolLoopState(current_messages=list(langchain_messages))
         latest_user_text = ""
         for raw_msg in reversed(messages):
             if str(raw_msg.get("role", "")).strip().lower() == "user":
                 latest_user_text = str(raw_msg.get("content") or "")
                 break
+        tool_names = {
+            str(getattr(tool, "name", "") or "").strip()
+            for tool in (tools or [])
+            if str(getattr(tool, "name", "") or "").strip()
+        }
+        max_tool_rounds = ToolLoopRunner.resolve_max_tool_rounds(
+            tool_names=tool_names,
+            latest_user_text=latest_user_text,
+            default_max_tool_rounds=3,
+        )
+        tool_loop_runner = ToolLoopRunner(max_tool_rounds=max_tool_rounds)
+        tool_loop_state = ToolLoopState(
+            current_messages=list(langchain_messages),
+            web_research_enabled=bool(tool_names.intersection({"web_search", "read_webpage"})),
+            max_tool_rounds=max_tool_rounds,
+        )
         tool_loop_state.evidence_intent = tool_loop_runner.detect_evidence_intent(latest_user_text)
 
         while True:
@@ -953,6 +967,17 @@ async def call_llm_stream(
                 print("[TOOLS] Evidence request detected, asking model to call read_knowledge before final answer")
                 logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
                 tool_loop_runner.apply_read_compensation_prompt(tool_loop_state)
+                continue
+
+            if tool_loop_runner.should_request_web_read_compensation(
+                tool_loop_state,
+                round_tool_calls=round_tool_calls,
+            ):
+                if round_content and full_response.endswith(round_content):
+                    full_response = full_response[: -len(round_content)]
+                print("[TOOLS] Web research needs a webpage read before final answer")
+                logger.info("Injecting read_webpage compensation prompt for web research request")
+                tool_loop_runner.apply_web_read_compensation_prompt(tool_loop_state)
                 continue
 
             # Finalization pass intentionally disables tools; finish after this round.

@@ -76,17 +76,24 @@ class WebToolService:
             return False
         return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
-    async def web_search(self, *, query: str) -> str:
+    async def web_search(self, *, query: str, page: int = 1) -> str:
         query_text = (query or "").strip()
         if not query_text:
             return self._error("EMPTY_QUERY", "query must not be empty")
+        safe_page = max(1, int(page or 1))
 
         try:
-            raw_results = await self.search_service.search(query_text)
+            raw_results = await self.search_service.search(query_text, page=safe_page)
+        except ValueError as exc:
+            logger.warning("web_search pagination not supported: %s", exc)
+            return self._error("UNSUPPORTED_PAGE", f"{exc}", query=query_text, page=safe_page)
         except Exception as exc:
             logger.error("web_search failed: %s", exc, exc_info=True)
-            return self._error("SEARCH_FAILED", f"{exc}", query=query_text)
+            return self._error("SEARCH_FAILED", f"{exc}", query=query_text, page=safe_page)
 
+        provider = getattr(getattr(self.search_service, "config", None), "provider", "unknown")
+        page_size = max(1, int(getattr(getattr(self.search_service, "config", None), "max_results", len(raw_results) or 1)))
+        offset = max(0, (safe_page - 1) * page_size)
         results: List[Dict[str, Any]] = []
         for index, item in enumerate(raw_results, start=1):
             if hasattr(item, "model_dump"):
@@ -96,7 +103,7 @@ class WebToolService:
             url = str(payload.get("url") or "").strip()
             results.append(
                 {
-                    "rank": index,
+                    "rank": offset + index,
                     "title": self._normalize_text(payload.get("title"), limit=300),
                     "url": url,
                     "domain": self._domain_from_url(url),
@@ -108,9 +115,25 @@ class WebToolService:
             {
                 "ok": True,
                 "query": query_text,
-                "provider": getattr(getattr(self.search_service, "config", None), "provider", "unknown"),
+                "page": safe_page,
+                "page_size": page_size,
+                "offset": offset,
+                "provider": provider,
+                "pagination_mode": (
+                    "native"
+                    if provider == "duckduckgo"
+                    else "simulated" if provider == "tavily" else "unknown"
+                ),
                 "has_results": bool(results),
                 "total_results": len(results),
+                "has_more": (
+                    len(raw_results) >= page_size
+                    and len(raw_results) == page_size
+                    and (
+                        (provider == "duckduckgo" and safe_page < 5)
+                        or (provider == "tavily" and safe_page < 2)
+                    )
+                ),
                 "results": results,
             }
         )
@@ -163,8 +186,8 @@ class WebToolService:
     def get_tools(self) -> List[BaseTool]:
         """Build request-scoped web tools for function calling."""
 
-        async def _web_search(query: str) -> str:
-            return await self.web_search(query=query)
+        async def _web_search(query: str, page: int = 1) -> str:
+            return await self.web_search(query=query, page=page)
 
         async def _read_webpage(url: str) -> str:
             return await self.read_webpage(url=url)
@@ -179,7 +202,7 @@ class WebToolService:
         try:
             if name == "web_search":
                 parsed = WebSearchArgs.model_validate(args or {})
-                return await self.web_search(query=parsed.query)
+                return await self.web_search(query=parsed.query, page=parsed.page)
             if name == "read_webpage":
                 parsed = ReadWebpageArgs.model_validate(args or {})
                 return await self.read_webpage(url=parsed.url)

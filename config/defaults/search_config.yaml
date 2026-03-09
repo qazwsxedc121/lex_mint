@@ -1,4 +1,4 @@
 search:
   provider: duckduckgo
-  max_results: 6
+  max_results: 10
   timeout_seconds: 10

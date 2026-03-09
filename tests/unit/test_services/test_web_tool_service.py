@@ -11,14 +11,19 @@ from src.api.services.web_tool_service import WebToolService
 
 class _FakeSearchConfig:
     provider = "duckduckgo"
+    max_results = 10
 
 
 class _FakeSearchService:
     def __init__(self):
         self.config = _FakeSearchConfig()
+        self.last_query = None
+        self.last_page = None
 
-    async def search(self, query: str):
-        assert query == "latest llm news"
+    async def search(self, query: str, *, page: int = 1):
+        self.last_query = query
+        self.last_page = page
+        assert query in {"latest llm news", "latest llm news page 2"}
         return [
             SearchSource(type="search", title="Result A", url="https://a.test", snippet="Snippet A"),
             SearchSource(type="search", title="Result B", url="https://b.test", snippet="Snippet B"),
@@ -44,24 +49,99 @@ class _FakeWebpageService:
         return _FakeWebpageResult(error="HTTP 500")
 
 
+class _FakeTavilyConfig:
+    provider = "tavily"
+    max_results = 10
+
+
+class _FakeTavilySearchService:
+    def __init__(self):
+        self.config = _FakeTavilyConfig()
+
+    async def search(self, query: str, *, page: int = 1):
+        _ = query
+        if page > 2:
+            raise ValueError("Search provider 'tavily' supports simulated pagination only up to page 2")
+        return [
+            SearchSource(type="search", title="Result T", url="https://t.test", snippet="Snippet T"),
+        ]
+
+
 def test_web_search_returns_structured_results():
+    fake_search = _FakeSearchService()
     service = WebToolService(
-        search_service=_FakeSearchService(),
+        search_service=fake_search,
         webpage_service=_FakeWebpageService(),
     )
 
     payload = json.loads(asyncio.run(service.web_search(query="latest llm news")))
 
     assert payload["ok"] is True
+    assert payload["page"] == 1
+    assert payload["offset"] == 0
     assert payload["provider"] == "duckduckgo"
+    assert payload["pagination_mode"] == "native"
     assert payload["has_results"] is True
     assert payload["total_results"] == 2
+    assert fake_search.last_page == 1
     assert payload["results"][0] == {
         "rank": 1,
         "title": "Result A",
         "url": "https://a.test",
         "domain": "a.test",
         "snippet": "Snippet A",
+    }
+
+
+def test_web_search_supports_pagination_metadata():
+    fake_search = _FakeSearchService()
+    service = WebToolService(
+        search_service=fake_search,
+        webpage_service=_FakeWebpageService(),
+    )
+
+    payload = json.loads(asyncio.run(service.web_search(query="latest llm news page 2", page=2)))
+
+    assert payload["ok"] is True
+    assert payload["page"] == 2
+    assert payload["page_size"] == 10
+    assert payload["offset"] == 10
+    assert payload["pagination_mode"] == "native"
+    assert payload["results"][0]["rank"] == 11
+    assert fake_search.last_page == 2
+
+
+def test_web_search_supports_simulated_pagination_for_tavily():
+    service = WebToolService(
+        search_service=_FakeTavilySearchService(),
+        webpage_service=_FakeWebpageService(),
+    )
+
+    payload = json.loads(asyncio.run(service.web_search(query="latest llm news", page=2)))
+
+    assert payload["ok"] is True
+    assert payload["provider"] == "tavily"
+    assert payload["page"] == 2
+    assert payload["pagination_mode"] == "simulated"
+    assert payload["results"][0]["rank"] == 11
+
+
+def test_web_search_rejects_page_beyond_simulated_tavily_limit():
+    service = WebToolService(
+        search_service=_FakeTavilySearchService(),
+        webpage_service=_FakeWebpageService(),
+    )
+
+    payload = json.loads(asyncio.run(service.web_search(query="latest llm news", page=3)))
+
+    assert payload == {
+        "ok": False,
+        "error": {
+            "code": "UNSUPPORTED_PAGE",
+            "message": "Search provider 'tavily' supports simulated pagination only up to page 2",
+        },
+        "query": "latest llm news",
+        "page": 3,
     }
 
 

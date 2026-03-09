@@ -823,6 +823,218 @@ class TestCallLLMStream:
     @pytest.mark.asyncio
     @patch('src.agents.simple_llm.get_llm_logger')
     @patch('src.agents.simple_llm.ModelConfigService')
+    async def test_call_llm_stream_expands_tool_round_budget_for_web_research(
+        self,
+        mock_model_service_class,
+        mock_logger,
+    ):
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+
+        mock_capabilities = Mock()
+        mock_capabilities.reasoning = False
+
+        mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
+
+        mock_adapter = Mock()
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_llm.bind_tools.return_value = mock_bound_llm
+        mock_adapter.create_llm.return_value = mock_llm
+
+        class _Raw:
+            def __init__(self, tool_calls=None):
+                self.tool_calls = tool_calls or []
+
+            def __add__(self, other):
+                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+
+        class _Chunk:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.thinking = None
+                self.raw = _Raw(tool_calls=tool_calls)
+
+        class _Tool:
+            def __init__(self, name):
+                self.name = name
+
+        stream_state = {"count": 0}
+
+        async def mock_stream(active_llm, _messages):
+            idx = stream_state["count"]
+            stream_state["count"] += 1
+
+            if idx < 6:
+                assert active_llm is mock_bound_llm
+                yield _Chunk(
+                    content=f"round{idx + 1};",
+                    tool_calls=[{
+                        "name": "web_search",
+                        "args": {"query": f"q{idx + 1}"},
+                        "id": f"tc{idx + 1}",
+                    }],
+                )
+                return
+
+            assert active_llm is mock_bound_llm
+            yield _Chunk(content="FINAL_ANSWER", tool_calls=[])
+
+        mock_adapter.stream = mock_stream
+        mock_service.get_adapter_for_provider.return_value = mock_adapter
+        mock_model_service_class.return_value = mock_service
+
+        mock_llm_logger = Mock()
+        mock_logger.return_value = mock_llm_logger
+
+        tool_executor = Mock(return_value='{"ok": true, "results": []}')
+        messages = [{"role": "user", "content": "How many athletes were there by country at the 1928 Summer Olympics?"}]
+        collected = []
+
+        async for chunk in call_llm_stream(
+            messages,
+            tools=[_Tool("web_search"), _Tool("read_webpage")],
+            tool_executor=tool_executor,
+        ):
+            collected.append(chunk)
+
+        text = "".join([c for c in collected if isinstance(c, str)])
+        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        assert "FINAL_ANSWER" in text
+        assert stream_state["count"] == 7
+        assert tool_executor.call_count == 6
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["max_tool_rounds"] == 6
+
+    @pytest.mark.asyncio
+    @patch('src.agents.simple_llm.get_llm_logger')
+    @patch('src.agents.simple_llm.ModelConfigService')
+    async def test_call_llm_stream_injects_read_webpage_compensation_for_web_research(
+        self,
+        mock_model_service_class,
+        mock_logger,
+    ):
+        mock_model = Mock()
+        mock_model.id = "deepseek-chat"
+
+        mock_provider = Mock()
+        mock_provider.id = "deepseek"
+        mock_provider.base_url = "https://api.deepseek.com"
+
+        mock_capabilities = Mock()
+        mock_capabilities.reasoning = False
+
+        mock_service = Mock()
+        mock_service.get_model_and_provider_sync.return_value = (mock_model, mock_provider)
+        mock_service.get_merged_capabilities.return_value = mock_capabilities
+        mock_service.resolve_provider_api_key_sync.return_value = "test_key_123"
+
+        mock_adapter = Mock()
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_llm.bind_tools.return_value = mock_bound_llm
+        mock_adapter.create_llm.return_value = mock_llm
+
+        class _Raw:
+            def __init__(self, tool_calls=None):
+                self.tool_calls = tool_calls or []
+
+            def __add__(self, other):
+                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+
+        class _Chunk:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.thinking = None
+                self.raw = _Raw(tool_calls=tool_calls)
+
+        class _Tool:
+            def __init__(self, name):
+                self.name = name
+
+        stream_state = {"count": 0}
+
+        async def mock_stream(active_llm, _messages):
+            assert active_llm is mock_bound_llm
+            idx = stream_state["count"]
+            stream_state["count"] += 1
+
+            if idx == 0:
+                yield _Chunk(
+                    content="",
+                    tool_calls=[{
+                        "name": "web_search",
+                        "args": {"query": "Mercedes Sosa discography"},
+                        "id": "tc1",
+                    }],
+                )
+                return
+            if idx == 1:
+                yield _Chunk(content="draft answer", tool_calls=[])
+                return
+            if idx == 2:
+                yield _Chunk(
+                    content="",
+                    tool_calls=[{
+                        "name": "read_webpage",
+                        "args": {"url": "https://example.com/discography"},
+                        "id": "tc2",
+                    }],
+                )
+                return
+
+            yield _Chunk(content="FINAL_ANSWER", tool_calls=[])
+
+        mock_adapter.stream = mock_stream
+        mock_service.get_adapter_for_provider.return_value = mock_adapter
+        mock_model_service_class.return_value = mock_service
+
+        mock_llm_logger = Mock()
+        mock_logger.return_value = mock_llm_logger
+
+        def _tool_executor(name, _args):
+            if name == "web_search":
+                return (
+                    '{"ok": true, "results": [{"title": "Discography", "url": "https://example.com/discography", '
+                    '"snippet": "Album list"}]}'
+                )
+            if name == "read_webpage":
+                return (
+                    '{"ok": true, "url": "https://example.com/discography", '
+                    '"title": "Discography", "preview": "Album list"}'
+                )
+            return '{"ok": true}'
+
+        tool_executor = Mock(side_effect=_tool_executor)
+        messages = [{"role": "user", "content": "How many studio albums did Mercedes Sosa release between 2000 and 2009?"}]
+        collected = []
+
+        async for chunk in call_llm_stream(
+            messages,
+            tools=[_Tool("web_search"), _Tool("read_webpage")],
+            tool_executor=tool_executor,
+        ):
+            collected.append(chunk)
+
+        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["web_search_count"] == 1
+        assert diagnostics[0]["web_read_count"] == 1
+        assert [call.args[0] for call in tool_executor.call_args_list] == [
+            "web_search",
+            "read_webpage",
+        ]
+
+    @pytest.mark.asyncio
+    @patch('src.agents.simple_llm.get_llm_logger')
+    @patch('src.agents.simple_llm.ModelConfigService')
     async def test_call_llm_stream_error(self, mock_model_service_class, mock_logger):
         """Test streaming error handling."""
         mock_model = Mock()

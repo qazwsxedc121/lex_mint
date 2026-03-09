@@ -29,12 +29,15 @@ except Exception:  # pragma: no cover - optional dependency
 @dataclass
 class SearchConfig:
     provider: str = "duckduckgo"
-    max_results: int = 6
+    max_results: int = 10
     timeout_seconds: int = 10
 
 
 class SearchService:
     """Service for web search and result normalization."""
+
+    _MAX_PAGE = 5
+    _TAVILY_MAX_PAGE = 2
 
     def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
         self.defaults_path: Optional[Path] = None
@@ -59,7 +62,7 @@ class SearchService:
             default_config = {
                 "search": {
                     "provider": "duckduckgo",
-                    "max_results": 6,
+                    "max_results": 10,
                     "timeout_seconds": 10,
                 }
             }
@@ -79,7 +82,7 @@ class SearchService:
             search_data = data.get("search", {})
             return SearchConfig(
                 provider=search_data.get("provider", "duckduckgo"),
-                max_results=search_data.get("max_results", 6),
+                max_results=search_data.get("max_results", 10),
                 timeout_seconds=search_data.get("timeout_seconds", 10),
             )
         except Exception as e:
@@ -105,21 +108,46 @@ class SearchService:
 
         self.config = self._load_config()
 
-    async def search(self, query: str) -> List[SearchSource]:
+    async def search(self, query: str, *, page: int = 1) -> List[SearchSource]:
         query = (query or "").strip()
         if not query:
             return []
+        safe_page = max(1, min(int(page), self._MAX_PAGE))
 
         provider = (self.config.provider or "").lower()
         if provider == "tavily":
-            return await self._search_tavily(query)
+            return await self._search_tavily(query, page=safe_page)
         if provider == "duckduckgo":
-            return await self._search_duckduckgo(query)
+            return await self._search_duckduckgo(query, page=safe_page)
 
         logger.warning(f"Search provider '{provider}' is not supported")
         return []
 
-    async def _search_tavily(self, query: str) -> List[SearchSource]:
+    @staticmethod
+    def _dedupe_sources(sources: List[SearchSource]) -> List[SearchSource]:
+        seen_urls: set[str] = set()
+        deduped: List[SearchSource] = []
+        for source in sources:
+            url = str(getattr(source, "url", "") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            deduped.append(source)
+        return deduped
+
+    def _paginate_sources(self, sources: List[SearchSource], *, page: int) -> List[SearchSource]:
+        deduped = self._dedupe_sources(sources)
+        page_size = max(1, int(self.config.max_results))
+        start = (page - 1) * page_size
+        end = start + page_size
+        return deduped[start:end]
+
+    async def _search_tavily(self, query: str, *, page: int) -> List[SearchSource]:
+        if page > self._TAVILY_MAX_PAGE:
+            raise ValueError(
+                f"Search provider 'tavily' supports simulated pagination only up to page {self._TAVILY_MAX_PAGE}"
+            )
+
         api_key = await self.model_config_service.get_api_key("tavily")
         if not api_key:
             logger.warning("Tavily API key not found in config/local/keys_config.yaml")
@@ -128,7 +156,7 @@ class SearchService:
         payload = {
             "query": query,
             "search_depth": "basic",
-            "max_results": self.config.max_results,
+            "max_results": max(1, int(self.config.max_results)) * max(1, int(page)),
             "include_answer": False,
             "include_raw_content": False,
         }
@@ -168,9 +196,9 @@ class SearchService:
                 )
             )
 
-        return sources
+        return self._paginate_sources(sources, page=page)
 
-    async def _search_duckduckgo(self, query: str) -> List[SearchSource]:
+    async def _search_duckduckgo(self, query: str, *, page: int) -> List[SearchSource]:
         if DDGS_CLIENT is None:
             logger.warning("ddgs is not installed")
             return []
@@ -181,6 +209,7 @@ class SearchService:
             ddgs_cls = DDGS_CLIENT
             if ddgs_cls is None:
                 return []
+            request_limit = max(1, int(self.config.max_results))
 
             with ddgs_cls() as ddgs:
                 for backend in backends:
@@ -188,13 +217,14 @@ class SearchService:
                         try:
                             iterator = ddgs.text(
                                 query,
-                                max_results=self.config.max_results,
+                                max_results=request_limit,
+                                page=page,
                                 backend=backend
                             )
                         except TypeError:
                             iterator = ddgs.text(
                                 query,
-                                max_results=self.config.max_results
+                                max_results=request_limit
                             )
 
                         results: List[SearchSource] = []

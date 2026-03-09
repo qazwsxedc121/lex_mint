@@ -26,6 +26,12 @@ _EVIDENCE_READ_PROMPT_TEMPLATE = (
     "After reading, provide a grounded final answer."
 )
 
+_WEB_READ_PROMPT_TEMPLATE = (
+    "Web research is not complete yet. Before your final answer, call read_webpage on the most relevant URL from "
+    "the latest search results to verify the exact answer. Suggested URLs: {urls}.\n"
+    "If that page still lacks the answer, continue with a more specific web_search instead of guessing."
+)
+
 
 @dataclass
 class ToolLoopState:
@@ -35,15 +41,24 @@ class ToolLoopState:
     tool_round: int = 0
     force_finalize_without_tools: bool = False
     evidence_intent: bool = False
+    web_research_enabled: bool = False
     read_compensation_used: bool = False
+    web_read_compensation_used: bool = False
     search_queries_seen: Set[str] = field(default_factory=set)
+    read_targets_seen: Set[str] = field(default_factory=set)
     last_search_refs: List[str] = field(default_factory=list)
+    last_web_search_urls: List[str] = field(default_factory=list)
     evidence_rows: List[Dict[str, str]] = field(default_factory=list)
     tool_search_count: int = 0
     tool_search_unique_count: int = 0
     tool_search_duplicate_count: int = 0
     tool_read_count: int = 0
+    tool_read_duplicate_count: int = 0
+    web_search_count: int = 0
+    web_read_count: int = 0
     tool_result_count: int = 0
+    no_progress_rounds: int = 0
+    max_tool_rounds: int = 0
     tool_finalize_reason: str = "normal_no_tools"
 
 
@@ -52,6 +67,22 @@ class ToolLoopRunner:
 
     def __init__(self, max_tool_rounds: int = 3):
         self.max_tool_rounds = max(1, max_tool_rounds)
+
+    @staticmethod
+    def resolve_max_tool_rounds(
+        *,
+        tool_names: Set[str],
+        latest_user_text: str,
+        default_max_tool_rounds: int = 3,
+    ) -> int:
+        max_rounds = max(1, int(default_max_tool_rounds))
+        normalized_tool_names = {str(name or "").strip() for name in tool_names if str(name or "").strip()}
+        if not normalized_tool_names.intersection({"web_search", "read_webpage"}):
+            return max_rounds
+        max_rounds = max(max_rounds, 5)
+        if ToolLoopRunner.detect_multihop_web_research_intent(latest_user_text):
+            max_rounds = max(max_rounds, 6)
+        return max_rounds
 
     @staticmethod
     def detect_evidence_intent(user_text: str) -> bool:
@@ -72,10 +103,40 @@ class ToolLoopRunner:
         return any(pattern in text for pattern in patterns)
 
     @staticmethod
+    def detect_multihop_web_research_intent(user_text: str) -> bool:
+        text = " ".join((user_text or "").lower().split())
+        if not text:
+            return False
+        patterns = (
+            "how many",
+            "which",
+            "who",
+            "what country",
+            "first name",
+            "last name",
+            "award number",
+            "between ",
+            "as of ",
+            "published",
+            "promoted",
+            "find this paper",
+            "olympics",
+            "discography",
+            "roster",
+            "table",
+            "wikipedia",
+        )
+        return len(text) >= 80 or any(pattern in text for pattern in patterns)
+
+    @staticmethod
     def _normalize_query(value: str) -> str:
         normalized = (value or "").strip().lower()
         normalized = re.sub(r"[^\w\s]", " ", normalized)
         return " ".join(normalized.split())
+
+    @staticmethod
+    def _normalize_target(value: str) -> str:
+        return " ".join((value or "").strip().lower().split())
 
     @staticmethod
     def _snippet(value: str, max_chars: int = 180) -> str:
@@ -104,12 +165,17 @@ class ToolLoopRunner:
         round_tool_calls: List[Dict[str, Any]],
         tool_results: List[Dict[str, str]],
     ) -> None:
+        progress_made = False
+        evidence_count_before = len(state.evidence_rows)
+
         for tool_call in round_tool_calls:
             name = str(tool_call.get("name") or "")
             raw_args = tool_call.get("args")
             args: Dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-            if name == "search_knowledge":
+            if name in {"search_knowledge", "web_search"}:
                 state.tool_search_count += 1
+                if name == "web_search":
+                    state.web_search_count += 1
                 query_text = str(args.get("query") or "")
                 normalized_query = self._normalize_query(query_text)
                 if normalized_query and normalized_query in state.search_queries_seen:
@@ -117,9 +183,25 @@ class ToolLoopRunner:
                 elif normalized_query:
                     state.search_queries_seen.add(normalized_query)
                     state.tool_search_unique_count += 1
+                    progress_made = True
                 continue
-            if name == "read_knowledge":
+            if name in {"read_knowledge", "read_webpage"}:
                 state.tool_read_count += 1
+                if name == "read_webpage":
+                    state.web_read_count += 1
+                read_target = ""
+                if name == "read_webpage":
+                    read_target = str(args.get("url") or "")
+                elif name == "read_knowledge":
+                    raw_refs = args.get("refs")
+                    if isinstance(raw_refs, list):
+                        read_target = "|".join(str(ref or "") for ref in raw_refs)
+                normalized_target = self._normalize_target(read_target)
+                if normalized_target and normalized_target in state.read_targets_seen:
+                    state.tool_read_duplicate_count += 1
+                elif normalized_target:
+                    state.read_targets_seen.add(normalized_target)
+                    progress_made = True
 
         for tool_result in tool_results:
             state.tool_result_count += 1
@@ -151,6 +233,25 @@ class ToolLoopRunner:
                     state.last_search_refs = refs
                 continue
 
+            if name == "web_search":
+                urls: List[str] = []
+                raw_results = parsed.get("results")
+                results: List[Any] = list(raw_results) if isinstance(raw_results, list) else []
+                for item in results[:4]:
+                    if not isinstance(item, dict):
+                        continue
+                    url = str(item.get("url") or "").strip()
+                    if url:
+                        urls.append(url)
+                    self._append_evidence_row(
+                        state,
+                        title=str(item.get("title") or item.get("domain") or "web_result"),
+                        snippet=str(item.get("snippet") or url),
+                    )
+                if urls:
+                    state.last_web_search_urls = urls
+                continue
+
             if name == "read_knowledge":
                 raw_sources = parsed.get("sources")
                 sources: List[Any] = list(raw_sources) if isinstance(raw_sources, list) else []
@@ -162,6 +263,25 @@ class ToolLoopRunner:
                         title=str(source.get("filename") or source.get("ref_id") or "read_source"),
                         snippet=str(source.get("content") or ""),
                     )
+                continue
+
+            if name == "read_webpage":
+                page_title = str(parsed.get("title") or parsed.get("domain") or "webpage")
+                page_snippet = str(parsed.get("preview") or parsed.get("content") or "")
+                if page_snippet:
+                    self._append_evidence_row(
+                        state,
+                        title=page_title,
+                        snippet=page_snippet,
+                    )
+
+        if len(state.evidence_rows) > evidence_count_before:
+            progress_made = True
+
+        if progress_made:
+            state.no_progress_rounds = 0
+        else:
+            state.no_progress_rounds += 1
 
     @staticmethod
     def should_request_read_compensation(
@@ -182,11 +302,36 @@ class ToolLoopRunner:
         return bool(state.last_search_refs)
 
     @staticmethod
+    def should_request_web_read_compensation(
+        state: ToolLoopState,
+        *,
+        round_tool_calls: List[Dict[str, Any]],
+    ) -> bool:
+        if state.force_finalize_without_tools:
+            return False
+        if round_tool_calls:
+            return False
+        if not state.web_research_enabled:
+            return False
+        if state.web_read_compensation_used:
+            return False
+        if state.web_search_count <= 0 or state.web_read_count > 0:
+            return False
+        return bool(state.last_web_search_urls)
+
+    @staticmethod
     def apply_read_compensation_prompt(state: ToolLoopState) -> None:
         refs_preview = ", ".join(state.last_search_refs[:3]) or "search refs"
         prompt = _EVIDENCE_READ_PROMPT_TEMPLATE.format(refs=refs_preview)
         state.current_messages.append(HumanMessage(content=prompt))
         state.read_compensation_used = True
+
+    @staticmethod
+    def apply_web_read_compensation_prompt(state: ToolLoopState) -> None:
+        urls_preview = ", ".join(state.last_web_search_urls[:3]) or "latest search result URLs"
+        prompt = _WEB_READ_PROMPT_TEMPLATE.format(urls=urls_preview)
+        state.current_messages.append(HumanMessage(content=prompt))
+        state.web_read_compensation_used = True
 
     @staticmethod
     def should_inject_fallback_answer(state: ToolLoopState, final_text: str) -> bool:
@@ -220,6 +365,11 @@ class ToolLoopRunner:
             "tool_search_unique_count": state.tool_search_unique_count,
             "tool_search_duplicate_count": state.tool_search_duplicate_count,
             "tool_read_count": state.tool_read_count,
+            "tool_read_duplicate_count": state.tool_read_duplicate_count,
+            "web_search_count": state.web_search_count,
+            "web_read_count": state.web_read_count,
+            "no_progress_rounds": state.no_progress_rounds,
+            "max_tool_rounds": state.max_tool_rounds or None,
             "tool_finalize_reason": state.tool_finalize_reason,
         }
 
@@ -283,6 +433,21 @@ class ToolLoopRunner:
             True when finalization mode was entered and caller should continue
             to the next stream pass, False when normal tool execution should proceed.
         """
+        if state.no_progress_rounds >= 2 and state.tool_result_count > 0:
+            ai_kwargs: Dict[str, Any] = {}
+            additional_kwargs: Dict[str, Any] = {}
+            if round_reasoning:
+                additional_kwargs["reasoning_content"] = round_reasoning
+            if round_reasoning_details is not None:
+                additional_kwargs["reasoning_details"] = round_reasoning_details
+            if additional_kwargs:
+                ai_kwargs["additional_kwargs"] = additional_kwargs
+            state.current_messages.append(AIMessage(content=round_content, **ai_kwargs))
+            state.current_messages.append(HumanMessage(content=_FINALIZE_WITHOUT_TOOLS_PROMPT))
+            state.force_finalize_without_tools = True
+            state.tool_finalize_reason = "stalled_research_force_finalize"
+            return True
+
         state.tool_round += 1
         if state.tool_round <= self.max_tool_rounds:
             return False
