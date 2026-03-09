@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from src.application.workflows import WorkflowExecutionService
+
 from .async_run_service import AsyncRunService
 from .async_run_store_service import AsyncRunStoreService
 from .flow_stream_runtime_provider import get_flow_stream_runtime
 from .workflow_config_service import WorkflowConfigService
-from .workflow_execution_service import WorkflowExecutionService
 
 _async_run_store = AsyncRunStoreService()
 _async_run_service = AsyncRunService(
@@ -23,4 +24,3 @@ def get_async_run_store() -> AsyncRunStoreService:
 
 def get_async_run_service() -> AsyncRunService:
     return _async_run_service
-

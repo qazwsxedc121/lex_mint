@@ -270,8 +270,11 @@ Infrastructure-oriented:
 ### Current Progress
 
 - `src/application/chat/` has been introduced as the new application package
+- `src/application/workflows/` has been introduced for workflow execution ownership
 - production API entrypoints now import chat application composition and types from
   `src.application.chat`
+- production workflow entrypoints now import workflow execution from
+  `src.application.workflows`
 - legacy files under `src/api/services/` now act as compatibility re-export shims for:
   - chat application bootstrap
   - chat application service
@@ -281,16 +284,20 @@ Infrastructure-oriented:
   - compare flow service
   - context assembly service
   - post-turn service
+  - workflow execution service
 - `single_chat_flow_service.py` and `compare_flow_service.py` now physically live under
   `src/application/chat/`
 - `context_assembly_service.py` and `post_turn_service.py` now physically live under
   `src/application/chat/`
+- `workflow_execution_service.py` now physically lives under
+  `src/application/workflows/`
 
 ### Remaining Work
 
-- continue extracting remaining application-owned modules such as workflow execution logic
 - start carving out at least one infrastructure package so storage/file/config ownership is
   also reflected physically
+- review whether workflow support modules need their own package split beyond the execution
+  entrypoint
 
 
 ## Stage 4 - Reorganize Group, Compare, and Workflow Flows
@@ -335,11 +342,12 @@ Bring non-single-chat flows under the same structural vocabulary.
 - group flow has dedicated services and orchestration support
 - compare flow has a dedicated application service
 - group and compare no longer route through a legacy compatibility facade
+- workflow execution now has a dedicated application package entrypoint
 
 ### Remaining Work
 
-- workflow execution path still needs alignment with the same vocabulary
 - group and compare modules still live in transitional package locations
+- supporting workflow modules still mostly live under transitional package locations
 
 
 ## Stage 5 - Naming Cleanup

@@ -19,7 +19,7 @@ from src.api.models.workflow import (
     Workflow,
     WorkflowInputDef,
 )
-from src.api.services.workflow_execution_service import WorkflowExecutionService
+from src.application.workflows import WorkflowExecutionService
 from src.api.services.workflow_run_history_service import WorkflowRunHistoryService
 
 
@@ -418,7 +418,7 @@ async def test_workflow_execution_service_editor_rewrite_filters_think_and_uses_
             )
 
     monkeypatch.setattr(
-        "src.api.services.workflow_execution_service.AssistantConfigService",
+        "src.application.workflows.execution_service.AssistantConfigService",
         FakeAssistantConfigService,
     )
 

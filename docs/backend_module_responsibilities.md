@@ -35,6 +35,7 @@ architecture vocabulary.
 
 - API entry now resolves `ChatApplicationService` directly
 - production bootstrap now comes from `src/application/chat/`
+- workflow execution now resolves from `src/application/workflows/`
 - legacy `AgentService` has been removed
 - legacy `simple_llm.py` has been removed
 - runtime code is centered in `src/agents/llm_runtime/`
@@ -151,10 +152,11 @@ Examples in current codebase:
 - `src/application/chat/compare_flow_service.py`
 - `src/application/chat/context_assembly_service.py`
 - `src/application/chat/post_turn_service.py`
+- `src/application/workflows/execution_service.py`
 - transitional compatibility shims in `src/api/services/chat_application_service.py`
 - transitional compatibility shims in `src/api/services/single_chat_flow_service.py`
 - transitional compatibility shims in `src/api/services/compare_flow_service.py`
-- `src/api/services/workflow_execution_service.py`
+- transitional compatibility shims in `src/api/services/workflow_execution_service.py`
 
 
 ### `src/agents/` (current meaning: LLM runtime and agent execution)

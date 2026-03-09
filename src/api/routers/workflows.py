@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.application.workflows import WorkflowExecutionService
+
 from ..models.async_run import AsyncRunRecord
 from ..models.workflow import Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
 from ..services.async_run_provider import get_async_run_service
@@ -21,7 +23,6 @@ from ..services.flow_event_types import (
     STREAM_ERROR,
 )
 from ..services.workflow_config_service import WorkflowConfigService
-from ..services.workflow_execution_service import WorkflowExecutionService
 from ..services.workflow_flow_event_mapper import map_workflow_event_to_flow_payload
 from ..services.workflow_run_history_service import WorkflowRunHistoryService
 

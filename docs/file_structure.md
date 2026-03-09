@@ -54,6 +54,8 @@ agents-17dcab8b61/
 - `chat/compare_flow_service.py` - Compare chat application flow
 - `chat/context_assembly_service.py` - Shared context preparation for chat application flows
 - `chat/post_turn_service.py` - Post-turn persistence and follow-up side effects
+- `workflows/` - Workflow application package
+- `workflows/execution_service.py` - Workflow execution application service
 
 ### Agent Layer (`src/agents/`)
 

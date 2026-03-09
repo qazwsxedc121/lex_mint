@@ -8,13 +8,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Literal, Optional
 
+from src.application.workflows import WorkflowExecutionService
+
 from ..models.async_run import AsyncRunRecord
 from .async_run_store_service import AsyncRunStoreService
 from .flow_event_emitter import FlowEventEmitter
 from .flow_event_types import STREAM_ENDED
 from .flow_stream_runtime import FlowStreamRuntime
 from .workflow_config_service import WorkflowConfigService
-from .workflow_execution_service import WorkflowExecutionService
 from .workflow_flow_event_mapper import map_workflow_event_to_flow_payload
 
 
