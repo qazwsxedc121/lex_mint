@@ -10,7 +10,7 @@ from src.api.services.compression_config_service import CompressionConfigService
 from src.api.services.local_llama_cpp_service import LocalLlamaCppService
 from src.api.services.language_detection_service import LanguageDetectionService
 from src.api.services.think_tag_filter import strip_think_blocks
-from src.agents.simple_llm import _filter_messages_by_context_boundary
+from src.agents.llm_runtime import filter_messages_by_context_boundary
 from src.providers.types import CallMode
 
 logger = logging.getLogger(__name__)
@@ -941,7 +941,7 @@ class CompressionService:
             model_id = param_overrides["model_id"]
 
         # Filter to get only the compressible messages (after last boundary)
-        compressible, _ = _filter_messages_by_context_boundary(messages)
+        compressible, _ = filter_messages_by_context_boundary(messages)
 
         # Check minimum messages
         if len(compressible) < config.min_messages:
@@ -1162,7 +1162,7 @@ class CompressionService:
             model_id = param_overrides["model_id"]
 
         # Filter to get only compressible messages
-        compressible, _ = _filter_messages_by_context_boundary(messages)
+        compressible, _ = filter_messages_by_context_boundary(messages)
 
         if len(compressible) < config.min_messages:
             logger.info(f"[AUTO-COMPRESS] Skipped: only {len(compressible)} messages (need {config.min_messages})")

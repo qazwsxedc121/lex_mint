@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Union
 
-from src.agents.simple_llm import call_llm_stream
+from src.agents.llm_runtime import call_llm_stream
 
 from ..config import settings
 from ..models.workflow import (

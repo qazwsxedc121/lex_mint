@@ -1,0 +1,385 @@
+# Backend Refactor Plan
+
+## Purpose
+
+This document converts the architecture guidance in
+`docs/backend_module_responsibilities.md` into a staged refactor plan.
+
+It is intentionally incremental.
+The goal is to reduce structural risk while keeping the system runnable after each stage.
+
+
+## Refactor Strategy
+
+We will not do a one-shot repo-wide move.
+
+We will refactor in small, testable stages with these rules:
+
+- keep the main chat path runnable after each stage
+- prefer compatibility shims over large break-the-world moves
+- reduce layer confusion before renaming directories aggressively
+- move ownership first, rename second
+- each stage must end with a stable checkpoint that can be tested and committed
+
+
+## Target Outcome
+
+The backend should converge toward this conceptual flow:
+
+`router -> application -> llm_runtime -> provider adapter`
+
+And toward this ownership model:
+
+- `src/api/`: transport
+- application layer: use-case orchestration
+- `src/agents/` or future `src/llm_runtime/`: LLM runtime
+- `src/providers/`: provider integration
+- infrastructure-oriented modules: storage, file, retrieval, config access
+
+
+## Stage 0 - Baseline and Safety Rails
+
+### Goal
+
+Create a stable baseline before larger refactors.
+
+### Status
+
+In progress / immediate next checkpoint.
+
+### Scope
+
+- document target responsibilities
+- document staged refactor plan
+- keep compatibility shims where needed
+- create a git checkpoint before structural migrations continue
+
+### Exit Criteria
+
+- architecture guidance doc exists
+- refactor plan doc exists
+- current tree is committed as a rollback point
+
+
+## Stage 1 - Stabilize the LLM Runtime Boundary
+
+### Goal
+
+Finish separating model-turn execution from application orchestration.
+
+### Why first
+
+This is the highest-value boundary because the chat path depends on it directly,
+and it is the most reusable runtime layer across single chat, compare, workflow,
+and group chat.
+
+### Scope
+
+- keep all model-call execution logic inside `src/agents/llm_runtime/`
+- keep `simple_llm.py` as compatibility shim only
+- move any remaining pure runtime helpers out of application services if they are
+  only about model invocation behavior
+- make runtime entrypoints explicit and narrow
+
+### Candidate cleanup items
+
+- review whether more stream/tool helper logic should move from
+  `src/api/services/*` into `src/agents/`
+- reduce direct imports of legacy shim files in production code
+- define a stable small API for runtime entrypoints:
+  - sync model call
+  - streaming model call
+  - context shaping helpers if still needed externally
+
+### Risks
+
+- tests still patch old import paths
+- helper functions may still be shared in awkward ways
+
+### Mitigation
+
+- keep compatibility exports during transition
+- migrate production imports before test imports
+
+### Exit Criteria
+
+- production code no longer depends on legacy runtime filenames
+- compatibility shim contains no real implementation
+- runtime-related tests remain green
+
+
+## Stage 2 - Flatten the Single Chat Path
+
+### Goal
+
+Reduce the number of thin layers in the normal single-chat chain.
+
+### Current problem
+
+A normal single chat currently passes through:
+
+`router -> AgentService -> SingleChatFlowService -> SingleTurnOrchestrator -> llm_runtime`
+
+This works, but some of these layers are too thin and their ownership is not sharp enough.
+
+### Scope
+
+- decide the long-term owner of the single-chat use case
+- make `AgentService` either:
+  - a thin facade/composition root, or
+  - disappear from the single-chat path
+- make `SingleChatFlowService` the clear application owner for single chat,
+  or merge it into a better-named application service
+- keep orchestrators only where they add real value
+
+### Preferred direction
+
+For the single-chat path, the likely target should be:
+
+`router -> chat application service -> llm_runtime`
+
+with persistence/context/tool preparation remaining in the application service.
+
+### Candidate cleanup items
+
+- extract single-chat-only responsibilities from `agent_service_simple.py`
+- keep group chat and compare chat behind separate entry services
+- evaluate whether `SingleTurnOrchestrator` should remain as a reusable abstraction
+  or become an internal helper of the single-chat application layer
+
+### Risks
+
+- hidden coupling with compare/group/workflow paths
+- event payload compatibility for frontend SSE consumers
+
+### Mitigation
+
+- preserve external event contract while changing internal structure
+- refactor single chat first without touching compare/group entry behavior
+
+### Exit Criteria
+
+- there is one obvious owner for the single-chat application flow
+- `agent_service_simple.py` is materially smaller or narrower
+- normal chat call chain is shorter and easier to explain
+
+
+## Stage 3 - Split `src/api/services/` by Real Ownership
+
+### Goal
+
+Stop treating `src/api/services/` as a permanent catch-all directory.
+
+### Scope
+
+Classify existing services into three buckets:
+
+- application orchestration
+- infrastructure-oriented support
+- legacy/transitional wrappers
+
+### Preferred direction
+
+Introduce target-state package boundaries gradually, for example:
+
+- `src/application/chat/`
+- `src/application/workflows/`
+- `src/application/context/`
+- `src/infrastructure/storage/`
+- `src/infrastructure/files/`
+- `src/infrastructure/config/`
+
+This does not require moving everything in one PR.
+
+### Candidate moves
+
+Application-oriented:
+
+- `single_chat_flow_service.py`
+- `compare_flow_service.py`
+- `context_assembly_service.py`
+- `workflow_execution_service.py`
+- `post_turn_service.py`
+
+Infrastructure-oriented:
+
+- `conversation_storage.py`
+- `file_service.py`
+- `project_service.py`
+- `webpage_service.py`
+- `model_config_service.py`
+
+### Risks
+
+- import churn across many files
+- merge conflicts if too many files move at once
+
+### Mitigation
+
+- move by slice, not by directory sweep
+- leave temporary re-export shims where needed
+
+### Exit Criteria
+
+- new code has a clear placement rule
+- fewer unrelated modules are added to `src/api/services/`
+- at least one application package and one infrastructure package exist
+
+
+## Stage 4 - Reorganize Group, Compare, and Workflow Flows
+
+### Goal
+
+Bring non-single-chat flows under the same structural vocabulary.
+
+### Scope
+
+- give group chat a clear application owner
+- give compare flow a clear application owner
+- align workflow execution with the same runtime boundary used by chat
+- reduce duplicated model-call preparation paths
+
+### Candidate cleanup items
+
+- extract group chat composition out of `agent_service_simple.py`
+- isolate committee/round-robin orchestration behind clearly named application modules
+- ensure compare and workflow flows share runtime invocation contracts instead of custom wrappers
+
+### Risks
+
+- these paths are more coupled to legacy code than single chat
+- streaming and persistence side effects may differ subtly
+
+### Mitigation
+
+- refactor only after Stage 2 is stable
+- use contract tests on emitted events and persistence side effects
+
+### Exit Criteria
+
+- group/compare/workflow flows follow the same high-level layering model
+- `agent_service_simple.py` is no longer the main coordination hub for everything
+
+
+## Stage 5 - Naming Cleanup
+
+### Goal
+
+Rename transitional and misleading modules once ownership is already stable.
+
+### Important rule
+
+Renaming is not the first step.
+Renaming should happen after boundaries are already real.
+
+### Candidate renames
+
+- `agent_service_simple.py` -> a name that reflects its final role
+- `src/agents/` -> `src/llm_runtime/` if runtime ownership fully dominates
+- compatibility shims removed after callers migrate
+
+### Risks
+
+- high merge churn with low architectural value if done too early
+
+### Mitigation
+
+- only rename once imports are already narrowed
+- batch renames after functional refactors are stable
+
+### Exit Criteria
+
+- directory and module names describe real ownership
+- no major compatibility shim remains for historical names
+
+
+## Stage 6 - Test Structure Alignment
+
+### Goal
+
+Make tests mirror the new ownership model.
+
+### Scope
+
+- runtime tests follow runtime modules
+- application flow tests follow application packages
+- infrastructure tests follow storage/config/file modules
+- legacy-path tests removed once migration shims are retired
+
+### Candidate actions
+
+- split old `test_simple_llm.py` into runtime-focused test modules over time
+- add contract tests for single-chat event flow
+- add regression tests around tool loop behavior and persistence boundaries
+
+### Exit Criteria
+
+- tests reinforce architecture instead of hiding legacy structure
+
+
+## Delivery Order
+
+Recommended order:
+
+1. Stage 0
+2. Stage 1
+3. Stage 2
+4. Stage 3
+5. Stage 4
+6. Stage 5
+7. Stage 6
+
+Reason:
+
+- first stabilize runtime
+- then simplify the hottest path
+- then move packages by ownership
+- then clean up names
+- finally align tests to target structure
+
+
+## Rules for Each Refactor PR
+
+Every structural PR should follow these rules:
+
+- one primary architectural move per PR
+- keep public behavior stable unless intentionally changed
+- update docs when boundaries change
+- prefer re-export shims over mass breakage
+- add or update tests for the moved ownership boundary
+- leave the tree in a runnable state
+
+
+## Suggested First Execution Slice
+
+After the current baseline commit, the first real refactor slice should be:
+
+1. finish Stage 1 runtime cleanup
+2. decide the final owner of single-chat orchestration
+3. shrink `agent_service_simple.py`
+
+This is the smallest high-leverage slice because it improves the most important path
+without requiring immediate repo-wide directory moves.
+
+
+## Rollback Strategy
+
+Because this refactor is staged, rollback is straightforward:
+
+- each stage ends in a standalone commit
+- compatibility shims reduce migration blast radius
+- structural moves should be separated from behavior changes where possible
+
+If a stage proves unstable, revert only that stage and keep the previous checkpoint.
+
+
+## Definition of Success
+
+The refactor is successful if:
+
+- a normal chat path can be explained in one sentence
+- new backend files have an obvious home
+- `src/api/services/` no longer grows as a catch-all
+- runtime behavior is isolated from application orchestration
+- naming reflects actual ownership rather than history
+

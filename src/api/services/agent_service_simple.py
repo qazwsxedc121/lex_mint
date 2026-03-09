@@ -9,7 +9,7 @@ import os
 import json
 from types import SimpleNamespace
 
-from src.agents.simple_llm import call_llm, call_llm_stream
+from src.agents.llm_runtime import call_llm, call_llm_stream
 from .agent_service_bootstrap import bootstrap_agent_service
 from .chat_input_service import ChatInputService
 from .compare_flow_service import CompareFlowDeps, CompareFlowService

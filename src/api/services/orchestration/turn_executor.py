@@ -6,7 +6,7 @@ import re
 import uuid
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Awaitable, Tuple
 
-from src.agents.simple_llm import call_llm_stream
+from src.agents.llm_runtime import call_llm_stream
 
 from .committee_types import CommitteeRuntimeState
 

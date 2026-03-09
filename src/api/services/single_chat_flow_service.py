@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from src.agents.simple_llm import _estimate_total_tokens
+from src.agents.llm_runtime import estimate_total_tokens
 from src.providers.types import CostInfo, TokenUsage
 
 from .orchestration import OrchestrationRequest, SingleTurnOrchestrator, SingleTurnSettings
@@ -472,7 +472,7 @@ class SingleChatFlowService:
                 or 64000
             )
             threshold_tokens = int(context_length * comp_config.auto_compress_threshold)
-            estimated_tokens = _estimate_total_tokens(messages)
+            estimated_tokens = estimate_total_tokens(messages)
             if estimated_tokens <= threshold_tokens:
                 return messages, None
 
