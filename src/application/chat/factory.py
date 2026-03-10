@@ -19,6 +19,14 @@ def build_single_chat_flow_service(
     file_service: Any,
     prepare_context: Any,
     build_file_context_block: Any,
+    model_service_factory: Any = None,
+    compression_config_service_factory: Any = None,
+    compression_service_factory: Any = None,
+    project_document_tool_service_factory: Any = None,
+    project_knowledge_base_resolver_factory: Any = None,
+    project_tool_policy_resolver_factory: Any = None,
+    web_tool_service_factory: Any = None,
+    tool_registry_getter: Any = None,
 ) -> SingleChatFlowService:
     """Build the single-chat application flow service."""
     return SingleChatFlowService(
@@ -31,6 +39,46 @@ def build_single_chat_flow_service(
             file_service=file_service,
             prepare_context=prepare_context,
             build_file_context_block=build_file_context_block,
+            **(
+                {"model_service_factory": model_service_factory}
+                if model_service_factory is not None
+                else {}
+            ),
+            **(
+                {"compression_config_service_factory": compression_config_service_factory}
+                if compression_config_service_factory is not None
+                else {}
+            ),
+            **(
+                {"compression_service_factory": compression_service_factory}
+                if compression_service_factory is not None
+                else {}
+            ),
+            **(
+                {"project_document_tool_service_factory": project_document_tool_service_factory}
+                if project_document_tool_service_factory is not None
+                else {}
+            ),
+            **(
+                {"project_knowledge_base_resolver_factory": project_knowledge_base_resolver_factory}
+                if project_knowledge_base_resolver_factory is not None
+                else {}
+            ),
+            **(
+                {"project_tool_policy_resolver_factory": project_tool_policy_resolver_factory}
+                if project_tool_policy_resolver_factory is not None
+                else {}
+            ),
+            **(
+                {"web_tool_service_factory": web_tool_service_factory}
+                if web_tool_service_factory is not None
+                else {}
+            ),
+            **(
+                {"tool_registry_getter": tool_registry_getter}
+                if tool_registry_getter is not None
+                else {}
+            ),
         )
     )
 

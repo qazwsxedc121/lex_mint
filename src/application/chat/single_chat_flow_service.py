@@ -23,6 +23,54 @@ from src.providers.types import CostInfo, TokenUsage
 logger = logging.getLogger(__name__)
 
 
+def _default_model_service_factory() -> Any:
+    from src.infrastructure.config.model_config_service import ModelConfigService
+
+    return ModelConfigService()
+
+
+def _default_compression_config_service_factory() -> Any:
+    from src.api.services.compression_config_service import CompressionConfigService
+
+    return CompressionConfigService()
+
+
+def _default_compression_service_factory(storage: Any) -> Any:
+    from src.api.services.compression_service import CompressionService
+
+    return CompressionService(storage)
+
+
+def _default_project_document_tool_service_factory(**kwargs: Any) -> Any:
+    from src.api.services.project_document_tool_service import ProjectDocumentToolService
+
+    return ProjectDocumentToolService(**kwargs)
+
+
+def _default_project_knowledge_base_resolver_factory() -> Any:
+    from src.api.services.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+
+    return ProjectKnowledgeBaseResolver()
+
+
+def _default_project_tool_policy_resolver_factory() -> Any:
+    from src.api.services.project_tool_policy_resolver import ProjectToolPolicyResolver
+
+    return ProjectToolPolicyResolver()
+
+
+def _default_web_tool_service_factory() -> Any:
+    from src.infrastructure.web.web_tool_service import WebToolService
+
+    return WebToolService()
+
+
+def _default_tool_registry_getter() -> Any:
+    from src.tools.registry import get_tool_registry
+
+    return get_tool_registry()
+
+
 @dataclass(frozen=True)
 class SingleChatFlowDeps:
     """Dependencies required by SingleChatFlowService."""
@@ -35,6 +83,14 @@ class SingleChatFlowDeps:
     file_service: Any
     prepare_context: Callable[..., Awaitable[ContextPayload]]
     build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
+    model_service_factory: Callable[[], Any] = _default_model_service_factory
+    compression_config_service_factory: Callable[[], Any] = _default_compression_config_service_factory
+    compression_service_factory: Callable[[Any], Any] = _default_compression_service_factory
+    project_document_tool_service_factory: Callable[..., Any] = _default_project_document_tool_service_factory
+    project_knowledge_base_resolver_factory: Callable[[], Any] = _default_project_knowledge_base_resolver_factory
+    project_tool_policy_resolver_factory: Callable[[], Any] = _default_project_tool_policy_resolver_factory
+    web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
+    tool_registry_getter: Callable[[], Any] = _default_tool_registry_getter
 
 
 @dataclass
@@ -320,8 +376,6 @@ class SingleChatFlowService:
             return False
 
         try:
-            from src.api.services.model_config_service import ModelConfigService
-
             session = await self.deps.storage.get_session(
                 session_id,
                 context_type=context_type,
@@ -334,7 +388,7 @@ class SingleChatFlowService:
             if not model_id:
                 return False
 
-            model_service = ModelConfigService()
+            model_service = self.deps.model_service_factory()
             model_cfg, provider_cfg = model_service.get_model_and_provider_sync(str(model_id))
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
             return bool(getattr(merged_caps, "function_calling", False))
@@ -537,16 +591,12 @@ class SingleChatFlowService:
     ) -> Tuple[List[MessagePayload], Optional[StreamEvent]]:
         """Apply automatic compression when token estimate exceeds configured threshold."""
         try:
-            from src.api.services.compression_config_service import CompressionConfigService
-            from src.api.services.compression_service import CompressionService
-            from src.api.services.model_config_service import ModelConfigService
-
-            compression_config_svc = CompressionConfigService()
+            compression_config_svc = self.deps.compression_config_service_factory()
             comp_config = compression_config_svc.config
             if not comp_config.auto_compress_enabled:
                 return messages, None
 
-            model_service = ModelConfigService()
+            model_service = self.deps.model_service_factory()
             model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
             context_length = (
                 getattr(model_cfg.capabilities, "context_length", None)
@@ -567,7 +617,7 @@ class SingleChatFlowService:
                 estimated_tokens,
                 threshold_tokens,
             )
-            compression_service = CompressionService(self.deps.storage)
+            compression_service = self.deps.compression_service_factory(self.deps.storage)
             result = await compression_service.compress_context(
                 session_id=session_id,
                 context_type=context_type,
@@ -614,29 +664,22 @@ class SingleChatFlowService:
         tool_executors: List[Any] = []
         allowed_tool_names: set[str] = set()
         try:
-            from src.api.services.model_config_service import ModelConfigService
-            from src.api.services.project_document_tool_service import ProjectDocumentToolService
-            from src.api.services.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
-            from src.api.services.project_tool_policy_resolver import ProjectToolPolicyResolver
-            from src.infrastructure.web.web_tool_service import WebToolService
-            from src.tools.registry import get_tool_registry
-
-            model_service = ModelConfigService()
+            model_service = self.deps.model_service_factory()
             model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
             if not merged_caps.function_calling:
                 return llm_tools, None
 
-            llm_tools = list(get_tool_registry().get_all_tools())
+            llm_tools = list(self.deps.tool_registry_getter().get_all_tools())
             if use_web_search:
-                web_tool_service = WebToolService()
+                web_tool_service = self.deps.web_tool_service_factory()
                 web_tools = web_tool_service.get_tools()
                 if web_tools:
                     llm_tools.extend(web_tools)
                     tool_executors.append(web_tool_service.execute_tool)
                     print(f"[TOOLS] Added web tools: {len(web_tools)}")
 
-            kb_ids_for_tools = await ProjectKnowledgeBaseResolver().resolve_effective_kb_ids(
+            kb_ids_for_tools = await self.deps.project_knowledge_base_resolver_factory().resolve_effective_kb_ids(
                 assistant_id=assistant_id,
                 assistant_obj=assistant_obj,
                 context_type=context_type,
@@ -658,7 +701,7 @@ class SingleChatFlowService:
                     )
 
             if context_type == "project" and project_id:
-                doc_tool_service = ProjectDocumentToolService(
+                doc_tool_service = self.deps.project_document_tool_service_factory(
                     project_id=project_id,
                     session_id=session_id,
                     active_file_path=active_file_path,
@@ -674,7 +717,7 @@ class SingleChatFlowService:
                         f"(project={project_id}, file={active_file_log})"
                     )
 
-            allowed_tool_names = await ProjectToolPolicyResolver().get_allowed_tool_names(
+            allowed_tool_names = await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
                 context_type=context_type,
                 project_id=project_id,
                 candidate_tool_names=[tool.name for tool in llm_tools],

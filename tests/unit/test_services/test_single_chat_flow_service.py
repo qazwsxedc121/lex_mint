@@ -148,7 +148,7 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
     )
     service = SingleChatFlowService(deps)
 
-    import src.api.services.model_config_service as model_config_service
+    import src.infrastructure.config.model_config_service as model_config_service
 
     class _FakeModelService:
         def get_model_and_provider_sync(self, _model_id):
@@ -183,10 +183,10 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     )
     service = SingleChatFlowService(deps)
 
-    import src.api.services.model_config_service as model_config_service
+    import src.infrastructure.config.model_config_service as model_config_service
     import src.api.services.project_knowledge_base_resolver as project_knowledge_base_resolver
     import src.api.services.project_tool_policy_resolver as project_tool_policy_resolver
-    import src.api.services.web_tool_service as web_tool_service
+    import src.infrastructure.web.web_tool_service as web_tool_service
     import src.tools.registry as tool_registry
 
     class _FakeModelService:

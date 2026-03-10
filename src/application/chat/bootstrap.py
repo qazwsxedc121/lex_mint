@@ -11,6 +11,8 @@ from src.agents.llm_runtime import call_llm, call_llm_stream
 from src.api.config import settings
 from src.api.services.chat_input_service import ChatInputService
 from src.api.services.comparison_storage import ComparisonStorage
+from src.api.services.compression_config_service import CompressionConfigService
+from src.api.services.compression_service import CompressionService
 from src.api.services.file_reference_config_service import FileReferenceConfigService
 from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
 from src.api.services.file_service import FileService
@@ -26,11 +28,17 @@ from src.api.services.orchestration.log_utils import (
     truncate_log_text,
 )
 from src.api.services.pricing_service import PricingService
+from src.api.services.project_document_tool_service import ProjectDocumentToolService
+from src.api.services.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+from src.api.services.project_tool_policy_resolver import ProjectToolPolicyResolver
 from src.api.services.rag_config_service import RagConfigService
 from src.api.services.rag_context_builder_service import RagContextBuilderService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.web.search_service import SearchService
+from src.infrastructure.web.web_tool_service import WebToolService
 from src.api.services.source_context_service import SourceContextService
 from src.infrastructure.web.webpage_service import WebpageService
+from src.tools.registry import get_tool_registry
 
 from .factory import (
     build_chat_application_service,
@@ -64,8 +72,6 @@ def _log_group_trace(trace_id: str, stage: str, payload: Dict[str, Any]) -> None
 
 def _resolve_compare_model_name(model_id: str) -> str:
     try:
-        from src.api.services.model_config_service import ModelConfigService
-
         model_service = ModelConfigService()
         parts = model_id.split(":", 1)
         simple_id = parts[1] if len(parts) > 1 else model_id
@@ -166,6 +172,14 @@ def build_default_chat_application_service(
         file_service=resolved_file_service,
         prepare_context=context_assembly_service.prepare_context,
         build_file_context_block=file_reference_context_builder.build_context_block,
+        model_service_factory=ModelConfigService,
+        compression_config_service_factory=CompressionConfigService,
+        compression_service_factory=CompressionService,
+        project_document_tool_service_factory=ProjectDocumentToolService,
+        project_knowledge_base_resolver_factory=ProjectKnowledgeBaseResolver,
+        project_tool_policy_resolver_factory=ProjectToolPolicyResolver,
+        web_tool_service_factory=WebToolService,
+        tool_registry_getter=get_tool_registry,
     )
     compare_flow_service = build_compare_flow_service(
         storage=storage,
