@@ -39,6 +39,7 @@ architecture vocabulary.
 - legacy `AgentService` has been removed
 - legacy `simple_llm.py` has been removed
 - runtime code is centered in `src/agents/llm_runtime/`
+- infrastructure storage package now lives under `src/infrastructure/storage/` (with compatibility shims)
 - `src/api/services/` still contains many transitional modules, but some chat application
   ownership has already moved into `src/application/chat/`
 

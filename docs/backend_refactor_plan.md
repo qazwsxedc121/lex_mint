@@ -291,11 +291,16 @@ Infrastructure-oriented:
   `src/application/chat/`
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
+- `src/infrastructure/storage/` has been introduced, and the following modules now
+  physically live there (with compatibility re-exports kept under `src/api/services/`):
+  - `conversation_storage.py`
+  - `conversation_storage_paths.py`
+  - `conversation_target_resolver.py`
 
 ### Remaining Work
 
-- start carving out at least one infrastructure package so storage/file/config ownership is
-  also reflected physically
+- continue carving out infrastructure packages so file/config ownership is also reflected
+  physically (for example `src/infrastructure/files/`, `src/infrastructure/config/`)
 - review whether workflow support modules need their own package split beyond the execution
   entrypoint
 
