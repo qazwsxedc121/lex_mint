@@ -50,6 +50,10 @@ architecture vocabulary.
 - compression infrastructure package now lives under `src/infrastructure/compression/` (with compatibility shims)
 - project infrastructure package now lives under `src/infrastructure/projects/` (with compatibility shims for project-scoped tool helpers)
 - group runtime support and orchestration support now live under `src/application/chat/` (with compatibility shims)
+- chat input preparation and shared chat service contracts now live under
+  `src/application/chat/` (with compatibility shims)
+- orchestration modules now live under `src/application/chat/orchestration/`
+  (with compatibility shims)
 - `src/api/services/` still contains many transitional modules, but some chat application
   ownership has already moved into `src/application/chat/`
 

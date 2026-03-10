@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol
 
-from src.api.services.chat_input_service import PreparedUserInput
-from src.api.services.orchestration import CompareModelsSettings, OrchestrationRequest
-from src.api.services.service_contracts import (
+from src.application.chat.chat_input_service import PreparedUserInput
+from src.application.chat.orchestration import CompareModelsSettings, OrchestrationRequest
+from src.application.chat.service_contracts import (
     ContextPayload,
     SourcePayload,
     StreamEvent,

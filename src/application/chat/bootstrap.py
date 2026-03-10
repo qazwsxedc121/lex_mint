@@ -9,18 +9,18 @@ from typing import Any, Dict, Optional
 
 from src.agents.llm_runtime import call_llm, call_llm_stream
 from src.api.config import settings
-from src.api.services.chat_input_service import ChatInputService
+from src.application.chat.chat_input_service import ChatInputService
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.compression.compression_service import CompressionService
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
 from src.infrastructure.files.file_service import FileService
 from src.api.services.memory_service import MemoryService
-from src.api.services.orchestration import (
+from src.application.chat.orchestration import (
     CommitteePolicy,
     CompareModelsOrchestrator,
 )
-from src.api.services.orchestration.log_utils import (
+from src.application.chat.orchestration.log_utils import (
     build_messages_preview_for_log,
     truncate_log_text,
 )

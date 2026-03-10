@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from src.api.services.knowledge_base_service import KnowledgeBaseService
 from src.infrastructure.config.project_service import ProjectService
-from src.api.services.service_contracts import AssistantLike
+from src.application.chat.service_contracts import AssistantLike
 
 logger = logging.getLogger(__name__)
 

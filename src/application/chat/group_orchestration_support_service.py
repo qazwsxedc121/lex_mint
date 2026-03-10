@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from src.api.services.orchestration import (
+from src.application.chat.orchestration import (
     CommitteeOrchestrator,
     CommitteeRuntimeState,
     CommitteeTurnExecutor,
     RoundRobinOrchestrator,
 )
-from src.api.services.service_contracts import AssistantLike
+from src.application.chat.service_contracts import AssistantLike
 
 
 class GroupOrchestrationSupportService:

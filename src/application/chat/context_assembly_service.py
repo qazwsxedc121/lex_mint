@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from src.api.services.service_contracts import (
+from src.application.chat.service_contracts import (
     AssistantLike,
     ContextPayload,
     MemoryContextServiceLike,

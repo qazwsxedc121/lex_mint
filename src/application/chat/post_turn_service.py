@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable, List, Optional
 
-from src.api.services.service_contracts import (
+from src.application.chat.service_contracts import (
     FollowupServiceLike,
     MessagePayload,
     SourcePayload,

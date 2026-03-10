@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 
 from src.agents.llm_runtime import estimate_total_tokens
 from src.api.services.rag_tool_service import RagToolService
-from src.api.services.service_contracts import (
+from src.application.chat.service_contracts import (
     AssistantLike,
     ContextPayload,
     MessagePayload,

@@ -7,8 +7,8 @@ import logging
 import uuid
 from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol, Tuple
 
-from src.api.services.chat_input_service import PreparedUserInput
-from src.api.services.orchestration import (
+from src.application.chat.chat_input_service import PreparedUserInput
+from src.application.chat.orchestration import (
     CommitteeOrchestrator,
     OrchestrationRequest,
     ResolvedCommitteeSettings,
@@ -16,7 +16,7 @@ from src.api.services.orchestration import (
     RoundRobinOrchestrator,
     RoundRobinSettings,
 )
-from src.api.services.service_contracts import (
+from src.application.chat.service_contracts import (
     AssistantLike,
     SearchServiceLike,
     SourcePayload,

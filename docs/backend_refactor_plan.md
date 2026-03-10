@@ -291,6 +291,9 @@ Infrastructure-oriented:
   `src/application/chat/`
 - `context_assembly_service.py` and `post_turn_service.py` now physically live under
   `src/application/chat/`
+- `chat_input_service.py` and `service_contracts.py` now physically live under
+  `src/application/chat/` (with compatibility re-exports kept under
+  `src/api/services/`)
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
 - `src/infrastructure/storage/` has been introduced, and the following modules now
@@ -381,6 +384,9 @@ Bring non-single-chat flows under the same structural vocabulary.
 - `group_runtime_support_service.py` and `group_orchestration_support_service.py`
   now physically live under `src/application/chat/` with compatibility re-exports
   retained under `src/api/services/`
+- orchestration modules now physically live under
+  `src/application/chat/orchestration/` with compatibility re-exports retained
+  under `src/api/services/orchestration/`
 
 ### Remaining Work
 
