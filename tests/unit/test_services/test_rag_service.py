@@ -83,7 +83,7 @@ def test_retrieve_uses_recall_k_and_doc_diversity(monkeypatch):
         reorder_strategy="none",
     )
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -123,7 +123,7 @@ def test_retrieve_long_context_reorders_selected_results(monkeypatch):
         reorder_strategy="long_context",
     )
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -203,7 +203,7 @@ def test_retrieve_with_rerank_reorders_by_blended_score(monkeypatch):
     service.rag_config_service.config.retrieval.rerank_weight = 1.0
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -244,7 +244,7 @@ def test_retrieve_hybrid_rrf_merges_vector_and_bm25(monkeypatch):
         rrf_k=60,
     )
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -286,7 +286,7 @@ def test_retrieve_bm25_collapses_to_best_chunk_per_doc(monkeypatch):
         bm25_recall_k=10,
     )
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -324,7 +324,7 @@ def test_retrieve_benchmark_strict_disables_post_processing(monkeypatch):
     service.rag_config_service.config.retrieval.context_neighbor_max_total = 24
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -408,7 +408,7 @@ def test_retrieve_with_diagnostics_caches_sqlite_query_embedding(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _KbLookup,
     )
 
@@ -467,7 +467,7 @@ def test_retrieve_applies_query_transform_with_runtime_model(monkeypatch):
     service.rag_config_service.config.retrieval.query_transform_crag_enabled = False
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -541,7 +541,7 @@ def test_retrieve_query_transform_failure_falls_back_to_original(monkeypatch):
     service.rag_config_service.config.retrieval.query_transform_timeout_seconds = 4
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -588,7 +588,7 @@ def test_retrieve_with_query_planner_runs_multi_query_retrieval(monkeypatch):
     service.rag_config_service.config.retrieval.retrieval_query_planner_timeout_seconds = 4
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -646,7 +646,7 @@ def test_retrieve_query_planner_failure_falls_back_to_effective_query(monkeypatc
     service.rag_config_service.config.retrieval.retrieval_query_planner_model_id = "auto"
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 
@@ -693,7 +693,7 @@ def test_retrieve_crag_gate_falls_back_to_original_when_rewrite_low_quality(monk
     service.rag_config_service.config.retrieval.query_transform_crag_upper_threshold = 0.75
 
     monkeypatch.setattr(
-        "src.api.services.knowledge_base_service.KnowledgeBaseService",
+        "src.infrastructure.knowledge.knowledge_base_service.KnowledgeBaseService",
         _FakeKnowledgeBaseService,
     )
 

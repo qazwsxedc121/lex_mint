@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from src.api.services.knowledge_base_service import KnowledgeBaseService
+from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 from src.infrastructure.config.project_service import ProjectService
 from src.application.chat.service_contracts import AssistantLike
 

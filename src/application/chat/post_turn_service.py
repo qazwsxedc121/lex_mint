@@ -189,13 +189,13 @@ class PostTurnService:
     def _build_title_service(self) -> TitleServiceLike:
         if self._title_service_factory is not None:
             return self._title_service_factory(storage=self.storage)
-        from src.api.services.title_generation_service import TitleGenerationService
+        from src.application.chat.title_generation_service import TitleGenerationService
 
         return TitleGenerationService(storage=self.storage)
 
     def _build_followup_service(self) -> FollowupServiceLike:
         if self._followup_service_factory is not None:
             return self._followup_service_factory()
-        from src.api.services.followup_service import FollowupService
+        from src.application.chat.followup_service import FollowupService
 
         return FollowupService()

@@ -50,7 +50,16 @@ architecture vocabulary.
 - web infrastructure package now lives under `src/infrastructure/web/` (with compatibility shims, including search + tools wrappers)
 - compression infrastructure package now lives under `src/infrastructure/compression/` (with compatibility shims)
 - llm infrastructure helpers now live under `src/infrastructure/llm/` (with compatibility shims)
+- memory infrastructure package now lives under `src/infrastructure/memory/`
+  (with compatibility shims)
 - project infrastructure package now lives under `src/infrastructure/projects/` (with compatibility shims for project-scoped tool helpers)
+- retrieval infrastructure package now lives under `src/infrastructure/retrieval/`
+  (with compatibility shims for rag retrieval helpers)
+- embedding, bm25, sqlite-vec, rerank, query-transform, and retrieval-query-planner
+  services now live under `src/infrastructure/retrieval/`
+  (with compatibility shims)
+- knowledge-base infrastructure package now lives under `src/infrastructure/knowledge/`
+  (with compatibility shims)
 - group runtime support and orchestration support now live under `src/application/chat/` (with compatibility shims)
 - chat input preparation and shared chat service contracts now live under
   `src/application/chat/` (with compatibility shims)
@@ -58,6 +67,10 @@ architecture vocabulary.
   (with compatibility shims)
 - file reference context builder, source context service, and rag context builder
   now live under `src/application/chat/` (with compatibility shims)
+- rag tool service now lives under `src/application/chat/`
+  (with a compatibility shim)
+- title generation and follow-up services now live under
+  `src/application/chat/` (with compatibility shims)
 - orchestration modules now live under `src/application/chat/orchestration/`
   (with compatibility shims)
 - workflow run history now lives under `src/application/workflows/`

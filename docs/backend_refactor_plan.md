@@ -300,6 +300,11 @@ Infrastructure-oriented:
   `rag_context_builder_service.py` now physically live under
   `src/application/chat/` (with compatibility re-exports kept under
   `src/api/services/`)
+- `rag_tool_service.py` now physically lives under `src/application/chat/`
+  (with a compatibility re-export kept under `src/api/services/`)
+- `title_generation_service.py` and `followup_service.py` now physically
+  live under `src/application/chat/` (with compatibility re-exports kept
+  under `src/api/services/`)
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
 - `workflow_run_history_service.py` now physically lives under
@@ -341,15 +346,27 @@ Infrastructure-oriented:
   `language_detection_service.py` plus `local_llama_cpp_service.py` now
   physically live there (with compatibility re-exports kept under
   `src/api/services/`).
+- `src/infrastructure/memory/` has been introduced, and
+  `memory_service.py` now physically lives there (with a compatibility
+  re-export kept under `src/api/services/`).
 - `src/infrastructure/projects/` has been introduced, and
   `project_document_tool_service.py`, `project_knowledge_base_resolver.py`, and
   `project_tool_policy_resolver.py` now physically live there (with compatibility
   re-exports kept under `src/api/services/`).
+- `src/infrastructure/retrieval/` has been introduced, and
+  `rag_service.py`, `rag_backend_search.py`, `rag_post_processor.py`,
+  `embedding_service.py`, `bm25_service.py`, `sqlite_vec_service.py`,
+  `rerank_service.py`, `query_transform_service.py`, and
+  `retrieval_query_planner_service.py` now physically live there (with
+  compatibility re-exports kept under `src/api/services/`).
+- `src/infrastructure/knowledge/` has been introduced, and
+  `knowledge_base_service.py` now physically lives there (with a compatibility
+  re-export kept under `src/api/services/`).
 
 ### Remaining Work
 
-- reduce remaining production imports that still depend on compatibility shims
-  under `src/api/services/`
+- continue moving remaining document-ingestion and migration helpers out of
+  `src/api/services/` into infrastructure-owned packages
 - review whether workflow support modules need their own package split beyond the execution
   entrypoint
 

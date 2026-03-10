@@ -44,7 +44,7 @@ class RagContextBuilderService:
             if not kb_ids:
                 return None, rag_sources
 
-            from src.api.services.rag_service import RagService
+            from src.infrastructure.retrieval.rag_service import RagService
 
             rag_service = RagService()
             rag_results, rag_diagnostics = await rag_service.retrieve_with_diagnostics(

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from src.agents.llm_runtime import estimate_total_tokens
-from src.api.services.rag_tool_service import RagToolService
+from src.application.chat.rag_tool_service import RagToolService
 from src.application.chat.service_contracts import (
     AssistantLike,
     ContextPayload,

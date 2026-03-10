@@ -18,7 +18,7 @@ from src.infrastructure.compression.compression_service import CompressionServic
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.files.file_service import FileService
-from src.api.services.memory_service import MemoryService
+from src.infrastructure.memory.memory_service import MemoryService
 from src.application.chat.orchestration import (
     CommitteePolicy,
     CompareModelsOrchestrator,
