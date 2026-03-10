@@ -305,6 +305,9 @@ Infrastructure-oriented:
 - `title_generation_service.py` and `followup_service.py` now physically
   live under `src/application/chat/` (with compatibility re-exports kept
   under `src/api/services/`)
+- `chatgpt_import_service.py` and `markdown_import_service.py` now physically
+  live under `src/application/chat/` (with compatibility re-exports kept
+  under `src/api/services/`)
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
 - `workflow_run_history_service.py` now physically lives under
@@ -316,6 +319,7 @@ Infrastructure-oriented:
   - `conversation_storage_paths.py`
   - `conversation_target_resolver.py`
   - `comparison_storage.py`
+  - `migration_service.py`
 - `src/infrastructure/files/` has been introduced, and `file_service.py` now
   physically lives there (with a compatibility re-export kept under `src/api/services/`).
 - `src/infrastructure/config/` has been introduced, and `project_service.py` now
@@ -332,6 +336,9 @@ Infrastructure-oriented:
   `workflow_config_service.py` now physically live under
   `src/infrastructure/config/` (with compatibility re-exports kept under
   `src/api/services/`).
+- `prompt_template_service.py` and `folder_service.py` now physically live
+  under `src/infrastructure/config/` (with compatibility re-exports kept
+  under `src/api/services/`).
 - shared `yaml_config_utils.py` now physically lives under
   `src/infrastructure/config/` (with a compatibility re-export kept under
   `src/api/services/`).
@@ -360,13 +367,14 @@ Infrastructure-oriented:
   `retrieval_query_planner_service.py` now physically live there (with
   compatibility re-exports kept under `src/api/services/`).
 - `src/infrastructure/knowledge/` has been introduced, and
-  `knowledge_base_service.py` now physically lives there (with a compatibility
-  re-export kept under `src/api/services/`).
+  `knowledge_base_service.py` plus `document_processing_service.py` now
+  physically live there (with compatibility re-exports kept under
+  `src/api/services/`).
 
 ### Remaining Work
 
-- continue moving remaining document-ingestion and migration helpers out of
-  `src/api/services/` into infrastructure-owned packages
+- continue moving remaining non-chat utility services out of
+  `src/api/services/` into clear application/infrastructure packages
 - review whether workflow support modules need their own package split beyond the execution
   entrypoint
 

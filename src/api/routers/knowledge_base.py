@@ -367,7 +367,7 @@ async def list_chunks(
 async def _process_document_async(kb_id: str, doc_id: str, filename: str, file_type: str, storage_path):
     """Background task to process a document"""
     try:
-        from ..services.document_processing_service import DocumentProcessingService
+        from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
         processor = DocumentProcessingService()
         await processor.process_document(kb_id, doc_id, filename, file_type, str(storage_path))
     except Exception as e:
@@ -377,5 +377,4 @@ async def _process_document_async(kb_id: str, doc_id: str, filename: str, file_t
             await service.update_document_status(kb_id, doc_id, "error", error_message=str(e))
         except Exception as e2:
             logger.error(f"Failed to update document status to error: {e2}")
-
 

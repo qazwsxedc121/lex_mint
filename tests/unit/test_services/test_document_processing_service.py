@@ -213,7 +213,7 @@ def test_store_in_sqlite_vec_rolls_back_on_bm25_failure(monkeypatch):
         service = _build_service(tmp_path, batch_max_retries=1)
         fake_sqlite = _FakeSqliteVecService()
         monkeypatch.setattr(
-            "src.api.services.sqlite_vec_service.SqliteVecService",
+            "src.infrastructure.retrieval.sqlite_vec_service.SqliteVecService",
             lambda: fake_sqlite,
         )
 
@@ -250,7 +250,7 @@ def test_store_in_sqlite_vec_skips_stale_cleanup_for_new_doc(monkeypatch):
         service = _build_service(tmp_path, batch_max_retries=1)
         fake_sqlite = _FakeSqliteVecService(had_existing=False)
         monkeypatch.setattr(
-            "src.api.services.sqlite_vec_service.SqliteVecService",
+            "src.infrastructure.retrieval.sqlite_vec_service.SqliteVecService",
             lambda: fake_sqlite,
         )
         service.bm25_service = SimpleNamespace(upsert_document_chunks=lambda **kwargs: None)
@@ -280,7 +280,7 @@ def test_store_in_sqlite_vec_runs_stale_cleanup_for_existing_doc(monkeypatch):
         service = _build_service(tmp_path, batch_max_retries=1)
         fake_sqlite = _FakeSqliteVecService(had_existing=True)
         monkeypatch.setattr(
-            "src.api.services.sqlite_vec_service.SqliteVecService",
+            "src.infrastructure.retrieval.sqlite_vec_service.SqliteVecService",
             lambda: fake_sqlite,
         )
         service.bm25_service = SimpleNamespace(upsert_document_chunks=lambda **kwargs: None)

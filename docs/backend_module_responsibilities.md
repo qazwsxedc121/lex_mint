@@ -44,6 +44,8 @@ architecture vocabulary.
 - config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
 - assistant/file-reference/memory/rag/translation/tts/workflow config services now live under
   `src/infrastructure/config/` (with compatibility shims)
+- prompt template and folder config services now live under
+  `src/infrastructure/config/` (with compatibility shims)
 - pricing service now lives under `src/infrastructure/config/` (with compatibility shims)
 - shared layered YAML config helpers now live under `src/infrastructure/config/`
   (with compatibility shims)
@@ -60,6 +62,8 @@ architecture vocabulary.
   (with compatibility shims)
 - knowledge-base infrastructure package now lives under `src/infrastructure/knowledge/`
   (with compatibility shims)
+- document processing pipeline now lives under `src/infrastructure/knowledge/`
+  (with a compatibility shim)
 - group runtime support and orchestration support now live under `src/application/chat/` (with compatibility shims)
 - chat input preparation and shared chat service contracts now live under
   `src/application/chat/` (with compatibility shims)
@@ -71,6 +75,10 @@ architecture vocabulary.
   (with a compatibility shim)
 - title generation and follow-up services now live under
   `src/application/chat/` (with compatibility shims)
+- ChatGPT and markdown session import services now live under
+  `src/application/chat/` (with compatibility shims)
+- project conversation migration service now lives under
+  `src/infrastructure/storage/` (with a compatibility shim)
 - orchestration modules now live under `src/application/chat/orchestration/`
   (with compatibility shims)
 - workflow run history now lives under `src/application/workflows/`

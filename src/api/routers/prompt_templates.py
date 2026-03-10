@@ -10,7 +10,7 @@ from ..models.prompt_template import (
     PromptTemplateCreate,
     PromptTemplateUpdate,
 )
-from ..services.prompt_template_service import PromptTemplateConfigService
+from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
 
 router = APIRouter(prefix="/api/prompt-templates", tags=["prompt-templates"])
 

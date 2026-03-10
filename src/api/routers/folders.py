@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 import logging
 
-from ..services.folder_service import FolderService, Folder
+from src.infrastructure.config.folder_service import FolderService, Folder
 from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
 from ..config import settings
 

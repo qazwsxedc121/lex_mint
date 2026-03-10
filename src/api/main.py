@@ -142,8 +142,8 @@ async def startup_event():
     AssistantConfigService()
 
     # Initialize prompt templates and chat folders configs if missing.
-    from .services.prompt_template_service import PromptTemplateConfigService
-    from .services.folder_service import FolderService
+    from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
+    from src.infrastructure.config.folder_service import FolderService
     from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 
     PromptTemplateConfigService()
@@ -152,7 +152,7 @@ async def startup_event():
     await workflow_service.ensure_system_workflows()
 
     # Migrate project conversations from conversations/projects/ to .lex_mint/
-    from .services.migration_service import migrate_project_conversations
+    from src.infrastructure.storage.migration_service import migrate_project_conversations
 
     migration_result = migrate_project_conversations(settings.conversations_dir)
     if migration_result["migrated"]:
@@ -176,7 +176,7 @@ async def startup_event():
         rag_cfg = RagConfigService()
         backend = str(getattr(rag_cfg.config.storage, "vector_store_backend", "chroma") or "chroma").lower()
         if backend == "sqlite_vec":
-            from .services.sqlite_vec_service import SqliteVecService
+            from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
 
             sqlite_vec = SqliteVecService()
             logger.info("SQLite vector storage ready: %s", sqlite_vec.db_path)
