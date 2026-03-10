@@ -28,8 +28,8 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.api.services.think_tag_filter import ThinkTagStreamFilter
-from src.api.services.workflow_run_history_service import WorkflowRunHistoryService
+from src.agents.llm_runtime.think_tag_filter import ThinkTagStreamFilter
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 
 _TEMPLATE_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")

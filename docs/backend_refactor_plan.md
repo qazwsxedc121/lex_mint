@@ -294,8 +294,17 @@ Infrastructure-oriented:
 - `chat_input_service.py` and `service_contracts.py` now physically live under
   `src/application/chat/` (with compatibility re-exports kept under
   `src/api/services/`)
+- `group_participants.py` now physically lives under `src/application/chat/`
+  (with a compatibility re-export kept under `src/api/services/`)
+- `file_reference_context_builder.py`, `source_context_service.py`, and
+  `rag_context_builder_service.py` now physically live under
+  `src/application/chat/` (with compatibility re-exports kept under
+  `src/api/services/`)
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
+- `workflow_run_history_service.py` now physically lives under
+  `src/application/workflows/` (with a compatibility re-export kept under
+  `src/api/services/`)
 - `src/infrastructure/storage/` has been introduced, and the following modules now
   physically live there (with compatibility re-exports kept under `src/api/services/`):
   - `conversation_storage.py`
@@ -309,6 +318,9 @@ Infrastructure-oriented:
 - `model_config_service.py` (plus `model_config_repository.py` / `model_runtime_service.py`)
   now physically live under `src/infrastructure/config/` (with compatibility re-exports kept
   under `src/api/services/`).
+- `pricing_service.py` now physically lives under
+  `src/infrastructure/config/` (with a compatibility re-export kept under
+  `src/api/services/`).
 - `assistant_config_service.py`, `file_reference_config_service.py`,
   `memory_config_service.py`, `rag_config_service.py`,
   `translation_config_service.py`, `tts_config_service.py`, and
@@ -325,6 +337,10 @@ Infrastructure-oriented:
 - `src/infrastructure/compression/` has been introduced, and
   `compression_config_service.py` plus `compression_service.py` now physically
   live there (with compatibility re-exports kept under `src/api/services/`).
+- `src/infrastructure/llm/` has been introduced, and
+  `language_detection_service.py` plus `local_llama_cpp_service.py` now
+  physically live there (with compatibility re-exports kept under
+  `src/api/services/`).
 - `src/infrastructure/projects/` has been introduced, and
   `project_document_tool_service.py`, `project_knowledge_base_resolver.py`, and
   `project_tool_policy_resolver.py` now physically live there (with compatibility
@@ -387,6 +403,11 @@ Bring non-single-chat flows under the same structural vocabulary.
 - orchestration modules now physically live under
   `src/application/chat/orchestration/` with compatibility re-exports retained
   under `src/api/services/orchestration/`
+- think-tag stream filtering helpers now physically live under
+  `src/agents/llm_runtime/` with a compatibility re-export retained under
+  `src/api/services/`
+- context planner now physically lives under `src/agents/llm_runtime/`
+  with a compatibility re-export retained under `src/api/services/`
 
 ### Remaining Work
 

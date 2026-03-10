@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.utils.llm_logger import get_llm_logger
 
 from .context import (

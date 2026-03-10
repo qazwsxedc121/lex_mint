@@ -8,7 +8,7 @@ import asyncio
 import yaml
 import httpx
 from src.api.models.search import SearchSource
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.api.paths import (
     config_defaults_dir,
     config_local_dir,

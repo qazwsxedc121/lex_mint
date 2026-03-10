@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, trim_messages
 
-from src.api.services.context_planner import ContextPlan, ContextPlanner
+from .context_planner import ContextPlan, ContextPlanner
 
 logger = logging.getLogger(__name__)
 

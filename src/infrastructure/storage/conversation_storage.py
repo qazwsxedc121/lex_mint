@@ -15,7 +15,7 @@ import re
 from src.providers.types import TokenUsage, CostInfo
 from .conversation_storage_paths import StoragePathResolver, build_project_root_resolver
 from .conversation_target_resolver import ConversationSessionTargetResolver
-from src.api.services.group_participants import parse_group_participant
+from src.application.chat.group_participants import parse_group_participant
 
 
 class ConversationStorage:
@@ -238,7 +238,7 @@ class ConversationStorage:
         elif model_id:
             target_type = "model"
             if ':' not in model_id:
-                from src.api.services.model_config_service import ModelConfigService
+                from src.infrastructure.config.model_config_service import ModelConfigService
                 model_service = ModelConfigService()
                 model_obj = await model_service.get_model(model_id)
                 if model_obj:
@@ -1563,7 +1563,7 @@ def create_storage_with_project_resolver(
         ConversationStorage instance with project root resolver configured
     """
     if project_service is None:
-        from src.api.services.project_service import ProjectService
+        from src.infrastructure.config.project_service import ProjectService
 
         project_service = ProjectService()
 
@@ -1573,5 +1573,4 @@ def create_storage_with_project_resolver(
         assistant_service=assistant_service,
         model_service=model_service,
     )
-
 

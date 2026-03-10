@@ -14,7 +14,7 @@ from src.api.models.workflow import (
     WorkflowRunRecord,
 )
 from src.api.services.workflow_config_service import WorkflowConfigService
-from src.api.services.workflow_run_history_service import WorkflowRunHistoryService
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 
 def _sample_workflow(workflow_id: str = "wf_demo") -> Workflow:

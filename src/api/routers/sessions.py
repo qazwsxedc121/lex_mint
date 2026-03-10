@@ -18,7 +18,7 @@ from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
 from ..services.orchestration import GroupSettingsResolver
-from ..services.group_participants import parse_group_participant
+from src.application.chat.group_participants import parse_group_participant
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ async def _normalize_and_validate_group_assistants(group_assistants: Optional[Li
 
     # Validate all participant IDs exist and are enabled.
     from src.infrastructure.config.assistant_config_service import AssistantConfigService
-    from ..services.model_config_service import ModelConfigService
+    from src.infrastructure.config.model_config_service import ModelConfigService
     assistant_service = AssistantConfigService()
     model_service = ModelConfigService()
     for participant_token in normalized:
@@ -869,7 +869,7 @@ async def update_param_overrides(
             if not isinstance(value, str) or ':' not in value:
                 raise HTTPException(status_code=400, detail="model_id must be in 'provider:model' format")
             # Validate model exists
-            from ..services.model_config_service import ModelConfigService
+            from src.infrastructure.config.model_config_service import ModelConfigService
             model_service = ModelConfigService()
             parts = value.split(":", 1)
             model = await model_service.get_model(parts[1])

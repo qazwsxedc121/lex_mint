@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
-from src.api.services.file_service import FileService
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.files.file_service import FileService
 from src.utils.llm_logger import get_llm_logger
 
 from .context import (
@@ -27,6 +27,7 @@ from .reasoning import (
     log_reasoning_decision,
     resolve_reasoning_decision,
 )
+from .think_tag_filter import ThinkTagStreamFilter, strip_think_blocks
 from .streaming_client import call_llm_stream as _call_llm_stream_impl
 from .sync_client import call_llm as _call_llm_impl
 
@@ -130,6 +131,8 @@ __all__ = [
     "get_context_limit",
     "log_reasoning_decision",
     "resolve_reasoning_decision",
+    "ThinkTagStreamFilter",
+    "strip_think_blocks",
     "trim_to_context_limit",
     "truncate_by_rounds",
     "_build_context_plan",

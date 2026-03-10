@@ -10,10 +10,13 @@ from typing import Any, Dict, Optional
 from src.agents.llm_runtime import call_llm, call_llm_stream
 from src.api.config import settings
 from src.application.chat.chat_input_service import ChatInputService
+from src.application.chat.file_reference_context_builder import FileReferenceContextBuilder
+from src.application.chat.rag_context_builder_service import RagContextBuilderService
+from src.application.chat.source_context_service import SourceContextService
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.compression.compression_service import CompressionService
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
-from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
+from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.files.file_service import FileService
 from src.api.services.memory_service import MemoryService
 from src.application.chat.orchestration import (
@@ -24,17 +27,14 @@ from src.application.chat.orchestration.log_utils import (
     build_messages_preview_for_log,
     truncate_log_text,
 )
-from src.api.services.pricing_service import PricingService
 from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
 from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
 from src.infrastructure.config.rag_config_service import RagConfigService
-from src.api.services.rag_context_builder_service import RagContextBuilderService
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.web.search_service import SearchService
 from src.infrastructure.web.web_tool_service import WebToolService
-from src.api.services.source_context_service import SourceContextService
 from src.infrastructure.web.webpage_service import WebpageService
 from src.tools.registry import get_tool_registry
 

@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from src.api.services.file_service import FileService
+from src.infrastructure.files.file_service import FileService
 
 logger = logging.getLogger(__name__)
 

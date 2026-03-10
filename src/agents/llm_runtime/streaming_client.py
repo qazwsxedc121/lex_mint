@@ -15,8 +15,8 @@ from src.agents.stream_call_policy import (
     should_allow_responses_fallback,
 )
 from src.agents.tool_loop_runner import ToolLoopRunner, ToolLoopState
-from src.api.services.file_service import FileService
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.files.file_service import FileService
 from src.providers.types import CallMode, TokenUsage
 from src.utils.llm_logger import get_llm_logger
 

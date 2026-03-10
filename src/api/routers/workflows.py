@@ -24,7 +24,7 @@ from ..services.flow_event_types import (
 )
 from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 from ..services.workflow_flow_event_mapper import map_workflow_event_to_flow_payload
-from ..services.workflow_run_history_service import WorkflowRunHistoryService
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 logger = logging.getLogger(__name__)
 

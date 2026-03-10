@@ -20,7 +20,7 @@ from src.api.models.workflow import (
     WorkflowInputDef,
 )
 from src.application.workflows import WorkflowExecutionService
-from src.api.services.workflow_run_history_service import WorkflowRunHistoryService
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 
 async def _fake_llm_stream(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:

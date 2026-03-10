@@ -135,7 +135,7 @@ class ConversationSessionTargetResolver:
 
     def _get_model_service(self) -> Any:
         if self.model_service is None:
-            from src.api.services.model_config_service import ModelConfigService
+            from src.infrastructure.config.model_config_service import ModelConfigService
 
             self.model_service = ModelConfigService()
         return self.model_service

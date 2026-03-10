@@ -44,15 +44,27 @@ architecture vocabulary.
 - config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
 - assistant/file-reference/memory/rag/translation/tts/workflow config services now live under
   `src/infrastructure/config/` (with compatibility shims)
+- pricing service now lives under `src/infrastructure/config/` (with compatibility shims)
 - shared layered YAML config helpers now live under `src/infrastructure/config/`
   (with compatibility shims)
 - web infrastructure package now lives under `src/infrastructure/web/` (with compatibility shims, including search + tools wrappers)
 - compression infrastructure package now lives under `src/infrastructure/compression/` (with compatibility shims)
+- llm infrastructure helpers now live under `src/infrastructure/llm/` (with compatibility shims)
 - project infrastructure package now lives under `src/infrastructure/projects/` (with compatibility shims for project-scoped tool helpers)
 - group runtime support and orchestration support now live under `src/application/chat/` (with compatibility shims)
 - chat input preparation and shared chat service contracts now live under
   `src/application/chat/` (with compatibility shims)
+- group participant parsing now lives under `src/application/chat/`
+  (with compatibility shims)
+- file reference context builder, source context service, and rag context builder
+  now live under `src/application/chat/` (with compatibility shims)
 - orchestration modules now live under `src/application/chat/orchestration/`
+  (with compatibility shims)
+- workflow run history now lives under `src/application/workflows/`
+  (with compatibility shims)
+- think-tag stream filtering now lives under `src/agents/llm_runtime/`
+  (with compatibility shims)
+- context planner now lives under `src/agents/llm_runtime/`
   (with compatibility shims)
 - `src/api/services/` still contains many transitional modules, but some chat application
   ownership has already moved into `src/application/chat/`

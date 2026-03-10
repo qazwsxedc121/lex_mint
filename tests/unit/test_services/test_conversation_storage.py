@@ -42,7 +42,7 @@ class TestConversationStorage:
     async def test_create_session_with_model_id_legacy(self, temp_conversation_dir, mock_assistant_service):
         """Test creating session with model_id (legacy mode)."""
         with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
-            with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+            with patch('src.infrastructure.config.model_config_service.ModelConfigService') as mock_model_service:
                 # Mock model service
                 mock_model = Mock()  # Use Mock instead of AsyncMock
                 mock_model.id = "deepseek-chat"
@@ -381,7 +381,7 @@ class TestConversationStorage:
 
     @pytest.mark.asyncio
     async def test_create_session_without_default_model_raises_clear_error(self, temp_conversation_dir):
-        with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+        with patch('src.infrastructure.config.model_config_service.ModelConfigService') as mock_model_service:
             mock_service_instance = Mock()
             mock_service_instance.require_enabled_model = AsyncMock(
                 side_effect=ValueError("No default model configured. Add a provider and model first.")
@@ -405,7 +405,7 @@ class TestConversationStorage:
         mock_service.require_enabled_assistant.return_value = default_assistant
 
         with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_service):
-            with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+            with patch('src.infrastructure.config.model_config_service.ModelConfigService') as mock_model_service:
                 model_obj = Mock()
                 model_obj.id = "gpt-4"
                 model_obj.provider_id = "openai"
@@ -473,7 +473,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_update_session_model_rejects_unavailable_model(self, temp_conversation_dir, mock_assistant_service):
         with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
-            with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
+            with patch('src.infrastructure.config.model_config_service.ModelConfigService') as mock_model_service:
                 model_obj = Mock()
                 model_obj.id = "gpt-4"
                 model_obj.provider_id = "openai"

@@ -15,7 +15,7 @@ from ..base import BaseLLMAdapter
 from ..types import LLMResponse, StreamChunk
 
 if TYPE_CHECKING:
-    from src.api.services.local_llama_cpp_service import LocalLlamaCppService
+    from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
 
 LocalLlamaCppService = None
 
@@ -25,7 +25,7 @@ def _get_local_llama_cpp_service_class():
     if service_cls is not None:
         return service_cls
 
-    from src.api.services.local_llama_cpp_service import LocalLlamaCppService as imported_service_cls
+    from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService as imported_service_cls
 
     return imported_service_cls
 
@@ -288,7 +288,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
         api_key: str,
     ) -> List[Dict[str, Any]]:
         del base_url, api_key
-        from src.api.services.local_llama_cpp_service import discover_local_gguf_models
+        from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models
 
         return discover_local_gguf_models()
 
@@ -299,7 +299,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
         model_id: Optional[str] = None,
     ) -> tuple[bool, str]:
         del base_url, api_key
-        from src.api.services.local_llama_cpp_service import discover_local_gguf_models
+        from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models
 
         selected_model_id = model_id
         if not selected_model_id:
