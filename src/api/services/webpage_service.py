@@ -618,10 +618,10 @@ class WebpageService:
         url: str,
         last_error: Optional[WebpageResult],
     ) -> bool:
-        if curl_requests is None:
-            return False
         if WebpageService._is_wikimedia_url(url):
             return True
+        if curl_requests is None:
+            return False
         if last_error is None:
             return False
         if last_error.status_code in {403, 429}:
