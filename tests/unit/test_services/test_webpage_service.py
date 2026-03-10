@@ -57,9 +57,9 @@ async def test_fetch_and_parse_disables_http2_when_h2_missing(monkeypatch, tmp_p
     html = b"<html><head><title>Example</title></head><body><main><p>Hello web tool.</p></main></body></html>"
 
     monkeypatch.setattr(service, "_http2_supported", lambda: False)
-    monkeypatch.setattr("src.api.services.webpage_service.httpx.AsyncHTTPTransport", lambda retries=2: object())
+    monkeypatch.setattr("src.infrastructure.web.webpage_service.httpx.AsyncHTTPTransport", lambda retries=2: object())
     monkeypatch.setattr(
-        "src.api.services.webpage_service.httpx.AsyncClient",
+        "src.infrastructure.web.webpage_service.httpx.AsyncClient",
         lambda **kwargs: _FakeClient(kwargs=kwargs, body=html, captured=captured),
     )
 
@@ -78,10 +78,10 @@ async def test_fetch_and_parse_disables_http2_when_h2_missing(monkeypatch, tmp_p
 def test_http2_supported_reflects_optional_h2_dependency(monkeypatch, tmp_path):
     service = WebpageService(config_path=tmp_path / "webpage_config.yaml")
 
-    monkeypatch.setattr("src.api.services.webpage_service.importlib.util.find_spec", lambda name: None)
+    monkeypatch.setattr("src.infrastructure.web.webpage_service.importlib.util.find_spec", lambda name: None)
     assert service._http2_supported() is False
 
-    monkeypatch.setattr("src.api.services.webpage_service.importlib.util.find_spec", lambda name: object())
+    monkeypatch.setattr("src.infrastructure.web.webpage_service.importlib.util.find_spec", lambda name: object())
     assert service._http2_supported() is True
 
 

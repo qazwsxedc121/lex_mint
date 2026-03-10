@@ -303,6 +303,8 @@ Infrastructure-oriented:
 - `model_config_service.py` (plus `model_config_repository.py` / `model_runtime_service.py`)
   now physically live under `src/infrastructure/config/` (with compatibility re-exports kept
   under `src/api/services/`).
+- `src/infrastructure/web/` has been introduced, and `webpage_service.py` now physically
+  lives there (with a compatibility re-export kept under `src/api/services/`).
 
 ### Remaining Work
 

@@ -42,6 +42,7 @@ architecture vocabulary.
 - infrastructure storage package now lives under `src/infrastructure/storage/` (with compatibility shims)
 - file infrastructure package now lives under `src/infrastructure/files/` (with compatibility shims)
 - config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
+- web infrastructure package now lives under `src/infrastructure/web/` (with compatibility shims)
 - `src/api/services/` still contains many transitional modules, but some chat application
   ownership has already moved into `src/application/chat/`
 
