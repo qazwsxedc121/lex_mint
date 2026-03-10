@@ -30,31 +30,31 @@ def _default_model_service_factory() -> Any:
 
 
 def _default_compression_config_service_factory() -> Any:
-    from src.api.services.compression_config_service import CompressionConfigService
+    from src.infrastructure.compression.compression_config_service import CompressionConfigService
 
     return CompressionConfigService()
 
 
 def _default_compression_service_factory(storage: Any) -> Any:
-    from src.api.services.compression_service import CompressionService
+    from src.infrastructure.compression.compression_service import CompressionService
 
     return CompressionService(storage)
 
 
 def _default_project_document_tool_service_factory(**kwargs: Any) -> Any:
-    from src.api.services.project_document_tool_service import ProjectDocumentToolService
+    from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
 
     return ProjectDocumentToolService(**kwargs)
 
 
 def _default_project_knowledge_base_resolver_factory() -> Any:
-    from src.api.services.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+    from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 
     return ProjectKnowledgeBaseResolver()
 
 
 def _default_project_tool_policy_resolver_factory() -> Any:
-    from src.api.services.project_tool_policy_resolver import ProjectToolPolicyResolver
+    from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
 
     return ProjectToolPolicyResolver()
 

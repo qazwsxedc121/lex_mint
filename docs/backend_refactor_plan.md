@@ -309,6 +309,13 @@ Infrastructure-oriented:
   lives there (with a compatibility re-export kept under `src/api/services/`).
 - `search_service.py` and `web_tool_service.py` now physically live under
   `src/infrastructure/web/` (with compatibility re-exports kept under `src/api/services/`).
+- `src/infrastructure/compression/` has been introduced, and
+  `compression_config_service.py` plus `compression_service.py` now physically
+  live there (with compatibility re-exports kept under `src/api/services/`).
+- `src/infrastructure/projects/` has been introduced, and
+  `project_document_tool_service.py`, `project_knowledge_base_resolver.py`, and
+  `project_tool_policy_resolver.py` now physically live there (with compatibility
+  re-exports kept under `src/api/services/`).
 
 ### Remaining Work
 

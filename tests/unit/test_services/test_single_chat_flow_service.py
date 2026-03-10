@@ -184,8 +184,8 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     service = SingleChatFlowService(deps)
 
     import src.infrastructure.config.model_config_service as model_config_service
-    import src.api.services.project_knowledge_base_resolver as project_knowledge_base_resolver
-    import src.api.services.project_tool_policy_resolver as project_tool_policy_resolver
+    import src.infrastructure.projects.project_knowledge_base_resolver as project_knowledge_base_resolver
+    import src.infrastructure.projects.project_tool_policy_resolver as project_tool_policy_resolver
     import src.infrastructure.web.web_tool_service as web_tool_service
     import src.tools.registry as tool_registry
 

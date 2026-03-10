@@ -11,8 +11,8 @@ from src.agents.llm_runtime import call_llm, call_llm_stream
 from src.api.config import settings
 from src.api.services.chat_input_service import ChatInputService
 from src.api.services.comparison_storage import ComparisonStorage
-from src.api.services.compression_config_service import CompressionConfigService
-from src.api.services.compression_service import CompressionService
+from src.infrastructure.compression.compression_config_service import CompressionConfigService
+from src.infrastructure.compression.compression_service import CompressionService
 from src.api.services.file_reference_config_service import FileReferenceConfigService
 from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
 from src.api.services.file_service import FileService
@@ -28,9 +28,9 @@ from src.api.services.orchestration.log_utils import (
     truncate_log_text,
 )
 from src.api.services.pricing_service import PricingService
-from src.api.services.project_document_tool_service import ProjectDocumentToolService
-from src.api.services.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
-from src.api.services.project_tool_policy_resolver import ProjectToolPolicyResolver
+from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
+from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
 from src.api.services.rag_config_service import RagConfigService
 from src.api.services.rag_context_builder_service import RagContextBuilderService
 from src.infrastructure.config.model_config_service import ModelConfigService
