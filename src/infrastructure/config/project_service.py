@@ -1,0 +1,1290 @@
+"""Service for managing projects and file operations."""
+
+import yaml
+import logging
+import os
+import asyncio
+import shutil
+import hashlib
+import fnmatch
+import re
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+from src.api.errors import ConflictError
+from src.api.models.project_config import (
+    Project,
+    ProjectSettings,
+    ProjectsConfig,
+    FileNode,
+    FileContent,
+    FileRenameResult,
+    DirectoryEntry,
+)
+from src.api.config import settings
+from src.api.paths import ensure_local_file, repo_root
+
+logger = logging.getLogger(__name__)
+_TEXT_SEARCH_MAX_FILES = 5000
+
+
+class ProjectConflictError(ConflictError):
+    """Conflict error for optimistic-lock write operations."""
+
+    def __init__(self, code: str, message: str, **extra: Any):
+        super().__init__(message, code=code, extra=extra)
+
+
+class ProjectService:
+    """Service for managing projects and file operations."""
+
+    def __init__(self, config_path: Optional[Path] = None):
+        """Initialize project service.
+
+        Args:
+            config_path: Path to projects config file (for testing)
+        """
+        use_default_path = config_path is None
+        self.config_path = config_path or settings.projects_config_path
+        self.legacy_paths: List[Path] = [repo_root() / "config" / "projects_config.yaml"]
+
+        if use_default_path:
+            ensure_local_file(
+                local_path=self.config_path,
+                defaults_path=None,
+                legacy_paths=self.legacy_paths,
+                initial_text=yaml.safe_dump({"projects": []}, allow_unicode=True, sort_keys=False),
+            )
+        self._lock = asyncio.Lock()
+
+    async def load_config(self) -> ProjectsConfig:
+        """Load projects configuration from YAML file.
+
+        Returns:
+            ProjectsConfig with all projects
+        """
+        async with self._lock:
+            if not self.config_path.exists():
+                return ProjectsConfig(projects=[])
+
+            try:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                    if data is None:
+                        return ProjectsConfig(projects=[])
+                    raw_projects = data.get('projects', [])
+                    valid_projects: List[Project] = []
+                    if isinstance(raw_projects, list):
+                        for index, raw in enumerate(raw_projects):
+                            try:
+                                valid_projects.append(Project.model_validate(raw))
+                            except Exception as e:
+                                logger.warning(f"Skipping invalid project entry at index {index}: {e}")
+                    return ProjectsConfig(projects=valid_projects)
+            except Exception as e:
+                raise ValueError(f"Failed to load config: {e}")
+
+    def resolve_project_root(self, project_id: str) -> Optional[str]:
+        """Resolve a project id to its root path without async orchestration."""
+        if not project_id or not self.config_path.exists():
+            return None
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            return None
+        projects = data.get('projects', []) if isinstance(data, dict) else []
+        if not isinstance(projects, list):
+            return None
+        for raw_project in projects:
+            if not isinstance(raw_project, dict):
+                continue
+            if raw_project.get('id') == project_id:
+                root_path = raw_project.get('root_path')
+                return str(root_path) if isinstance(root_path, str) and root_path.strip() else None
+        return None
+
+    def _resolve_browse_roots(self) -> List[Path]:
+        roots = settings.projects_browse_roots or [Path(".")]
+        resolved: List[Path] = []
+        for root in roots:
+            expanded = Path(os.path.expandvars(str(root))).expanduser()
+            if not expanded.is_absolute():
+                expanded = (Path.cwd() / expanded).resolve()
+            else:
+                expanded = expanded.resolve()
+            if expanded.exists() and expanded.is_dir():
+                resolved.append(expanded)
+        if not resolved:
+            resolved = [Path.cwd().resolve()]
+        return resolved
+
+    @staticmethod
+    def _is_within_root(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def list_browse_roots(self) -> List[DirectoryEntry]:
+        roots = self._resolve_browse_roots()
+        entries: List[DirectoryEntry] = []
+        for root in roots:
+            name = root.name or str(root)
+            entries.append(DirectoryEntry(name=name, path=str(root), is_dir=True))
+        return entries
+
+    def list_directories(self, path: str) -> List[DirectoryEntry]:
+        if not path:
+            raise ValueError("Path is required")
+        expanded = Path(os.path.expandvars(path)).expanduser()
+        target = expanded.resolve()
+        if not target.exists():
+            raise ValueError(f"Path does not exist: {path}")
+        if not target.is_dir():
+            raise ValueError(f"Path is not a directory: {path}")
+
+        roots = self._resolve_browse_roots()
+        if not any(self._is_within_root(target, root) for root in roots):
+            raise ValueError("Path is outside allowed roots")
+
+        entries: List[DirectoryEntry] = []
+        try:
+            for child in sorted(target.iterdir(), key=lambda p: p.name.lower()):
+                try:
+                    if child.is_dir():
+                        entries.append(DirectoryEntry(name=child.name, path=str(child), is_dir=True))
+                except PermissionError:
+                    continue
+        except PermissionError as e:
+            raise ValueError(f"Permission denied: {path}") from e
+
+        return entries
+
+    def create_browse_directory(self, parent_path: str, name: str) -> DirectoryEntry:
+        """Create a directory under an allowed browse root path."""
+        if not parent_path:
+            raise ValueError("Parent path is required")
+
+        folder_name = name.strip()
+        if not folder_name:
+            raise ValueError("Folder name is required")
+        if folder_name in {".", ".."}:
+            raise ValueError("Invalid folder name")
+        if any(sep in folder_name for sep in ("/", "\\")):
+            raise ValueError("Folder name cannot contain path separators")
+
+        expanded_parent = Path(os.path.expandvars(parent_path)).expanduser()
+        parent = expanded_parent.resolve()
+
+        if not parent.exists():
+            raise ValueError(f"Parent path does not exist: {parent_path}")
+        if not parent.is_dir():
+            raise ValueError(f"Parent path is not a directory: {parent_path}")
+
+        roots = self._resolve_browse_roots()
+        if not any(self._is_within_root(parent, root) for root in roots):
+            raise ValueError("Path is outside allowed roots")
+
+        target = (parent / folder_name).resolve()
+        if not any(self._is_within_root(target, root) for root in roots):
+            raise ValueError("Path is outside allowed roots")
+        if target.exists():
+            raise ValueError(f"Directory already exists: {folder_name}")
+
+        try:
+            target.mkdir()
+        except FileExistsError:
+            raise ValueError(f"Directory already exists: {folder_name}")
+        except PermissionError as e:
+            raise ValueError(f"Permission denied: {parent_path}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to create directory: {e}")
+
+        return DirectoryEntry(name=target.name, path=str(target), is_dir=True)
+
+    async def save_config(self, config: ProjectsConfig) -> None:
+        """Save projects configuration to YAML file atomically.
+
+        Args:
+            config: ProjectsConfig to save
+        """
+        async with self._lock:
+            # Ensure parent directory exists
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Atomic write: write to temp file first, then rename
+            temp_path = self.config_path.with_suffix('.tmp')
+            try:
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    yaml.safe_dump(
+                        config.model_dump(),
+                        f,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                        sort_keys=False
+                    )
+                # Atomic rename
+                temp_path.replace(self.config_path)
+            except Exception as e:
+                # Clean up temp file on error
+                if temp_path.exists():
+                    temp_path.unlink()
+                raise ValueError(f"Failed to save config: {e}")
+
+    async def get_projects(self) -> List[Project]:
+        """Get all projects.
+
+        Returns:
+            List of all projects
+        """
+        config = await self.load_config()
+        return config.projects
+
+    async def get_project(self, project_id: str) -> Optional[Project]:
+        """Get a single project by ID.
+
+        Args:
+            project_id: Project ID to find
+
+        Returns:
+            Project if found, None otherwise
+        """
+        config = await self.load_config()
+        for project in config.projects:
+            if project.id == project_id:
+                return project
+        return None
+
+    async def add_project(self, project: Project) -> Project:
+        """Add a new project.
+
+        Args:
+            project: Project to add
+
+        Returns:
+            The added project
+
+        Raises:
+            ValueError: If project ID already exists
+        """
+        config = await self.load_config()
+
+        # Check for duplicate ID
+        for existing in config.projects:
+            if existing.id == project.id:
+                raise ValueError(f"Project with ID '{project.id}' already exists")
+
+        # Add project
+        config.projects.append(project)
+        await self.save_config(config)
+        return project
+
+    async def update_project(
+        self,
+        project_id: str,
+        name: Optional[str] = None,
+        root_path: Optional[str] = None,
+        description: Optional[str] = None,
+        settings: Optional[ProjectSettings] = None,
+    ) -> Optional[Project]:
+        """Update an existing project.
+
+        Args:
+            project_id: ID of project to update
+            name: New name (optional)
+            root_path: New root path (optional)
+            description: New description (optional)
+            settings: New project settings (optional)
+
+        Returns:
+            Updated project if found, None otherwise
+        """
+        config = await self.load_config()
+
+        # Find project
+        for i, project in enumerate(config.projects):
+            if project.id == project_id:
+                # Update fields
+                update_data = {}
+                if name is not None:
+                    update_data['name'] = name
+                if root_path is not None:
+                    update_data['root_path'] = root_path
+                if description is not None:
+                    update_data['description'] = description
+                if settings is not None:
+                    update_data['settings'] = settings
+
+                # Update timestamp
+                update_data['updated_at'] = datetime.now().isoformat()
+
+                # Create updated project
+                updated_project = project.model_copy(update=update_data)
+                config.projects[i] = updated_project
+                await self.save_config(config)
+                return updated_project
+
+        return None
+
+    async def delete_project(self, project_id: str) -> bool:
+        """Delete a project.
+
+        Args:
+            project_id: ID of project to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        config = await self.load_config()
+        original_count = len(config.projects)
+
+        # Filter out the project
+        config.projects = [p for p in config.projects if p.id != project_id]
+
+        if len(config.projects) < original_count:
+            await self.save_config(config)
+            return True
+        return False
+
+    # Placeholder methods for Phase 3, 4, 5
+    # These will be implemented in later phases
+
+    async def get_file_tree(
+        self,
+        project_id: str,
+        relative_path: str = ""
+    ) -> FileNode:
+        """Get file tree for a project directory.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path from project root (default: root)
+
+        Returns:
+            FileNode representing the directory tree
+
+        Raises:
+            ValueError: If project not found or path is invalid
+        """
+        # Validate path and get resolved paths
+        root_path, target_path = await self._validate_path(project_id, relative_path)
+
+        # Check that target is a directory
+        if not target_path.is_dir():
+            raise ValueError(f"Path is not a directory: {relative_path}")
+
+        # Build and return tree
+        return self._build_tree_node(root_path, target_path, relative_path)
+
+    async def create_file(
+        self,
+        project_id: str,
+        relative_path: str,
+        content: str = "",
+        encoding: str = "utf-8"
+    ) -> FileContent:
+        """Create a new file in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+            content: Initial file content
+            encoding: File encoding (default: utf-8)
+
+        Returns:
+            FileContent with created file data
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be created
+        """
+        # Get project
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        # Get root path
+        root_path = Path(project.root_path)
+
+        # Validate path
+        if not relative_path or relative_path == ".":
+            raise ValueError("File path is required")
+
+        target_path = root_path / relative_path
+
+        # Security check: prevent path traversal
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        # Check if file already exists
+        if target_path.exists():
+            raise ValueError(f"File already exists: {relative_path}")
+
+        # Ensure parent directory exists
+        if not target_path.parent.exists() or not target_path.parent.is_dir():
+            parent_relative = (
+                str(target_path.parent.relative_to(root_path))
+                if target_path.parent.is_relative_to(root_path)
+                else str(target_path.parent)
+            )
+            raise ValueError(f"Parent directory does not exist: {parent_relative}")
+
+        # Check content size
+        content_bytes = content.encode(encoding)
+        content_size = len(content_bytes)
+        max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        if content_size > max_size_bytes:
+            raise ValueError(
+                f"Content size ({content_size} bytes) exceeds limit "
+                f"({settings.max_file_read_size_mb}MB)"
+            )
+
+        # Create file (fail if exists)
+        try:
+            with target_path.open("x", encoding=encoding) as f:
+                f.write(content)
+        except FileExistsError:
+            raise ValueError(f"File already exists: {relative_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to create file: {e}")
+
+        # Get file info and return
+        file_size = target_path.stat().st_size
+        file_ext = target_path.suffix.lower()
+        mime_type = self._get_mime_type(file_ext)
+
+        return FileContent(
+            path=relative_path,
+            content=content,
+            content_hash=self._compute_content_hash(content),
+            encoding=encoding,
+            size=file_size,
+            mime_type=mime_type
+        )
+
+    async def create_directory(
+        self,
+        project_id: str,
+        relative_path: str
+    ) -> FileNode:
+        """Create a new directory in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to directory from project root
+
+        Returns:
+            FileNode representing the created directory
+
+        Raises:
+            ValueError: If project not found, path invalid, or directory cannot be created
+        """
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        root_path = Path(project.root_path)
+
+        if not relative_path or relative_path == ".":
+            raise ValueError("Directory path is required")
+
+        target_path = root_path / relative_path
+
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        if target_path.exists():
+            raise ValueError(f"Directory already exists: {relative_path}")
+
+        if not target_path.parent.exists() or not target_path.parent.is_dir():
+            parent_relative = (
+                str(target_path.parent.relative_to(root_path))
+                if target_path.parent.is_relative_to(root_path)
+                else str(target_path.parent)
+            )
+            raise ValueError(f"Parent directory does not exist: {parent_relative}")
+
+        try:
+            target_path.mkdir()
+        except FileExistsError:
+            raise ValueError(f"Directory already exists: {relative_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to create directory: {e}")
+
+        return FileNode(
+            name=target_path.name,
+            path=relative_path,
+            type="directory",
+            size=None,
+            modified_at=None,
+            children=[]
+        )
+
+    def _build_tree_node(self, root_path: Path, current_path: Path, relative_path: str) -> FileNode:
+        """Recursively build a file tree node.
+
+        Args:
+            root_path: Project root path
+            current_path: Current absolute path being processed
+            relative_path: Relative path from project root
+
+        Returns:
+            FileNode for the current path
+        """
+        # Get basic info
+        name = current_path.name if current_path != root_path else root_path.name
+        is_dir = current_path.is_dir()
+
+        if is_dir:
+            # Get children, excluding hidden files
+            children: List[FileNode] = []
+            try:
+                for child in sorted(current_path.iterdir()):
+                    # Skip hidden files (starting with .)
+                    if child.name.startswith("."):
+                        continue
+
+                    # Calculate relative path for child
+                    child_relative = str(Path(relative_path) / child.name) if relative_path else child.name
+                    child_relative = child_relative.replace("\\\\", "/")  # Normalize to forward slashes
+
+                    # Recursively build child node
+                    child_node = self._build_tree_node(root_path, child, child_relative)
+                    children.append(child_node)
+            except PermissionError:
+                # If we can't read the directory, return empty children
+                children = []
+            return FileNode(
+                name=name,
+                path=relative_path,
+                type="directory",
+                size=None,
+                modified_at=None,
+                children=children,
+            )
+        else:
+            # For files, add size and modified time
+            size: Optional[int] = None
+            modified_at: Optional[str] = None
+            try:
+                stat = current_path.stat()
+                size = stat.st_size
+                modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
+            except Exception:
+                # If we can't get stats, just skip them
+                pass
+            return FileNode(
+                name=name,
+                path=relative_path,
+                type="file",
+                size=size,
+                modified_at=modified_at,
+                children=None,
+            )
+
+    async def read_file(
+        self,
+        project_id: str,
+        relative_path: str
+    ) -> FileContent:
+        """Read file content from a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+
+        Returns:
+            FileContent with file data
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be read
+        """
+        # Validate path and get resolved paths
+        root_path, target_path = await self._validate_path(project_id, relative_path)
+
+        # Check that target is a file
+        if not target_path.is_file():
+            raise ValueError(f"Path is not a file: {relative_path}")
+
+        # Check file size
+        file_size = target_path.stat().st_size
+        max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        if file_size > max_size_bytes:
+            raise ValueError(
+                f"File size ({file_size} bytes) exceeds limit "
+                f"({settings.max_file_read_size_mb}MB)"
+            )
+
+        # Detect encoding and read content
+        encoding = self._detect_encoding(target_path)
+        try:
+            content = target_path.read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            # If UTF-8 fails, try with errors='replace'
+            content = target_path.read_text(encoding=encoding, errors='replace')
+
+        # Determine MIME type (basic implementation)
+        file_ext = target_path.suffix.lower()
+        mime_type = self._get_mime_type(file_ext)
+
+        return FileContent(
+            path=relative_path,
+            content=content,
+            content_hash=self._compute_content_hash(content),
+            encoding=encoding,
+            size=file_size,
+            mime_type=mime_type
+        )
+
+    async def delete_directory(
+        self,
+        project_id: str,
+        relative_path: str,
+        recursive: bool = False
+    ) -> None:
+        """Delete a directory in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to directory from project root
+            recursive: Whether to delete contents recursively
+
+        Raises:
+            ValueError: If project not found, path invalid, or directory cannot be deleted
+        """
+        if not relative_path or relative_path == ".":
+            raise ValueError("Cannot delete root directory")
+
+        root_path, target_path = await self._validate_path(project_id, relative_path)
+
+        if target_path == root_path:
+            raise ValueError("Cannot delete root directory")
+
+        if not target_path.is_dir():
+            raise ValueError(f"Path is not a directory: {relative_path}")
+
+        try:
+            if recursive:
+                shutil.rmtree(target_path)
+            else:
+                target_path.rmdir()
+        except OSError as e:
+            if not recursive:
+                raise ValueError("Directory is not empty")
+            raise ValueError(f"Failed to delete directory: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to delete directory: {e}")
+
+    async def rename_path(
+        self,
+        project_id: str,
+        source_path: str,
+        target_path: str
+    ) -> FileRenameResult:
+        """Rename or move a file/directory within a project.
+
+        Args:
+            project_id: Project ID
+            source_path: Existing relative path from project root
+            target_path: New relative path from project root
+
+        Returns:
+            FileRenameResult with updated metadata
+
+        Raises:
+            ValueError: If project not found, paths invalid, or rename fails
+        """
+        if not source_path or source_path == ".":
+            raise ValueError("Source path is required")
+        if not target_path or target_path == ".":
+            raise ValueError("Target path is required")
+
+        # Validate source path
+        root_path, source_abs = await self._validate_path(project_id, source_path)
+
+        if source_abs == root_path:
+            raise ValueError("Cannot rename root directory")
+
+        # Build and validate target path
+        target_abs = root_path / target_path
+        if not self._is_safe_path(root_path, target_abs):
+            raise ValueError(f"Invalid path: {target_path}")
+
+        if source_abs.resolve() == target_abs.resolve():
+            raise ValueError("Source and target paths are the same")
+
+        if target_abs.exists():
+            raise ValueError(f"Target path already exists: {target_path}")
+
+        if not target_abs.parent.exists() or not target_abs.parent.is_dir():
+            parent_relative = (
+                str(target_abs.parent.relative_to(root_path))
+                if target_abs.parent.is_relative_to(root_path)
+                else str(target_abs.parent)
+            )
+            raise ValueError(f"Parent directory does not exist: {parent_relative}")
+
+        try:
+            source_abs.replace(target_abs)
+        except Exception as e:
+            raise ValueError(f"Failed to rename path: {e}")
+
+        node_type = "directory" if target_abs.is_dir() else "file"
+        size = None
+        modified_at = None
+        if node_type == "file":
+            try:
+                stat = target_abs.stat()
+                size = stat.st_size
+                modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
+            except Exception:
+                pass
+
+        normalized_source = source_path.replace("\\", "/")
+        normalized_target = target_path.replace("\\", "/")
+
+        return FileRenameResult(
+            old_path=normalized_source,
+            new_path=normalized_target,
+            type=node_type,
+            size=size,
+            modified_at=modified_at
+        )
+
+    async def search_files_with_proximity(
+        self,
+        project_id: str,
+        query: str,
+        current_file_path: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Search files with context-aware proximity scoring.
+
+        Args:
+            project_id: Project ID
+            query: Search query (file name, path fragment, etc.)
+            current_file_path: Current file for proximity calculation
+            limit: Max results to return
+
+        Returns:
+            List of file results with scores and proximity reasons
+        """
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        root_path = Path(project.root_path)
+
+        # Build file list
+        all_files = []
+        for file_path in root_path.rglob('*'):
+            if file_path.is_file() and not file_path.name.startswith('.'):
+                relative_path = file_path.relative_to(root_path)
+                all_files.append({
+                    'path': str(relative_path).replace('\\', '/'),
+                    'name': file_path.name,
+                    'directory': str(relative_path.parent).replace('\\', '/') if relative_path.parent != Path('.') else '',
+                    'extension': file_path.suffix,
+                })
+
+        # Score and filter files
+        scored_files = []
+        for file_info in all_files:
+            score, reason = self._calculate_file_score(
+                file_info, query, current_file_path
+            )
+            if score > 0:  # Only include matches
+                scored_files.append({
+                    **file_info,
+                    'score': score,
+                    'proximityReason': reason
+                })
+
+        # Sort by score and limit
+        scored_files.sort(key=lambda x: x['score'], reverse=True)
+        return scored_files[:limit]
+
+    def _calculate_file_score(
+        self,
+        file_info: Dict[str, str],
+        query: str,
+        current_file_path: Optional[str]
+    ) -> tuple[int, str]:
+        """Calculate match score with proximity weighting."""
+        file_path = file_info['path']
+        file_name = file_info['name']
+        query_lower = query.lower()
+
+        # Fuzzy match score (0-500)
+        fuzzy_score = 0
+
+        # Exact matches
+        if file_path == query:
+            fuzzy_score = 500
+        elif file_name == query:
+            fuzzy_score = 400
+        elif file_name.lower() == query_lower:
+            fuzzy_score = 350
+        elif query_lower in file_name.lower():
+            fuzzy_score = 300
+        elif query_lower in file_path.lower():
+            fuzzy_score = 200
+        else:
+            # Fuzzy substring matching
+            fuzzy_score = self._fuzzy_match_score(file_name.lower(), query_lower)
+
+        # If no match, return 0
+        if fuzzy_score == 0:
+            return 0, 'no-match'
+
+        # Proximity score (0-1000)
+        if not current_file_path:
+            # No current file: prefer shallow files
+            depth = file_path.count('/')
+            proximity_score = max(100, 500 - depth * 50)
+            proximity_reason = 'project-wide'
+        else:
+            current_file_path = current_file_path.replace('\\', '/')
+            current_dir = str(Path(current_file_path).parent).replace('\\', '/')
+            file_dir = file_info['directory']
+
+            if file_dir == current_dir:
+                proximity_score = 1000
+                proximity_reason = 'same-dir'
+            elif file_path.startswith(current_dir + '/'):
+                # Child directory
+                proximity_score = 800
+                proximity_reason = 'child-dir'
+            elif current_dir.startswith(file_dir + '/'):
+                # Parent directory
+                proximity_score = 600
+                proximity_reason = 'parent-dir'
+            elif Path(current_dir).parent == Path(file_dir).parent:
+                # Sibling directory
+                proximity_score = 400
+                proximity_reason = 'sibling'
+            else:
+                proximity_score = 200
+                proximity_reason = 'project-wide'
+
+        total_score = proximity_score + fuzzy_score
+        return total_score, proximity_reason
+
+    def _fuzzy_match_score(self, text: str, query: str) -> int:
+        """Simple fuzzy matching score (0-100)."""
+        if not query:
+            return 0
+
+        # Check if all query characters appear in order
+        text_idx = 0
+        matched_chars = 0
+
+        for char in query:
+            while text_idx < len(text) and text[text_idx] != char:
+                text_idx += 1
+            if text_idx < len(text):
+                matched_chars += 1
+                text_idx += 1
+            else:
+                break
+
+        if matched_chars == len(query):
+            # All characters matched - score based on match density
+            match_ratio = matched_chars / len(text)
+            return int(match_ratio * 100)
+
+        return 0
+
+    @staticmethod
+    def _compute_content_hash(content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _trim_search_line(text: str, max_chars_per_line: int) -> str:
+        if len(text) <= max_chars_per_line:
+            return text
+        return text[: max_chars_per_line - 1] + "..."
+
+    def _detect_encoding(self, file_path: Path) -> str:
+        """Detect file encoding.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Detected encoding (defaults to utf-8)
+        """
+        # For now, just return UTF-8
+        # In the future, could use chardet library for better detection
+        return "utf-8"
+
+    def _get_mime_type(self, file_ext: str) -> str:
+        """Get MIME type for file extension.
+
+        Args:
+            file_ext: File extension (with dot)
+
+        Returns:
+            MIME type string
+        """
+        mime_types = {
+            ".txt": "text/plain",
+            ".md": "text/markdown",
+            ".py": "text/x-python",
+            ".js": "text/javascript",
+            ".ts": "text/typescript",
+            ".tsx": "text/typescript",
+            ".jsx": "text/javascript",
+            ".json": "application/json",
+            ".yaml": "text/yaml",
+            ".yml": "text/yaml",
+            ".html": "text/html",
+            ".css": "text/css",
+            ".xml": "text/xml",
+            ".java": "text/x-java",
+            ".c": "text/x-c",
+            ".cpp": "text/x-c++",
+            ".h": "text/x-c",
+            ".go": "text/x-go",
+            ".rs": "text/x-rust",
+            ".sql": "text/x-sql",
+        }
+        return mime_types.get(file_ext, "text/plain")
+
+    def _is_safe_path(self, base_path: Path, target_path: Path) -> bool:
+        """Check if target path is safely within base path.
+
+        Args:
+            base_path: Base directory path
+            target_path: Target path to check
+
+        Returns:
+            True if safe, False otherwise
+        """
+        try:
+            # Resolve both paths to absolute paths
+            base_resolved = base_path.resolve()
+            target_resolved = target_path.resolve()
+
+            # Check if target is relative to base
+            return target_resolved.is_relative_to(base_resolved)
+        except (ValueError, OSError):
+            return False
+
+    async def _validate_path(
+        self,
+        project_id: str,
+        relative_path: str
+    ) -> tuple[Path, Path]:
+        """Validate and resolve a path within a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path from project root
+
+        Returns:
+            Tuple of (project_root_path, resolved_target_path)
+
+        Raises:
+            ValueError: If validation fails
+        """
+        # Get project
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        # Get root path
+        root_path = Path(project.root_path)
+
+        # If relative_path is empty, return root
+        if not relative_path or relative_path == ".":
+            return root_path, root_path
+
+        # Normalize separators so Windows-style traversal payloads are rejected on all OSes.
+        normalized_relative_path = relative_path.replace("\\", "/")
+
+        # Build target path
+        target_path = root_path / normalized_relative_path
+
+        # Security check: prevent path traversal
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        # Check if path exists
+        if not target_path.exists():
+            raise ValueError(f"Path does not exist: {relative_path}")
+
+        return root_path, target_path
+
+    async def write_file(
+        self,
+        project_id: str,
+        relative_path: str,
+        content: str,
+        encoding: str = "utf-8",
+        expected_hash: Optional[str] = None,
+    ) -> FileContent:
+        """Write content to a file in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+            content: Content to write
+            encoding: File encoding (default: utf-8)
+            expected_hash: Optional hash for optimistic locking
+
+        Returns:
+            FileContent with updated file data
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be written
+        """
+        # Get project
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        # Get root path
+        root_path = Path(project.root_path)
+
+        # Build target path
+        if not relative_path or relative_path == ".":
+            raise ValueError("Cannot write to root directory")
+
+        target_path = root_path / relative_path
+
+        # Security check: prevent path traversal
+        if not self._is_safe_path(root_path, target_path):
+            raise ValueError(f"Invalid path: {relative_path}")
+
+        normalized_expected_hash = (expected_hash or "").strip() or None
+        if normalized_expected_hash:
+            if not target_path.exists() or not target_path.is_file():
+                raise ProjectConflictError(
+                    "FILE_MISSING",
+                    "File was removed before save. Refresh file before saving again.",
+                    path=relative_path,
+                    expected_hash=normalized_expected_hash,
+                )
+
+            current_encoding = self._detect_encoding(target_path)
+            try:
+                current_content = target_path.read_text(encoding=current_encoding, errors="replace")
+            except Exception as e:
+                raise ValueError(f"Failed to read current file for hash check: {e}")
+            current_hash = self._compute_content_hash(current_content)
+            if current_hash != normalized_expected_hash:
+                raise ProjectConflictError(
+                    "HASH_MISMATCH",
+                    "File changed since last read. Refresh file before saving.",
+                    path=relative_path,
+                    current_hash=current_hash,
+                    expected_hash=normalized_expected_hash,
+                )
+
+        # Check content size
+        content_bytes = content.encode(encoding)
+        content_size = len(content_bytes)
+        max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        if content_size > max_size_bytes:
+            raise ValueError(
+                f"Content size ({content_size} bytes) exceeds limit "
+                f"({settings.max_file_read_size_mb}MB)"
+            )
+
+        # Ensure parent directory exists
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write: write to temp file first, then rename
+        temp_path = target_path.with_suffix(target_path.suffix + '.tmp')
+        try:
+            temp_path.write_text(content, encoding=encoding)
+            # Atomic rename
+            temp_path.replace(target_path)
+        except Exception as e:
+            # Clean up temp file on error
+            if temp_path.exists():
+                temp_path.unlink()
+            raise ValueError(f"Failed to write file: {e}")
+
+        # Get file info and return
+        file_size = target_path.stat().st_size
+        file_ext = target_path.suffix.lower()
+        mime_type = self._get_mime_type(file_ext)
+
+        return FileContent(
+            path=relative_path,
+            content=content,
+            content_hash=self._compute_content_hash(content),
+            encoding=encoding,
+            size=file_size,
+            mime_type=mime_type
+        )
+
+    async def search_project_text(
+        self,
+        project_id: str,
+        query: str,
+        *,
+        case_sensitive: bool = False,
+        use_regex: bool = False,
+        include_glob: Optional[str] = None,
+        exclude_glob: Optional[str] = None,
+        max_results: int = 30,
+        context_lines: int = 0,
+        max_chars_per_line: int = 300,
+    ) -> Dict[str, Any]:
+        """Search text across project files for user-facing discovery."""
+        project = await self.get_project(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        normalized_query = (query or "").strip()
+        if not normalized_query:
+            raise ValueError("Query is required")
+
+        include_glob = (include_glob or "").strip() or None
+        exclude_glob = (exclude_glob or "").strip() or None
+        max_results = max(1, min(int(max_results), 200))
+        context_lines = max(0, min(int(context_lines), 3))
+        max_chars_per_line = max(80, min(int(max_chars_per_line), 1200))
+
+        regex: Optional[re.Pattern[str]] = None
+        if use_regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                regex = re.compile(normalized_query, flags)
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern: {e}")
+
+        root_path = Path(project.root_path)
+        max_file_bytes = settings.max_file_read_size_mb * 1024 * 1024
+        results: List[Dict[str, Any]] = []
+        scanned_files = 0
+        skipped_hidden_files = 0
+        skipped_binary_files = 0
+        skipped_large_files = 0
+        scan_limit_hit = False
+        truncated = False
+
+        for abs_path in root_path.rglob("*"):
+            if not abs_path.is_file():
+                continue
+
+            if scanned_files >= _TEXT_SEARCH_MAX_FILES:
+                scan_limit_hit = True
+                break
+            scanned_files += 1
+
+            rel_path = str(abs_path.relative_to(root_path)).replace("\\", "/")
+            path_parts = Path(rel_path).parts
+            if any(part.startswith(".") for part in path_parts):
+                skipped_hidden_files += 1
+                continue
+
+            if include_glob and not fnmatch.fnmatch(rel_path, include_glob):
+                continue
+            if exclude_glob and fnmatch.fnmatch(rel_path, exclude_glob):
+                continue
+
+            try:
+                file_size = abs_path.stat().st_size
+                if file_size > max_file_bytes:
+                    skipped_large_files += 1
+                    continue
+
+                raw = abs_path.read_bytes()
+                if b"\x00" in raw[:4096]:
+                    skipped_binary_files += 1
+                    continue
+                text = raw.decode("utf-8", errors="replace")
+            except OSError:
+                continue
+
+            lines = text.splitlines()
+            for idx, line in enumerate(lines):
+                if use_regex:
+                    assert regex is not None
+                    is_match = bool(regex.search(line))
+                elif case_sensitive:
+                    is_match = normalized_query in line
+                else:
+                    is_match = normalized_query.lower() in line.lower()
+
+                if not is_match:
+                    continue
+
+                start = max(0, idx - context_lines)
+                end = min(len(lines), idx + context_lines + 1)
+                results.append(
+                    {
+                        "file_path": rel_path,
+                        "line_number": idx + 1,
+                        "line_text": self._trim_search_line(line, max_chars_per_line),
+                        "context_before": [
+                            self._trim_search_line(lines[i], max_chars_per_line)
+                            for i in range(start, idx)
+                        ],
+                        "context_after": [
+                            self._trim_search_line(lines[i], max_chars_per_line)
+                            for i in range(idx + 1, end)
+                        ],
+                    }
+                )
+                if len(results) >= max_results:
+                    truncated = True
+                    break
+
+            if truncated:
+                break
+
+        return {
+            "ok": True,
+            "query": normalized_query,
+            "case_sensitive": case_sensitive,
+            "use_regex": use_regex,
+            "include_glob": include_glob,
+            "exclude_glob": exclude_glob,
+            "max_results": max_results,
+            "results_count": len(results),
+            "truncated": truncated,
+            "scan_limit_hit": scan_limit_hit,
+            "scanned_files": scanned_files,
+            "skipped_hidden_files": skipped_hidden_files,
+            "skipped_binary_files": skipped_binary_files,
+            "skipped_large_files": skipped_large_files,
+            "results": results,
+        }
+
+    async def delete_file(
+        self,
+        project_id: str,
+        relative_path: str
+    ) -> None:
+        """Delete a file in a project.
+
+        Args:
+            project_id: Project ID
+            relative_path: Relative path to file from project root
+
+        Raises:
+            ValueError: If project not found, path invalid, or file cannot be deleted
+        """
+        if not relative_path or relative_path == ".":
+            raise ValueError("File path is required")
+
+        root_path, target_path = await self._validate_path(project_id, relative_path)
+
+        if target_path == root_path:
+            raise ValueError("Cannot delete root directory")
+
+        if not target_path.is_file():
+            raise ValueError(f"Path is not a file: {relative_path}")
+
+        try:
+            target_path.unlink()
+        except Exception as e:
+            raise ValueError(f"Failed to delete file: {e}")

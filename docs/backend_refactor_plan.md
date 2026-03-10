@@ -296,6 +296,10 @@ Infrastructure-oriented:
   - `conversation_storage.py`
   - `conversation_storage_paths.py`
   - `conversation_target_resolver.py`
+- `src/infrastructure/files/` has been introduced, and `file_service.py` now
+  physically lives there (with a compatibility re-export kept under `src/api/services/`).
+- `src/infrastructure/config/` has been introduced, and `project_service.py` now
+  physically lives there (with a compatibility re-export kept under `src/api/services/`).
 
 ### Remaining Work
 
