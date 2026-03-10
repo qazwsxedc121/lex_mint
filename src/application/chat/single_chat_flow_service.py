@@ -627,7 +627,7 @@ class SingleChatFlowService:
             from src.api.services.project_document_tool_service import ProjectDocumentToolService
             from src.api.services.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
             from src.api.services.project_tool_policy_resolver import ProjectToolPolicyResolver
-            from src.api.services.web_tool_service import WebToolService
+            from src.infrastructure.web.web_tool_service import WebToolService
             from src.tools.registry import get_tool_registry
 
             model_service = ModelConfigService()

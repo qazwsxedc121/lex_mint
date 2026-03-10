@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 
-from ..services.search_service import SearchService
+from src.infrastructure.web.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])

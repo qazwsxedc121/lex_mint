@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 
-from ..services.webpage_service import WebpageService
+from src.infrastructure.web.webpage_service import WebpageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webpage", tags=["webpage"])

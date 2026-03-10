@@ -29,9 +29,9 @@ from src.api.services.orchestration.log_utils import (
 from src.api.services.pricing_service import PricingService
 from src.api.services.rag_config_service import RagConfigService
 from src.api.services.rag_context_builder_service import RagContextBuilderService
-from src.api.services.search_service import SearchService
+from src.infrastructure.web.search_service import SearchService
 from src.api.services.source_context_service import SourceContextService
-from src.api.services.webpage_service import WebpageService
+from src.infrastructure.web.webpage_service import WebpageService
 
 from .factory import (
     build_chat_application_service,
