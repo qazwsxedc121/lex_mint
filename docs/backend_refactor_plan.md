@@ -308,6 +308,12 @@ Infrastructure-oriented:
 - `chatgpt_import_service.py` and `markdown_import_service.py` now physically
   live under `src/application/chat/` (with compatibility re-exports kept
   under `src/api/services/`)
+- `flow_event_types.py`, `flow_events.py`, `flow_event_mapper.py`,
+  `flow_event_emitter.py`, `flow_stream_runtime.py`,
+  `flow_stream_runtime_provider.py`, `workflow_flow_event_mapper.py`,
+  `async_run_service.py`, and `async_run_provider.py` now physically live
+  under `src/application/flow/` (with compatibility re-exports kept under
+  `src/api/services/`)
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
 - `workflow_run_history_service.py` now physically lives under
@@ -320,6 +326,7 @@ Infrastructure-oriented:
   - `conversation_target_resolver.py`
   - `comparison_storage.py`
   - `migration_service.py`
+  - `async_run_store_service.py`
 - `src/infrastructure/files/` has been introduced, and `file_service.py` now
   physically lives there (with a compatibility re-export kept under `src/api/services/`).
 - `src/infrastructure/config/` has been introduced, and `project_service.py` now

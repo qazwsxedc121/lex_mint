@@ -1,26 +1,5 @@
-"""Shared async run service/store singletons."""
+"""Compatibility re-export for async run providers."""
 
-from __future__ import annotations
+from src.application.flow.async_run_provider import get_async_run_service, get_async_run_store
 
-from src.application.workflows import WorkflowExecutionService
-
-from .async_run_service import AsyncRunService
-from .async_run_store_service import AsyncRunStoreService
-from .flow_stream_runtime_provider import get_flow_stream_runtime
-from .workflow_config_service import WorkflowConfigService
-
-_async_run_store = AsyncRunStoreService()
-_async_run_service = AsyncRunService(
-    store=_async_run_store,
-    runtime=get_flow_stream_runtime(),
-    workflow_config_service=WorkflowConfigService(),
-    workflow_execution_service=WorkflowExecutionService(),
-)
-
-
-def get_async_run_store() -> AsyncRunStoreService:
-    return _async_run_store
-
-
-def get_async_run_service() -> AsyncRunService:
-    return _async_run_service
+__all__ = ["get_async_run_service", "get_async_run_store"]

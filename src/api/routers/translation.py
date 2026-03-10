@@ -13,14 +13,14 @@ from pydantic import BaseModel
 from typing import Optional
 
 from ..services.language_detection_service import LanguageDetectionService
-from ..services.flow_event_emitter import FlowEventEmitter
-from ..services.flow_event_types import (
+from src.application.flow.flow_event_emitter import FlowEventEmitter
+from src.application.flow.flow_event_types import (
     LANGUAGE_DETECTED,
     LEGACY_EVENT,
     STREAM_ERROR,
     TRANSLATION_COMPLETED,
 )
-from ..services.flow_events import FlowEventStage
+from src.application.flow.flow_events import FlowEventStage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["translation"])

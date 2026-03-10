@@ -17,9 +17,9 @@ from ..dependencies import get_file_service as get_shared_file_service
 
 from ..services.conversation_storage import create_storage_with_project_resolver
 from ..services.file_service import FileService
-from ..services.flow_event_emitter import FlowEventEmitter
-from ..services.flow_event_mapper import FlowEventMapper
-from ..services.flow_event_types import (
+from src.application.flow.flow_event_emitter import FlowEventEmitter
+from src.application.flow.flow_event_mapper import FlowEventMapper
+from src.application.flow.flow_event_types import (
     ASSISTANT_MESSAGE_IDENTIFIED,
     COMPRESSION_COMPLETED,
     COMPARE_COMPLETED,
@@ -33,14 +33,14 @@ from ..services.flow_event_types import (
     TERMINAL_EVENT_TYPES,
     USER_MESSAGE_IDENTIFIED,
 )
-from ..services.flow_events import FlowEventStage
-from ..services.flow_stream_runtime import (
+from src.application.flow.flow_events import FlowEventStage
+from src.application.flow.flow_stream_runtime import (
     FlowReplayCursorGoneError,
     FlowStreamContextMismatchError,
     FlowStreamNotFoundError,
     FlowStreamRuntime,
 )
-from ..services.flow_stream_runtime_provider import get_flow_stream_runtime
+from src.application.flow.flow_stream_runtime_provider import get_flow_stream_runtime
 from ..models.search import SearchSource
 from ..config import settings
 

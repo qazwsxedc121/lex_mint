@@ -79,6 +79,14 @@ architecture vocabulary.
   `src/application/chat/` (with compatibility shims)
 - project conversation migration service now lives under
   `src/infrastructure/storage/` (with a compatibility shim)
+- flow event schema/mapper/emitter modules now live under
+  `src/application/flow/` (with compatibility shims)
+- flow stream runtime and provider modules now live under
+  `src/application/flow/` (with compatibility shims)
+- async run orchestration/provider modules now live under
+  `src/application/flow/` (with compatibility shims)
+- async run record store now lives under `src/infrastructure/storage/`
+  (with a compatibility shim)
 - orchestration modules now live under `src/application/chat/orchestration/`
   (with compatibility shims)
 - workflow run history now lives under `src/application/workflows/`
