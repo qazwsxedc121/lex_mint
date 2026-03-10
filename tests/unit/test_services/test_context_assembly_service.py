@@ -196,7 +196,7 @@ async def test_prepare_context_disables_assistant_memory_when_assistant_setting_
     )
 
     with patch(
-        "src.api.services.assistant_config_service.AssistantConfigService",
+        "src.infrastructure.config.assistant_config_service.AssistantConfigService",
         return_value=mocked_assistant_service,
     ):
         ctx = await service.prepare_context(

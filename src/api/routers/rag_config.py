@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Literal, Optional
 import logging
 
-from ..services.rag_config_service import RagConfigService
+from src.infrastructure.config.rag_config_service import RagConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rag", tags=["rag"])

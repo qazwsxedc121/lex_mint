@@ -12,7 +12,7 @@ from ..models.assistant_config import (
     AssistantCreate,
     AssistantUpdate,
 )
-from ..services.assistant_config_service import AssistantConfigService
+from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
 router = APIRouter(prefix="/api/assistants", tags=["assistants"])
 

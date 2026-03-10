@@ -225,7 +225,7 @@ class ConversationStorage:
         target_type: str
 
         if assistant_id:
-            from src.api.services.assistant_config_service import AssistantConfigService
+            from src.infrastructure.config.assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             assistant = await assistant_service.get_assistant(assistant_id)
             if assistant:
@@ -247,7 +247,7 @@ class ConversationStorage:
                 # Backward compatibility for legacy model-only sessions.
                 assistant_id = f"__legacy_model_{model_id.replace(':', '_')}"
         else:
-            from src.api.services.assistant_config_service import AssistantConfigService
+            from src.infrastructure.config.assistant_config_service import AssistantConfigService
             assistant_service = AssistantConfigService()
             default_assistant = await assistant_service.get_default_assistant()
             assistant_id = default_assistant.id

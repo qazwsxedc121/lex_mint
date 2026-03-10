@@ -18,7 +18,7 @@ async def test_build_group_runtime_assistant_returns_none_for_invalid_token():
 
 @pytest.mark.asyncio
 async def test_build_group_runtime_assistant_resolves_assistant(monkeypatch):
-    import src.api.services.assistant_config_service as assistant_config_service
+    import src.infrastructure.config.assistant_config_service as assistant_config_service
 
     class _FakeAssistantService:
         async def require_enabled_assistant(self, assistant_id):

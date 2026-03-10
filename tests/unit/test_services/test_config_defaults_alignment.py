@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import yaml
 
-from src.api.services.assistant_config_service import AssistantConfigService
+from src.infrastructure.config.assistant_config_service import AssistantConfigService
 from src.api.services.compression_config_service import CompressionConfigService
 from src.api.services.followup_service import FollowupService
 from src.api.services.title_generation_service import TitleGenerationService

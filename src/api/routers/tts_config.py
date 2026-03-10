@@ -10,7 +10,7 @@ import logging
 
 import edge_tts
 
-from ..services.tts_config_service import TTSConfigService
+from src.infrastructure.config.tts_config_service import TTSConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tts", tags=["tts"])

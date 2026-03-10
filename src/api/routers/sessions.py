@@ -114,7 +114,7 @@ async def _normalize_and_validate_group_assistants(group_assistants: Optional[Li
         raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique participants")
 
     # Validate all participant IDs exist and are enabled.
-    from ..services.assistant_config_service import AssistantConfigService
+    from src.infrastructure.config.assistant_config_service import AssistantConfigService
     from ..services.model_config_service import ModelConfigService
     assistant_service = AssistantConfigService()
     model_service = ModelConfigService()
@@ -596,7 +596,7 @@ class UpdateGroupSettingsRequest(BaseModel):
 
 async def _load_assistant_config_map(group_assistants: List[str]) -> Dict[str, Any]:
     """Load assistant objects for current group participants."""
-    from ..services.assistant_config_service import AssistantConfigService
+    from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
     assistant_service = AssistantConfigService()
     assistant_config_map: Dict[str, Any] = {}

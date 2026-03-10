@@ -6,7 +6,7 @@ from typing import AsyncIterator, Union, Dict, Any, Optional, List
 
 from src.api.services.language_detection_service import LanguageDetectionService
 from src.api.services.model_config_service import ModelConfigService
-from src.api.services.translation_config_service import TranslationConfigService
+from src.infrastructure.config.translation_config_service import TranslationConfigService
 from src.api.services.local_llama_cpp_service import LocalLlamaCppService
 from src.api.services.think_tag_filter import ThinkTagStreamFilter
 from src.providers.types import CallMode

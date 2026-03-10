@@ -42,6 +42,10 @@ architecture vocabulary.
 - infrastructure storage package now lives under `src/infrastructure/storage/` (with compatibility shims)
 - file infrastructure package now lives under `src/infrastructure/files/` (with compatibility shims)
 - config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
+- assistant/file-reference/memory/rag/translation/tts/workflow config services now live under
+  `src/infrastructure/config/` (with compatibility shims)
+- shared layered YAML config helpers now live under `src/infrastructure/config/`
+  (with compatibility shims)
 - web infrastructure package now lives under `src/infrastructure/web/` (with compatibility shims, including search + tools wrappers)
 - compression infrastructure package now lives under `src/infrastructure/compression/` (with compatibility shims)
 - project infrastructure package now lives under `src/infrastructure/projects/` (with compatibility shims for project-scoped tool helpers)

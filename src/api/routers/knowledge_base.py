@@ -298,7 +298,7 @@ async def list_chunks(
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_id}' not found")
 
     try:
-        from ..services.rag_config_service import RagConfigService
+        from src.infrastructure.config.rag_config_service import RagConfigService
         rag_config = RagConfigService()
         backend = str(
             getattr(rag_config.config.storage, "vector_store_backend", "chroma")

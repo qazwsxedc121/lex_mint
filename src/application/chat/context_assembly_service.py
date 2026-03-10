@@ -73,7 +73,7 @@ class ContextAssemblyService:
         structured_source_context: Optional[str] = None
 
         if assistant_id and not assistant_id.startswith("__legacy_model_"):
-            from src.api.services.assistant_config_service import AssistantConfigService
+            from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
             assistant_service = AssistantConfigService()
             try:

@@ -16,7 +16,7 @@ class TestConversationStorage:
     async def test_create_session(self, temp_conversation_dir, mock_assistant_service):
         """Test creating a new conversation session."""
         # Mock the class where it's imported in the function
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
 
             # Create session with assistant_id
@@ -41,7 +41,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_create_session_with_model_id_legacy(self, temp_conversation_dir, mock_assistant_service):
         """Test creating session with model_id (legacy mode)."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
                 # Mock model service
                 mock_model = Mock()  # Use Mock instead of AsyncMock
@@ -61,7 +61,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_create_group_session_with_group_settings(self, temp_conversation_dir, mock_assistant_service):
         """Group settings are persisted and returned with session payload."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(
                 assistant_id="default",
@@ -85,7 +85,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_append_message_user(self, temp_conversation_dir, mock_assistant_service):
         """Test appending user message."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -108,7 +108,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_append_message_assistant_with_usage(self, temp_conversation_dir, mock_assistant_service):
         """Test appending assistant message with token usage and cost."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -152,7 +152,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_list_sessions(self, temp_conversation_dir, mock_assistant_service):
         """Test listing all sessions."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
 
             # Create multiple sessions
@@ -182,7 +182,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_truncate_messages(self, temp_conversation_dir, mock_assistant_service):
         """Test truncating messages after specified index."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -205,7 +205,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_truncate_all_messages(self, temp_conversation_dir, mock_assistant_service):
         """Test truncating all messages (keep_until_index=-1)."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -222,7 +222,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_delete_message(self, temp_conversation_dir, mock_assistant_service):
         """Test deleting a specific message."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -242,7 +242,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_delete_message_out_of_range(self, temp_conversation_dir, mock_assistant_service):
         """Test deleting message with invalid index."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -255,7 +255,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_delete_session(self, temp_conversation_dir, mock_assistant_service):
         """Test deleting a session."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             storage = ConversationStorage(temp_conversation_dir)
             session_id = await storage.create_session(assistant_id="default")
 
@@ -281,7 +281,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_move_session_moves_compare_sidecar(self, temp_conversation_dir, mock_assistant_service):
         """Test moving a session also moves its compare sidecar file."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             project_root = temp_conversation_dir / "project_roots" / "proj-1"
             project_root.mkdir(parents=True, exist_ok=True)
             storage = ConversationStorage(
@@ -315,7 +315,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_copy_session_copies_compare_sidecar(self, temp_conversation_dir, mock_assistant_service):
         """Test copying a session also copies its compare sidecar file."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             project_root = temp_conversation_dir / "project_roots" / "proj-2"
             project_root.mkdir(parents=True, exist_ok=True)
             storage = ConversationStorage(
@@ -374,7 +374,7 @@ class TestConversationStorage:
             "No default assistant configured. Add an assistant first."
         )
 
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_service):
             storage = ConversationStorage(temp_conversation_dir)
             with pytest.raises(ValueError, match="No default assistant configured"):
                 await storage.create_session()
@@ -404,7 +404,7 @@ class TestConversationStorage:
         mock_service.get_assistant.return_value = default_assistant
         mock_service.require_enabled_assistant.return_value = default_assistant
 
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_service):
             with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
                 model_obj = Mock()
                 model_obj.id = "gpt-4"
@@ -433,7 +433,7 @@ class TestConversationStorage:
     @pytest.mark.asyncio
     async def test_update_session_assistant(self, temp_conversation_dir, mock_assistant_service):
         """Test updating session's assistant."""
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             # Mock different assistant
             new_assistant = AsyncMock()
             new_assistant.id = "coding-expert"
@@ -454,7 +454,7 @@ class TestConversationStorage:
 
     @pytest.mark.asyncio
     async def test_update_session_assistant_rejects_disabled_assistant(self, temp_conversation_dir, mock_assistant_service):
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             default_assistant = mock_assistant_service.require_enabled_assistant.return_value
 
             async def _require_enabled_assistant(assistant_id):
@@ -472,7 +472,7 @@ class TestConversationStorage:
 
     @pytest.mark.asyncio
     async def test_update_session_model_rejects_unavailable_model(self, temp_conversation_dir, mock_assistant_service):
-        with patch('src.api.services.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
             with patch('src.api.services.model_config_service.ModelConfigService') as mock_model_service:
                 model_obj = Mock()
                 model_obj.id = "gpt-4"

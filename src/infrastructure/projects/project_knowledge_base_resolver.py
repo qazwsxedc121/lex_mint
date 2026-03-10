@@ -35,7 +35,7 @@ class ProjectKnowledgeBaseResolver:
         assistant_for_resolution = assistant_obj
         if assistant_for_resolution is None and assistant_id and not assistant_id.startswith("__legacy_model_"):
             try:
-                from src.api.services.assistant_config_service import AssistantConfigService
+                from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
                 assistant_for_resolution = await AssistantConfigService().get_assistant(assistant_id)
             except Exception as exc:

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 
-from ..services.translation_config_service import TranslationConfigService
+from src.infrastructure.config.translation_config_service import TranslationConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/translation", tags=["translation"])

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import yaml
 
-from src.api.services.yaml_config_utils import (
+from src.infrastructure.config.yaml_config_utils import (
     load_default_yaml_section,
     load_layered_yaml_section,
     save_yaml_section_updates,

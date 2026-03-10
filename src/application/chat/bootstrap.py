@@ -12,9 +12,9 @@ from src.api.config import settings
 from src.api.services.chat_input_service import ChatInputService
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.compression.compression_service import CompressionService
-from src.api.services.file_reference_config_service import FileReferenceConfigService
+from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
-from src.api.services.file_service import FileService
+from src.infrastructure.files.file_service import FileService
 from src.api.services.memory_service import MemoryService
 from src.api.services.orchestration import (
     CommitteePolicy,
@@ -28,7 +28,7 @@ from src.api.services.pricing_service import PricingService
 from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
 from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
-from src.api.services.rag_config_service import RagConfigService
+from src.infrastructure.config.rag_config_service import RagConfigService
 from src.api.services.rag_context_builder_service import RagContextBuilderService
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.storage.comparison_storage import ComparisonStorage

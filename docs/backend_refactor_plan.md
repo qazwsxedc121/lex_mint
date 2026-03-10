@@ -306,6 +306,15 @@ Infrastructure-oriented:
 - `model_config_service.py` (plus `model_config_repository.py` / `model_runtime_service.py`)
   now physically live under `src/infrastructure/config/` (with compatibility re-exports kept
   under `src/api/services/`).
+- `assistant_config_service.py`, `file_reference_config_service.py`,
+  `memory_config_service.py`, `rag_config_service.py`,
+  `translation_config_service.py`, `tts_config_service.py`, and
+  `workflow_config_service.py` now physically live under
+  `src/infrastructure/config/` (with compatibility re-exports kept under
+  `src/api/services/`).
+- shared `yaml_config_utils.py` now physically lives under
+  `src/infrastructure/config/` (with a compatibility re-export kept under
+  `src/api/services/`).
 - `src/infrastructure/web/` has been introduced, and `webpage_service.py` now physically
   lives there (with a compatibility re-export kept under `src/api/services/`).
 - `search_service.py` and `web_tool_service.py` now physically live under
@@ -320,8 +329,8 @@ Infrastructure-oriented:
 
 ### Remaining Work
 
-- continue carving out infrastructure packages so file/config ownership is also reflected
-  physically (for example `src/infrastructure/files/`, `src/infrastructure/config/`)
+- reduce remaining production imports that still depend on compatibility shims
+  under `src/api/services/`
 - review whether workflow support modules need their own package split beyond the execution
   entrypoint
 

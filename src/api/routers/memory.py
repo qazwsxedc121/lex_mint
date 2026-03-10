@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..services.memory_config_service import MemoryConfigService
+from src.infrastructure.config.memory_config_service import MemoryConfigService
 from ..services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)

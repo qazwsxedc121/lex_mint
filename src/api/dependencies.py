@@ -9,11 +9,14 @@ from src.application.chat import (
     ChatApplicationService,
     build_default_chat_application_service,
 )
-from .services.assistant_config_service import AssistantConfigService
-from .services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
-from .services.file_service import FileService
-from .services.model_config_service import ModelConfigService
-from .services.project_service import ProjectService
+from src.infrastructure.config.assistant_config_service import AssistantConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.config.project_service import ProjectService
+from src.infrastructure.files.file_service import FileService
+from src.infrastructure.storage.conversation_storage import (
+    ConversationStorage,
+    create_storage_with_project_resolver,
+)
 from .services.project_workspace_state_service import ProjectWorkspaceStateService
 
 _model_service: Optional[ModelConfigService] = None

@@ -135,8 +135,8 @@ async def startup_event():
     settings.projects_config_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Initialize model/assistant configuration files if missing.
-    from .services.model_config_service import ModelConfigService
-    from .services.assistant_config_service import AssistantConfigService
+    from src.infrastructure.config.model_config_service import ModelConfigService
+    from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
     ModelConfigService()
     AssistantConfigService()
@@ -144,7 +144,7 @@ async def startup_event():
     # Initialize prompt templates and chat folders configs if missing.
     from .services.prompt_template_service import PromptTemplateConfigService
     from .services.folder_service import FolderService
-    from .services.workflow_config_service import WorkflowConfigService
+    from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 
     PromptTemplateConfigService()
     FolderService()
@@ -170,7 +170,7 @@ async def startup_event():
         logger.info("Cleaned up %s temporary session(s)", cleaned)
 
     # Ensure vector-store paths exist.
-    from .services.rag_config_service import RagConfigService
+    from src.infrastructure.config.rag_config_service import RagConfigService
 
     try:
         rag_cfg = RagConfigService()
@@ -215,4 +215,3 @@ async def packaged_frontend_routes(full_path: str):
         raise HTTPException(status_code=404, detail="Not Found")
 
     return _frontend_file_response(full_path)
-

@@ -128,7 +128,7 @@ class ConversationSessionTargetResolver:
 
     def _get_assistant_service(self) -> Any:
         if self.assistant_service is None:
-            from src.api.services.assistant_config_service import AssistantConfigService
+            from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
             self.assistant_service = AssistantConfigService()
         return self.assistant_service

@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 
 from src.api.models.assistant_config import Assistant
-from src.api.services.assistant_config_service import AssistantConfigService
+from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
 
 class TestAssistantConfigService:
