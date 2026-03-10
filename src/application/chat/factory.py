@@ -14,7 +14,9 @@ def build_single_chat_flow_service(
     storage: Any,
     chat_input_service: Any,
     post_turn_service: Any,
-    single_turn_orchestrator: Any,
+    call_llm_stream: Any,
+    pricing_service: Any,
+    file_service: Any,
     prepare_context: Any,
     build_file_context_block: Any,
 ) -> SingleChatFlowService:
@@ -24,7 +26,9 @@ def build_single_chat_flow_service(
             storage=storage,
             chat_input_service=chat_input_service,
             post_turn_service=post_turn_service,
-            single_turn_orchestrator=single_turn_orchestrator,
+            call_llm_stream=call_llm_stream,
+            pricing_service=pricing_service,
+            file_service=file_service,
             prepare_context=prepare_context,
             build_file_context_block=build_file_context_block,
         )

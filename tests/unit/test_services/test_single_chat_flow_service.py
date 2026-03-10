@@ -20,18 +20,15 @@ async def _collect_events(async_iter):
     return events
 
 
-class _FakeSingleTurnOrchestrator:
-    async def stream(self, _request):
-        usage = TokenUsage(prompt_tokens=5, completion_tokens=7, total_tokens=12)
-        cost = CostInfo(input_cost=0.01, output_cost=0.02, total_cost=0.03, currency="USD")
-        yield {"type": "assistant_chunk", "chunk": "hello"}
-        yield {"type": "usage", "usage": usage, "cost": cost}
-        yield {
-            "type": "single_turn_complete",
-            "content": "hello",
-            "usage": usage.model_dump(),
-            "cost": cost.model_dump(),
-        }
+class _FakePricingService:
+    def calculate_cost(self, *_args, **_kwargs):
+        return CostInfo(input_cost=0.01, output_cost=0.02, total_cost=0.03, currency="USD")
+
+
+async def _fake_call_llm_stream(*_args, **_kwargs):
+    usage = TokenUsage(prompt_tokens=5, completion_tokens=7, total_tokens=12)
+    yield "hello"
+    yield {"type": "usage", "usage": usage}
 
 
 class _FakePostTurnService:
@@ -66,7 +63,9 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
         storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
         chat_input_service=_FakeInputService(),
         post_turn_service=post_turn,
-        single_turn_orchestrator=_FakeSingleTurnOrchestrator(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
         prepare_context=lambda **_kwargs: _return_async(
             ContextPayload(
                 messages=[{"role": "user", "content": "hello"}],
@@ -141,7 +140,9 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         ),
         chat_input_service=_FakeInputService(),
         post_turn_service=_FakePostTurnService(),
-        single_turn_orchestrator=_FakeSingleTurnOrchestrator(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
     )
@@ -174,7 +175,9 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
         storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
         chat_input_service=_FakeInputService(),
         post_turn_service=_FakePostTurnService(),
-        single_turn_orchestrator=_FakeSingleTurnOrchestrator(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
     )
@@ -245,7 +248,9 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
         storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
         chat_input_service=_FakeInputService(),
         post_turn_service=_FakePostTurnService(),
-        single_turn_orchestrator=_FakeSingleTurnOrchestrator(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
         prepare_context=lambda **_kwargs: _return_async(
             ContextPayload(
                 messages=[{"role": "user", "content": "hello"}],

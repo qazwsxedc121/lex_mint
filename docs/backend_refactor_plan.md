@@ -158,6 +158,8 @@ Current progress:
 - production router dependencies now resolve `ChatApplicationService` directly
 - `AgentService` has been removed from the production chat path
 - `SingleChatFlowService` is now the clear single-chat application flow owner
+- single-chat streaming now calls `llm_runtime.call_llm_stream` directly from
+  `SingleChatFlowService` (no production `SingleTurnOrchestrator` hop)
 
 ### Scope
 
@@ -197,7 +199,7 @@ with persistence/context/tool preparation remaining in the application service.
 
 ### Remaining Work
 
-- decide whether `SingleTurnOrchestrator` remains a durable abstraction
+- decide whether `SingleTurnOrchestrator` should remain only for compatibility/tests
 - decide whether `SingleChatFlowService` should stay public or be folded into a narrower application package structure
 - reduce residual composition code still living under `src/api/services/`
 

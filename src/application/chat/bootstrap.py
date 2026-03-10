@@ -20,7 +20,6 @@ from src.api.services.memory_service import MemoryService
 from src.api.services.orchestration import (
     CommitteePolicy,
     CompareModelsOrchestrator,
-    SingleTurnOrchestrator,
 )
 from src.api.services.orchestration.log_utils import (
     build_messages_preview_for_log,
@@ -126,11 +125,6 @@ def build_default_chat_application_service(
     committee_turn_executor = group_orchestration_support_service.create_committee_turn_executor()
     group_runtime_support_service = GroupRuntimeSupportService()
 
-    single_turn_orchestrator = SingleTurnOrchestrator(
-        call_llm_stream=call_llm_stream,
-        pricing_service=pricing_service,
-        file_service=resolved_file_service,
-    )
     compare_models_orchestrator = CompareModelsOrchestrator(
         call_llm_stream=call_llm_stream,
         pricing_service=pricing_service,
@@ -167,7 +161,9 @@ def build_default_chat_application_service(
         storage=storage,
         chat_input_service=chat_input_service,
         post_turn_service=post_turn_service,
-        single_turn_orchestrator=single_turn_orchestrator,
+        call_llm_stream=call_llm_stream,
+        pricing_service=pricing_service,
+        file_service=resolved_file_service,
         prepare_context=context_assembly_service.prepare_context,
         build_file_context_block=file_reference_context_builder.build_context_block,
     )

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from src.agents.llm_runtime import estimate_total_tokens
-from src.api.services.orchestration import OrchestrationRequest, SingleTurnOrchestrator, SingleTurnSettings
 from src.api.services.rag_tool_service import RagToolService
 from src.api.services.service_contracts import (
     AssistantLike,
@@ -31,7 +30,9 @@ class SingleChatFlowDeps:
     storage: Any
     chat_input_service: Any
     post_turn_service: Any
-    single_turn_orchestrator: Any
+    call_llm_stream: Callable[..., AsyncIterator[Any]]
+    pricing_service: Any
+    file_service: Any
     prepare_context: Callable[..., Awaitable[ContextPayload]]
     build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
 
@@ -352,58 +353,48 @@ class SingleChatFlowService:
     ) -> AsyncIterator[StreamItem]:
         print(f"[Step 3] Streaming LLM call...")
         logger.info(f"[Step 3] Streaming LLM call")
-        single_turn_request = OrchestrationRequest(
-            session_id=runtime.session_id,
-            mode="single_turn",
-            user_message=runtime.raw_user_message,
-            participants=[runtime.assistant_id] if runtime.assistant_id else [],
-            assistant_name_map={},
-            assistant_config_map={},
-            settings=SingleTurnSettings(
-                messages=runtime.messages,
-                model_id=runtime.model_id,
-                system_prompt=runtime.system_prompt,
-                max_rounds=runtime.max_rounds,
-                context_segments=runtime.context_segments,
-                assistant_params=runtime.assistant_params,
-                reasoning_effort=reasoning_effort,
-                llm_tools=llm_tools,
-                tool_executor=rag_tool_executor,
-            ),
-            reasoning_effort=reasoning_effort,
-            context_type=runtime.context_type,
-            project_id=runtime.project_id,
-        )
 
         try:
-            async for event in self.deps.single_turn_orchestrator.stream(single_turn_request):
-                event_type = event.get("type")
-                if event_type == "assistant_chunk":
-                    chunk = str(event.get("chunk") or "")
-                    outcome.full_response += chunk
-                    yield chunk
-                    continue
-                if event_type in ("context_info", "thinking_duration", "tool_calls", "tool_results"):
-                    yield event
-                    continue
-                if event_type == "usage":
-                    usage_data = event.get("usage")
-                    cost_data = event.get("cost")
-                    if isinstance(usage_data, dict):
-                        usage_data = TokenUsage(**usage_data)
-                    if isinstance(cost_data, dict):
-                        cost_data = CostInfo(**cost_data)
-                    outcome.usage_data = usage_data
-                    outcome.cost_data = cost_data
-                    continue
-                if event_type == "single_turn_complete":
-                    (
-                        outcome.full_response,
-                        outcome.usage_data,
-                        outcome.cost_data,
-                        outcome.tool_diagnostics,
-                    ) = SingleTurnOrchestrator.parse_completion_event(event)
-                    continue
+            async for chunk in self.deps.call_llm_stream(
+                runtime.messages,
+                session_id=runtime.session_id,
+                model_id=runtime.model_id,
+                system_prompt=runtime.system_prompt,
+                context_segments=runtime.context_segments,
+                max_rounds=runtime.max_rounds,
+                reasoning_effort=reasoning_effort,
+                file_service=self.deps.file_service,
+                tools=llm_tools,
+                tool_executor=rag_tool_executor,
+                **runtime.assistant_params,
+            ):
+                if isinstance(chunk, dict):
+                    chunk_type = chunk.get("type")
+                    if chunk_type == "usage":
+                        usage_data = chunk.get("usage")
+                        if isinstance(usage_data, dict):
+                            usage_data = TokenUsage(**usage_data)
+                        if isinstance(usage_data, TokenUsage):
+                            outcome.usage_data = usage_data
+                            model_parts = runtime.model_id.split(":", 1)
+                            provider_id = model_parts[0] if len(model_parts) > 1 else ""
+                            simple_model_id = model_parts[1] if len(model_parts) > 1 else runtime.model_id
+                            outcome.cost_data = self.deps.pricing_service.calculate_cost(
+                                provider_id,
+                                simple_model_id,
+                                usage_data,
+                            )
+                        continue
+                    if chunk_type in ("context_info", "thinking_duration", "tool_calls", "tool_results"):
+                        yield chunk
+                        continue
+                    if chunk_type == "tool_diagnostics":
+                        outcome.tool_diagnostics = dict(chunk)
+                        continue
+
+                text_chunk = str(chunk)
+                outcome.full_response += text_chunk
+                yield text_chunk
             print(f"[OK] LLM streaming complete")
             logger.info(f"[OK] LLM streaming complete")
             print(f"[MSG] AI response length: {len(outcome.full_response)} chars")
