@@ -305,6 +305,8 @@ Infrastructure-oriented:
   under `src/api/services/`).
 - `src/infrastructure/web/` has been introduced, and `webpage_service.py` now physically
   lives there (with a compatibility re-export kept under `src/api/services/`).
+- `search_service.py` and `web_tool_service.py` now physically live under
+  `src/infrastructure/web/` (with compatibility re-exports kept under `src/api/services/`).
 
 ### Remaining Work
 
