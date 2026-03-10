@@ -52,7 +52,7 @@ async def test_build_group_runtime_assistant_resolves_assistant(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_build_group_runtime_assistant_resolves_model_token(monkeypatch):
-    import src.api.services.model_config_service as model_config_service
+    import src.infrastructure.config.model_config_service as model_config_service
 
     class _FakeModelService:
         async def require_enabled_model(self, model_id):

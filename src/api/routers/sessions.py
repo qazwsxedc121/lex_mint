@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from ..dependencies import get_storage as get_shared_storage
 from ..services.conversation_storage import ConversationStorage
-from ..services.comparison_storage import ComparisonStorage
+from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from ..services.chatgpt_import_service import ChatGPTImportService
 from ..services.markdown_import_service import MarkdownImportService
 from ..services.orchestration import GroupSettingsResolver

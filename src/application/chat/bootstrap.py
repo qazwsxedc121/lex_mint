@@ -10,14 +10,11 @@ from typing import Any, Dict, Optional
 from src.agents.llm_runtime import call_llm, call_llm_stream
 from src.api.config import settings
 from src.api.services.chat_input_service import ChatInputService
-from src.api.services.comparison_storage import ComparisonStorage
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.compression.compression_service import CompressionService
 from src.api.services.file_reference_config_service import FileReferenceConfigService
 from src.api.services.file_reference_context_builder import FileReferenceContextBuilder
 from src.api.services.file_service import FileService
-from src.api.services.group_orchestration_support_service import GroupOrchestrationSupportService
-from src.api.services.group_runtime_support_service import GroupRuntimeSupportService
 from src.api.services.memory_service import MemoryService
 from src.api.services.orchestration import (
     CommitteePolicy,
@@ -34,6 +31,7 @@ from src.infrastructure.projects.project_tool_policy_resolver import ProjectTool
 from src.api.services.rag_config_service import RagConfigService
 from src.api.services.rag_context_builder_service import RagContextBuilderService
 from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.web.search_service import SearchService
 from src.infrastructure.web.web_tool_service import WebToolService
 from src.api.services.source_context_service import SourceContextService
@@ -47,6 +45,8 @@ from .factory import (
 )
 from .context_assembly_service import ContextAssemblyService
 from .group_chat_service import GroupChatDeps, GroupChatService
+from .group_orchestration_support_service import GroupOrchestrationSupportService
+from .group_runtime_support_service import GroupRuntimeSupportService
 from .post_turn_service import PostTurnService
 from .service import ChatApplicationService
 

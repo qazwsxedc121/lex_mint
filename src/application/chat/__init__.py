@@ -9,6 +9,8 @@ from .factory import (
     build_single_chat_flow_service,
 )
 from .group_chat_service import GroupChatDeps, GroupChatService
+from .group_orchestration_support_service import GroupOrchestrationSupportService
+from .group_runtime_support_service import GroupRuntimeSupportService
 from .post_turn_service import PostTurnService
 from .service import ChatApplicationDeps, ChatApplicationService
 from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
@@ -25,6 +27,8 @@ __all__ = [
     "ContextAssemblyService",
     "GroupChatDeps",
     "GroupChatService",
+    "GroupOrchestrationSupportService",
+    "GroupRuntimeSupportService",
     "PostTurnService",
     "SingleChatFlowDeps",
     "SingleChatFlowService",

@@ -298,6 +298,7 @@ Infrastructure-oriented:
   - `conversation_storage.py`
   - `conversation_storage_paths.py`
   - `conversation_target_resolver.py`
+  - `comparison_storage.py`
 - `src/infrastructure/files/` has been introduced, and `file_service.py` now
   physically lives there (with a compatibility re-export kept under `src/api/services/`).
 - `src/infrastructure/config/` has been introduced, and `project_service.py` now
@@ -368,10 +369,13 @@ Bring non-single-chat flows under the same structural vocabulary.
 - compare flow has a dedicated application service
 - group and compare no longer route through a legacy compatibility facade
 - workflow execution now has a dedicated application package entrypoint
+- `group_runtime_support_service.py` and `group_orchestration_support_service.py`
+  now physically live under `src/application/chat/` with compatibility re-exports
+  retained under `src/api/services/`
 
 ### Remaining Work
 
-- group and compare modules still live in transitional package locations
+- compare modules still have transitional package dependencies
 - supporting workflow modules still mostly live under transitional package locations
 
 
