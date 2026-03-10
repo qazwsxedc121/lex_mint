@@ -382,11 +382,11 @@ class TestModelConfigService:
                 sort_keys=False,
             )
 
-        monkeypatch.setattr("src.api.services.model_config_service.config_defaults_dir", lambda: defaults_dir)
-        monkeypatch.setattr("src.api.services.model_config_service.config_local_dir", lambda: local_dir)
-        monkeypatch.setattr("src.api.services.model_config_service.local_keys_config_path", lambda: local_dir / "keys_config.yaml")
-        monkeypatch.setattr("src.api.services.model_config_service.shared_keys_config_path", lambda: legacy_dir / "shared_keys_config.yaml")
-        monkeypatch.setattr("src.api.services.model_config_service.legacy_config_dir", lambda: legacy_dir)
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.config_defaults_dir", lambda: defaults_dir)
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.config_local_dir", lambda: local_dir)
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.local_keys_config_path", lambda: local_dir / "keys_config.yaml")
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.shared_keys_config_path", lambda: legacy_dir / "shared_keys_config.yaml")
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.legacy_config_dir", lambda: legacy_dir)
 
         service = ModelConfigService()
         config = await service.load_config()
@@ -414,7 +414,7 @@ class TestModelConfigService:
         )
         adapter = Mock()
         adapter.test_connection = AsyncMock(return_value=(False, "Connection error: broken"))
-        monkeypatch.setattr("src.api.services.model_config_service.AdapterRegistry.get_for_provider", lambda _: adapter)
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.AdapterRegistry.get_for_provider", lambda _: adapter)
 
         with caplog.at_level("ERROR"):
             success, message = await service.test_provider_connection(
@@ -809,7 +809,7 @@ class TestModelConfigService:
         with open(shared_keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {"deepseek": {"api_key": "old_value"}}}, f)
 
-        with patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+        with patch("src.infrastructure.config.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
             service = ModelConfigService(config_path, shared_keys_path)
 
             with pytest.raises(PermissionError, match="bootstrap-only"):
@@ -834,11 +834,11 @@ class TestModelConfigService:
         with open(shared_keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump(shared_payload, f)
 
-        with patch("src.api.services.model_config_service.config_local_dir", return_value=config_local_path), \
-                patch("src.api.services.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
-                patch("src.api.services.model_config_service.legacy_config_dir", return_value=legacy_config_path), \
-                patch("src.api.services.model_config_service.local_keys_config_path", return_value=config_local_path / "keys_config.yaml"), \
-                patch("src.api.services.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+        with patch("src.infrastructure.config.model_config_service.config_local_dir", return_value=config_local_path), \
+                patch("src.infrastructure.config.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
+                patch("src.infrastructure.config.model_config_service.legacy_config_dir", return_value=legacy_config_path), \
+                patch("src.infrastructure.config.model_config_service.local_keys_config_path", return_value=config_local_path / "keys_config.yaml"), \
+                patch("src.infrastructure.config.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
             service = ModelConfigService()
 
         expected_local_keys = config_local_path / "keys_config.yaml"
@@ -1254,7 +1254,6 @@ class TestModelConfigService:
 
         with pytest.raises(ValueError, match="Provider 'openai' is disabled"):
             service.get_llm_instance("openai:gpt-4")
-
 
 
 
