@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.group_runtime_support_service import GroupRuntimeSupportService
+from src.application.chat.group_runtime_support_service import GroupRuntimeSupportService
 
 
 @pytest.mark.asyncio

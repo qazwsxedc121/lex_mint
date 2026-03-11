@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.services.orchestration.events import normalize_orchestration_event
+from src.application.chat.orchestration.events import normalize_orchestration_event
 
 
 def test_normalize_event_accepts_known_event_type():

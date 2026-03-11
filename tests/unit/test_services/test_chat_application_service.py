@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.api.services.chat_application_service import ChatApplicationDeps, ChatApplicationService
+from src.application.chat.service import ChatApplicationDeps, ChatApplicationService
 
 
 async def _collect(async_iter):

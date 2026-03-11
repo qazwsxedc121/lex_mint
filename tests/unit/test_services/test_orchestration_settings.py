@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from src.api.services.orchestration.settings import GroupSettingsResolver
+from src.application.chat.orchestration.settings import GroupSettingsResolver
 
 
 def _assistant(max_rounds: int = 6):

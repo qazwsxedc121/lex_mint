@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from src.api.services.memory_config_service import MemoryConfigService
+from src.infrastructure.config.memory_config_service import MemoryConfigService
 
 
 def test_memory_config_service_creates_default_file(temp_config_dir):

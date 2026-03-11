@@ -1,6 +1,6 @@
 """Tests for LocalLlamaCppService GPU offload handling."""
 
-from src.api.services.local_llama_cpp_service import LocalLlamaCppService
+from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
 
 
 def test_init_preserves_full_gpu_offload_sentinel(monkeypatch, tmp_path):

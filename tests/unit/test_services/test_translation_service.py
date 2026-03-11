@@ -1,8 +1,8 @@
 """Unit tests for TranslationService language routing helpers."""
 
-from src.api.services.language_detection_service import LanguageDetectionService
-from src.api.services.translation_config_service import TranslationConfig
-from src.api.services.translation_service import TranslationService
+from src.infrastructure.llm.language_detection_service import LanguageDetectionService
+from src.infrastructure.config.translation_config_service import TranslationConfig
+from src.application.translation.translation_service import TranslationService
 
 
 def _build_config(

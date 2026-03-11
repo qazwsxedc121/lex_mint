@@ -3,8 +3,8 @@
 import asyncio
 import json
 
-from src.api.services.rag_service import RagResult
-from src.api.services.rag_tool_service import RagToolService
+from src.infrastructure.retrieval.rag_service import RagResult
+from src.application.chat.rag_tool_service import RagToolService
 
 
 class _FakeRagService:

@@ -2,9 +2,9 @@
 
 import pytest
 
-from src.api.services.chat_input_service import PreparedUserInput
-from src.api.services.compare_flow_service import CompareFlowDeps, CompareFlowService
-from src.api.services.service_contracts import ContextPayload
+from src.application.chat.chat_input_service import PreparedUserInput
+from src.application.chat.compare_flow_service import CompareFlowDeps, CompareFlowService
+from src.application.chat.service_contracts import ContextPayload
 
 
 async def _collect_events(async_iter):

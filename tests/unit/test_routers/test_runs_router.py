@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 from src.api.models.async_run import AsyncRunRecord, RunStatus
 from src.api.routers import runs as runs_router
-from src.api.services.flow_stream_runtime import FlowStreamRuntime
+from src.application.flow.flow_stream_runtime import FlowStreamRuntime
 
 
 async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]:

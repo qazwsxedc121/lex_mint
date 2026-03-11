@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 import pytest
 
 from src.api.models.async_run import AsyncRunRecord, RunStatus
-from src.api.services.async_run_service import AsyncRunService
-from src.api.services.flow_stream_runtime import FlowStreamRuntime
+from src.application.flow.async_run_service import AsyncRunService
+from src.application.flow.flow_stream_runtime import FlowStreamRuntime
 
 
 def _make_record(*, run_id: str, status: RunStatus) -> AsyncRunRecord:

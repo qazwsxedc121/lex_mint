@@ -1,6 +1,6 @@
 """Unit tests for legacy stream -> flow_event mapping."""
 
-from src.api.services.flow_event_mapper import FlowEventMapper
+from src.application.flow.flow_event_mapper import FlowEventMapper
 
 
 def test_mapper_wraps_text_chunk_with_flow_event():

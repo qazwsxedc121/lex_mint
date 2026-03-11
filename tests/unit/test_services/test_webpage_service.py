@@ -5,7 +5,7 @@ from __future__ import annotations
 import ssl
 import pytest
 
-from src.api.services.webpage_service import WebpageService
+from src.infrastructure.web.webpage_service import WebpageService
 
 
 class _FakeResponse:

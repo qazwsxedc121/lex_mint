@@ -7,10 +7,10 @@ from unittest.mock import Mock
 import yaml
 
 from src.infrastructure.config.assistant_config_service import AssistantConfigService
-from src.api.services.compression_config_service import CompressionConfigService
-from src.api.services.followup_service import FollowupService
-from src.api.services.title_generation_service import TitleGenerationService
-from src.api.services.translation_config_service import TranslationConfigService
+from src.infrastructure.compression.compression_config_service import CompressionConfigService
+from src.application.chat.followup_service import FollowupService
+from src.application.chat.title_generation_service import TitleGenerationService
+from src.infrastructure.config.translation_config_service import TranslationConfigService
 
 
 def _load_defaults(filename: str, section: str) -> dict:

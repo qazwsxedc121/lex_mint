@@ -1,4 +1,4 @@
-from src.api.services.bm25_service import Bm25Service
+from src.infrastructure.retrieval.bm25_service import Bm25Service
 
 
 def test_bm25_search_filters_by_term_coverage(tmp_path):

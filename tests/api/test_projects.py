@@ -2,8 +2,8 @@
 
 import pytest
 from pathlib import Path
-from src.api.services.project_service import ProjectService, ProjectConflictError
-from src.api.services.project_workspace_state_service import ProjectWorkspaceStateService
+from src.infrastructure.config.project_service import ProjectService, ProjectConflictError
+from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 from src.api.models.project_config import Project, ProjectCreate
 from src.api.models.project_config import ProjectWorkspaceItemUpsert
 from src.api.config import settings

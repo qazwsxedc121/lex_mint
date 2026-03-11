@@ -5,14 +5,14 @@ from typing import List, Optional
 
 import pytest
 
-from src.api.services.group_orchestration_support_service import GroupOrchestrationSupportService
-from src.api.services.orchestration import (
+from src.application.chat.group_orchestration_support_service import GroupOrchestrationSupportService
+from src.application.chat.orchestration import (
     CommitteeOrchestrator,
     CommitteePolicy,
     OrchestrationRequest,
     ResolvedCommitteeSettings,
 )
-from src.api.services.service_contracts import AssistantLike
+from src.application.chat.service_contracts import AssistantLike
 
 
 @dataclass

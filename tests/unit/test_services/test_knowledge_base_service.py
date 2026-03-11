@@ -13,7 +13,7 @@ from src.api.models.knowledge_base import (
     KnowledgeBaseDocument,
     KnowledgeBasesConfig,
 )
-from src.api.services.knowledge_base_service import KnowledgeBaseService
+from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 
 
 class _FakeCollection:

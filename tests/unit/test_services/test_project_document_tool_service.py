@@ -8,14 +8,14 @@ import time
 import pytest
 
 from src.api.models.project_config import Project
-from src.api.services.project_document_tool_service import (
+from src.infrastructure.projects.project_document_tool_service import (
     PendingPatch,
     PendingPatchStore,
     ProjectDocumentToolError,
     ProjectDocumentToolService,
     confirm_pending_patch_apply,
 )
-from src.api.services.project_service import ProjectService
+from src.infrastructure.config.project_service import ProjectService
 
 
 @pytest.fixture

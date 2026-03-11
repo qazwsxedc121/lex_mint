@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.api.services.orchestration.supervisor import CommitteeSupervisor
-from src.api.services.orchestration.committee_types import CommitteeRuntimeState, CommitteeTurnRecord
+from src.application.chat.orchestration.supervisor import CommitteeSupervisor
+from src.application.chat.orchestration.committee_types import CommitteeRuntimeState, CommitteeTurnRecord
 
 
 @pytest.mark.asyncio

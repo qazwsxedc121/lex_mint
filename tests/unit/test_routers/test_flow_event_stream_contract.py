@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from src.api.routers import chat as chat_router
 from src.api.routers import translation as translation_router
 from src.api.routers import workflows as workflows_router
-from src.api.services.flow_stream_runtime import FlowStreamRuntime
+from src.application.flow.flow_stream_runtime import FlowStreamRuntime
 
 
 async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]:

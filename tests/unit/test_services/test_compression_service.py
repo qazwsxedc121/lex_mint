@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from src.api.services.compression_service import CompressionService
+from src.infrastructure.compression.compression_service import CompressionService
 
 
 def _build_messages(count: int, content_size: int) -> list[dict]:

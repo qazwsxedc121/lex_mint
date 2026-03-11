@@ -1,7 +1,7 @@
 """Unit tests for FlowEventEmitter helpers."""
 
-from src.api.services.flow_event_emitter import FlowEventEmitter
-from src.api.services.flow_events import FlowEventStage
+from src.application.flow.flow_event_emitter import FlowEventEmitter
+from src.application.flow.flow_events import FlowEventStage
 
 
 def test_emitter_emits_started_text_and_ended():

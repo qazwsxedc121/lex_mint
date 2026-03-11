@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.api.services.tool_catalog_service import ToolCatalogService
+from src.application.tools.tool_catalog_service import ToolCatalogService
 
 
 def test_build_catalog_includes_all_tool_names():

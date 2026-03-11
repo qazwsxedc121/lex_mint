@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.services.orchestration import (
+from src.application.chat.orchestration import (
     OrchestrationRequest,
     SingleTurnOrchestrator,
     SingleTurnSettings,

@@ -7,7 +7,7 @@ import yaml
 from pydantic import ValidationError
 
 from src.api.models.prompt_template import PromptTemplate, PromptTemplateVariable
-from src.api.services.prompt_template_service import PromptTemplateConfigService
+from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
 
 
 def test_prompt_template_variable_rejects_reserved_key():

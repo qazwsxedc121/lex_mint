@@ -8,7 +8,7 @@ from src.api.models.model_config import (
     Provider,
     ProviderEndpointProbeRequest,
 )
-from src.api.services.provider_probe_service import ProviderProbeService
+from src.infrastructure.config.provider_probe_service import ProviderProbeService
 from src.providers.types import ApiProtocol, CallMode, ProviderType, EndpointProfile
 
 

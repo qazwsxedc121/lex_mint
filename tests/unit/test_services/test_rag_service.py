@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.rag_service import RagResult, RagService
+from src.infrastructure.retrieval.rag_service import RagResult, RagService
 
 
 class _FakeKnowledgeBaseService:

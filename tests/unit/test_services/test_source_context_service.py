@@ -1,6 +1,6 @@
 """Unit tests for structured source context rendering."""
 
-from src.api.services.source_context_service import SourceContextService
+from src.application.chat.source_context_service import SourceContextService
 
 
 def test_build_source_tags_includes_core_attributes_and_content():

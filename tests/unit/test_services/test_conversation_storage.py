@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch, AsyncMock, Mock
 
-from src.api.services.conversation_storage import ConversationStorage
+from src.infrastructure.storage.conversation_storage import ConversationStorage
 from src.providers.types import TokenUsage, CostInfo
 
 

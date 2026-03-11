@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from src.api.services.memory_config_service import MemoryConfigService
-from src.api.services.memory_service import MemoryResult, MemoryService
+from src.infrastructure.config.memory_config_service import MemoryConfigService
+from src.infrastructure.memory.memory_service import MemoryResult, MemoryService
 
 
 @pytest.fixture

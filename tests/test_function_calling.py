@@ -91,7 +91,7 @@ async def run_provider_check(model_id: str) -> dict:
 
 
 async def main():
-    from src.api.services.model_config_service import ModelConfigService
+    from src.infrastructure.config.model_config_service import ModelConfigService
 
     model_service = ModelConfigService()
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.post_turn_service import PostTurnService
+from src.application.chat.post_turn_service import PostTurnService
 
 
 class _FakeStorage:

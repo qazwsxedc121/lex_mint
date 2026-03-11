@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.services.flow_stream_runtime import (
+from src.application.flow.flow_stream_runtime import (
     FlowReplayCursorGoneError,
     FlowStreamContextMismatchError,
     FlowStreamNotFoundError,

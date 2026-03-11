@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.api.services.context_assembly_service import ContextAssemblyService
+from src.application.chat.context_assembly_service import ContextAssemblyService
 
 
 class _Source:

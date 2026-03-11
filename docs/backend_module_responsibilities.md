@@ -110,6 +110,9 @@ architecture vocabulary.
 - production modules under `src/api/` now import owned modules directly from
   `src/application/` and `src/infrastructure/` rather than from
   `src/api/services/`
+- tests now import owned modules directly from `src/application/`,
+  `src/infrastructure/`, and `src/agents/` rather than from
+  `src/api/services/`
 
 
 ## Core Principles

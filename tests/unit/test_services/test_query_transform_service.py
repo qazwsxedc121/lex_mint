@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from src.api.services.query_transform_service import QueryTransformService
+from src.infrastructure.retrieval.query_transform_service import QueryTransformService
 
 
 class _FakeLLM:

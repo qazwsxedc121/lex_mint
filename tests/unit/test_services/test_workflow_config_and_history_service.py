@@ -13,7 +13,7 @@ from src.api.models.workflow import (
     Workflow,
     WorkflowRunRecord,
 )
-from src.api.services.workflow_config_service import WorkflowConfigService
+from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 

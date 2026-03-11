@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.chat_input_service import PreparedUserInput
-from src.api.services.service_contracts import ContextPayload
-from src.api.services.single_chat_flow_service import (
+from src.application.chat.chat_input_service import PreparedUserInput
+from src.application.chat.service_contracts import ContextPayload
+from src.application.chat.single_chat_flow_service import (
     SingleChatFlowDeps,
     SingleChatFlowService,
 )

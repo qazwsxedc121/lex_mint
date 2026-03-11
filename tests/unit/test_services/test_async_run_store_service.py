@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from src.api.models.async_run import AsyncRunRecord, RunStatus
-from src.api.services.async_run_store_service import AsyncRunStoreService
+from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService
 
 
 def _make_record(*, run_id: str, status: RunStatus, workflow_id: str) -> AsyncRunRecord:

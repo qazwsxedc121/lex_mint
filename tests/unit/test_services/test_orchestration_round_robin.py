@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.orchestration import (
+from src.application.chat.orchestration import (
     OrchestrationCancelToken,
     OrchestrationRequest,
     RoundRobinSettings,

@@ -396,8 +396,6 @@ Infrastructure-oriented:
 
 ### Remaining Work
 
-- migrate tests and monkeypatch targets from `src.api.services.*` to owned
-  module paths in planned slices
 - remove compatibility shim modules from `src/api/services/` once callers are
   migrated
 - review whether workflow support modules need their own package split beyond
@@ -543,11 +541,13 @@ Make tests mirror the new ownership model.
 
 - legacy committee tests were moved to orchestration-focused tests
 - runtime tests already target `src.agents.llm_runtime`
+- tests no longer import `src.api.services.*`; they now target owned
+  `src/application/*`, `src/infrastructure/*`, and `src/agents/*` modules directly
 
 ### Remaining Work
 
 - split legacy-named runtime test files such as `test_simple_llm.py`
-- reorganize tests to mirror application/runtime/infrastructure ownership
+- continue reorganizing test folders to mirror application/runtime/infrastructure ownership
 
 
 ## Delivery Order

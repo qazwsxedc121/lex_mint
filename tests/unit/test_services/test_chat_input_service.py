@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.api.services.chat_input_service import ChatInputService
+from src.application.chat.chat_input_service import ChatInputService
 
 
 class _FakeStorage:

@@ -8,7 +8,7 @@ import sys
 import types
 from pathlib import Path
 
-from src.api.services.sqlite_vec_service import SqliteVecService
+from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
 
 
 def test_sqlite_vec_upsert_search_and_cleanup():

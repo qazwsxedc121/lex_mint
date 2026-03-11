@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace
 
-from src.api.services.group_orchestration_support_service import (
+from src.application.chat.group_orchestration_support_service import (
     GroupOrchestrationSupportService,
 )
-from src.api.services.orchestration import CommitteeOrchestrator, RoundRobinOrchestrator
+from src.application.chat.orchestration import CommitteeOrchestrator, RoundRobinOrchestrator
 
 
 def _build_service() -> GroupOrchestrationSupportService:

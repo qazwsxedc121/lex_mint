@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.api.services.document_processing_service import DocumentProcessingService
+from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 
 
 class _FakeCollection:

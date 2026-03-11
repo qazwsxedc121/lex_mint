@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from src.api.models.search import SearchSource
-from src.api.services.web_tool_service import WebToolService
+from src.infrastructure.web.web_tool_service import WebToolService
 
 
 class _FakeSearchConfig:

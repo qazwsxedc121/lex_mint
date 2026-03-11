@@ -1,7 +1,7 @@
 """Unit tests for provider call mode auto-resolution helpers."""
 
 from src.api.models.model_config import Provider
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.providers.types import ApiProtocol, CallMode, ProviderType
 
 

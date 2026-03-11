@@ -2,7 +2,7 @@ from pathlib import Path
 
 from src.api.config import Settings
 from src.api import paths
-from src.api.services.local_llama_cpp_service import discover_local_gguf_models
+from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models
 
 
 def test_user_data_root_defaults_to_repo_root_in_source_mode(monkeypatch):
