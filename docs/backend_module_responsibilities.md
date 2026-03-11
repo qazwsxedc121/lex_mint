@@ -37,8 +37,8 @@ architecture vocabulary.
   (the `src/api/services/` package has been removed)
 - shared runtime path/settings helpers now live under `src/core/` with
   compatibility re-exports in `src/api/paths.py` and `src/api/config.py`
-- shared Pydantic model ownership now lives under `src/domain/models/` with
-  compatibility re-exports in `src/api/models/`
+- shared Pydantic model ownership now lives under `src/domain/models/`
+  (the `src/api/models/` package has been removed)
 - API entry now resolves `ChatApplicationService` directly
 - production bootstrap now comes from `src/application/chat/`
 - workflow execution now resolves from `src/application/workflows/`
@@ -185,16 +185,12 @@ Examples:
 
 - `src/api/routers/chat.py`
 - `src/api/dependencies.py`
-- `src/api/models/*`
+- `src/domain/models/*`
 
 
 ### Application Layer
 
 Target ownership: product use cases and orchestration.
-
-Short-term transitional location:
-
-- `src/api/services/`
 
 Long-term preferred location:
 
@@ -233,10 +229,6 @@ Examples in current codebase:
 - `src/application/chat/context_assembly_service.py`
 - `src/application/chat/post_turn_service.py`
 - `src/application/workflows/execution_service.py`
-- transitional compatibility shims in `src/api/services/chat_application_service.py`
-- transitional compatibility shims in `src/api/services/single_chat_flow_service.py`
-- transitional compatibility shims in `src/api/services/compare_flow_service.py`
-- transitional compatibility shims in `src/api/services/workflow_execution_service.py`
 
 
 ### `src/agents/` (current meaning: LLM runtime and agent execution)
@@ -343,9 +335,8 @@ These concerns include:
 - external web fetching
 - config repository access
 
-Many of these currently live in `src/api/services/`.
-That is acceptable during transition, but they should be treated as infrastructure-oriented services,
-not as part of the transport layer.
+These concerns now live under explicit infrastructure packages in
+`src/infrastructure/*` and should not be treated as part of the transport layer.
 
 Examples:
 
@@ -461,8 +452,8 @@ Notes:
 
 - `application/` and `infrastructure/` are target-state concepts. They do not need to be
   created all at once.
-- During transition, files may temporarily remain under `src/api/services/`, but new code should
-  still follow the target ownership model.
+- Transitional transport-adjacent compatibility directories have been removed
+  (`src/api/services/`, `src/api/models/`).
 
 
 ## Placement Rules for New Code
@@ -521,14 +512,9 @@ This is the intended direction:
 
 ### `src/api/services/`
 
-This directory is transitional.
-Its contents should gradually be classified into:
-
-- application orchestration
-- infrastructure support
-- legacy compatibility
-
-It should not be treated as a permanent architecture concept.
+This transitional directory has been retired and removed.
+Ownership now lives under explicit layer packages (`src/application/*`,
+`src/infrastructure/*`, `src/core/*`, `src/domain/models/*`).
 
 ### Compatibility exports
 
@@ -558,9 +544,8 @@ The backend should be understood in four main layers:
 - `src/agents/`: LLM runtime execution
 - `src/providers/`: provider integration
 
-Infrastructure behavior exists today but is not yet cleanly isolated.
-Future refactors should make that layer more explicit instead of letting `src/api/services/`
-continue to absorb unrelated responsibilities.
+Infrastructure behavior exists today but is now organized under
+`src/infrastructure/*` instead of a transport-adjacent catch-all directory.
 
 
 ## Status of This Document

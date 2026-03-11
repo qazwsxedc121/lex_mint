@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 
-from ..models.model_config import (
+from src.domain.models.model_config import (
     Provider,
     Model,
     DefaultConfig,

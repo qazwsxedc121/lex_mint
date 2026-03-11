@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 
 from src.application.workflows import WorkflowExecutionService
 
-from ..models.async_run import AsyncRunRecord
-from ..models.workflow import Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
+from src.domain.models.async_run import AsyncRunRecord
+from src.domain.models.workflow import Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
 from src.application.flow.async_run_provider import get_async_run_service
 from src.application.flow.async_run_service import AsyncRunService
 from src.application.flow.flow_event_emitter import FlowEventEmitter

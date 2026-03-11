@@ -17,7 +17,7 @@ from src.infrastructure.projects.project_document_tool_service import (
     confirm_pending_patch_apply,
 )
 from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
-from ..models.project_config import (
+from src.domain.models.project_config import (
     Project,
     ProjectCreate,
     ProjectSettings,

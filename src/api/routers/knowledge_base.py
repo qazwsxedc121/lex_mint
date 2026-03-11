@@ -12,7 +12,7 @@ import os
 import aiofiles
 from pathlib import Path
 
-from ..models.knowledge_base import (
+from src.domain.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseDocument,
     KnowledgeBaseCreate,

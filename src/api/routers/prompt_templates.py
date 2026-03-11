@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 import uuid
 
-from ..models.prompt_template import (
+from src.domain.models.prompt_template import (
     PromptTemplate,
     PromptTemplateCreate,
     PromptTemplateUpdate,

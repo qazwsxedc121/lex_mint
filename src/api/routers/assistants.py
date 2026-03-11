@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 
 from ..dependencies import get_assistant_service as get_shared_assistant_service
-from ..models.assistant_config import (
+from src.domain.models.assistant_config import (
     Assistant,
     AssistantCreate,
     AssistantUpdate,

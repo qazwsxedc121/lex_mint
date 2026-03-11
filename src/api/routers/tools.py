@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from ..models.tool_catalog import ToolCatalogResponse
+from src.domain.models.tool_catalog import ToolCatalogResponse
 from src.application.tools.tool_catalog_service import ToolCatalogService
 
 logger = logging.getLogger(__name__)

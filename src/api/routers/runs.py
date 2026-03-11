@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..models.async_run import AsyncRunListResponse, AsyncRunRecord, RunKind, RunStatus
+from src.domain.models.async_run import AsyncRunListResponse, AsyncRunRecord, RunKind, RunStatus
 from src.application.flow.async_run_provider import get_async_run_service, get_async_run_store
 from src.application.flow.async_run_service import AsyncRunService
 from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService

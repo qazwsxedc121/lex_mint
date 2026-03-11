@@ -41,7 +41,7 @@ from src.application.flow.flow_stream_runtime import (
 from src.application.flow.flow_stream_runtime_provider import get_flow_stream_runtime
 from src.infrastructure.files.file_service import FileService
 from src.infrastructure.storage.conversation_storage import create_storage_with_project_resolver
-from ..models.search import SearchSource
+from src.domain.models.search import SearchSource
 from ..config import settings
 
 logger = logging.getLogger(__name__)
