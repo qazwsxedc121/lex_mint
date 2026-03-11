@@ -8,8 +8,11 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import logging
 
-from ..services.followup_service import FollowupService
-from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from src.application.chat.followup_service import FollowupService
+from src.infrastructure.storage.conversation_storage import (
+    ConversationStorage,
+    create_storage_with_project_resolver,
+)
 from ..config import settings
 
 logger = logging.getLogger(__name__)

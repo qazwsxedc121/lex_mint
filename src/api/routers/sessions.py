@@ -13,11 +13,11 @@ import shutil
 from urllib.parse import quote
 
 from ..dependencies import get_storage as get_shared_storage
-from ..services.conversation_storage import ConversationStorage
+from src.application.chat.orchestration.settings import GroupSettingsResolver
+from src.infrastructure.storage.conversation_storage import ConversationStorage
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.application.chat.chatgpt_import_service import ChatGPTImportService
 from src.application.chat.markdown_import_service import MarkdownImportService
-from ..services.orchestration import GroupSettingsResolver
 from src.application.chat.group_participants import parse_group_participant
 
 logger = logging.getLogger(__name__)

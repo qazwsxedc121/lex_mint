@@ -162,7 +162,7 @@ async def startup_event():
         )
 
     # Clean temporary sessions from previous runs.
-    from .services.conversation_storage import create_storage_with_project_resolver
+    from src.infrastructure.storage.conversation_storage import create_storage_with_project_resolver
 
     storage = create_storage_with_project_resolver(settings.conversations_dir)
     cleaned = await storage.cleanup_temporary_sessions()

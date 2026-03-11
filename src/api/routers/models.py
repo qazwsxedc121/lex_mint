@@ -22,7 +22,7 @@ from ..models.model_config import (
     ProviderEndpointProfilesResponse,
     ModelTestRequest,
 )
-from ..services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.provider_probe_service import ProviderProbeService
 from src.providers import (
     BUILTIN_PROVIDERS,

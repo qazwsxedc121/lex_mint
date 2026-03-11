@@ -6,7 +6,10 @@ from pydantic import BaseModel
 import logging
 
 from src.infrastructure.config.folder_service import FolderService, Folder
-from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from src.infrastructure.storage.conversation_storage import (
+    ConversationStorage,
+    create_storage_with_project_resolver,
+)
 from ..config import settings
 
 logger = logging.getLogger(__name__)

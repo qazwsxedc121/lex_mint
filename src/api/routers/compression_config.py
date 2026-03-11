@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Literal, Optional
 import logging
 
-from ..services.compression_config_service import CompressionConfigService
+from src.infrastructure.compression.compression_config_service import CompressionConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/compression", tags=["compression"])

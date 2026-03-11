@@ -390,13 +390,18 @@ Infrastructure-oriented:
 - `src/infrastructure/audio/` has been introduced, and `tts_service.py` now
   physically lives there (with a compatibility re-export kept under
   `src/api/services/`).
+- production API transport modules now import owned modules directly from
+  `src/application/*` and `src/infrastructure/*`; there are no remaining
+  `from ..services ...` imports under `src/api/`
 
 ### Remaining Work
 
-- continue moving remaining non-chat utility services out of
-  `src/api/services/` into clear application/infrastructure packages
-- review whether workflow support modules need their own package split beyond the execution
-  entrypoint
+- migrate tests and monkeypatch targets from `src.api.services.*` to owned
+  module paths in planned slices
+- remove compatibility shim modules from `src/api/services/` once callers are
+  migrated
+- review whether workflow support modules need their own package split beyond
+  the execution entrypoint
 
 
 ## Stage 4 - Reorganize Group, Compare, and Workflow Flows
@@ -498,6 +503,8 @@ Renaming should happen after boundaries are already real.
 
 - `AgentService` has been removed
 - `simple_llm.py` has been removed
+- production API code no longer imports compatibility shims from
+  `src/api/services/`; shims are now mainly for compatibility callers and tests
 
 ### Remaining Work
 

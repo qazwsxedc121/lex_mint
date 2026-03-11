@@ -10,14 +10,13 @@ from ..dependencies import get_project_service as get_shared_project_service
 from ..dependencies import (
     get_project_workspace_state_service as get_shared_project_workspace_state_service,
 )
-from ..services.project_service import ProjectService
-from ..services.project_service import ProjectConflictError
-from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
-from ..services.project_document_tool_service import (
+from src.infrastructure.config.project_service import ProjectConflictError, ProjectService
+from src.infrastructure.projects.project_document_tool_service import (
     ConfirmPendingPatchArgs,
     ProjectDocumentToolError,
     confirm_pending_patch_apply,
 )
+from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 from ..models.project_config import (
     Project,
     ProjectCreate,

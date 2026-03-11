@@ -8,8 +8,11 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 
-from ..services.title_generation_service import TitleGenerationService
-from ..services.conversation_storage import ConversationStorage, create_storage_with_project_resolver
+from src.application.chat.title_generation_service import TitleGenerationService
+from src.infrastructure.storage.conversation_storage import (
+    ConversationStorage,
+    create_storage_with_project_resolver,
+)
 from ..config import settings
 
 logger = logging.getLogger(__name__)

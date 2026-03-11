@@ -107,6 +107,9 @@ architecture vocabulary.
   (with compatibility shims)
 - `src/api/services/` still contains many transitional modules, but some chat application
   ownership has already moved into `src/application/chat/`
+- production modules under `src/api/` now import owned modules directly from
+  `src/application/` and `src/infrastructure/` rather than from
+  `src/api/services/`
 
 
 ## Core Principles

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.infrastructure.config.memory_config_service import MemoryConfigService
-from ..services.memory_service import MemoryService
+from src.infrastructure.memory.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/memory", tags=["memory"])

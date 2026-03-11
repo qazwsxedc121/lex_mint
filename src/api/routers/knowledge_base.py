@@ -19,7 +19,7 @@ from ..models.knowledge_base import (
     KnowledgeBaseUpdate,
     KnowledgeBaseChunk,
 )
-from ..services.knowledge_base_service import KnowledgeBaseService
+from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 from ..config import settings
 from ..paths import resolve_user_data_path
 
@@ -306,7 +306,7 @@ async def list_chunks(
         ).lower()
         items: List[KnowledgeBaseChunk] = []
         if backend == "sqlite_vec":
-            from ..services.sqlite_vec_service import SqliteVecService
+            from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
 
             rows = SqliteVecService().list_chunks(kb_id=kb_id, doc_id=doc_id, limit=limit)
             for row in rows:
@@ -377,4 +377,3 @@ async def _process_document_async(kb_id: str, doc_id: str, filename: str, file_t
             await service.update_document_status(kb_id, doc_id, "error", error_message=str(e))
         except Exception as e2:
             logger.error(f"Failed to update document status to error: {e2}")
-

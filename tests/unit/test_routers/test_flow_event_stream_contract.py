@@ -158,7 +158,10 @@ async def test_chat_compress_contract_flow_event_only(monkeypatch):
             yield "summary"
             yield {"type": "compression_complete", "message_id": "mid-1", "compressed_count": 3}
 
-    monkeypatch.setattr("src.api.services.compression_service.CompressionService", _FakeCompressionService)
+    monkeypatch.setattr(
+        "src.infrastructure.compression.compression_service.CompressionService",
+        _FakeCompressionService,
+    )
 
     agent = _FakeChatAgent()
     request = chat_router.CompressContextRequest(session_id="session-3")
@@ -186,7 +189,10 @@ async def test_chat_compress_unknown_event_maps_to_legacy_event(monkeypatch):
             yield "summary"
             yield {"type": "compression_complete", "message_id": "mid-2", "compressed_count": 1}
 
-    monkeypatch.setattr("src.api.services.compression_service.CompressionService", _FakeCompressionService)
+    monkeypatch.setattr(
+        "src.infrastructure.compression.compression_service.CompressionService",
+        _FakeCompressionService,
+    )
 
     agent = _FakeChatAgent()
     request = chat_router.CompressContextRequest(session_id="session-legacy")

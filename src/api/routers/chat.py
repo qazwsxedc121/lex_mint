@@ -15,8 +15,6 @@ from src.application.chat import ChatApplicationService
 from ..dependencies import get_chat_application_service as get_shared_chat_application_service
 from ..dependencies import get_file_service as get_shared_file_service
 
-from ..services.conversation_storage import create_storage_with_project_resolver
-from ..services.file_service import FileService
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_mapper import FlowEventMapper
 from src.application.flow.flow_event_types import (
@@ -41,6 +39,8 @@ from src.application.flow.flow_stream_runtime import (
     FlowStreamRuntime,
 )
 from src.application.flow.flow_stream_runtime_provider import get_flow_stream_runtime
+from src.infrastructure.files.file_service import FileService
+from src.infrastructure.storage.conversation_storage import create_storage_with_project_resolver
 from ..models.search import SearchSource
 from ..config import settings
 
@@ -899,7 +899,7 @@ async def compress_context(
     if request.context_type == "project" and not request.project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    from ..services.compression_service import CompressionService
+    from src.infrastructure.compression.compression_service import CompressionService
     compression_service = CompressionService(agent.storage)
     emitter = FlowEventEmitter(
         stream_id=str(uuid.uuid4()),
