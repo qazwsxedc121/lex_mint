@@ -522,7 +522,7 @@ Make tests mirror the new ownership model.
 
 ### Candidate actions
 
-- split old `test_simple_llm.py` into runtime-focused test modules over time
+- keep runtime test filenames aligned with runtime ownership naming
 - add contract tests for single-chat event flow
 - add regression tests around tool loop behavior and persistence boundaries
 
@@ -534,12 +534,13 @@ Make tests mirror the new ownership model.
 
 - legacy committee tests were moved to orchestration-focused tests
 - runtime tests already target `src.agents.llm_runtime`
+- legacy runtime test filename `test_simple_llm.py` was renamed to
+  `test_llm_runtime.py`
 - tests no longer import `src.api.services.*`; they now target owned
   `src/application/*`, `src/infrastructure/*`, and `src/agents/*` modules directly
 
 ### Remaining Work
 
-- split legacy-named runtime test files such as `test_simple_llm.py`
 - continue reorganizing test folders to mirror application/runtime/infrastructure ownership
 
 
