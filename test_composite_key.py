@@ -4,7 +4,7 @@ Test composite key model management
 Verify that same model IDs can coexist under different providers
 """
 import asyncio
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.api.models.model_config import Model, Provider
 
 

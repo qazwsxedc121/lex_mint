@@ -11,8 +11,8 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.api.services.conversation_storage import ConversationStorage
-from src.api.services.title_generation_service import TitleGenerationService
+from src.infrastructure.storage.conversation_storage import ConversationStorage
+from src.application.chat.title_generation_service import TitleGenerationService
 
 
 async def test_title_generation():

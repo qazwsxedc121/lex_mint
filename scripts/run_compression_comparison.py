@@ -21,9 +21,9 @@ import time
 
 from langchain_core.messages import HumanMessage
 
-from src.api.services.compression_config_service import CompressionConfigService
-from src.api.services.compression_service import CompressionService
-from src.api.services.model_config_service import ModelConfigService
+from src.infrastructure.compression.compression_config_service import CompressionConfigService
+from src.infrastructure.compression.compression_service import CompressionService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.providers.types import TokenUsage
 
 

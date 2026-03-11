@@ -19,7 +19,7 @@ The backend is already partially layered, but the boundaries are not yet stable.
 
 The main symptoms are:
 
-- `src/api/services/` currently mixes transport-adjacent services, application orchestration,
+- `src/api/services/` historically mixed transport-adjacent services, application orchestration,
   storage access, runtime composition, and some infrastructure behavior.
 - `src/agents/` is moving toward LLM runtime ownership, but the directory name still suggests
   only "agent objects" rather than runtime execution.
@@ -33,6 +33,8 @@ architecture vocabulary.
 
 ## Current Status Snapshot
 
+- compatibility shim modules under `src/api/services/` have been retired
+  (only `src/api/services/__init__.py` remains as a package marker)
 - API entry now resolves `ChatApplicationService` directly
 - production bootstrap now comes from `src/application/chat/`
 - workflow execution now resolves from `src/application/workflows/`
@@ -105,8 +107,6 @@ architecture vocabulary.
   (with compatibility shims)
 - context planner now lives under `src/agents/llm_runtime/`
   (with compatibility shims)
-- `src/api/services/` still contains many transitional modules, but some chat application
-  ownership has already moved into `src/application/chat/`
 - production modules under `src/api/` now import owned modules directly from
   `src/application/` and `src/infrastructure/` rather than from
   `src/api/services/`

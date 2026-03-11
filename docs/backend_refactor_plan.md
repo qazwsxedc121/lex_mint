@@ -42,7 +42,7 @@ And toward this ownership model:
 - Stage 0 - done
 - Stage 1 - done
 - Stage 2 - partial
-- Stage 3 - partial
+- Stage 3 - done
 - Stage 4 - partial
 - Stage 5 - partial
 - Stage 6 - partial
@@ -277,16 +277,10 @@ Infrastructure-oriented:
   `src.application.chat`
 - production workflow entrypoints now import workflow execution from
   `src.application.workflows`
-- legacy files under `src/api/services/` now act as compatibility re-export shims for:
-  - chat application bootstrap
-  - chat application service
-  - chat service factory
-  - group chat service
-  - single chat flow service
-  - compare flow service
-  - context assembly service
-  - post-turn service
-  - workflow execution service
+- compatibility re-export modules under `src/api/services/` have been fully
+  retired; `src/api/services/__init__.py` remains as a package marker only
+- note: some bullets below mention earlier "compatibility re-export kept"
+  milestones for historical traceability
 - `single_chat_flow_service.py` and `compare_flow_service.py` now physically live under
   `src/application/chat/`
 - `context_assembly_service.py` and `post_turn_service.py` now physically live under
@@ -396,8 +390,6 @@ Infrastructure-oriented:
 
 ### Remaining Work
 
-- remove compatibility shim modules from `src/api/services/` once callers are
-  migrated
 - review whether workflow support modules need their own package split beyond
   the execution entrypoint
 
@@ -502,7 +494,8 @@ Renaming should happen after boundaries are already real.
 - `AgentService` has been removed
 - `simple_llm.py` has been removed
 - production API code no longer imports compatibility shims from
-  `src/api/services/`; shims are now mainly for compatibility callers and tests
+  `src/api/services/`
+- compatibility shim modules under `src/api/services/` are now removed
 
 ### Remaining Work
 

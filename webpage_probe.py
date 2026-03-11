@@ -7,7 +7,7 @@ import asyncio
 import sys
 from typing import List
 
-from src.api.services.webpage_service import WebpageService
+from src.infrastructure.web.webpage_service import WebpageService
 
 
 def _dedupe(urls: List[str]) -> List[str]:

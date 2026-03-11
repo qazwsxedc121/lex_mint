@@ -20,10 +20,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.api.models.knowledge_base import KnowledgeBaseDocument
-from src.api.services.document_processing_service import DocumentProcessingService
-from src.api.services.knowledge_base_service import KnowledgeBaseService
-from src.api.services.rag_config_service import RagConfigService
-from src.api.services.webpage_service import WebpageService
+from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
+from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
+from src.infrastructure.config.rag_config_service import RagConfigService
+from src.infrastructure.web.webpage_service import WebpageService
 
 ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".html", ".htm"}
 
