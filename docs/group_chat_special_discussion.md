@@ -19,16 +19,16 @@
 1) 群聊会话创建与成员保存
 - 前端建群弹窗与最少 2 个助手校验：`frontend/src/shared/chat/components/GroupChatCreateModal.tsx:83`
 - 后端 session 创建/更新 `group_assistants` 校验：`src/api/routers/sessions.py:80`, `src/api/routers/sessions.py:445`
-- 存储层持久化 `group_assistants`：`src/api/services/conversation_storage.py:120`, `src/api/services/conversation_storage.py:1314`
+- 存储层持久化 `group_assistants`：`src/infrastructure/storage/conversation_storage.py:120`, `src/infrastructure/storage/conversation_storage.py:1314`
 
 2) 群聊流式事件与前端渲染
 - 后端根据 `group_assistants` 进入群聊流式处理：`src/api/routers/chat.py:248`
-- 群聊主流程（assistant_start/chunk/done/message_id）：`src/api/services/agent_service_simple.py:1084`
+- 群聊主流程（assistant_start/chunk/done/message_id）：`src/application/chat/group_chat_service.py:127`
 - 前端事件消费与多助手消息拼装：`frontend/src/shared/chat/hooks/useChat.ts:517`
 - API 层支持 group 事件分发：`frontend/src/services/api.ts:812`
 
 3) 执行模型
-- 当前是**按成员顺序轮询（round-robin）**，每个助手可看到前面助手的输出：`src/api/services/agent_service_simple.py:1100`, `src/api/services/agent_service_simple.py:1183`
+- 当前是**按成员顺序轮询（round-robin）**，每个助手可看到前面助手的输出：`src/application/chat/group_chat_service.py:264`, `src/application/chat/group_chat_service.py:248`
 
 
 ### 2.2 LobeHub 具备而我们当前缺失的关键能力

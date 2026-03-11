@@ -62,7 +62,7 @@ folders:
 - `DELETE /api/folders/{id}` - Delete folder (sessions become ungrouped)
 - `PUT /api/sessions/{id}/folder` - Move session to folder `{ folder_id }` or `null`
 
-**Backend service** (`src/api/services/folder_service.py`):
+**Backend service** (`src/infrastructure/config/folder_service.py`):
 - CRUD for `chat_folders.yaml`
 - Update session frontmatter `folder_id` field via `conversation_storage.py`
 

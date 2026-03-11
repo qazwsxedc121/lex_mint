@@ -42,7 +42,7 @@ This document defines the canonical `flow_event` envelope for streaming SSE APIs
 
 ## Event types in v1 (full-chain)
 
-Backend source of truth: `src/api/services/flow_event_types.py`
+Backend source of truth: `src/application/flow/flow_event_types.py`
 
 - transport
   - `stream_started`

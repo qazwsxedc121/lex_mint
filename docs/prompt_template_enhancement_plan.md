@@ -54,8 +54,8 @@ Extend the current template model without breaking existing data.
 - `updated_at?: string`
 
 ### Files to update
-- `src/api/models/prompt_template.py`
-- `src/api/services/prompt_template_service.py`
+- `src/domain/models/prompt_template.py`
+- `src/infrastructure/config/prompt_template_service.py`
 - `src/api/routers/prompt_templates.py`
 - `frontend/src/types/promptTemplate.ts`
 

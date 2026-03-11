@@ -18,12 +18,12 @@ Automatic conversation title generation using a small LLM model. Titles are gene
 
 **New Files:**
 1. `config/title_generation_config.yaml` - Configuration file
-2. `src/api/services/title_generation_service.py` - Core service (209 lines)
+2. `src/application/chat/title_generation_service.py` - Core service (209 lines)
 3. `src/api/routers/title_generation.py` - API endpoints (123 lines)
 
 **Modified Files:**
-4. `src/api/services/conversation_storage.py` - Added `update_session_metadata()` method
-5. `src/api/services/agent_service_simple.py` - Integrated title generation trigger
+4. `src/infrastructure/storage/conversation_storage.py` - Added `update_session_metadata()` method
+5. `src/application/chat/post_turn_service.py` - Integrated title generation trigger
 6. `src/api/main.py` - Registered title generation router
 
 ### Frontend Files

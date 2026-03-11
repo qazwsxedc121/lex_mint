@@ -15,7 +15,7 @@ All features from the implementation plan have been successfully implemented and
    - Configuration file for title generation feature
    - Controls: enabled, threshold, model, prompt, timeout, context
 
-2. **src/api/services/title_generation_service.py** (209 lines)
+2. **src/application/chat/title_generation_service.py** (209 lines)
    - `TitleGenerationConfig` dataclass
    - `TitleGenerationService` class
    - Methods: load_config, save_config, reload_config, should_generate_title, generate_title_async
@@ -42,11 +42,11 @@ All features from the implementation plan have been successfully implemented and
 
 ### Backend (3 files modified)
 
-7. **src/api/services/conversation_storage.py**
+7. **src/infrastructure/storage/conversation_storage.py**
    - Added: `update_session_metadata(session_id, metadata_updates)` method (lines 409-435)
    - Allows updating session frontmatter without rewriting entire file
 
-8. **src/api/services/agent_service_simple.py**
+8. **src/application/chat/post_turn_service.py**
    - Added: Title generation trigger after saving AI response (lines 253-269)
    - Uses `asyncio.create_task()` for background execution
    - Includes error handling to prevent main flow disruption
@@ -271,5 +271,5 @@ The title generation feature has been fully implemented according to the plan. A
 - **Quick Start**: docs/title_generation_quickstart.md
 - **Test Script**: test_title_generation.py
 - **Config File**: config/title_generation_config.yaml
-- **Backend Service**: src/api/services/title_generation_service.py
+- **Backend Service**: src/application/chat/title_generation_service.py
 - **Frontend Settings**: frontend/src/modules/settings/TitleGenerationSettings.tsx

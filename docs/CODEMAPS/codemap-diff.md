@@ -9,17 +9,17 @@ INCREMENTAL UPDATE (changes <= 30%, updated in place)
 
 ### New Files
 - `src/api/routers/prompt_templates.py` - CRUD for prompt templates
-- `src/api/services/prompt_template_service.py` - YAML-backed template storage
-- `src/api/services/rerank_service.py` - Model-based RAG reranking
-- `src/api/models/prompt_template.py` - Pydantic schema with variable definitions
+- `src/infrastructure/config/prompt_template_service.py` - YAML-backed template storage
+- `src/infrastructure/retrieval/rerank_service.py` - Model-based RAG reranking
+- `src/domain/models/prompt_template.py` - Pydantic schema with variable definitions
 - `frontend/src/modules/settings/PromptTemplatesPage.tsx` - Config-driven CRUD
 - `frontend/src/modules/settings/config/promptTemplates.config.tsx`
 - `frontend/src/modules/settings/hooks/usePromptTemplates.ts`
 
 ### Modified Files
 - `src/api/main.py` - Added prompt_templates router
-- `src/api/services/agent_service_simple.py` - Prompt template + rerank integration
-- `src/api/services/compression_service.py` - Hierarchical compression, language setting
+- `src/application/chat/single_chat_flow_service.py` - Prompt template + rerank integration
+- `src/infrastructure/compression/compression_service.py` - Hierarchical compression, language setting
 - `frontend/src/shared/chat/` - Multiple component updates
 
 ## Updated Codemaps

@@ -6,7 +6,7 @@ Reference document for future implementation of automatic context compression an
 
 ## Current Implementation Status
 
-Two context management mechanisms exist in the LLM runtime layer (`src/agents/llm_runtime/`):
+Two context management mechanisms exist in the LLM runtime layer (`src/llm_runtime/`):
 
 ### Separator-Based Context Filtering (lines 487-510)
 

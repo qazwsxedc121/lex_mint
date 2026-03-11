@@ -15,8 +15,8 @@ Goal: run small, low-risk experiments that can be merged into our existing RAG s
 - Hypothesis:
   - rewrite + decomposition improves hit rate on complex user questions
 - Integration sketch:
-  - add an optional pre-retrieval transformer in `src/api/services/rag_service.py`
-  - config gate in `src/api/services/rag_config_service.py`
+  - add an optional pre-retrieval transformer in `src/infrastructure/retrieval/rag_service.py`
+  - config gate in `src/infrastructure/config/rag_config_service.py`
 - Metrics:
   - Hit@K, MRR, Recall@K from `scripts/run_rag_eval.py`
 

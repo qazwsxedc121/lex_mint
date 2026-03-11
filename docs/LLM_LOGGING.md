@@ -143,7 +143,7 @@ Count total interactions per day by viewing the log summary.
 ## Implementation Details
 
 - **Location**: `src/utils/llm_logger.py`
-- **Integration**: `src/agents/simple_agent.py` (chat_node function)
+- **Integration**: `src/llm_runtime/streaming_client.py` and `src/llm_runtime/sync_client.py`
 - **State Tracking**: Session ID passed through agent state
 - **Error Handling**: Errors are logged before re-raising
 

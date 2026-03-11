@@ -614,15 +614,15 @@ LobeHub 不仅实现了 RAG，还内置了 RAG 评估框架 (`rag_eval_datasets`
 | 文件 | 描述 |
 |------|------|
 | `src/api/main.py` | 后端入口，20 个路由（含 RAG/翻译/TTS/Prompt/Memory/Folders） |
-| `src/api/services/conversation_storage.py` | Markdown 存储核心 |
-| `src/api/services/knowledge_base_service.py` | 知识库服务 |
-| `src/api/services/document_processing_service.py` | 文档解析 + 分块 + 向量化 |
-| `src/api/services/memory_service.py` | 长期记忆服务 |
-| `src/api/services/translation_service.py` | 翻译服务 |
-| `src/api/services/tts_service.py` | TTS 服务 |
+| `src/infrastructure/storage/conversation_storage.py` | Markdown 存储核心 |
+| `src/infrastructure/knowledge/knowledge_base_service.py` | 知识库服务 |
+| `src/infrastructure/knowledge/document_processing_service.py` | 文档解析 + 分块 + 向量化 |
+| `src/infrastructure/memory/memory_service.py` | 长期记忆服务 |
+| `src/application/translation/translation_service.py` | 翻译服务 |
+| `src/infrastructure/audio/tts_service.py` | TTS 服务 |
 | `src/providers/registry.py` | 适配器注册表 |
 | `src/providers/adapters/` | 8 个 LLM 适配器 |
-| `src/agents/` | LangGraph Agent 实现 |
+| `src/llm_runtime/` | LLM runtime 执行层 |
 | `config/defaults/models_config.yaml` | 模型默认配置 |
 | `config/local/models_config.yaml` | 模型本地配置 |
 | `config/defaults/assistants_config.yaml` | 助手默认配置 |

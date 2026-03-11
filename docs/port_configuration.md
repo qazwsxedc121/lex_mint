@@ -109,7 +109,7 @@ taskkill /F /PID <进程ID>
 
 - 如果使用 Nginx/Apache 反向代理，后端可以用任意端口（如 `<API_PORT>`）
 - 如果直接暴露，建议使用 80（HTTP）或 443（HTTPS）
-- 修改 `src/api/config.py` 中的 `api_host` 为 `0.0.0.0` 允许外部访问
+- 修改 `src/core/config.py` 中的 `api_host` 为 `0.0.0.0` 允许外部访问
 
 ## 配置文件位置总结
 

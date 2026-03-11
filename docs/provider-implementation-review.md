@@ -14,7 +14,7 @@ Scope: backend provider abstraction, settings UI, provider CRUD/test flow.
 References:
 - `frontend/src/modules/settings/config/providers.config.tsx`
 - `src/providers/registry.py`
-- `src/api/services/model_config_service.py`
+- `src/infrastructure/config/model_config_service.py`
 
 ### 2) Test connection button is disabled only by `has_api_key` (High)
 - Current UI disables test action when API key is missing.
@@ -57,9 +57,9 @@ Reference:
 - Risk: concept mismatch and extra cognitive load.
 
 References:
-- `src/api/models/model_config.py`
+- `src/domain/models/model_config.py`
 - `src/providers/types.py`
-- `src/api/services/model_config_service.py`
+- `src/infrastructure/config/model_config_service.py`
 
 ## UX Note: "protocol" terminology
 

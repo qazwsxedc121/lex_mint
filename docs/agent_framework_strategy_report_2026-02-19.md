@@ -11,8 +11,8 @@
 
 基于代码扫描（2026-02-19）：
 
-- `src/api/routers/chat.py` 明确走 `AgentService` 简化路径（注释写明不使用 LangGraph）。
-- `langgraph` import 在业务代码里几乎只出现在 `src/agents/simple_agent.py`。
+- `src/api/routers/chat.py` 走 `ChatApplicationService` 应用服务路径（非 LangGraph 编排入口）。
+- 业务代码中已无 `langgraph` import（当前由 `src/application/* + src/llm_runtime/*` 负责执行链路）。
 - `langchain*` 在 provider / embeddings / tool / message 适配上使用广泛（多处 import）。
 - 你们刚完成的 group chat 重构已经把 committee 逻辑改为“可配置解析 + runtime 注入”，方向正确。
 

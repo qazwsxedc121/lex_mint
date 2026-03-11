@@ -318,7 +318,7 @@ interface FileContent {
 
 ## 配置说明
 
-### 后端配置 (src/api/config.py)
+### 后端配置 (src/core/config.py)
 
 ```python
 # 项目配置文件路径

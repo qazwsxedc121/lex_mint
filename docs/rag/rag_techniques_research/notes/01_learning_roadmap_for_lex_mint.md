@@ -11,7 +11,7 @@
 
 ## Current baseline in our codebase
 
-From `src/api/services/rag_service.py` and `src/api/services/rag_config_service.py`, we already have:
+From `src/infrastructure/retrieval/rag_service.py` and `src/infrastructure/config/rag_config_service.py`, we already have:
 - Hybrid retrieval (`vector`/`bm25`/`hybrid`)
 - RRF-style fusion controls
 - Optional API reranking

@@ -1,43 +1,39 @@
-<!-- Generated: 2026-02-17 (Updated) | Files scanned: ~290 | Token estimate: ~750 -->
+<!-- Updated: 2026-03-11 | Post backend ownership refactor -->
 
 # Architecture
 
 ## System Type
-Monorepo: FastAPI backend + React 19 frontend, LangGraph AI agent system
+Monorepo: FastAPI backend + React frontend.
 
 ## High-Level Data Flow
 ```
-Browser (React 19 + Vite)
+Browser (React + Vite)
   |  SSE streaming / REST
   v
 FastAPI (src/api/main.py)
-  |  20 routers
+  |  router -> dependency wiring
   v
-Service Layer (37 services)
-  |
-  +---> Provider Adapters (5) ---> LLM APIs (DeepSeek, OpenAI, Anthropic, Ollama, XAI)
-  +---> ConversationStorage  ---> Markdown files (conversations/)
-  +---> ChromaDB             ---> Vector embeddings (data/chromadb/)
-  +---> YAML configs         ---> config/local/*.yaml
+Application layer (src/application/*)
+  |  use-case orchestration
+  +---> LLM runtime (src/llm_runtime/*) ---> Provider adapters (src/providers/adapters/*) ---> LLM APIs
+  +---> Infrastructure services (src/infrastructure/*) ---> Markdown/YAML/Vector storage + external services
 ```
 
 ## Service Boundaries
 
 | Layer | Location | Responsibility |
-|-------|----------|----------------|
-| API Routers | `src/api/routers/` (20 files) | HTTP handling, request validation |
-| Services | `src/api/services/` (37 files) | Business logic, orchestration |
-| Models | `src/api/models/` (6 files) | Pydantic request/response schemas |
-| Providers | `src/providers/` | LLM abstraction, adapter pattern |
-| Agents | `src/agents/` | LangGraph workflow, streaming LLM calls |
-| Storage | `conversations/`, `config/`, `data/` | Markdown files, YAML configs, ChromaDB |
+|---|---|---|
+| API transport | `src/api/` | HTTP contracts, router mapping, SSE transport |
+| Application | `src/application/` | Product use-case orchestration |
+| Runtime | `src/llm_runtime/` | Model-turn execution, tool loop, stream shaping |
+| Providers | `src/providers/` | Provider abstraction and adapter integration |
+| Infrastructure | `src/infrastructure/` | Persistence, config, retrieval, knowledge, web, project services |
+| Shared core/domain | `src/core/`, `src/domain/models/` | Shared settings/paths/errors and domain models |
 
 ## Key Design Decisions
 
-- **No database**: Markdown files with YAML frontmatter for conversations (Git/sync-friendly)
-- **Provider adapter pattern**: Unified interface across 5 LLM providers
-- **Two-tier config**: `config/defaults/` (immutable) + `config/local/` (runtime, gitignored)
-- **SSE streaming**: Real-time token streaming from LLM to browser
-- **Module-based frontend**: `/modules/chat`, `/modules/settings`, `/modules/projects`
-- **Prompt templates**: Reusable templates with JSON variable schema (text/number/boolean/select)
-- **RAG reranking**: Model-based reranking via RerankService for improved retrieval
+- Legacy transport-adjacent catch-all package was removed (`src/api/services/`).
+- Runtime ownership is explicit under `src/llm_runtime/` (legacy `src/agents/` removed).
+- Shared config/path helpers moved to `src/core/`; shared models moved to `src/domain/models/`.
+- Unit tests mirror ownership (`tests/unit/application`, `tests/unit/infrastructure`, `tests/unit/llm_runtime`, `tests/unit/providers`, `tests/unit/api`, etc.).
+- Conversations remain markdown-first and config remains YAML-first for local-first workflows.

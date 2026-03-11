@@ -1,231 +1,118 @@
 # Project File Structure
 
-This document provides a comprehensive overview of the project's file structure and architecture.
+This document summarizes the current repository structure and ownership boundaries.
 
 ## Directory Overview
 
 ```
-agents-17dcab8b61/
+lex_mint/
 ├── src/                    # Backend Python code
 ├── frontend/               # Frontend React application
-├── config/                 # Configuration files (YAML)
-├── conversations/          # Conversation storage (Markdown files)
-├── logs/                   # Application logs
-├── tests/                  # Test files
-├── docs/                   # Documentation
-└── venv/                   # Python virtual environment
+├── tests/                  # Backend tests (pytest)
+├── docs/                   # Architecture and feature docs
+├── config/                 # Runtime and defaults YAML config
+├── conversations/          # Conversation markdown storage
+├── attachments/            # Uploaded files
+└── logs/                   # Runtime logs
 ```
 
 ## Backend Structure (`src/`)
 
-### API Layer (`src/api/`)
+### API Transport (`src/api/`)
 
-**Core Files:**
-- `main.py` - FastAPI application entry point with CORS and router registration
-- `config.py` - Pydantic settings configuration management
-- `logging_config.py` - Logging system setup
+- `main.py` - FastAPI app bootstrap
+- `dependencies.py` - API dependency wiring
+- `routers/` - HTTP + SSE route handlers
+- `errors.py` - API-layer error mapping
+- `logging_config.py` - logging setup
 
-**Data Models (`src/api/models/`):**
-- `model_config.py` - Provider, Model, DefaultConfig, ModelsConfig Pydantic models
-- `assistant_config.py` - Assistant configuration models
+### Core Shared Modules
 
-**API Endpoints (`src/api/routers/`):**
-- `sessions.py` - Session/conversation CRUD operations
-- `chat.py` - Chat message handling with streaming support
-- `models.py` - Model management endpoints
-- `assistants.py` - Assistant management endpoints
-
-**Transport and Transitional Services (`src/api/services/`):**
-- `conversation_storage.py` - Markdown file-based conversation persistence
-- `chat_application_service.py` - Compatibility shim re-exporting the chat application entry service
-- `chat_application_bootstrap.py` - Compatibility shim re-exporting the production chat composition root
-- `model_config_service.py` - Model and provider configuration management
-- `assistant_config_service.py` - Assistant configuration management
-- `pricing_service.py` - Token usage and cost calculation
+- `src/core/` - shared paths, settings, and cross-layer helpers
+- `src/domain/models/` - shared Pydantic domain models
 
 ### Application Layer (`src/application/`)
 
-- `chat/` - Chat application package
-- `chat/service.py` - Chat application entry service
-- `chat/bootstrap.py` - Production chat service composition root
-- `chat/factory.py` - Application-level factory functions
-- `chat/group_chat_service.py` - Group chat application flow
-- `chat/single_chat_flow_service.py` - Single chat application flow
-- `chat/compare_flow_service.py` - Compare chat application flow
-- `chat/context_assembly_service.py` - Shared context preparation for chat application flows
-- `chat/post_turn_service.py` - Post-turn persistence and follow-up side effects
-- `workflows/` - Workflow application package
-- `workflows/execution_service.py` - Workflow execution application service
+- `chat/` - single/group/compare chat orchestration
+- `flow/` - flow event mapping and async run orchestration
+- `tools/` - tool-catalog orchestration for use cases
+- `translation/` - translation use-case orchestration
+- `workflows/` - workflow execution orchestration
 
-### Agent Layer (`src/agents/`)
+### Runtime + Provider Layer
 
-- `simple_agent.py` - LangGraph state machine with chat node
-- `llm_runtime/` - LLM runtime entrypoints, context shaping, reasoning, and streaming clients
+- `src/llm_runtime/` - model-turn runtime execution, tool loop, streaming, reasoning
+- `src/providers/` - provider registry + adapters
+- `src/providers/adapters/` - provider-specific protocol adapters
 
-### State Management (`src/state/`)
+### Infrastructure Layer (`src/infrastructure/`)
 
-- `agent_state.py` - TypedDict-based state definitions using `Annotated[List, add]`
+- `storage/` - conversation and async-run persistence
+- `files/` - file IO services
+- `config/` - YAML-backed configuration services
+- `retrieval/` - retrieval, embedding, rerank, sqlite-vec
+- `knowledge/` - knowledge base and document processing
+- `web/` - search and webpage services
+- `memory/` - memory services
+- `compression/` - compression services/config
+- `projects/` - project-scoped infrastructure helpers
+- `llm/` - local LLM helper services
+- `audio/` - TTS services
 
-### Provider Abstraction (`src/providers/`)
+### Supporting Modules
 
-**Core Files:**
-- `types.py` - Enums (ApiProtocol, ProviderType), data models (TokenUsage, CostInfo)
-- `base.py` - Base provider interface class
-- `builtin.py` - Built-in provider registry
-- `registry.py` - Provider factory and registry pattern
-
-**Protocol Adapters (`src/providers/adapters/`):**
-- `deepseek_adapter.py` - DeepSeek API integration
-- `openai_adapter.py` - OpenAI-compatible API integration
-- `anthropic_adapter.py` - Anthropic Claude API integration
-- `ollama_adapter.py` - Ollama local model integration
-- `xai_adapter.py` - XAI (Grok) API integration
-
-### Utilities (`src/utils/`)
-
-- `llm_logger.py` - LLM interaction logging (JSON format, daily rotation)
-
-### Entry Points
-
-- `main.py` - CLI interface for agent interaction
+- `src/tools/` - builtin + request-scoped tool definitions/registry
+- `src/state/` - shared runtime state models
+- `src/evals/` - evaluation scripts/helpers
+- `src/utils/` - generic utilities
+- `src/main.py` - backend CLI entrypoint
 
 ## Frontend Structure (`frontend/src/`)
 
-### Core Files
+- `main.tsx` - frontend entrypoint
+- `App.tsx` - route composition
+- `modules/chat/` - chat UI and flow
+- `modules/settings/` - settings screens
+- `modules/projects/` - project UI
+- `services/api.ts` - API client
+- `types/` - frontend type definitions
 
-- `main.tsx` - React application entry point
-- `App.tsx` - React Router configuration
-- `index.css` - Global styles with Tailwind CSS
+## Testing Structure (`tests/`)
 
-### Layouts (`frontend/src/layouts/`)
-
-- `MainLayout.tsx` - Main layout wrapper with nested routing
-- `GlobalSidebar.tsx` - Global navigation sidebar
-
-### Feature Modules (`frontend/src/modules/`)
-
-**Chat Module (`modules/chat/`):**
-- `index.tsx` - Chat feature router
-- `ChatView.tsx` - Main chat interface
-- `ChatWelcome.tsx` - Welcome screen for new sessions
-- `ChatSidebar.tsx` - Session list and management
-- `components/`
-  - `MessageBubble.tsx` - Individual message rendering with markdown
-  - `MessageList.tsx` - Message list container
-  - `InputBox.tsx` - User input field
-  - `AssistantSelector.tsx` - Assistant/model selection dropdown
-  - `CodeBlock.tsx` - Code syntax highlighting
-- `hooks/`
-  - `useChat.ts` - Chat state management
-  - `useSessions.ts` - Session management logic
-
-**Settings Module (`modules/settings/`):**
-- `index.tsx` - Settings router
-- `SettingsSidebar.tsx` - Settings navigation tabs
-- `AssistantsPage.tsx` - Assistant management UI
-- `ModelsPage.tsx` - Model listing and management
-- `ProvidersPage.tsx` - Provider configuration
-- `components/`
-  - `AssistantList.tsx` - Assistant list and editor
-  - `ModelList.tsx` - Model management table
-  - `ProviderList.tsx` - Provider configuration table
-- `hooks/`
-  - `useAssistants.ts` - Assistant management logic
-  - `useModels.ts` - Model management logic
-
-### Services (`frontend/src/services/`)
-
-- `api.ts` - Axios HTTP client for API communication
-
-### Type Definitions (`frontend/src/types/`)
-
-- `message.ts` - Message interface/type definitions
-- `model.ts` - Model and provider type definitions
-- `assistant.ts` - Assistant configuration types
-
-### Configuration Files
-
-- `package.json` - Node.js dependencies and scripts
-- `tsconfig.json` - TypeScript configuration
-- `vite.config.ts` - Vite bundler configuration
-- `tailwind.config.js` - Tailwind CSS configuration
-- `postcss.config.js` - PostCSS configuration
-- `eslint.config.js` - ESLint linting rules
-
-## Configuration (`config/`)
-
-- `models_config.yaml` - LLM providers, models, pricing, capabilities
-- `assistants_config.yaml` - Assistant profiles with system prompts
-- `defaults/keys_config.yaml.example` - API key file template
-- Runtime key file location: `config/local/keys_config.yaml`
-- Shared bootstrap key file (read-only): `~/.lex_mint/keys_config.yaml`
-
-## Conversation Storage (`conversations/`)
-
-**Format:** `YYYY-MM-DD_HH-MM-SS_[session_id_first_8_chars].md`
-
-**Structure:**
-```markdown
----
-session_id: uuid
-assistant_id: string
-model_id: string
-created_at: timestamp
-title: string
-current_step: integer
----
-
-## User (timestamp)
-Message content...
-
-## Assistant (timestamp)
-Response content...
-```
-
-## Testing (`tests/`)
-
-- `unit/test_simple_agent.py` - Agent node unit tests with mocked LLM
-
-## Root Configuration Files
-
-- `pyproject.toml` - Python project metadata, Ruff, MyPy, Pytest config
-- `requirements.txt` - Python dependencies
-- `.env` - Environment variables (ports and runtime config)
-- `CLAUDE.md` - Development guidelines for Claude Code
-- `QUICKSTART.txt` - Quick start instructions
+- `tests/api/` - API-level integration tests
+- `tests/integration/` - integration and port behavior tests
+- `tests/unit/application/` - application-layer unit tests
+- `tests/unit/infrastructure/` - infrastructure-layer unit tests
+- `tests/unit/llm_runtime/` - runtime unit tests
+- `tests/unit/providers/` - provider unit tests
+- `tests/unit/api/` - router/dependency unit tests
+- `tests/unit/domain/`, `tests/unit/core/`, `tests/unit/tools/`, `tests/unit/evals/`, `tests/unit/cross_layer/`
 
 ## Key Architectural Patterns
 
 ### Backend
 
-1. **State Management** - TypedDict with `Annotated[List, add]` for message accumulation
-2. **Provider Abstraction** - Multi-provider support via adapter pattern
-3. **File-based Storage** - Markdown + YAML frontmatter (no database)
-4. **FastAPI** - Async/await with dependency injection
+1. Layered ownership: `api -> application -> llm_runtime/providers` + `infrastructure`
+2. Provider adapter pattern for multi-provider LLM support
+3. Markdown + YAML config/data persistence (no mandatory DB)
+4. SSE event transport with flow-event mapping
 
 ### Frontend
 
-1. **React Router** - Nested routing for modular navigation
-2. **Zustand** - State management for chat and settings
-3. **Tailwind CSS** - Utility-first CSS framework
-4. **TypeScript** - Full type safety throughout
-
-### Storage Strategy
-
-- **Human-readable** - Markdown format for easy editing
-- **Sync-friendly** - Works with Dropbox, OneDrive, git
-- **No database** - Simple file-based persistence
-- **Timestamped** - Complete conversation history
+1. Vite + React module-oriented feature structure
+2. Zustand state stores for feature state
+3. Tailwind CSS styling system
+4. TypeScript-first contracts with backend API
 
 ## Key Files by Purpose
 
 | Purpose | Location |
-|---------|----------|
-| API Endpoints | `src/api/routers/` |
-| Business Logic | `src/api/services/` |
-| Configuration | `config/` |
-| LLM Integration | `src/agents/llm_runtime/`, `src/providers/adapters/` |
-| Conversation Storage | `src/api/services/conversation_storage.py` |
-| Frontend UI | `frontend/src/modules/` |
-| Type Definitions | `frontend/src/types/`, `src/api/models/` |
-| State Management | `src/state/` |
+|---|---|
+| API routes | `src/api/routers/` |
+| Chat orchestration | `src/application/chat/` |
+| Runtime execution | `src/llm_runtime/` |
+| Provider integration | `src/providers/adapters/` |
+| Config services | `src/infrastructure/config/` |
+| Conversation persistence | `src/infrastructure/storage/conversation_storage.py` |
+| Shared domain models | `src/domain/models/` |
+| Frontend feature UI | `frontend/src/modules/` |

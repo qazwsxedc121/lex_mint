@@ -33,90 +33,24 @@ architecture vocabulary.
 
 ## Current Status Snapshot
 
-- compatibility shim modules under `src/api/services/` have been retired
-  (the `src/api/services/` package has been removed)
-- shared runtime path/settings helpers now live under `src/core/`
-  (`src/api/paths.py` and `src/api/config.py` have been removed)
-- shared Pydantic model ownership now lives under `src/domain/models/`
-  (the `src/api/models/` package has been removed)
-- API entry now resolves `ChatApplicationService` directly
-- production bootstrap now comes from `src/application/chat/`
-- workflow execution now resolves from `src/application/workflows/`
-- legacy `AgentService` has been removed
-- legacy `simple_llm.py` has been removed
-- runtime code is centered in `src/llm_runtime/`
-- legacy `src/agents/` compatibility modules have been removed
-- infrastructure storage package now lives under `src/infrastructure/storage/` (with compatibility shims)
-- file infrastructure package now lives under `src/infrastructure/files/` (with compatibility shims)
-- config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
-- assistant/file-reference/memory/rag/translation/tts/workflow config services now live under
-  `src/infrastructure/config/` (with compatibility shims)
-- prompt template and folder config services now live under
-  `src/infrastructure/config/` (with compatibility shims)
-- provider probe service now lives under `src/infrastructure/config/`
-  (with a compatibility shim)
-- pricing service now lives under `src/infrastructure/config/` (with compatibility shims)
-- shared layered YAML config helpers now live under `src/infrastructure/config/`
-  (with compatibility shims)
-- web infrastructure package now lives under `src/infrastructure/web/` (with compatibility shims, including search + tools wrappers)
-- compression infrastructure package now lives under `src/infrastructure/compression/` (with compatibility shims)
-- llm infrastructure helpers now live under `src/infrastructure/llm/` (with compatibility shims)
-- memory infrastructure package now lives under `src/infrastructure/memory/`
-  (with compatibility shims)
-- project infrastructure package now lives under `src/infrastructure/projects/` (with compatibility shims for project-scoped tool helpers)
-- retrieval infrastructure package now lives under `src/infrastructure/retrieval/`
-  (flow/retrieval compatibility shims are being retired)
-- embedding, bm25, sqlite-vec, rerank, query-transform, and retrieval-query-planner
-  services now live under `src/infrastructure/retrieval/`
-  (compatibility shims removed)
-- knowledge-base infrastructure package now lives under `src/infrastructure/knowledge/`
-  (with compatibility shims)
-- document processing pipeline now lives under `src/infrastructure/knowledge/`
-  (with a compatibility shim)
-- group runtime support and orchestration support now live under `src/application/chat/` (with compatibility shims)
-- chat input preparation and shared chat service contracts now live under
-  `src/application/chat/` (with compatibility shims)
-- group participant parsing now lives under `src/application/chat/`
-  (with compatibility shims)
-- file reference context builder, source context service, and rag context builder
-  now live under `src/application/chat/` (with compatibility shims)
-- rag tool service now lives under `src/application/chat/`
-  (with a compatibility shim)
-- title generation and follow-up services now live under
-  `src/application/chat/` (with compatibility shims)
-- ChatGPT and markdown session import services now live under
-  `src/application/chat/` (with compatibility shims)
-- translation service now lives under `src/application/translation/`
-  (with a compatibility shim)
-- tool catalog service now lives under `src/application/tools/`
-  (with a compatibility shim)
-- project conversation migration service now lives under
-  `src/infrastructure/storage/` (with a compatibility shim)
-- tts service now lives under `src/infrastructure/audio/`
-  (with a compatibility shim)
-- project workspace state service now lives under
-  `src/infrastructure/projects/` (with a compatibility shim)
-- flow event schema/mapper/emitter modules now live under
-  `src/application/flow/` (compatibility shims removed)
-- flow stream runtime and provider modules now live under
-  `src/application/flow/` (compatibility shims removed)
-- async run orchestration/provider modules now live under
-  `src/application/flow/` (compatibility shims removed)
-- async run record store now lives under `src/infrastructure/storage/`
-  (with a compatibility shim)
-- orchestration modules now live under `src/application/chat/orchestration/`
-  (with compatibility shims)
-- workflow run history now lives under `src/application/workflows/`
-  (with compatibility shims)
-- think-tag stream filtering now lives under `src/llm_runtime/`
-- context planner now lives under `src/llm_runtime/`
-- production modules under `src/api/` now import owned modules directly from
-  `src/application/` and `src/infrastructure/` rather than from
-  `src/api/services/`
+- `src/api/services/` has been removed; transport modules now import from owned
+  packages directly
+- shared path/settings helpers live under `src/core/` (`src/api/paths.py` and
+  `src/api/config.py` were removed)
+- shared Pydantic model ownership lives under `src/domain/models/`
+  (`src/api/models/` was removed)
+- runtime execution is centered in `src/llm_runtime/`; legacy `src/agents/`
+  compatibility modules are removed
+- application orchestration lives under `src/application/`
+  (`chat/`, `flow/`, `tools/`, `translation/`, `workflows/`)
+- infrastructure concerns live under `src/infrastructure/`
+  (`storage/`, `files/`, `config/`, `web/`, `retrieval/`, `knowledge/`,
+  `compression/`, `llm/`, `memory/`, `projects/`, `audio/`)
+- API dependencies resolve `ChatApplicationService` directly from
+  `src/application/chat/`
+- workflow execution resolves from `src/application/workflows/`
 - application/infrastructure/provider modules no longer import `src.api.*`
-- tests now import owned modules directly from `src/application/`,
-  `src/infrastructure/`, and `src/llm_runtime/` rather than from
-  `src/api/services/`
+- tests are organized by ownership and import owned packages directly
 
 
 ## Core Principles
@@ -398,22 +332,21 @@ src/
     main.py
     dependencies.py
     routers/
-    models/
     errors.py
     logging_config.py
 
+  core/
+  domain/
+    models/
+
   application/
     chat/
-    group_chat/
-    compare/
+    flow/
+    tools/
+    translation/
     workflows/
-    context/
-    post_turn/
 
-  agents/
-    llm_runtime/
-    tool_loop_runner.py
-    stream_call_policy.py
+  llm_runtime/
 
   providers/
     adapters/
@@ -432,6 +365,13 @@ src/
     files/
     retrieval/
     config/
+    web/
+    knowledge/
+    memory/
+    compression/
+    projects/
+    llm/
+    audio/
 
   state/
   utils/
@@ -439,10 +379,10 @@ src/
 
 Notes:
 
-- `application/` and `infrastructure/` are target-state concepts. They do not need to be
-  created all at once.
-- Transitional transport-adjacent compatibility directories have been removed
-  (`src/api/services/`, `src/api/models/`).
+- `application/` and `infrastructure/` are now real ownership roots, not just
+  target-state placeholders.
+- Transitional compatibility directories have been removed (`src/api/services/`,
+  `src/api/models/`, `src/agents/`).
 
 
 ## Placement Rules for New Code

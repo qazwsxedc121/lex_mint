@@ -202,7 +202,7 @@ with persistence/context/tool preparation remaining in the application service.
 
 - decide whether `SingleTurnOrchestrator` should remain only for compatibility/tests
 - decide whether `SingleChatFlowService` should stay public or be folded into a narrower application package structure
-- reduce residual composition code still living under `src/api/services/`
+- keep trimming thin composition helpers that no longer add ownership value
 
 
 ## Stage 3 - Split `src/api/services/` by Real Ownership
@@ -267,7 +267,7 @@ Infrastructure-oriented:
 ### Exit Criteria
 
 - new code has a clear placement rule
-- fewer unrelated modules are added to `src/api/services/`
+- no new transport-adjacent catch-all package appears
 - at least one application package and one infrastructure package exist
 
 ### Current Progress
@@ -278,113 +278,12 @@ Infrastructure-oriented:
   `src.application.chat`
 - production workflow entrypoints now import workflow execution from
   `src.application.workflows`
-- compatibility re-export modules under `src/api/services/` have been fully
-  retired; the `src/api/services/` package has been removed
-- note: some bullets below mention earlier "compatibility re-export kept"
-  milestones for historical traceability
-- `single_chat_flow_service.py` and `compare_flow_service.py` now physically live under
-  `src/application/chat/`
-- `context_assembly_service.py` and `post_turn_service.py` now physically live under
-  `src/application/chat/`
-- `chat_input_service.py` and `service_contracts.py` now physically live under
-  `src/application/chat/` (with compatibility re-exports kept under
-  `src/api/services/`)
-- `group_participants.py` now physically lives under `src/application/chat/`
-  (with a compatibility re-export kept under `src/api/services/`)
-- `file_reference_context_builder.py`, `source_context_service.py`, and
-  `rag_context_builder_service.py` now physically live under
-  `src/application/chat/` (with compatibility re-exports kept under
-  `src/api/services/`)
-- `rag_tool_service.py` now physically lives under `src/application/chat/`
-  (with a compatibility re-export kept under `src/api/services/`)
-- `title_generation_service.py` and `followup_service.py` now physically
-  live under `src/application/chat/` (with compatibility re-exports kept
-  under `src/api/services/`)
-- `chatgpt_import_service.py` and `markdown_import_service.py` now physically
-  live under `src/application/chat/` (with compatibility re-exports kept
-  under `src/api/services/`)
-- `translation_service.py` now physically lives under
-  `src/application/translation/` (with a compatibility re-export kept under
-  `src/api/services/`)
-- `tool_catalog_service.py` now physically lives under
-  `src/application/tools/` (with a compatibility re-export kept under
-  `src/api/services/`)
-- `flow_event_types.py`, `flow_events.py`, `flow_event_mapper.py`,
-  `flow_event_emitter.py`, `flow_stream_runtime.py`,
-  `flow_stream_runtime_provider.py`, `workflow_flow_event_mapper.py`,
-  `async_run_service.py`, and `async_run_provider.py` now physically live
-  under `src/application/flow/` (their `src/api/services/` compatibility
-  re-exports have now been removed)
-- `workflow_execution_service.py` now physically lives under
-  `src/application/workflows/`
-- `workflow_run_history_service.py` now physically lives under
-  `src/application/workflows/` (with a compatibility re-export kept under
-  `src/api/services/`)
-- `src/infrastructure/storage/` has been introduced, and the following modules now
-  physically live there (with compatibility re-exports kept under `src/api/services/`):
-  - `conversation_storage.py`
-  - `conversation_storage_paths.py`
-  - `conversation_target_resolver.py`
-  - `comparison_storage.py`
-  - `migration_service.py`
-  - `async_run_store_service.py`
-- `src/infrastructure/files/` has been introduced, and `file_service.py` now
-  physically lives there (with a compatibility re-export kept under `src/api/services/`).
-- `src/infrastructure/config/` has been introduced, and `project_service.py` now
-  physically lives there (with a compatibility re-export kept under `src/api/services/`).
-- `model_config_service.py` (plus `model_config_repository.py` / `model_runtime_service.py`)
-  now physically live under `src/infrastructure/config/` (with compatibility re-exports kept
-  under `src/api/services/`).
-- `pricing_service.py` now physically lives under
-  `src/infrastructure/config/` (with a compatibility re-export kept under
-  `src/api/services/`).
-- `assistant_config_service.py`, `file_reference_config_service.py`,
-  `memory_config_service.py`, `rag_config_service.py`,
-  `translation_config_service.py`, `tts_config_service.py`, and
-  `workflow_config_service.py` now physically live under
-  `src/infrastructure/config/` (with compatibility re-exports kept under
-  `src/api/services/`).
-- `prompt_template_service.py` and `folder_service.py` now physically live
-  under `src/infrastructure/config/` (with compatibility re-exports kept
-  under `src/api/services/`).
-- `provider_probe_service.py` now physically lives under
-  `src/infrastructure/config/` (with a compatibility re-export kept under
-  `src/api/services/`).
-- shared `yaml_config_utils.py` now physically lives under
-  `src/infrastructure/config/` (with a compatibility re-export kept under
-  `src/api/services/`).
-- `src/infrastructure/web/` has been introduced, and `webpage_service.py` now physically
-  lives there (with a compatibility re-export kept under `src/api/services/`).
-- `search_service.py` and `web_tool_service.py` now physically live under
-  `src/infrastructure/web/` (with compatibility re-exports kept under `src/api/services/`).
-- `src/infrastructure/compression/` has been introduced, and
-  `compression_config_service.py` plus `compression_service.py` now physically
-  live there (with compatibility re-exports kept under `src/api/services/`).
-- `src/infrastructure/llm/` has been introduced, and
-  `language_detection_service.py` plus `local_llama_cpp_service.py` now
-  physically live there (with compatibility re-exports kept under
-  `src/api/services/`).
-- `src/infrastructure/memory/` has been introduced, and
-  `memory_service.py` now physically lives there (with a compatibility
-  re-export kept under `src/api/services/`).
-- `src/infrastructure/projects/` has been introduced, and
-  `project_document_tool_service.py`, `project_knowledge_base_resolver.py`, and
-  `project_tool_policy_resolver.py`, and `project_workspace_state_service.py`
-  now physically live there (with compatibility
-  re-exports kept under `src/api/services/`).
-- `src/infrastructure/retrieval/` has been introduced, and
-  `rag_service.py`, `rag_backend_search.py`, `rag_post_processor.py`,
-  `embedding_service.py`, `bm25_service.py`, `sqlite_vec_service.py`,
-  `rerank_service.py`, `query_transform_service.py`, and
-  `retrieval_query_planner_service.py` now physically live there (their
-  `src/api/services/` compatibility re-exports have now been removed).
-- `src/infrastructure/knowledge/` has been introduced, and
-  `knowledge_base_service.py` plus `document_processing_service.py` now
-  physically live there (with compatibility re-exports kept under
-  `src/api/services/`).
-- `src/infrastructure/audio/` has been introduced, and `tts_service.py` now
-  physically lives there (with a compatibility re-export kept under
-  `src/api/services/`).
+- the legacy compatibility package under `src/api/services/` has been removed
+- core orchestration modules now physically live in `src/application/`
+  (`chat/`, `flow/`, `tools/`, `translation/`, `workflows/`)
+- runtime execution modules now physically live in `src/llm_runtime/`
+- storage/config/web/retrieval/knowledge/memory/audio/project/file concerns now
+  physically live in `src/infrastructure/`
 - production API transport modules now import owned modules directly from
   `src/application/*` and `src/infrastructure/*`; there are no remaining
   `from ..services ...` imports under `src/api/`
@@ -445,11 +344,9 @@ Bring non-single-chat flows under the same structural vocabulary.
 - group and compare no longer route through a legacy compatibility facade
 - workflow execution now has a dedicated application package entrypoint
 - `group_runtime_support_service.py` and `group_orchestration_support_service.py`
-  now physically live under `src/application/chat/` with compatibility re-exports
-  retained under `src/api/services/`
+  now physically live under `src/application/chat/`
 - orchestration modules now physically live under
-  `src/application/chat/orchestration/` with compatibility re-exports retained
-  under `src/api/services/orchestration/`
+  `src/application/chat/orchestration/`
 - think-tag stream filtering helpers now physically live under
   `src/llm_runtime/`
 - context planner now physically lives under `src/llm_runtime/`
@@ -464,7 +361,7 @@ Bring non-single-chat flows under the same structural vocabulary.
 
 ### Status
 
-Partial.
+Mostly complete.
 
 ### Goal
 
@@ -508,13 +405,14 @@ Renaming should happen after boundaries are already real.
 ### Remaining Work
 
 - rename outdated test/module names that still reflect deleted structures
+- clean remaining architecture docs that still use historical path names
 
 
 ## Stage 6 - Test Structure Alignment
 
 ### Status
 
-Partial.
+Mostly complete.
 
 ### Goal
 
@@ -554,8 +452,7 @@ Make tests mirror the new ownership model.
 
 ### Remaining Work
 
-- optional naming polish for a few legacy-neutral folders only if it
-  improves discoverability without churn
+- keep architecture guard tests in place to prevent legacy import/path regressions
 
 
 ## Delivery Order
@@ -608,7 +505,7 @@ without requiring immediate repo-wide directory moves.
 Because this refactor is staged, rollback is straightforward:
 
 - each stage ends in a standalone commit
-- compatibility shims reduce migration blast radius
+- compatibility shims were used during moves, then removed after callers migrated
 - structural moves should be separated from behavior changes where possible
 
 If a stage proves unstable, revert only that stage and keep the previous checkpoint.
@@ -620,6 +517,6 @@ The refactor is successful if:
 
 - a normal chat path can be explained in one sentence
 - new backend files have an obvious home
-- `src/api/services/` no longer grows as a catch-all
+- no legacy transport-adjacent catch-all package reappears
 - runtime behavior is isolated from application orchestration
 - naming reflects actual ownership rather than history
