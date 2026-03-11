@@ -318,8 +318,8 @@ Infrastructure-oriented:
   `flow_event_emitter.py`, `flow_stream_runtime.py`,
   `flow_stream_runtime_provider.py`, `workflow_flow_event_mapper.py`,
   `async_run_service.py`, and `async_run_provider.py` now physically live
-  under `src/application/flow/` (with compatibility re-exports kept under
-  `src/api/services/`)
+  under `src/application/flow/` (their `src/api/services/` compatibility
+  re-exports have now been removed)
 - `workflow_execution_service.py` now physically lives under
   `src/application/workflows/`
 - `workflow_run_history_service.py` now physically lives under
@@ -381,8 +381,8 @@ Infrastructure-oriented:
   `rag_service.py`, `rag_backend_search.py`, `rag_post_processor.py`,
   `embedding_service.py`, `bm25_service.py`, `sqlite_vec_service.py`,
   `rerank_service.py`, `query_transform_service.py`, and
-  `retrieval_query_planner_service.py` now physically live there (with
-  compatibility re-exports kept under `src/api/services/`).
+  `retrieval_query_planner_service.py` now physically live there (their
+  `src/api/services/` compatibility re-exports have now been removed).
 - `src/infrastructure/knowledge/` has been introduced, and
   `knowledge_base_service.py` plus `document_processing_service.py` now
   physically live there (with compatibility re-exports kept under

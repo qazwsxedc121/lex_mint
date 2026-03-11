@@ -58,10 +58,10 @@ architecture vocabulary.
   (with compatibility shims)
 - project infrastructure package now lives under `src/infrastructure/projects/` (with compatibility shims for project-scoped tool helpers)
 - retrieval infrastructure package now lives under `src/infrastructure/retrieval/`
-  (with compatibility shims for rag retrieval helpers)
+  (flow/retrieval compatibility shims are being retired)
 - embedding, bm25, sqlite-vec, rerank, query-transform, and retrieval-query-planner
   services now live under `src/infrastructure/retrieval/`
-  (with compatibility shims)
+  (compatibility shims removed)
 - knowledge-base infrastructure package now lives under `src/infrastructure/knowledge/`
   (with compatibility shims)
 - document processing pipeline now lives under `src/infrastructure/knowledge/`
@@ -90,11 +90,11 @@ architecture vocabulary.
 - project workspace state service now lives under
   `src/infrastructure/projects/` (with a compatibility shim)
 - flow event schema/mapper/emitter modules now live under
-  `src/application/flow/` (with compatibility shims)
+  `src/application/flow/` (compatibility shims removed)
 - flow stream runtime and provider modules now live under
-  `src/application/flow/` (with compatibility shims)
+  `src/application/flow/` (compatibility shims removed)
 - async run orchestration/provider modules now live under
-  `src/application/flow/` (with compatibility shims)
+  `src/application/flow/` (compatibility shims removed)
 - async run record store now lives under `src/infrastructure/storage/`
   (with a compatibility shim)
 - orchestration modules now live under `src/application/chat/orchestration/`
