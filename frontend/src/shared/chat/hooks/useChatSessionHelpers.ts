@@ -59,8 +59,7 @@ export function deriveLastPromptTokens(messages: Message[]): number | null {
 }
 
 export function inferSessionTargetType(session: SessionDetail): ChatTargetType {
-  return session.target_type
-    || (session.assistant_id && !session.assistant_id.startsWith('__legacy_model_') ? 'assistant' : 'model');
+  return session.target_type === 'assistant' ? 'assistant' : 'model';
 }
 
 export function buildChatSessionSnapshot(

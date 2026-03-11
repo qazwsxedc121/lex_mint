@@ -35,5 +35,8 @@ Application layer (src/application/*)
 - Legacy transport-adjacent catch-all package was removed (`src/api/services/`).
 - Runtime ownership is explicit under `src/llm_runtime/` (legacy `src/agents/` removed).
 - Shared config/path helpers moved to `src/core/`; shared models moved to `src/domain/models/`.
+- Session targets are explicit (`target_type` + `assistant_id/model_id`); no legacy model-id shim.
+- Flow-event protocol is strict fail-fast (`stream_error` on unknown events, no legacy fallback event).
+- Config loading is local/defaults only; legacy path fallback is removed.
 - Unit tests mirror ownership (`tests/unit/application`, `tests/unit/infrastructure`, `tests/unit/llm_runtime`, `tests/unit/providers`, `tests/unit/api`, etc.).
 - Conversations remain markdown-first and config remains YAML-first for local-first workflows.

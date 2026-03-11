@@ -5,18 +5,16 @@
 This document converts the architecture guidance in
 `docs/backend_module_responsibilities.md` into a staged refactor plan.
 
-It is intentionally incremental.
-The goal is to reduce structural risk while keeping the system runnable after each stage.
+Current baseline is now in strict mode:
+legacy compatibility layers are removed, and new architecture contracts are authoritative.
 
 
 ## Refactor Strategy
 
-We will not do a one-shot repo-wide move.
-
-We will refactor in small, testable stages with these rules:
+Execution rules:
 
 - keep the main chat path runnable after each stage
-- prefer compatibility shims over large break-the-world moves
+- remove compatibility shims once owned modules are in place
 - reduce layer confusion before renaming directories aggressively
 - move ownership first, rename second
 - each stage must end with a stable checkpoint that can be tested and committed
@@ -42,11 +40,11 @@ And toward this ownership model:
 
 - Stage 0 - done
 - Stage 1 - done
-- Stage 2 - partial
+- Stage 2 - done
 - Stage 3 - done
-- Stage 4 - partial
-- Stage 5 - partial
-- Stage 6 - partial
+- Stage 4 - done
+- Stage 5 - done
+- Stage 6 - done
 
 
 ## Stage 0 - Baseline and Safety Rails
@@ -63,7 +61,6 @@ Done.
 
 - document target responsibilities
 - document staged refactor plan
-- keep compatibility shims where needed
 - create a git checkpoint before structural migrations continue
 
 ### Exit Criteria
@@ -140,7 +137,7 @@ and group chat.
 
 ### Status
 
-Mostly complete.
+Done.
 
 ### Goal
 
@@ -148,11 +145,9 @@ Reduce the number of thin layers in the normal single-chat chain.
 
 ### Current problem
 
-A normal single chat currently passes through:
+A normal single chat now passes through:
 
-`router -> ChatApplicationService -> SingleChatFlowService -> SingleTurnOrchestrator -> llm_runtime`
-
-This works, but some of these layers are too thin and their ownership is not sharp enough.
+`router -> ChatApplicationService -> SingleChatFlowService -> llm_runtime`
 
 Current progress:
 
@@ -160,7 +155,7 @@ Current progress:
 - `AgentService` has been removed from the production chat path
 - `SingleChatFlowService` is now the clear single-chat application flow owner
 - single-chat streaming now calls `llm_runtime.call_llm_stream` directly from
-  `SingleChatFlowService` (no production `SingleTurnOrchestrator` hop)
+  `SingleChatFlowService`
 
 ### Scope
 
@@ -180,9 +175,6 @@ with persistence/context/tool preparation remaining in the application service.
 ### Candidate cleanup items
 
 - keep group chat and compare chat behind separate entry services
-- evaluate whether `SingleTurnOrchestrator` should remain as a reusable abstraction
-  or become an internal helper of the single-chat application layer
-
 ### Risks
 
 - hidden coupling with compare/group/workflow paths
@@ -200,8 +192,6 @@ with persistence/context/tool preparation remaining in the application service.
 
 ### Remaining Work
 
-- decide whether `SingleTurnOrchestrator` should remain only for compatibility/tests
-- decide whether `SingleChatFlowService` should stay public or be folded into a narrower application package structure
 - keep trimming thin composition helpers that no longer add ownership value
 
 
@@ -304,7 +294,7 @@ Infrastructure-oriented:
 
 ### Status
 
-Partial.
+Done.
 
 ### Goal
 
@@ -353,15 +343,14 @@ Bring non-single-chat flows under the same structural vocabulary.
 
 ### Remaining Work
 
-- compare modules still have transitional package dependencies
-- supporting workflow modules still mostly live under transitional package locations
+- maintain contract tests as orchestration features evolve
 
 
 ## Stage 5 - Naming Cleanup
 
 ### Status
 
-Mostly complete.
+Done.
 
 ### Goal
 
@@ -404,15 +393,14 @@ Renaming should happen after boundaries are already real.
 
 ### Remaining Work
 
-- rename outdated test/module names that still reflect deleted structures
-- clean remaining architecture docs that still use historical path names
+- keep docs synchronized with ownership boundaries as new modules land
 
 
 ## Stage 6 - Test Structure Alignment
 
 ### Status
 
-Mostly complete.
+Done.
 
 ### Goal
 
@@ -423,7 +411,7 @@ Make tests mirror the new ownership model.
 - runtime tests follow runtime modules
 - application flow tests follow application packages
 - infrastructure tests follow storage/config/file modules
-- legacy-path tests removed once migration shims are retired
+- legacy-path tests removed after compatibility-layer deletion
 
 ### Candidate actions
 
@@ -452,7 +440,7 @@ Make tests mirror the new ownership model.
 
 ### Remaining Work
 
-- keep architecture guard tests in place to prevent legacy import/path regressions
+- keep architecture guard tests in place to prevent ownership regressions
 
 
 ## Delivery Order
@@ -483,7 +471,7 @@ Every structural PR should follow these rules:
 - one primary architectural move per PR
 - keep public behavior stable unless intentionally changed
 - update docs when boundaries change
-- prefer re-export shims over mass breakage
+- avoid reintroducing compatibility shims
 - add or update tests for the moved ownership boundary
 - leave the tree in a runnable state
 
@@ -505,7 +493,7 @@ without requiring immediate repo-wide directory moves.
 Because this refactor is staged, rollback is straightforward:
 
 - each stage ends in a standalone commit
-- compatibility shims were used during moves, then removed after callers migrated
+- compatibility shims are already removed; rollback should be stage-scoped only
 - structural moves should be separated from behavior changes where possible
 
 If a stage proves unstable, revert only that stage and keep the previous checkpoint.

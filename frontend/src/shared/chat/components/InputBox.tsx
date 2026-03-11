@@ -1363,7 +1363,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         {assistantSelector}
 
         {/* Parameter overrides button */}
-        {sessionId && _currentAssistantId && !_currentAssistantId.startsWith('__legacy_model_') && onParamOverridesChange && (
+        {sessionId && _currentAssistantId && onParamOverridesChange && (
           <ParamOverridePopover
             sessionId={sessionId}
             currentAssistantId={_currentAssistantId}

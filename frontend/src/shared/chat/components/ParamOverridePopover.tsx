@@ -103,7 +103,7 @@ export const ParamOverridePopover: React.FC<ParamOverridePopoverProps> = ({
         setModels(modelsData);
         setProviders(providersData);
 
-        if (currentAssistantId && !currentAssistantId.startsWith('__legacy_model_')) {
+        if (currentAssistantId) {
           const assistantData = await api.getAssistant(currentAssistantId);
           setAssistant(assistantData);
         }

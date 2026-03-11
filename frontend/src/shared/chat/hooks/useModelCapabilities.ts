@@ -31,7 +31,7 @@ export function useModelCapabilities(
         let effectiveModelId: string | null = null;
 
         if (targetType === 'assistant') {
-          if (!assistantId || assistantId.startsWith('__legacy_model_')) {
+          if (!assistantId) {
             setSupportsVision(false);
             setSupportsReasoning(false);
             setReasoningControls(null);

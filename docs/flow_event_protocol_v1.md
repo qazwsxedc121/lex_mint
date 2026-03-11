@@ -76,7 +76,6 @@ Backend source of truth: `src/application/flow/flow_event_types.py`
   - `language_detected`
   - `translation_completed`
   - `compression_completed`
-  - `legacy_event` (fallback)
 
 ## Compatibility
 
@@ -95,7 +94,13 @@ Backend source of truth: `src/application/flow/flow_event_types.py`
   - `flow_event.seq` is strictly increasing within one stream.
   - `text_delta` uses `payload.text`.
   - `stream_error` terminates stream early.
-  - Unknown legacy events are mapped to `legacy_event`.
+  - Unknown upstream event types must emit `stream_error` and terminate immediately.
+
+## Strictness policy
+
+- Legacy transport fallback events are removed.
+- Unknown event types are treated as protocol violations (`stream_error` + terminate).
+- No compatibility mapping is performed for legacy event payloads.
 
 Run only contract tests:
 

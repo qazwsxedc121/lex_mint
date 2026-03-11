@@ -94,8 +94,10 @@ lex_mint/
 
 1. Layered ownership: `api -> application -> llm_runtime/providers` + `infrastructure`
 2. Provider adapter pattern for multi-provider LLM support
-3. Markdown + YAML config/data persistence (no mandatory DB)
-4. SSE event transport with flow-event mapping
+3. Session target contract is explicit (`target_type` + `assistant_id/model_id`), no legacy shim IDs
+4. YAML config layering is strict (`config/defaults` + `config/local`), no legacy path fallback
+5. SSE event transport is canonical flow-event only; unknown events fail fast with `stream_error`
+6. Markdown + YAML config/data persistence (no mandatory DB)
 
 ### Frontend
 

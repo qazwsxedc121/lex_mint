@@ -51,6 +51,12 @@ architecture vocabulary.
 - workflow execution resolves from `src/application/workflows/`
 - application/infrastructure/provider modules no longer import `src.api.*`
 - tests are organized by ownership and import owned packages directly
+- session target metadata is strict: `target_type` + (`assistant_id` or `model_id`)
+  is the only accepted runtime shape (legacy pseudo assistant IDs removed, no migration path)
+- flow-event transport is strict: unknown runtime events emit `stream_error` and stop
+  (legacy fallback event removed)
+- config bootstrap/read path is strict: `config/defaults` + `config/local` only
+  (legacy config path fallback removed)
 
 
 ## Core Principles
