@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
-from src.api.paths import resolve_user_data_path
+from src.core.paths import resolve_user_data_path
 from src.infrastructure.retrieval.embedding_service import EmbeddingService
 from src.infrastructure.config.memory_config_service import MemoryConfigService
 from src.infrastructure.config.rag_config_service import RagConfigService

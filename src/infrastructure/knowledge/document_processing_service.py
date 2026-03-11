@@ -11,7 +11,7 @@ import importlib
 from pathlib import Path
 from typing import Any, List, Optional
 
-from src.api.paths import resolve_user_data_path
+from src.core.paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 

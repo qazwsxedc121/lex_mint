@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.api.paths import config_local_dir
+from src.core.paths import config_local_dir
 
 
 LEGACY_BUILTIN_MODEL_IDS: dict[str, set[str]] = {

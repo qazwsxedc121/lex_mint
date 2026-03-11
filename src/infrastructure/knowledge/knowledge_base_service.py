@@ -20,7 +20,7 @@ from src.api.models.knowledge_base import (
     KnowledgeBasesConfig,
 )
 
-from src.api.paths import data_state_dir, knowledge_bases_dir, repo_root, resolve_user_data_path
+from src.core.paths import data_state_dir, knowledge_bases_dir, repo_root, resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 

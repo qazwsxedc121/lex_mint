@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from src.providers.types import TokenUsage, CostInfo
-from src.api.paths import config_defaults_dir, config_local_dir, resolve_layered_read_path
+from src.core.paths import config_defaults_dir, config_local_dir, resolve_layered_read_path
 
 logger = logging.getLogger(__name__)
 

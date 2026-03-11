@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.api.config import settings
+from src.core.config import settings
 from .flow_stream_runtime import FlowStreamRuntime
 
 _flow_stream_runtime = FlowStreamRuntime(

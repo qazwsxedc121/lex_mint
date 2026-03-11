@@ -11,7 +11,7 @@ from typing import List, Optional
 import aiofiles
 
 from src.api.models.workflow import WorkflowRunHistory, WorkflowRunRecord
-from src.api.paths import data_state_dir
+from src.core.paths import data_state_dir
 
 
 def _safe_workflow_id(workflow_id: str) -> str:

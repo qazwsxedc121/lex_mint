@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import yaml
 
 from .yaml_config_utils import load_default_yaml_section, load_layered_yaml_section, save_yaml_section_updates
-from src.api.paths import (
+from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     legacy_config_dir,

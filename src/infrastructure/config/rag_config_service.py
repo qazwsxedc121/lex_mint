@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from src.api.paths import data_state_dir, legacy_config_dir, ensure_local_file
+from src.core.paths import data_state_dir, legacy_config_dir, ensure_local_file
 
 logger = logging.getLogger(__name__)
 

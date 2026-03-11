@@ -14,7 +14,7 @@ from pydantic import SecretStr
 
 from src.infrastructure.config.rag_config_service import RagConfigService
 from src.infrastructure.config.model_config_service import ModelConfigService
-from src.api.paths import repo_root
+from src.core.paths import repo_root
 
 logger = logging.getLogger(__name__)
 

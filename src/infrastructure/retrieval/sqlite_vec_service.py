@@ -16,7 +16,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Sequence
 
-from src.api.paths import resolve_user_data_path
+from src.core.paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 

@@ -22,8 +22,8 @@ from src.api.models.project_config import (
     FileRenameResult,
     DirectoryEntry,
 )
-from src.api.config import settings
-from src.api.paths import ensure_local_file, repo_root
+from src.core.config import settings
+from src.core.paths import ensure_local_file, repo_root
 
 logger = logging.getLogger(__name__)
 _TEXT_SEARCH_MAX_FILES = 5000

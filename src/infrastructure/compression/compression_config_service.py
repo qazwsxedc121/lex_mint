@@ -15,7 +15,7 @@ from src.infrastructure.config.yaml_config_utils import (
     load_layered_yaml_section,
     save_yaml_section_updates,
 )
-from src.api.paths import (
+from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     legacy_config_dir,

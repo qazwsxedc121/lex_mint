@@ -10,7 +10,7 @@ from typing import List, Optional
 import aiofiles
 
 from src.api.models.async_run import AsyncRunRecord, RunKind, RunStatus
-from src.api.paths import data_state_dir
+from src.core.paths import data_state_dir
 
 
 class AsyncRunStoreService:

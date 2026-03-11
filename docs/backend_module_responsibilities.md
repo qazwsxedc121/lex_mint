@@ -35,6 +35,8 @@ architecture vocabulary.
 
 - compatibility shim modules under `src/api/services/` have been retired
   (the `src/api/services/` package has been removed)
+- shared runtime path/settings helpers now live under `src/core/` with
+  compatibility re-exports in `src/api/paths.py` and `src/api/config.py`
 - API entry now resolves `ChatApplicationService` directly
 - production bootstrap now comes from `src/application/chat/`
 - workflow execution now resolves from `src/application/workflows/`
@@ -172,6 +174,9 @@ Should not contain:
 - provider adapter logic
 - deep chat orchestration rules
 - storage implementation details
+
+Shared runtime settings/path helpers are now owned by `src/core/` and consumed
+by API and non-API layers.
 
 Examples:
 

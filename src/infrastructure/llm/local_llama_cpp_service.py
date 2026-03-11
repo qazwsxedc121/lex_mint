@@ -9,7 +9,7 @@ from typing import Any, Iterable, Iterator
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from src.api.paths import (
+from src.core.paths import (
     appdata_models_root,
     configured_models_root,
     install_models_root,

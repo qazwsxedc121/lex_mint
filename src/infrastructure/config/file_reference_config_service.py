@@ -7,7 +7,7 @@ import logging
 
 import yaml
 
-from src.api.paths import (
+from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     legacy_config_dir,

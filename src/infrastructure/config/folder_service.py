@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel
 
-from src.api.paths import (
+from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     ensure_local_file,

@@ -31,6 +31,7 @@ The backend should converge toward this conceptual flow:
 And toward this ownership model:
 
 - `src/api/`: transport
+- `src/core/`: shared runtime settings/path helpers
 - application layer: use-case orchestration
 - `src/agents/` or future `src/llm_runtime/`: LLM runtime
 - `src/providers/`: provider integration
@@ -387,6 +388,8 @@ Infrastructure-oriented:
 - production API transport modules now import owned modules directly from
   `src/application/*` and `src/infrastructure/*`; there are no remaining
   `from ..services ...` imports under `src/api/`
+- shared runtime `paths` and `settings` ownership now lives under `src/core/`;
+  `src/api/paths.py` and `src/api/config.py` are compatibility re-exports
 
 ### Remaining Work
 

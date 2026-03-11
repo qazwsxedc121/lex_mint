@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from src.api.paths import config_defaults_dir
+from src.core.paths import config_defaults_dir
 
 from .types import ProviderDefinition
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import aiofiles
 import yaml
 
-from src.api.paths import ensure_local_file
+from src.core.paths import ensure_local_file
 
 if TYPE_CHECKING:
     from .model_config_service import ModelConfigService

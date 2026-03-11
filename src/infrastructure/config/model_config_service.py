@@ -34,7 +34,7 @@ from src.providers.model_capability_rules import infer_capability_overrides
 from .model_config_repository import ModelConfigRepository
 from .model_runtime_service import ModelRuntimeService
 
-from src.api.paths import (
+from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     local_keys_config_path,

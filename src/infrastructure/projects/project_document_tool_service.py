@@ -29,7 +29,7 @@ from src.tools.request_scoped import (
     SearchProjectTextArgs,
 )
 
-from src.api.config import settings
+from src.core.config import settings
 from src.infrastructure.config.project_service import ProjectService
 
 logger = logging.getLogger(__name__)

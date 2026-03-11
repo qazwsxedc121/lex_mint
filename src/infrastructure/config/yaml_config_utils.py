@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import yaml
 
-from src.api.paths import resolve_layered_read_path
+from src.core.paths import resolve_layered_read_path
 
 
 def load_default_yaml_section(defaults_path: Optional[Path], section_name: str) -> dict[str, Any]:

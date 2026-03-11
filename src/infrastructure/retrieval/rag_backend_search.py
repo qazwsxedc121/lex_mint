@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, cast
 
-from src.api.paths import resolve_user_data_path
+from src.core.paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 
