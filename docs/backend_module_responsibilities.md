@@ -34,7 +34,7 @@ architecture vocabulary.
 ## Current Status Snapshot
 
 - compatibility shim modules under `src/api/services/` have been retired
-  (only `src/api/services/__init__.py` remains as a package marker)
+  (the `src/api/services/` package has been removed)
 - API entry now resolves `ChatApplicationService` directly
 - production bootstrap now comes from `src/application/chat/`
 - workflow execution now resolves from `src/application/workflows/`

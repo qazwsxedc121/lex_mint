@@ -278,7 +278,7 @@ Infrastructure-oriented:
 - production workflow entrypoints now import workflow execution from
   `src.application.workflows`
 - compatibility re-export modules under `src/api/services/` have been fully
-  retired; `src/api/services/__init__.py` remains as a package marker only
+  retired; the `src/api/services/` package has been removed
 - note: some bullets below mention earlier "compatibility re-export kept"
   milestones for historical traceability
 - `single_chat_flow_service.py` and `compare_flow_service.py` now physically live under
