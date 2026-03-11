@@ -24,7 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.api.services.model_config_service import ModelConfigService  # noqa: E402
-from src.api.services.rag_service import RagResult, RagService  # noqa: E402
+from src.infrastructure.retrieval.rag_service import RagResult, RagService  # noqa: E402
 
 
 TASK_TO_QUERY_FIELD: Dict[str, str] = {

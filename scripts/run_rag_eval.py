@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.api.services.rag_service import RagResult, RagService
+from src.infrastructure.retrieval.rag_service import RagResult, RagService
 
 
 @dataclass
