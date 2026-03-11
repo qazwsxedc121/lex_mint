@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optio
 
 from .events import normalize_orchestration_event
 
-OrchestrationMode = Literal["single_turn", "round_robin", "committee", "compare_models"]
+OrchestrationMode = Literal["round_robin", "committee", "compare_models"]
 
 
 @dataclass(frozen=True)
@@ -36,11 +36,9 @@ if TYPE_CHECKING:
     # Forward references keep runtime import graph light.
     from .compare_models import CompareModelsSettings
     from .settings import ResolvedCommitteeSettings
-    from .single_turn import SingleTurnSettings
 
 
 OrchestrationSettings = Union[
-    "SingleTurnSettings",
     "ResolvedCommitteeSettings",
     "CompareModelsSettings",
     RoundRobinSettings,
@@ -105,4 +103,3 @@ class BaseOrchestrator(ABC):
     def normalize_event(event: Dict[str, Any]) -> OrchestrationEvent:
         """Validate one event against the shared event schema."""
         return normalize_orchestration_event(event)
-

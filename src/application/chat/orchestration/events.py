@@ -92,11 +92,6 @@ class ToolResultsEvent(_EventBase):
     results: Any
 
 
-class SingleTurnCompleteEvent(_EventBase):
-    type: str = "single_turn_complete"
-    content: str
-
-
 class ModelStartEvent(_EventBase):
     type: str = "model_start"
     model_id: str
@@ -142,7 +137,6 @@ OrchestrationEventModel = Union[
     ThinkingDurationEvent,
     ToolCallsEvent,
     ToolResultsEvent,
-    SingleTurnCompleteEvent,
     ModelStartEvent,
     ModelChunkEvent,
     ModelDoneEvent,
@@ -165,7 +159,6 @@ _EVENT_MODEL_BY_TYPE: Dict[str, Type[_EventBase]] = {
     "thinking_duration": ThinkingDurationEvent,
     "tool_calls": ToolCallsEvent,
     "tool_results": ToolResultsEvent,
-    "single_turn_complete": SingleTurnCompleteEvent,
     "model_start": ModelStartEvent,
     "model_chunk": ModelChunkEvent,
     "model_done": ModelDoneEvent,

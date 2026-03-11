@@ -84,7 +84,7 @@ async def test_compare_models_rejects_mismatched_mode():
     )
     request = OrchestrationRequest(
         session_id="s2",
-        mode="single_turn",
+        mode="committee",
         user_message="hello",
         participants=[],
         assistant_name_map={},
@@ -99,4 +99,3 @@ async def test_compare_models_rejects_mismatched_mode():
 
     with pytest.raises(ValueError, match="mode=compare_models"):
         await _collect_events(orchestrator.stream(request))
-
