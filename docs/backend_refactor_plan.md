@@ -544,10 +544,14 @@ Make tests mirror the new ownership model.
   `test_llm_runtime.py`
 - tests no longer import `src.api.services.*`; they now target owned
   `src/application/*`, `src/infrastructure/*`, and `src/agents/*` modules directly
+- test layout has been reorganized by ownership under `tests/unit/application/`,
+  `tests/unit/infrastructure/`, `tests/unit/cross_layer/`, and
+  `tests/unit/test_agents/`
 
 ### Remaining Work
 
-- continue reorganizing test folders to mirror application/runtime/infrastructure ownership
+- continue minor cleanup for remaining legacy-neutral folders (`test_models`,
+  `test_providers`, `test_api`) where useful, without forcing churn
 
 
 ## Delivery Order
