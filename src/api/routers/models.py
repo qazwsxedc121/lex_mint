@@ -23,7 +23,7 @@ from ..models.model_config import (
     ModelTestRequest,
 )
 from ..services.model_config_service import ModelConfigService
-from ..services.provider_probe_service import ProviderProbeService
+from src.infrastructure.config.provider_probe_service import ProviderProbeService
 from src.providers import (
     BUILTIN_PROVIDERS,
     ModelCapabilities,

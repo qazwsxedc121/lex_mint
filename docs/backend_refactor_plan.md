@@ -308,6 +308,12 @@ Infrastructure-oriented:
 - `chatgpt_import_service.py` and `markdown_import_service.py` now physically
   live under `src/application/chat/` (with compatibility re-exports kept
   under `src/api/services/`)
+- `translation_service.py` now physically lives under
+  `src/application/translation/` (with a compatibility re-export kept under
+  `src/api/services/`)
+- `tool_catalog_service.py` now physically lives under
+  `src/application/tools/` (with a compatibility re-export kept under
+  `src/api/services/`)
 - `flow_event_types.py`, `flow_events.py`, `flow_event_mapper.py`,
   `flow_event_emitter.py`, `flow_stream_runtime.py`,
   `flow_stream_runtime_provider.py`, `workflow_flow_event_mapper.py`,
@@ -346,6 +352,9 @@ Infrastructure-oriented:
 - `prompt_template_service.py` and `folder_service.py` now physically live
   under `src/infrastructure/config/` (with compatibility re-exports kept
   under `src/api/services/`).
+- `provider_probe_service.py` now physically lives under
+  `src/infrastructure/config/` (with a compatibility re-export kept under
+  `src/api/services/`).
 - shared `yaml_config_utils.py` now physically lives under
   `src/infrastructure/config/` (with a compatibility re-export kept under
   `src/api/services/`).
@@ -365,7 +374,8 @@ Infrastructure-oriented:
   re-export kept under `src/api/services/`).
 - `src/infrastructure/projects/` has been introduced, and
   `project_document_tool_service.py`, `project_knowledge_base_resolver.py`, and
-  `project_tool_policy_resolver.py` now physically live there (with compatibility
+  `project_tool_policy_resolver.py`, and `project_workspace_state_service.py`
+  now physically live there (with compatibility
   re-exports kept under `src/api/services/`).
 - `src/infrastructure/retrieval/` has been introduced, and
   `rag_service.py`, `rag_backend_search.py`, `rag_post_processor.py`,
@@ -376,6 +386,9 @@ Infrastructure-oriented:
 - `src/infrastructure/knowledge/` has been introduced, and
   `knowledge_base_service.py` plus `document_processing_service.py` now
   physically live there (with compatibility re-exports kept under
+  `src/api/services/`).
+- `src/infrastructure/audio/` has been introduced, and `tts_service.py` now
+  physically lives there (with a compatibility re-export kept under
   `src/api/services/`).
 
 ### Remaining Work

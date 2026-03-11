@@ -215,7 +215,7 @@ async def test_translate_contract_flow_event_only(monkeypatch):
                 "effective_target_language": "zh",
             }
 
-    monkeypatch.setattr("src.api.services.translation_service.TranslationService", _FakeTranslationService)
+    monkeypatch.setattr("src.application.translation.translation_service.TranslationService", _FakeTranslationService)
 
     request = translation_router.TranslateRequest(text="hello", target_language="zh")
     response = await translation_router.translate_text(request)

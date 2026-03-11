@@ -46,6 +46,8 @@ architecture vocabulary.
   `src/infrastructure/config/` (with compatibility shims)
 - prompt template and folder config services now live under
   `src/infrastructure/config/` (with compatibility shims)
+- provider probe service now lives under `src/infrastructure/config/`
+  (with a compatibility shim)
 - pricing service now lives under `src/infrastructure/config/` (with compatibility shims)
 - shared layered YAML config helpers now live under `src/infrastructure/config/`
   (with compatibility shims)
@@ -77,8 +79,16 @@ architecture vocabulary.
   `src/application/chat/` (with compatibility shims)
 - ChatGPT and markdown session import services now live under
   `src/application/chat/` (with compatibility shims)
+- translation service now lives under `src/application/translation/`
+  (with a compatibility shim)
+- tool catalog service now lives under `src/application/tools/`
+  (with a compatibility shim)
 - project conversation migration service now lives under
   `src/infrastructure/storage/` (with a compatibility shim)
+- tts service now lives under `src/infrastructure/audio/`
+  (with a compatibility shim)
+- project workspace state service now lives under
+  `src/infrastructure/projects/` (with a compatibility shim)
 - flow event schema/mapper/emitter modules now live under
   `src/application/flow/` (with compatibility shims)
 - flow stream runtime and provider modules now live under

@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from ..services.language_detection_service import LanguageDetectionService
+from src.infrastructure.llm.language_detection_service import LanguageDetectionService
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_types import (
     LANGUAGE_DETECTED,
@@ -77,7 +77,7 @@ async def translate_text(request: TranslateRequest):
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    from ..services.translation_service import TranslationService
+    from src.application.translation.translation_service import TranslationService
     translation_service = TranslationService()
     emitter = FlowEventEmitter(stream_id=str(uuid.uuid4()))
 

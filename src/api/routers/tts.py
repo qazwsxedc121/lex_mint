@@ -11,7 +11,7 @@ import logging
 
 from edge_tts.exceptions import NoAudioReceived
 
-from ..services.tts_service import TTSService
+from src.infrastructure.audio.tts_service import TTSService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tts", tags=["tts"])

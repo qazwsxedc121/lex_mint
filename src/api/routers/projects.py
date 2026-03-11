@@ -12,7 +12,7 @@ from ..dependencies import (
 )
 from ..services.project_service import ProjectService
 from ..services.project_service import ProjectConflictError
-from ..services.project_workspace_state_service import ProjectWorkspaceStateService
+from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 from ..services.project_document_tool_service import (
     ConfirmPendingPatchArgs,
     ProjectDocumentToolError,

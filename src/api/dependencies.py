@@ -17,7 +17,7 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from .services.project_workspace_state_service import ProjectWorkspaceStateService
+from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 
 _model_service: Optional[ModelConfigService] = None
 _assistant_service: Optional[AssistantConfigService] = None

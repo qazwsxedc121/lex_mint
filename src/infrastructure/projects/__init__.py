@@ -10,6 +10,7 @@ from .project_document_tool_service import (
 )
 from .project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 from .project_tool_policy_resolver import ProjectToolPolicyResolver
+from .project_workspace_state_service import ProjectWorkspaceStateService
 
 __all__ = [
     "PendingPatch",
@@ -20,5 +21,5 @@ __all__ = [
     "confirm_pending_patch_apply",
     "ProjectKnowledgeBaseResolver",
     "ProjectToolPolicyResolver",
+    "ProjectWorkspaceStateService",
 ]
-

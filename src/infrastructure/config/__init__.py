@@ -10,6 +10,7 @@ from .model_config_repository import ModelConfigRepository
 from .model_runtime_service import ModelRuntimeService
 from .pricing_service import PricingService
 from .prompt_template_service import PromptTemplateConfigService
+from .provider_probe_service import ProviderProbeService
 from .rag_config_service import RagConfigService
 from .translation_config_service import TranslationConfigService
 from .tts_config_service import TTSConfigService
@@ -29,6 +30,7 @@ __all__ = [
     "ModelRuntimeService",
     "PricingService",
     "PromptTemplateConfigService",
+    "ProviderProbeService",
     "RagConfigService",
     "TranslationConfigService",
     "TTSConfigService",
