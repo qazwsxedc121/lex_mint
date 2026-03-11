@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.api.models.knowledge_base import KnowledgeBase, KnowledgeBaseDocument, KnowledgeBasesConfig
+from src.domain.models.knowledge_base import KnowledgeBase, KnowledgeBaseDocument, KnowledgeBasesConfig
 from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 

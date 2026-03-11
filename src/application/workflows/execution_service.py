@@ -13,7 +13,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, 
 
 from src.agents.llm_runtime import call_llm_stream
 from src.core.config import settings
-from src.api.models.workflow import (
+from src.domain.models.workflow import (
     ArtifactNode,
     ConditionNode,
     EndNode,

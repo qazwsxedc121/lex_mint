@@ -6,7 +6,7 @@ import aiofiles
 from pathlib import Path
 from typing import List, Optional
 
-from src.api.models.prompt_template import PromptTemplate, PromptTemplatesConfig
+from src.domain.models.prompt_template import PromptTemplate, PromptTemplatesConfig
 from src.core.paths import data_state_dir, legacy_config_dir, ensure_local_file
 
 

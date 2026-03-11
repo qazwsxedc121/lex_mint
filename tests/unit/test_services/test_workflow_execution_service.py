@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Dict, Union
 
 import pytest
 
-from src.api.models.workflow import (
+from src.domain.models.workflow import (
     ArtifactNode,
     ConditionNode,
     EndNode,

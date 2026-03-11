@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import aiofiles
 
-from src.api.models.async_run import AsyncRunRecord, RunKind, RunStatus
+from src.domain.models.async_run import AsyncRunRecord, RunKind, RunStatus
 from src.core.paths import data_state_dir
 
 

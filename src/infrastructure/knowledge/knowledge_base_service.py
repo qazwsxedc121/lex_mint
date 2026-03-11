@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 
-from src.api.models.knowledge_base import (
+from src.domain.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseDocument,
     KnowledgeBasesConfig,

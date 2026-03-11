@@ -1,7 +1,7 @@
 {
   "$id": "https://lex-mint.local/schemas/workflow.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Generated from src.api.models.workflow. Do not edit manually.",
+  "description": "Generated from src.domain.models.workflow. Do not edit manually.",
   "schemas": {
     "Workflow": {
       "$defs": {

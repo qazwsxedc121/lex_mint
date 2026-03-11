@@ -8,7 +8,7 @@ from src.tools.definitions import ToolDefinition
 from src.tools.registry import get_tool_registry
 from src.tools.request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
 
-from src.api.models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalogResponse
+from src.domain.models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalogResponse
 
 
 class ToolCatalogService:

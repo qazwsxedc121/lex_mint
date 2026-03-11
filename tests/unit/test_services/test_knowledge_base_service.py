@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
-from src.api.models.knowledge_base import (
+from src.domain.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseDocument,
     KnowledgeBasesConfig,

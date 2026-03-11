@@ -37,6 +37,8 @@ architecture vocabulary.
   (the `src/api/services/` package has been removed)
 - shared runtime path/settings helpers now live under `src/core/` with
   compatibility re-exports in `src/api/paths.py` and `src/api/config.py`
+- shared Pydantic model ownership now lives under `src/domain/models/` with
+  compatibility re-exports in `src/api/models/`
 - API entry now resolves `ChatApplicationService` directly
 - production bootstrap now comes from `src/application/chat/`
 - workflow execution now resolves from `src/application/workflows/`
@@ -112,6 +114,7 @@ architecture vocabulary.
 - production modules under `src/api/` now import owned modules directly from
   `src/application/` and `src/infrastructure/` rather than from
   `src/api/services/`
+- application/infrastructure/provider modules no longer import `src.api.*`
 - tests now import owned modules directly from `src/application/`,
   `src/infrastructure/`, and `src/agents/` rather than from
   `src/api/services/`

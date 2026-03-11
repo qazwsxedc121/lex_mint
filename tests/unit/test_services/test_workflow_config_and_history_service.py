@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.api.models.workflow import (
+from src.domain.models.workflow import (
     LlmNode,
     StartNode,
     Workflow,

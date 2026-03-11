@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.api.models.async_run import AsyncRunRecord, RunStatus
+from src.domain.models.async_run import AsyncRunRecord, RunStatus
 from src.application.flow.async_run_service import AsyncRunService
 from src.application.flow.flow_stream_runtime import FlowStreamRuntime
 

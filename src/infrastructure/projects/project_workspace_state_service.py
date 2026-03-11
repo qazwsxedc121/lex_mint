@@ -10,7 +10,7 @@ from typing import Optional
 import aiofiles
 import yaml
 
-from src.api.models.project_config import (
+from src.domain.models.project_config import (
     ProjectWorkspaceItemUpsert,
     ProjectWorkspaceRecentItem,
     ProjectWorkspaceState,

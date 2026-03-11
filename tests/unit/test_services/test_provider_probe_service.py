@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.api.models.model_config import (
+from src.domain.models.model_config import (
     Provider,
     ProviderEndpointProbeRequest,
 )

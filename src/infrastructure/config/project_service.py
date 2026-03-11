@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from src.api.errors import ConflictError
-from src.api.models.project_config import (
+from src.core.errors import ConflictError
+from src.domain.models.project_config import (
     Project,
     ProjectSettings,
     ProjectsConfig,

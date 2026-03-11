@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from src.api.models.search import SearchSource
+from src.domain.models.search import SearchSource
 from src.infrastructure.web.web_tool_service import WebToolService
 
 

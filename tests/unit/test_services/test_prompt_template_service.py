@@ -6,7 +6,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from src.api.models.prompt_template import PromptTemplate, PromptTemplateVariable
+from src.domain.models.prompt_template import PromptTemplate, PromptTemplateVariable
 from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
 
 

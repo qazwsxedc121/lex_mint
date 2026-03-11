@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.api.models.project_config import get_default_project_tool_enabled_map
+from src.domain.models.project_config import get_default_project_tool_enabled_map
 from src.tools.builtin import BUILTIN_TOOL_DEFINITIONS
 from src.tools.request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
 

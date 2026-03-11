@@ -10,7 +10,7 @@ from typing import List, Optional
 
 import aiofiles
 
-from src.api.models.workflow import WorkflowRunHistory, WorkflowRunRecord
+from src.domain.models.workflow import WorkflowRunHistory, WorkflowRunRecord
 from src.core.paths import data_state_dir
 
 

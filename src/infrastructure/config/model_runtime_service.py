@@ -10,7 +10,7 @@ import yaml
 from src.providers import AdapterRegistry, CallMode, ApiProtocol, ProviderType
 from src.providers.types import ProviderConfig
 
-from src.api.models.model_config import ModelsConfig, Provider
+from src.domain.models.model_config import ModelsConfig, Provider
 
 if TYPE_CHECKING:
     from .model_config_service import ModelConfigService

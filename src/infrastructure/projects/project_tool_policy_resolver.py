@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Optional, Set
 
 from langchain_core.tools import BaseTool
 
-from src.api.models.project_config import get_default_project_tool_enabled_map
+from src.domain.models.project_config import get_default_project_tool_enabled_map
 from src.infrastructure.config.project_service import ProjectService
 
 logger = logging.getLogger(__name__)

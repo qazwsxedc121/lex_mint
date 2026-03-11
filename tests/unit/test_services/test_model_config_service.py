@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, Mock, AsyncMock
 
 from src.infrastructure.config.model_config_service import ModelConfigService
-from src.api.models.model_config import Provider, Model, ModelsConfig
+from src.domain.models.model_config import Provider, Model, ModelsConfig
 from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
 
 

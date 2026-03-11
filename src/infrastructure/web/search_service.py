@@ -7,7 +7,7 @@ import logging
 import asyncio
 import yaml
 import httpx
-from src.api.models.search import SearchSource
+from src.domain.models.search import SearchSource
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.core.paths import (
     config_defaults_dir,

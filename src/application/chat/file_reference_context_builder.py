@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from src.infrastructure.config.file_reference_config_service import (
     FileReferenceConfig,
@@ -13,11 +13,20 @@ from src.infrastructure.config.file_reference_config_service import (
 logger = logging.getLogger(__name__)
 
 
+class ProjectFileReader(Protocol):
+    async def read_file(self, project_id: str, file_path: str): ...
+
+
 class FileReferenceContextBuilder:
     """Render file references into bounded prompt-safe context blocks."""
 
-    def __init__(self, file_reference_config_service: FileReferenceConfigService):
+    def __init__(
+        self,
+        file_reference_config_service: FileReferenceConfigService,
+        project_service: ProjectFileReader,
+    ):
         self.file_reference_config_service = file_reference_config_service
+        self.project_service = project_service
 
     def _get_file_reference_config(self) -> FileReferenceConfig:
         """Load latest runtime limits; fall back to hardcoded defaults on error."""
@@ -84,10 +93,7 @@ class FileReferenceContextBuilder:
     ) -> str:
         """Read file and return chunked, abbreviated context safe for large files."""
         try:
-            from src.api.dependencies import get_project_service
-
-            service = get_project_service()
-            file_content = await service.read_file(project_id, file_path)
+            file_content = await self.project_service.read_file(project_id, file_path)
             content = file_content.content or ""
 
             if not content:

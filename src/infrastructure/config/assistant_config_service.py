@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Optional
 from langchain_openai import ChatOpenAI
 
-from src.api.models.assistant_config import Assistant, AssistantsConfig
+from src.domain.models.assistant_config import Assistant, AssistantsConfig
 from .model_config_service import ModelConfigService
 from src.core.paths import (
     config_defaults_dir,

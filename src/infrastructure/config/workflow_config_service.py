@@ -10,7 +10,7 @@ from typing import List, Optional
 import aiofiles
 import yaml
 
-from src.api.models.workflow import (
+from src.domain.models.workflow import (
     ArtifactNode,
     EndNode,
     LlmNode,

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.api.models.async_run import AsyncRunRecord, RunStatus
+from src.domain.models.async_run import AsyncRunRecord, RunStatus
 from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService
 
 

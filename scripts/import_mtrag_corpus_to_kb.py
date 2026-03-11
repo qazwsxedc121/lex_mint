@@ -19,7 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.adapters.mtrag_adapter import sanitize_doc_id, to_mtrag_filename
-from src.api.models.knowledge_base import KnowledgeBase, KnowledgeBaseDocument
+from src.domain.models.knowledge_base import KnowledgeBase, KnowledgeBaseDocument
 from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 from src.infrastructure.config.rag_config_service import RagConfigService

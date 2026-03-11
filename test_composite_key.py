@@ -5,7 +5,7 @@ Verify that same model IDs can coexist under different providers
 """
 import asyncio
 from src.infrastructure.config.model_config_service import ModelConfigService
-from src.api.models.model_config import Model, Provider
+from src.domain.models.model_config import Model, Provider
 
 
 async def test_composite_key():

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from src.api.models.workflow import (
+from src.domain.models.workflow import (
     ConditionNode,
     EndNode,
     LlmNode,

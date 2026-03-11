@@ -10,7 +10,7 @@ from typing import Any, Dict, Literal, Optional
 
 from src.application.workflows import WorkflowExecutionService
 
-from src.api.models.async_run import AsyncRunRecord
+from src.domain.models.async_run import AsyncRunRecord
 from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService
 from .flow_event_emitter import FlowEventEmitter
 from .flow_event_types import STREAM_ENDED

@@ -12,7 +12,7 @@ from typing import List, Optional, Tuple, Any, Dict
 from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 
-from src.api.models.model_config import (
+from src.domain.models.model_config import (
     Provider,
     Model,
     DefaultConfig,

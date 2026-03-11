@@ -16,6 +16,7 @@ from src.application.chat.source_context_service import SourceContextService
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.compression.compression_service import CompressionService
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
+from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.files.file_service import FileService
 from src.infrastructure.memory.memory_service import MemoryService
@@ -95,8 +96,12 @@ def build_default_chat_application_service(
     search_service = SearchService()
     webpage_service = WebpageService()
     memory_service = MemoryService()
+    project_service = ProjectService()
     file_reference_config_service = FileReferenceConfigService()
-    file_reference_context_builder = FileReferenceContextBuilder(file_reference_config_service)
+    file_reference_context_builder = FileReferenceContextBuilder(
+        file_reference_config_service,
+        project_service,
+    )
     rag_config_service = RagConfigService()
     source_context_service = SourceContextService()
     comparison_storage = ComparisonStorage(storage)

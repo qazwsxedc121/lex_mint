@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from src.api.models.project_config import Project
+from src.domain.models.project_config import Project
 from src.infrastructure.projects.project_document_tool_service import (
     PendingPatch,
     PendingPatchStore,

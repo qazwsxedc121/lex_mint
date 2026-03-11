@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import pytest
 from fastapi import HTTPException
 
-from src.api.models.async_run import AsyncRunRecord, RunStatus
+from src.domain.models.async_run import AsyncRunRecord, RunStatus
 from src.api.routers import runs as runs_router
 from src.application.flow.flow_stream_runtime import FlowStreamRuntime
 

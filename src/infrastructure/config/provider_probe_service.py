@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import httpx
 
-from src.api.models.model_config import (
+from src.domain.models.model_config import (
     Provider,
     ProviderEndpointProbeRequest,
     ProviderEndpointProbeResponse,

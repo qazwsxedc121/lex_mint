@@ -17,7 +17,7 @@ DEFAULT_OUTPUT_PATH = REPO_ROOT / "shared" / "schemas" / "workflow.schema.json"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.api.models.workflow import (  # noqa: E402
+from src.domain.models.workflow import (  # noqa: E402
     Workflow,
     WorkflowCreate,
     WorkflowInputDef,
@@ -32,7 +32,7 @@ def build_schema_bundle() -> dict[str, Any]:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://lex-mint.local/schemas/workflow.schema.json",
         "title": "Lex Mint Workflow Schema Bundle",
-        "description": "Generated from src.api.models.workflow. Do not edit manually.",
+        "description": "Generated from src.domain.models.workflow. Do not edit manually.",
         "schemas": {
             "Workflow": Workflow.model_json_schema(),
             "WorkflowCreate": WorkflowCreate.model_json_schema(),

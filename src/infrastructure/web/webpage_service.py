@@ -22,7 +22,7 @@ import time
 import httpx
 import yaml
 
-from src.api.models.search import SearchSource
+from src.domain.models.search import SearchSource
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,

@@ -1,4 +1,3 @@
-"""API 数据模型"""
-from .model_config import Provider, Model, DefaultConfig, ModelsConfig
+"""Compatibility re-export for API model package."""
 
-__all__ = ["Provider", "Model", "DefaultConfig", "ModelsConfig"]
+from src.domain.models import *  # noqa: F401,F403

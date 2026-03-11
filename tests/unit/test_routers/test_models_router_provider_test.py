@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi import HTTPException
 
-from src.api.models.model_config import (
+from src.domain.models.model_config import (
     Provider,
     ProviderTestRequest,
     ProviderTestStoredRequest,

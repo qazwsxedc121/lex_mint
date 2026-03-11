@@ -390,6 +390,9 @@ Infrastructure-oriented:
   `from ..services ...` imports under `src/api/`
 - shared runtime `paths` and `settings` ownership now lives under `src/core/`;
   `src/api/paths.py` and `src/api/config.py` are compatibility re-exports
+- shared Pydantic model ownership now lives under `src/domain/models/`;
+  `src/api/models/*` are compatibility re-exports
+- application/infrastructure/provider modules no longer import `src.api.*`
 
 ### Remaining Work
 
