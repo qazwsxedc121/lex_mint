@@ -2,7 +2,7 @@
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from src.agents.tool_loop_runner import ToolLoopRunner, ToolLoopState
+from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
 
 
 def test_append_round_with_tool_results_preserves_reasoning_content():

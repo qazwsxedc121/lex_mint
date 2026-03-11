@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Union
 
-from src.agents.llm_runtime import call_llm_stream
+from src.llm_runtime import call_llm_stream
 from src.core.config import settings
 from src.domain.models.workflow import (
     ArtifactNode,
@@ -28,7 +28,7 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.agents.llm_runtime.think_tag_filter import ThinkTagStreamFilter
+from src.llm_runtime.think_tag_filter import ThinkTagStreamFilter
 from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 

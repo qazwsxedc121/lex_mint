@@ -8,7 +8,7 @@ from src.infrastructure.llm.language_detection_service import LanguageDetectionS
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.translation_config_service import TranslationConfigService
 from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
-from src.agents.llm_runtime.think_tag_filter import ThinkTagStreamFilter
+from src.llm_runtime.think_tag_filter import ThinkTagStreamFilter
 from src.providers.types import CallMode
 
 logger = logging.getLogger(__name__)

@@ -9,8 +9,8 @@ from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
 from src.infrastructure.llm.language_detection_service import LanguageDetectionService
-from src.agents.llm_runtime.think_tag_filter import strip_think_blocks
-from src.agents.llm_runtime import filter_messages_by_context_boundary
+from src.llm_runtime.think_tag_filter import strip_think_blocks
+from src.llm_runtime import filter_messages_by_context_boundary
 from src.providers.types import CallMode
 
 logger = logging.getLogger(__name__)

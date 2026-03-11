@@ -1,6 +1,6 @@
 """Unit tests for ContextPlanner."""
 
-from src.agents.llm_runtime.context_planner import ContextPlanner, ContextPlannerPolicy
+from src.llm_runtime.context_planner import ContextPlanner, ContextPlannerPolicy
 
 
 def test_context_planner_keeps_all_segments_when_budget_is_large():

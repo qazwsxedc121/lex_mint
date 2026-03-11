@@ -5,7 +5,7 @@ import uuid
 
 load_dotenv()
 
-from src.agents.llm_runtime import call_llm
+from src.llm_runtime import call_llm
 
 def main():
     """Run the simple agent example."""

@@ -21,7 +21,7 @@ async def run_provider_check(model_id: str) -> dict:
 
     Returns dict with keys: model_id, passed, error, details
     """
-    from src.agents.llm_runtime import call_llm_stream
+    from src.llm_runtime import call_llm_stream
     from src.tools.registry import get_tool_registry
 
     registry = get_tool_registry()

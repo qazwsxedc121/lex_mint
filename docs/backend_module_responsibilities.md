@@ -21,8 +21,8 @@ The main symptoms are:
 
 - `src/api/services/` historically mixed transport-adjacent services, application orchestration,
   storage access, runtime composition, and some infrastructure behavior.
-- `src/agents/` is moving toward LLM runtime ownership, but the directory name still suggests
-  only "agent objects" rather than runtime execution.
+- `src/llm_runtime/` now owns runtime execution; a small `src/agents/`
+  compatibility surface still exists during transition.
 - A normal chat request currently crosses too many thin intermediate layers, which makes the
   main path harder to reason about.
 - Some names are historical and still show up in older docs and tests.
@@ -44,7 +44,7 @@ architecture vocabulary.
 - workflow execution now resolves from `src/application/workflows/`
 - legacy `AgentService` has been removed
 - legacy `simple_llm.py` has been removed
-- runtime code is centered in `src/agents/llm_runtime/`
+- runtime code is centered in `src/llm_runtime/`
 - infrastructure storage package now lives under `src/infrastructure/storage/` (with compatibility shims)
 - file infrastructure package now lives under `src/infrastructure/files/` (with compatibility shims)
 - config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
@@ -107,16 +107,14 @@ architecture vocabulary.
   (with compatibility shims)
 - workflow run history now lives under `src/application/workflows/`
   (with compatibility shims)
-- think-tag stream filtering now lives under `src/agents/llm_runtime/`
-  (with compatibility shims)
-- context planner now lives under `src/agents/llm_runtime/`
-  (with compatibility shims)
+- think-tag stream filtering now lives under `src/llm_runtime/`
+- context planner now lives under `src/llm_runtime/`
 - production modules under `src/api/` now import owned modules directly from
   `src/application/` and `src/infrastructure/` rather than from
   `src/api/services/`
 - application/infrastructure/provider modules no longer import `src.api.*`
 - tests now import owned modules directly from `src/application/`,
-  `src/infrastructure/`, and `src/agents/` rather than from
+  `src/infrastructure/`, and `src/llm_runtime/` rather than from
   `src/api/services/`
 
 
@@ -231,7 +229,7 @@ Examples in current codebase:
 - `src/application/workflows/execution_service.py`
 
 
-### `src/agents/` (current meaning: LLM runtime and agent execution)
+### `src/llm_runtime/`
 
 Current recommended ownership:
 
@@ -242,16 +240,8 @@ Current recommended ownership:
 - multimodal message conversion
 - reasoning/thinking runtime decisions
 
-This directory is no longer just "agents" in the narrow sense.
-Today it is effectively the LLM execution/runtime layer.
-
-Short-term rule:
-
-- Keep model runtime logic here.
-
-Long-term naming option:
-
-- Consider renaming this layer to `src/llm_runtime/` if the repo continues in this direction.
+This is the LLM execution/runtime layer.
+Legacy compatibility modules under `src/agents/` should be temporary.
 
 Should contain:
 
@@ -269,9 +259,7 @@ Should not contain:
 
 Examples:
 
-- `src/agents/llm_runtime/*`
-- `src/agents/tool_loop_runner.py`
-- `src/agents/stream_call_policy.py`
+- `src/llm_runtime/*`
 
 
 ### `src/providers/`
@@ -474,7 +462,7 @@ When adding a new file, use these rules:
 - it persists outputs after a runtime completes
 - it emits business-level events
 
-### Put it in `src/agents/` if:
+### Put it in `src/llm_runtime/` if:
 
 - it changes how a model turn is executed
 - it shapes prompt/runtime context right before invocation
@@ -541,7 +529,7 @@ The backend should be understood in four main layers:
 
 - `src/api/`: transport
 - application layer: use-case orchestration
-- `src/agents/`: LLM runtime execution
+- `src/llm_runtime/`: LLM runtime execution
 - `src/providers/`: provider integration
 
 Infrastructure behavior exists today but is now organized under

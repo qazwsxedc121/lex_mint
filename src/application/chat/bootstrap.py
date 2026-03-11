@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from src.agents.llm_runtime import call_llm, call_llm_stream
+from src.llm_runtime import call_llm, call_llm_stream
 from src.core.config import settings
 from src.application.chat.chat_input_service import ChatInputService
 from src.application.chat.file_reference_context_builder import FileReferenceContextBuilder

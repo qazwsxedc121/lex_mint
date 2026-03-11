@@ -33,7 +33,7 @@ And toward this ownership model:
 - `src/api/`: transport
 - `src/core/`: shared runtime settings/path helpers
 - application layer: use-case orchestration
-- `src/agents/` or future `src/llm_runtime/`: LLM runtime
+- `src/llm_runtime/`: LLM runtime
 - `src/providers/`: provider integration
 - infrastructure-oriented modules: storage, file, retrieval, config access
 
@@ -97,7 +97,7 @@ and group chat.
 
 ### Scope
 
-- keep all model-call execution logic inside `src/agents/llm_runtime/`
+- keep all model-call execution logic inside `src/llm_runtime/`
 - remove legacy runtime shim files once tests and callers migrate
 - move any remaining pure runtime helpers out of application services if they are
   only about model invocation behavior
@@ -106,7 +106,7 @@ and group chat.
 ### Candidate cleanup items
 
 - review whether more stream/tool helper logic should move from
-  `src/api/services/*` into `src/agents/`
+  transitional transport-adjacent modules into `src/llm_runtime/`
 - reduce direct imports of legacy shim files in production code
 - define a stable small API for runtime entrypoints:
   - sync model call
@@ -131,9 +131,9 @@ and group chat.
 
 ### Current Result
 
-- runtime implementation lives under `src/agents/llm_runtime/`
+- runtime implementation lives under `src/llm_runtime/`
 - legacy `simple_llm.py` shim has been removed
-- production imports use `src.agents.llm_runtime`
+- production imports use `src.llm_runtime`
 
 
 ## Stage 2 - Flatten the Single Chat Path
@@ -451,10 +451,8 @@ Bring non-single-chat flows under the same structural vocabulary.
   `src/application/chat/orchestration/` with compatibility re-exports retained
   under `src/api/services/orchestration/`
 - think-tag stream filtering helpers now physically live under
-  `src/agents/llm_runtime/` with a compatibility re-export retained under
-  `src/api/services/`
-- context planner now physically lives under `src/agents/llm_runtime/`
-  with a compatibility re-export retained under `src/api/services/`
+  `src/llm_runtime/`
+- context planner now physically lives under `src/llm_runtime/`
 
 ### Remaining Work
 
@@ -479,8 +477,8 @@ Renaming should happen after boundaries are already real.
 
 ### Candidate renames
 
-- `src/agents/` -> `src/llm_runtime/` if runtime ownership fully dominates
-- compatibility shims removed after callers migrate
+- keep `src/llm_runtime/` as the runtime home and retire legacy `src/agents/*`
+  compatibility modules after callers migrate
 
 ### Risks
 
@@ -503,10 +501,13 @@ Renaming should happen after boundaries are already real.
 - production API code no longer imports compatibility shims from
   `src/api/services/`
 - compatibility shim modules under `src/api/services/` are now removed
+- runtime modules now live under `src/llm_runtime/` and production code imports
+  `src.llm_runtime`
 
 ### Remaining Work
 
-- decide whether `src/agents/` should be renamed to `src/llm_runtime/`
+- remove remaining legacy compatibility modules under `src/agents/` once no
+  external callers depend on them
 - rename outdated test/module names that still reflect deleted structures
 
 
@@ -540,11 +541,11 @@ Make tests mirror the new ownership model.
 ### Current Progress
 
 - legacy committee tests were moved to orchestration-focused tests
-- runtime tests already target `src.agents.llm_runtime`
+- runtime tests already target `src.llm_runtime`
 - legacy runtime test filename `test_simple_llm.py` was renamed to
   `test_llm_runtime.py`
 - tests no longer import `src.api.services.*`; they now target owned
-  `src/application/*`, `src/infrastructure/*`, and `src/agents/*` modules directly
+  `src/application/*`, `src/infrastructure/*`, and `src/llm_runtime/*` modules directly
 - test layout has been reorganized by ownership under `tests/unit/application/`,
   `tests/unit/infrastructure/`, `tests/unit/cross_layer/`, and
   `tests/unit/test_agents/`
