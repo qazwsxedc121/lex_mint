@@ -21,8 +21,8 @@ The main symptoms are:
 
 - `src/api/services/` historically mixed transport-adjacent services, application orchestration,
   storage access, runtime composition, and some infrastructure behavior.
-- `src/llm_runtime/` now owns runtime execution; a small `src/agents/`
-  compatibility surface still exists during transition.
+- `src/llm_runtime/` now owns runtime execution; the legacy `src/agents/`
+  compatibility surface has been retired.
 - A normal chat request currently crosses too many thin intermediate layers, which makes the
   main path harder to reason about.
 - Some names are historical and still show up in older docs and tests.
@@ -45,6 +45,7 @@ architecture vocabulary.
 - legacy `AgentService` has been removed
 - legacy `simple_llm.py` has been removed
 - runtime code is centered in `src/llm_runtime/`
+- legacy `src/agents/` compatibility modules have been removed
 - infrastructure storage package now lives under `src/infrastructure/storage/` (with compatibility shims)
 - file infrastructure package now lives under `src/infrastructure/files/` (with compatibility shims)
 - config infrastructure package now lives under `src/infrastructure/config/` (with compatibility shims, including model config)
@@ -241,7 +242,7 @@ Current recommended ownership:
 - reasoning/thinking runtime decisions
 
 This is the LLM execution/runtime layer.
-Legacy compatibility modules under `src/agents/` should be temporary.
+Legacy compatibility modules under `src/agents/` have been removed.
 
 Should contain:
 

@@ -84,7 +84,7 @@ Backend source of truth: `src/api/services/flow_event_types.py`
 
 ## Protocol guard tests
 
-- Contract test entry: `tests/unit/test_routers/test_flow_event_stream_contract.py`
+- Contract test entry: `tests/unit/api/routers/test_flow_event_stream_contract.py`
 - Covered endpoints:
   - `POST /api/chat/stream`
   - `POST /api/chat/compare`
@@ -100,7 +100,7 @@ Backend source of truth: `src/api/services/flow_event_types.py`
 Run only contract tests:
 
 ```bash
-./venv/Scripts/pytest tests/unit/test_routers/test_flow_event_stream_contract.py
+./venv/Scripts/pytest tests/unit/api/routers/test_flow_event_stream_contract.py
 ```
 
 Run backend full tests:

@@ -140,7 +140,7 @@ and group chat.
 
 ### Status
 
-Partial.
+Mostly complete.
 
 ### Goal
 
@@ -209,7 +209,7 @@ with persistence/context/tool preparation remaining in the application service.
 
 ### Status
 
-Partial.
+Mostly complete.
 
 ### Goal
 
@@ -503,11 +503,10 @@ Renaming should happen after boundaries are already real.
 - compatibility shim modules under `src/api/services/` are now removed
 - runtime modules now live under `src/llm_runtime/` and production code imports
   `src.llm_runtime`
+- legacy compatibility modules under `src/agents/` are now removed
 
 ### Remaining Work
 
-- remove remaining legacy compatibility modules under `src/agents/` once no
-  external callers depend on them
 - rename outdated test/module names that still reflect deleted structures
 
 
@@ -548,12 +547,15 @@ Make tests mirror the new ownership model.
   `src/application/*`, `src/infrastructure/*`, and `src/llm_runtime/*` modules directly
 - test layout has been reorganized by ownership under `tests/unit/application/`,
   `tests/unit/infrastructure/`, `tests/unit/cross_layer/`, and
-  `tests/unit/test_agents/`
+  `tests/unit/llm_runtime/`
+- transport/provider/domain/core/tool/eval tests now live under
+  `tests/unit/api/`, `tests/unit/providers/`, `tests/unit/domain/`,
+  `tests/unit/core/`, `tests/unit/tools/`, and `tests/unit/evals/`
 
 ### Remaining Work
 
-- continue minor cleanup for remaining legacy-neutral folders (`test_models`,
-  `test_providers`, `test_api`) where useful, without forcing churn
+- optional naming polish for a few legacy-neutral folders only if it
+  improves discoverability without churn
 
 
 ## Delivery Order

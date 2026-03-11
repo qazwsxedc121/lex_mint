@@ -61,7 +61,7 @@ Note: V1 uses internal defaults in service code; UI-exposed knobs can be added i
 | P1 | Define hierarchical design and rollout plan | DONE | This doc |
 | P2 | Implement service-level map/reduce pipeline | DONE | Implemented in `CompressionService` local GGUF path |
 | P3 | Add safe budgeting/chunking utilities | DONE | Added token estimator + chunk builders + hard level cap |
-| P4 | Add tests for chunking/reduction helpers | DONE | Added unit tests in `tests/unit/test_services/test_compression_service.py` |
+| P4 | Add tests for chunking/reduction helpers | DONE | Added unit tests in `tests/unit/infrastructure/compression/test_compression_service.py` |
 | P5 | Add config/UI knobs for hierarchy controls | DONE | Added compression strategy + hierarchy params in API and settings UI |
 | P6 | Add quality guard and compression metrics | DONE | Added critical-fact guard + compression telemetry/meta |
 
