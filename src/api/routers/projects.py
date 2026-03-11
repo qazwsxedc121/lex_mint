@@ -34,7 +34,7 @@ from src.domain.models.project_config import (
     ProjectWorkspaceItemUpsert,
     ProjectWorkspaceState,
 )
-from ..config import settings
+from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 

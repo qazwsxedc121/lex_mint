@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from .paths import logs_dir
+from src.core.paths import logs_dir
 
 # Whether already initialized
 _initialized = False

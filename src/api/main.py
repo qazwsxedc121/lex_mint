@@ -16,9 +16,9 @@ from .logging_config import setup_logging
 
 setup_logging()
 
-from .config import settings
+from src.core.config import settings
 from .errors import register_exception_handlers
-from .paths import repo_root, resolve_user_data_path
+from src.core.paths import repo_root, resolve_user_data_path
 from .routers import (
     assistants,
     chat,

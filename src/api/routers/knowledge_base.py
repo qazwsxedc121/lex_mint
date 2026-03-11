@@ -20,8 +20,8 @@ from src.domain.models.knowledge_base import (
     KnowledgeBaseChunk,
 )
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
-from ..config import settings
-from ..paths import resolve_user_data_path
+from src.core.config import settings
+from src.core.paths import resolve_user_data_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])

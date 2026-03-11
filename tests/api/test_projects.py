@@ -6,7 +6,7 @@ from src.infrastructure.config.project_service import ProjectService, ProjectCon
 from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 from src.domain.models.project_config import Project, ProjectCreate
 from src.domain.models.project_config import ProjectWorkspaceItemUpsert
-from src.api.config import settings
+from src.core.config import settings
 
 
 @pytest.fixture

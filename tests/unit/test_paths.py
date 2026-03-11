@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from src.api.config import Settings
-from src.api import paths
+from src.core.config import Settings
+from src.core import paths
 from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models
 
 

@@ -35,8 +35,8 @@ architecture vocabulary.
 
 - compatibility shim modules under `src/api/services/` have been retired
   (the `src/api/services/` package has been removed)
-- shared runtime path/settings helpers now live under `src/core/` with
-  compatibility re-exports in `src/api/paths.py` and `src/api/config.py`
+- shared runtime path/settings helpers now live under `src/core/`
+  (`src/api/paths.py` and `src/api/config.py` have been removed)
 - shared Pydantic model ownership now lives under `src/domain/models/`
   (the `src/api/models/` package has been removed)
 - API entry now resolves `ChatApplicationService` directly

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .config import settings
+from src.core.config import settings
 from src.application.chat import (
     ChatApplicationService,
     build_default_chat_application_service,

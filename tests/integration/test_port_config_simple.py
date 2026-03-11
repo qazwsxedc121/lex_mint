@@ -22,7 +22,7 @@ def test_config_requires_api_port(monkeypatch):
 
     monkeypatch.delenv("API_PORT", raising=False)
 
-    from src.api.config import Settings
+    from src.core.config import Settings
     assert Settings.model_fields["api_port"].is_required()
     print("[OK] API_PORT is required")
 
@@ -33,7 +33,7 @@ def test_config_env_override(monkeypatch):
 
     test_port = 9999
     monkeypatch.setenv("API_PORT", str(test_port))
-    from src.api.config import Settings
+    from src.core.config import Settings
     settings = Settings(api_port=test_port)
 
     assert settings.api_port == test_port, f"Expected {test_port}, got {settings.api_port}"

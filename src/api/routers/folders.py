@@ -10,7 +10,7 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from ..config import settings
+from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
