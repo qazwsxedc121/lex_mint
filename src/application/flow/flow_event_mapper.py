@@ -1,4 +1,4 @@
-"""Legacy stream event to FlowEvent mapping helpers."""
+"""Stream event to FlowEvent mapping helpers."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from .flow_event_types import (
     GROUP_ACTION_REPORTED,
     GROUP_DONE_REPORTED,
     GROUP_ROUND_STARTED,
-    LEGACY_EVENT,
     REASONING_DURATION_REPORTED,
     SOURCES_REPORTED,
     STREAM_ENDED,
@@ -34,7 +33,7 @@ StreamChunk = Union[str, Mapping[str, Any]]
 
 @dataclass
 class FlowEventMapper:
-    """Attach flow_event envelopes while preserving legacy stream payloads."""
+    """Attach flow_event envelopes while enforcing known stream event contracts."""
 
     stream_id: str
     conversation_id: Optional[str] = None
@@ -100,7 +99,7 @@ class FlowEventMapper:
                     stage=FlowEventStage.TRANSPORT,
                     payload={"error": str(payload.get("error"))},
                 )
-            return self._map_legacy_event(payload)
+            return self._map_event(payload)
 
         return self._create_event(
             event_type=TEXT_DELTA,
@@ -108,10 +107,16 @@ class FlowEventMapper:
             payload={"text": str(chunk)},
         )
 
-    def _map_legacy_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        legacy_type = event.get("type")
-        if isinstance(legacy_type, str):
-            event_type, stage, payload = self._legacy_type_to_flow(legacy_type, event)
+    def _map_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        raw_type = event.get("type")
+        if isinstance(raw_type, str):
+            event_type, stage, payload = self._event_type_to_flow(raw_type, event)
+            if event_type == STREAM_ERROR:
+                return self._create_event(
+                    event_type=STREAM_ERROR,
+                    stage=FlowEventStage.TRANSPORT,
+                    payload=payload,
+                )
             turn_id = self._extract_turn_id(event)
             return self._create_event(
                 event_type=event_type,
@@ -128,9 +133,9 @@ class FlowEventMapper:
             )
 
         return self._create_event(
-            event_type=LEGACY_EVENT,
-            stage=FlowEventStage.META,
-            payload={"legacy_type": "", "data": event},
+            event_type=STREAM_ERROR,
+            stage=FlowEventStage.TRANSPORT,
+            payload={"error": "unsupported stream event: missing type/chunk"},
         )
 
     @staticmethod
@@ -148,12 +153,12 @@ class FlowEventMapper:
                 payload[field] = event[field]
         return payload
 
-    def _legacy_type_to_flow(
+    def _event_type_to_flow(
         self,
-        legacy_type: str,
+        event_type: str,
         event: Dict[str, Any],
     ) -> Tuple[str, FlowEventStage, Dict[str, Any]]:
-        if legacy_type == "assistant_chunk":
+        if event_type == "assistant_chunk":
             payload = self._copy_selected_fields(
                 event,
                 ("chunk", "assistant_id", "assistant_turn_id"),
@@ -162,91 +167,90 @@ class FlowEventMapper:
             payload["text"] = chunk
             return TEXT_DELTA, FlowEventStage.CONTENT, payload
 
-        if legacy_type == "usage":
+        if event_type == "usage":
             payload = self._copy_selected_fields(
                 event,
                 ("usage", "cost", "assistant_id", "assistant_turn_id"),
             )
             return USAGE_REPORTED, FlowEventStage.META, payload
 
-        if legacy_type == "sources":
+        if event_type == "sources":
             payload = self._copy_selected_fields(
                 event,
                 ("sources", "assistant_id", "assistant_turn_id"),
             )
             return SOURCES_REPORTED, FlowEventStage.META, payload
 
-        if legacy_type == "user_message_id":
+        if event_type == "user_message_id":
             payload = self._copy_selected_fields(event, ("message_id",))
             return USER_MESSAGE_IDENTIFIED, FlowEventStage.META, payload
 
-        if legacy_type == "assistant_message_id":
+        if event_type == "assistant_message_id":
             payload = self._copy_selected_fields(
                 event,
                 ("message_id", "assistant_id", "assistant_turn_id"),
             )
             return ASSISTANT_MESSAGE_IDENTIFIED, FlowEventStage.META, payload
 
-        if legacy_type == "context_info":
+        if event_type == "context_info":
             payload = dict(event)
             payload.pop("type", None)
             return CONTEXT_REPORTED, FlowEventStage.META, payload
 
-        if legacy_type == "thinking_duration":
+        if event_type == "thinking_duration":
             payload = self._copy_selected_fields(
                 event,
                 ("duration_ms", "assistant_id", "assistant_turn_id"),
             )
             return REASONING_DURATION_REPORTED, FlowEventStage.CONTENT, payload
 
-        if legacy_type == "tool_calls":
+        if event_type == "tool_calls":
             payload = self._copy_selected_fields(
                 event,
                 ("calls", "assistant_id", "assistant_turn_id"),
             )
             return TOOL_CALL_STARTED, FlowEventStage.TOOL, payload
 
-        if legacy_type == "tool_results":
+        if event_type == "tool_results":
             payload = self._copy_selected_fields(
                 event,
                 ("results", "assistant_id", "assistant_turn_id"),
             )
             return TOOL_CALL_FINISHED, FlowEventStage.TOOL, payload
 
-        if legacy_type == "assistant_start":
+        if event_type == "assistant_start":
             payload = self._copy_selected_fields(
                 event,
                 ("assistant_id", "assistant_turn_id", "name", "icon"),
             )
             return ASSISTANT_TURN_STARTED, FlowEventStage.ORCHESTRATION, payload
 
-        if legacy_type == "assistant_done":
+        if event_type == "assistant_done":
             payload = self._copy_selected_fields(
                 event,
                 ("assistant_id", "assistant_turn_id"),
             )
             return ASSISTANT_TURN_FINISHED, FlowEventStage.ORCHESTRATION, payload
 
-        if legacy_type == "group_round_start":
+        if event_type == "group_round_start":
             payload = dict(event)
             payload.pop("type", None)
             return GROUP_ROUND_STARTED, FlowEventStage.ORCHESTRATION, payload
 
-        if legacy_type == "group_action":
+        if event_type == "group_action":
             payload = dict(event)
             payload.pop("type", None)
             return GROUP_ACTION_REPORTED, FlowEventStage.ORCHESTRATION, payload
 
-        if legacy_type == "group_done":
+        if event_type == "group_done":
             payload = dict(event)
             payload.pop("type", None)
             return GROUP_DONE_REPORTED, FlowEventStage.ORCHESTRATION, payload
 
-        if legacy_type == "followup_questions":
+        if event_type == "followup_questions":
             payload = self._copy_selected_fields(event, ("questions",))
             return FOLLOWUP_QUESTIONS_REPORTED, FlowEventStage.META, payload
 
-        return LEGACY_EVENT, FlowEventStage.META, {
-            "legacy_type": legacy_type,
-            "data": event,
+        return STREAM_ERROR, FlowEventStage.TRANSPORT, {
+            "error": f"unsupported stream event type: {event_type}",
         }

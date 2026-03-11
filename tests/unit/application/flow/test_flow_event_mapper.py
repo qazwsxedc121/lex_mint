@@ -63,3 +63,14 @@ def test_mapper_uses_external_sequence_provider():
     mapper = FlowEventMapper(stream_id="stream-4", seq_provider=_next_seq)
     payload = mapper.to_sse_payload("hello")
     assert payload["flow_event"]["seq"] == 42
+
+
+def test_mapper_unknown_event_type_maps_to_stream_error():
+    mapper = FlowEventMapper(stream_id="stream-5")
+
+    payload = mapper.to_sse_payload({"type": "unknown_event", "foo": "bar"})
+
+    flow_event = payload["flow_event"]
+    assert flow_event["event_type"] == "stream_error"
+    assert flow_event["stage"] == "transport"
+    assert flow_event["payload"]["error"] == "unsupported stream event type: unknown_event"

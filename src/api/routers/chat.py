@@ -24,7 +24,6 @@ from src.application.flow.flow_event_types import (
     COMPARE_MODEL_FAILED,
     COMPARE_MODEL_FINISHED,
     COMPARE_MODEL_STARTED,
-    LEGACY_EVENT,
     REPLAY_FINISHED,
     RESUME_STARTED,
     SOURCES_REPORTED,
@@ -230,10 +229,8 @@ def _map_compare_event_to_flow_payload(
     if event_type == "error":
         return emitter.emit_error(str(event.get("error") or "compare stream error"))
 
-    return emitter.emit(
-        event_type=LEGACY_EVENT,
-        stage=FlowEventStage.META,
-        payload={"legacy_type": str(event_type or ""), "data": event},
+    return emitter.emit_error(
+        f"unsupported compare stream event type: {str(event_type or '')}"
     )
 
 
@@ -254,11 +251,7 @@ def _map_compress_event_to_flow_payload(
         )
     if event_type == "error":
         return emitter.emit_error(str(event.get("error") or "compression stream error"))
-    return emitter.emit(
-        event_type=LEGACY_EVENT,
-        stage=FlowEventStage.META,
-        payload={"legacy_type": event_type, "data": event},
-    )
+    return emitter.emit_error(f"unsupported compression stream event type: {event_type}")
 
 
 async def _build_stream_fn(

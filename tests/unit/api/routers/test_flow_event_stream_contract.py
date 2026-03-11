@@ -179,7 +179,7 @@ async def test_chat_compress_contract_flow_event_only(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_chat_compress_unknown_event_maps_to_legacy_event(monkeypatch):
+async def test_chat_compress_unknown_event_maps_to_stream_error_and_stops(monkeypatch):
     class _FakeCompressionService:
         def __init__(self, _storage):
             pass
@@ -203,9 +203,8 @@ async def test_chat_compress_unknown_event_maps_to_legacy_event(monkeypatch):
     _assert_seq_strictly_increasing(events)
 
     event_types = [event["event_type"] for event in events]
-    assert event_types == ["stream_started", "legacy_event", "text_delta", "compression_completed", "stream_ended"]
-    assert events[1]["payload"]["legacy_type"] == "unknown_event"
-    assert events[1]["payload"]["data"]["foo"] == "bar"
+    assert event_types == ["stream_started", "stream_error"]
+    assert events[1]["payload"]["error"] == "unsupported compression stream event type: unknown_event"
 
 
 @pytest.mark.asyncio

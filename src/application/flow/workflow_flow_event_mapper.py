@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from .flow_event_emitter import FlowEventEmitter
 from .flow_event_types import (
-    LEGACY_EVENT,
+    STREAM_ERROR,
     WORKFLOW_ARTIFACT_WRITTEN,
     WORKFLOW_CONDITION_EVALUATED,
     WORKFLOW_NODE_FINISHED,
@@ -143,11 +143,7 @@ def map_workflow_event_to_flow_payload(
             },
         )
 
-    if event_type == "stream_error":
+    if event_type == STREAM_ERROR:
         return emitter.emit_error(str(event.get("error") or "workflow stream error"))
 
-    return emitter.emit(
-        event_type=LEGACY_EVENT,
-        stage=FlowEventStage.META,
-        payload={"legacy_type": event_type, "data": event},
-    )
+    return emitter.emit_error(f"unsupported workflow stream event type: {event_type}")

@@ -16,7 +16,6 @@ from src.infrastructure.llm.language_detection_service import LanguageDetectionS
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_types import (
     LANGUAGE_DETECTED,
-    LEGACY_EVENT,
     STREAM_ERROR,
     TRANSLATION_COMPLETED,
 )
@@ -117,10 +116,8 @@ async def translate_text(request: TranslateRequest):
                     elif event_type == "error":
                         payload = emitter.emit_error(str(chunk.get("error") or "translation stream error"))
                     else:
-                        payload = emitter.emit(
-                            event_type=LEGACY_EVENT,
-                            stage=FlowEventStage.META,
-                            payload={"legacy_type": event_type, "data": chunk},
+                        payload = emitter.emit_error(
+                            f"unsupported translation stream event type: {event_type}"
                         )
                     yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
                     flow_event = payload.get("flow_event")
