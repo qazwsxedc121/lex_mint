@@ -72,7 +72,7 @@ class ContextAssemblyService:
         rag_context: Optional[str] = None
         structured_source_context: Optional[str] = None
 
-        if assistant_id and not assistant_id.startswith("__legacy_model_"):
+        if assistant_id:
             from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
             assistant_service = AssistantConfigService()
@@ -104,15 +104,12 @@ class ContextAssemblyService:
                 if key in param_overrides:
                     assistant_params[key] = param_overrides[key]
 
-        is_legacy_assistant = bool(assistant_id and assistant_id.startswith("__legacy_model_"))
         assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
         resolved_model_id = str(model_id or "")
 
         memory_sources: List[SourcePayload] = []
         try:
-            include_assistant_memory = bool(
-                assistant_id and not is_legacy_assistant and assistant_memory_enabled
-            )
+            include_assistant_memory = bool(assistant_id and assistant_memory_enabled)
             memory_context, memory_sources = self.memory_service.build_memory_context(
                 query=raw_user_message,
                 assistant_id=assistant_id if include_assistant_memory else None,
@@ -179,7 +176,6 @@ class ContextAssemblyService:
             model_id=resolved_model_id,
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
-            is_legacy_assistant=is_legacy_assistant,
             assistant_memory_enabled=assistant_memory_enabled,
             max_rounds=max_rounds,
             base_system_prompt=base_system_prompt,

@@ -27,7 +27,7 @@ class RagContextBuilderService:
 
         try:
             assistant_for_rag = assistant_obj
-            if assistant_for_rag is None and assistant_id and not assistant_id.startswith("__legacy_model_"):
+            if assistant_for_rag is None and assistant_id:
                 from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
                 assistant_service = AssistantConfigService()

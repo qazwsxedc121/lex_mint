@@ -14,7 +14,6 @@ from .model_config_service import ModelConfigService
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
-    legacy_config_dir,
     ensure_local_file,
     resolve_layered_read_path,
 )
@@ -36,11 +35,9 @@ class AssistantConfigService:
             model_service: Model configuration service instance for validation
         """
         self.defaults_path: Optional[Path] = config_defaults_dir() / "assistants_config.yaml"
-        self.legacy_paths: list[Path] = []
 
         if config_path is None:
             self.config_path = config_local_dir() / "assistants_config.yaml"
-            self.legacy_paths = [legacy_config_dir() / "assistants_config.yaml"]
         else:
             self.config_path = Path(config_path)
         self.model_service = model_service or ModelConfigService()
@@ -54,7 +51,6 @@ class AssistantConfigService:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=self.defaults_path,
-                legacy_paths=self.legacy_paths,
                 initial_text=initial_text,
             )
             return
@@ -78,7 +74,6 @@ class AssistantConfigService:
             resolve_layered_read_path(
                 local_path=self.config_path,
                 defaults_path=self.defaults_path,
-                legacy_paths=self.legacy_paths,
             )
             if self.defaults_path is not None
             else self.config_path

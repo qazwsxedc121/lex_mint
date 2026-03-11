@@ -26,7 +26,6 @@ def load_layered_yaml_section(
     *,
     config_path: Path,
     defaults_path: Optional[Path],
-    legacy_paths: Optional[list[Path]],
     section_name: str,
     logger: Any,
     error_label: str,
@@ -36,7 +35,6 @@ def load_layered_yaml_section(
     resolved_path = resolve_layered_read_path(
         local_path=config_path,
         defaults_path=defaults_path,
-        legacy_paths=legacy_paths,
     )
 
     try:

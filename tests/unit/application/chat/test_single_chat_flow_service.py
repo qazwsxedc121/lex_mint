@@ -76,7 +76,6 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
                 assistant_params={},
                 all_sources=[{"type": "memory"}],
                 max_rounds=None,
-                is_legacy_assistant=False,
                 assistant_memory_enabled=True,
             )
         ),
@@ -225,7 +224,6 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
         assistant_id=None,
         assistant_obj=None,
         model_id="provider:model-a",
-        is_legacy_assistant=False,
         context_type="chat",
         project_id=None,
         session_id="s1",
@@ -266,7 +264,6 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
                     {"type": "rag", "title": "rag"},
                 ],
                 max_rounds=None,
-                is_legacy_assistant=False,
                 assistant_memory_enabled=True,
                 base_system_prompt="base",
                 memory_context="memory",

@@ -33,7 +33,7 @@ class ProjectKnowledgeBaseResolver:
         project_id: Optional[str],
     ) -> List[str]:
         assistant_for_resolution = assistant_obj
-        if assistant_for_resolution is None and assistant_id and not assistant_id.startswith("__legacy_model_"):
+        if assistant_for_resolution is None and assistant_id:
             try:
                 from src.infrastructure.config.assistant_config_service import AssistantConfigService
 
@@ -42,7 +42,7 @@ class ProjectKnowledgeBaseResolver:
                 logger.warning("Failed to load assistant '%s' during KB resolution: %s", assistant_id, exc)
 
         assistant_kb_ids: List[str] = []
-        if assistant_id and not assistant_id.startswith("__legacy_model_") and assistant_for_resolution is not None:
+        if assistant_id and assistant_for_resolution is not None:
             assistant_kb_ids = list(getattr(assistant_for_resolution, "knowledge_base_ids", None) or [])
 
         project_kb_ids: List[str] = []

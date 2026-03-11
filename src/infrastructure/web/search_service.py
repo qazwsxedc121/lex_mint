@@ -12,7 +12,6 @@ from src.infrastructure.config.model_config_service import ModelConfigService
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
-    legacy_config_dir,
     ensure_local_file,
 )
 
@@ -41,12 +40,10 @@ class SearchService:
 
     def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
         self.defaults_path: Optional[Path] = None
-        self.legacy_paths: list[Path] = []
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "search_config.yaml"
             self.config_path = config_local_dir() / "search_config.yaml"
-            self.legacy_paths = [legacy_config_dir() / "search_config.yaml"]
         else:
             self.config_path = Path(config_path)
 
@@ -70,7 +67,6 @@ class SearchService:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=self.defaults_path,
-                legacy_paths=self.legacy_paths,
                 initial_text=initial_text,
             )
 

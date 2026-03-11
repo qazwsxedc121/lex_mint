@@ -47,13 +47,11 @@ class ProjectService:
         """
         use_default_path = config_path is None
         self.config_path = config_path or settings.projects_config_path
-        self.legacy_paths: List[Path] = [repo_root() / "config" / "projects_config.yaml"]
 
         if use_default_path:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=None,
-                legacy_paths=self.legacy_paths,
                 initial_text=yaml.safe_dump({"projects": []}, allow_unicode=True, sort_keys=False),
             )
         self._lock = asyncio.Lock()

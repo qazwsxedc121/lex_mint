@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from src.core.paths import data_state_dir, legacy_config_dir, ensure_local_file
+from src.core.paths import data_state_dir, ensure_local_file
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,6 @@ class RagConfigService:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=None,
-                legacy_paths=[legacy_config_dir() / "rag_config.yaml"],
                 initial_text=initial_text,
             )
             logger.info(f"Created default RAG config at {self.config_path}")

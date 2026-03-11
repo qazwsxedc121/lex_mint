@@ -88,7 +88,7 @@ class TranslationService:
             )
             detected_language = LanguageDetectionService.normalize_language_hint(detected_raw)
 
-        # Determine target language (explicit param > auto detect > legacy config path)
+        # Determine target language (explicit param > auto detect > config default)
         if target_language:
             effective_target_language = target_language
         elif auto_detect_language:

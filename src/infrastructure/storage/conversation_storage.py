@@ -103,10 +103,8 @@ class ConversationStorage:
 
         Args:
             model_id: Optional model ID. Supports either a simple ID or a composite
-                ID in the form ``provider_id:model_id``. If omitted, the default
-                model is used for backward compatibility.
-            assistant_id: Optional assistant ID. Preferred when using the newer
-                assistant-target flow.
+                ID in the form ``provider_id:model_id``.
+            assistant_id: Optional assistant ID.
             target_type: Conversation target type ("assistant" or "model")
             context_type: Context type ("chat" or "project")
             project_id: Project ID (required when context_type="project")
@@ -141,7 +139,7 @@ class ConversationStorage:
             "created_at": datetime.now().isoformat(),
             "title": "New Conversation",
             "current_step": 0,
-            "model_id": model_id,  # Store the composite ID format for backward compatibility.
+            "model_id": model_id,
             "target_type": resolved_target.target_type,
         }
 
@@ -193,8 +191,8 @@ class ConversationStorage:
                 "session_id": str,
                 "title": str,
                 "created_at": str,
-                "assistant_id": str,  # New preferred assistant identifier.
-                "model_id": str,       # Kept for backward compatibility.
+                "assistant_id": str,
+                "model_id": str,
                 "state": {
                     "messages": List[Dict],
                     "current_step": int
@@ -218,44 +216,47 @@ class ConversationStorage:
         # Parse messages from markdown content
         messages = self._parse_messages(post.content, session_id)
 
-        # Determine assistant/model target with backward compatibility.
+        # Resolve assistant/model target from explicit canonical metadata only.
         assistant_id = self._as_optional_str(metadata.get("assistant_id"))
         model_id = self._as_optional_str(metadata.get("model_id"))
-        explicit_target_type = self._as_optional_str(metadata.get("target_type"))
-        target_type: str
+        target_type = self._as_optional_str(metadata.get("target_type"))
+        if target_type not in {"assistant", "model"}:
+            raise ValueError(
+                "Session metadata is incompatible: target_type must be 'assistant' or 'model'."
+            )
 
-        if assistant_id:
+        if target_type == "assistant":
+            if not assistant_id:
+                raise ValueError(
+                    "Session metadata is incompatible: assistant target requires assistant_id."
+                )
             from src.infrastructure.config.assistant_config_service import AssistantConfigService
+
             assistant_service = AssistantConfigService()
             assistant = await assistant_service.get_assistant(assistant_id)
-            if assistant:
-                model_id = assistant.model_id
-            else:
-                default_assistant = await assistant_service.get_default_assistant()
-                assistant_id = default_assistant.id
-                model_id = default_assistant.model_id
-            target_type = "assistant"
-        elif model_id:
-            target_type = "model"
-            if ':' not in model_id:
+            if assistant is None:
+                raise ValueError(
+                    f"Session assistant '{assistant_id}' no longer exists. "
+                    "This session is not compatible with the current runtime."
+                )
+            model_id = assistant.model_id
+        else:
+            if not model_id:
+                raise ValueError(
+                    "Session metadata is incompatible: model target requires model_id."
+                )
+            if ":" not in model_id:
                 from src.infrastructure.config.model_config_service import ModelConfigService
+
                 model_service = ModelConfigService()
                 model_obj = await model_service.get_model(model_id)
-                if model_obj:
-                    model_id = f"{model_obj.provider_id}:{model_obj.id}"
-            if explicit_target_type != "model":
-                # Backward compatibility for legacy model-only sessions.
-                assistant_id = f"__legacy_model_{model_id.replace(':', '_')}"
-        else:
-            from src.infrastructure.config.assistant_config_service import AssistantConfigService
-            assistant_service = AssistantConfigService()
-            default_assistant = await assistant_service.get_default_assistant()
-            assistant_id = default_assistant.id
-            model_id = default_assistant.model_id
-            target_type = "assistant"
-
-        if explicit_target_type in {"assistant", "model"}:
-            target_type = explicit_target_type
+                if model_obj is None:
+                    raise ValueError(
+                        f"Session model '{model_id}' no longer exists. "
+                        "This session is not compatible with the current runtime."
+                    )
+                model_id = f"{model_obj.provider_id}:{model_obj.id}"
+            assistant_id = None
 
         result = {
             "session_id": self._as_str(metadata.get("session_id"), session_id),
@@ -1253,23 +1254,6 @@ class ConversationStorage:
             except Exception:
                 pass
 
-        # Also scan legacy conversations/projects/ for backward compat
-        projects_dir = self.conversations_dir / "projects"
-        if projects_dir.exists():
-            for filepath in projects_dir.glob("**/*.md"):
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        post = frontmatter.load(f)
-
-                    if post.metadata.get("temporary", False):
-                        filepath.unlink()
-                        compare_path = filepath.with_suffix(".compare.json")
-                        if compare_path.exists():
-                            compare_path.unlink()
-                        cleaned += 1
-                except Exception:
-                    continue
-
         return cleaned
 
     async def convert_to_permanent(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
@@ -1336,7 +1320,7 @@ class ConversationStorage:
             await f.write(frontmatter.dumps(post))
 
     async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
-        """Backward-compatible wrapper for setting model target."""
+        """Wrapper for setting model target."""
         await self.update_session_target(
             session_id,
             target_type="model",
@@ -1346,7 +1330,7 @@ class ConversationStorage:
         )
 
     async def update_session_assistant(self, session_id: str, assistant_id: str, context_type: str = "chat", project_id: Optional[str] = None):
-        """Backward-compatible wrapper for setting assistant target."""
+        """Wrapper for setting assistant target."""
         await self.update_session_target(
             session_id,
             target_type="assistant",
@@ -1537,7 +1521,7 @@ class ConversationStorage:
         # Clean up: strip trailing whitespace and generate fallback message IDs
         for index, msg in enumerate(messages):
             msg["content"] = msg["content"].strip()
-            # Generate fallback UUID if message_id not found (backward compatibility)
+            # Generate fallback UUID if message_id not found.
             if "message_id" not in msg:
                 msg["message_id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{index}"))
 
@@ -1573,4 +1557,3 @@ def create_storage_with_project_resolver(
         assistant_service=assistant_service,
         model_service=model_service,
     )
-

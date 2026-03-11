@@ -21,7 +21,6 @@ from src.infrastructure.config.yaml_config_utils import (
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
-    legacy_config_dir,
     ensure_local_file,
 )
 
@@ -62,18 +61,15 @@ class TitleGenerationService:
     def __init__(self, storage: ConversationStorage, config_path: Optional[str] = None):
         self.storage = storage
         self.defaults_path: Optional[Path] = config_defaults_dir() / "title_generation_config.yaml"
-        self.legacy_paths: list[Path] = []
 
         if config_path is None:
             self.config_path = config_local_dir() / "title_generation_config.yaml"
-            self.legacy_paths = [legacy_config_dir() / "title_generation_config.yaml"]
         else:
             self.config_path = Path(config_path)
 
         ensure_local_file(
             local_path=self.config_path,
             defaults_path=self.defaults_path,
-            legacy_paths=self.legacy_paths,
             initial_text=yaml.safe_dump({"title_generation": {}}, allow_unicode=True, sort_keys=False),
         )
         self.config = self._load_config()
@@ -87,7 +83,6 @@ class TitleGenerationService:
         default_config, config_data = load_layered_yaml_section(
             config_path=self.config_path,
             defaults_path=self.defaults_path,
-            legacy_paths=self.legacy_paths,
             section_name='title_generation',
             logger=logger,
             error_label='title generation config',

@@ -14,7 +14,6 @@ from .yaml_config_utils import load_default_yaml_section, load_layered_yaml_sect
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
-    legacy_config_dir,
     ensure_local_file,
 )
 
@@ -50,11 +49,9 @@ class TranslationConfigService:
 
     def __init__(self, config_path: Optional[str] = None):
         self.defaults_path: Optional[Path] = config_defaults_dir() / "translation_config.yaml"
-        self.legacy_paths: list[Path] = []
 
         if config_path is None:
             self.config_path = config_local_dir() / "translation_config.yaml"
-            self.legacy_paths = [legacy_config_dir() / "translation_config.yaml"]
         else:
             self.config_path = Path(config_path)
         self._ensure_config_exists()
@@ -65,7 +62,6 @@ class TranslationConfigService:
         ensure_local_file(
             local_path=self.config_path,
             defaults_path=self.defaults_path,
-            legacy_paths=self.legacy_paths,
             initial_text=yaml.safe_dump({"translation": {}}, allow_unicode=True, sort_keys=False),
         )
 
@@ -78,7 +74,6 @@ class TranslationConfigService:
         default_config, config_data = load_layered_yaml_section(
             config_path=self.config_path,
             defaults_path=self.defaults_path,
-            legacy_paths=self.legacy_paths,
             section_name='translation',
             logger=logger,
             error_label='translation config',

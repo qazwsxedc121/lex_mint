@@ -111,7 +111,6 @@ class SingleChatRuntime:
     assistant_params: Dict[str, Any]
     all_sources: List[SourcePayload]
     max_rounds: Optional[int]
-    is_legacy_assistant: bool
     assistant_memory_enabled: bool
     active_file_path: Optional[str] = None
     active_file_hash: Optional[str] = None
@@ -129,7 +128,7 @@ class SingleTurnOutcome:
 
 
 class SingleChatFlowService:
-    """Runs single-chat stream flow and emits legacy-compatible events."""
+    """Runs single-chat stream flow and emits chat stream events."""
 
     def __init__(self, deps: SingleChatFlowDeps):
         self.deps = deps
@@ -224,7 +223,6 @@ class SingleChatFlowService:
             assistant_id=runtime.assistant_id,
             assistant_obj=runtime.assistant_obj,
             model_id=runtime.model_id,
-            is_legacy_assistant=runtime.is_legacy_assistant,
             context_type=runtime.context_type,
             project_id=runtime.project_id,
             session_id=runtime.session_id,
@@ -331,7 +329,6 @@ class SingleChatFlowService:
             assistant_params=ctx.assistant_params,
             all_sources=all_sources,
             max_rounds=ctx.max_rounds,
-            is_legacy_assistant=ctx.is_legacy_assistant,
             assistant_memory_enabled=ctx.assistant_memory_enabled,
             active_file_path=(active_file_path or "").strip() or None,
             active_file_hash=(active_file_hash or "").strip() or None,
@@ -489,7 +486,6 @@ class SingleChatFlowService:
             sources=runtime.all_sources,
             raw_user_message=runtime.raw_user_message,
             assistant_id=runtime.assistant_id,
-            is_legacy_assistant=runtime.is_legacy_assistant,
             assistant_memory_enabled=runtime.assistant_memory_enabled,
             user_message_id=runtime.user_message_id,
             context_type=runtime.context_type,
@@ -651,7 +647,6 @@ class SingleChatFlowService:
         assistant_id: Optional[str],
         assistant_obj: Optional[AssistantLike],
         model_id: str,
-        is_legacy_assistant: bool,
         context_type: str,
         project_id: Optional[str],
         session_id: str,

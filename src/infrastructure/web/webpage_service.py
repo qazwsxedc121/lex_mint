@@ -26,7 +26,6 @@ from src.domain.models.search import SearchSource
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
-    legacy_config_dir,
     ensure_local_file,
 )
 
@@ -177,12 +176,10 @@ class WebpageService:
 
     def __init__(self, config_path: Optional[Path] = None) -> None:
         self.defaults_path: Optional[Path] = None
-        self.legacy_paths: list[Path] = []
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "webpage_config.yaml"
             self.config_path = config_local_dir() / "webpage_config.yaml"
-            self.legacy_paths = [legacy_config_dir() / "webpage_config.yaml"]
         else:
             self.config_path = Path(config_path)
         self.config = self._load_config()
@@ -207,7 +204,6 @@ class WebpageService:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=self.defaults_path,
-                legacy_paths=self.legacy_paths,
                 initial_text=initial_text,
             )
 

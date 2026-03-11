@@ -41,5 +41,5 @@ def parse_group_participant(raw_value: str) -> GroupParticipant:
             raise ValueError("Assistant participant token is missing assistant id")
         return GroupParticipant(raw=cleaned, kind="assistant", value=assistant_id)
 
-    # Backward compatibility: plain assistant id.
+    # Plain assistant id.
     return GroupParticipant(raw=cleaned, kind="assistant", value=cleaned)

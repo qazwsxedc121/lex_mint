@@ -57,7 +57,6 @@ class FolderService:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=self.defaults_path,
-                legacy_paths=[],
                 initial_text=initial_text,
             )
             return

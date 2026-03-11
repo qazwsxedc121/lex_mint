@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 import yaml
 
-from src.core.paths import data_state_dir, legacy_config_dir, ensure_local_file
+from src.core.paths import data_state_dir, ensure_local_file
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,6 @@ class MemoryConfigService:
         ensure_local_file(
             local_path=self.config_path,
             defaults_path=None,
-            legacy_paths=[legacy_config_dir() / "memory_config.yaml"],
             initial_text=initial_text,
         )
         logger.info("Created default memory config at %s", self.config_path)

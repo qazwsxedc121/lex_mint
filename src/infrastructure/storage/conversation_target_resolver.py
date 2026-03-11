@@ -36,9 +36,6 @@ class ConversationSessionTargetResolver:
         if normalized_target_type not in {None, "assistant", "model"}:
             raise ValueError("target_type must be one of: assistant, model")
 
-        if assistant_id and str(assistant_id).startswith("__legacy_model_"):
-            assistant_id = None
-
         if normalized_target_type is None:
             if assistant_id:
                 normalized_target_type = "assistant"

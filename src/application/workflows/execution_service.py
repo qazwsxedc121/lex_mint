@@ -759,7 +759,7 @@ class WorkflowExecutionService:
         system_prompt: Optional[str] = None
         generation_params: Dict[str, Any] = {}
 
-        if isinstance(assistant_id, str) and assistant_id and not assistant_id.startswith("__legacy_model_"):
+        if isinstance(assistant_id, str) and assistant_id:
             assistant = await AssistantConfigService().get_assistant(assistant_id)
             if assistant:
                 system_prompt = assistant.system_prompt

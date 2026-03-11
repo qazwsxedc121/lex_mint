@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from src.domain.models.prompt_template import PromptTemplate, PromptTemplatesConfig
-from src.core.paths import data_state_dir, legacy_config_dir, ensure_local_file
+from src.core.paths import data_state_dir, ensure_local_file
 
 
 class PromptTemplateConfigService:
@@ -27,7 +27,6 @@ class PromptTemplateConfigService:
             ensure_local_file(
                 local_path=self.config_path,
                 defaults_path=None,
-                legacy_paths=[legacy_config_dir() / "prompt_templates_config.yaml"],
                 initial_text=initial_text,
             )
 

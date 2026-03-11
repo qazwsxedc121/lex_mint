@@ -141,7 +141,7 @@ def _normalize_target_type(
     assistant_id: Optional[str],
     model_id: Optional[str],
 ) -> Optional[str]:
-    """Infer target type for backward compatibility and explicit create requests."""
+    """Normalize target type for create-session requests."""
     if target_type is not None:
         normalized = target_type.strip().lower()
         if normalized not in {"assistant", "model"}:

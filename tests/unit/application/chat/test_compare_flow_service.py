@@ -72,7 +72,6 @@ async def test_compare_flow_streams_and_persists():
                 model_id="provider:model-a",
                 assistant_id="assistant-1",
                 assistant_obj=None,
-                is_legacy_assistant=False,
                 assistant_memory_enabled=True,
                 max_rounds=None,
             )

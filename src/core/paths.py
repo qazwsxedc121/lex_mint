@@ -157,12 +157,6 @@ def logs_dir() -> Path:
 def shared_keys_config_path() -> Path:
     return lex_mint_home_dir() / "keys_config.yaml"
 
-
-def legacy_config_dir() -> Path:
-    # Backward compatible read-only location for older installs.
-    return repo_root() / "config"
-
-
 def first_existing(paths: Iterable[Path]) -> Optional[Path]:
     for path in paths:
         try:
@@ -181,16 +175,14 @@ def ensure_local_file(
     *,
     local_path: Path,
     defaults_path: Optional[Path] = None,
-    legacy_paths: Optional[list[Path]] = None,
     initial_text: Optional[str] = None,
 ) -> None:
     """
     Ensure a writable local file exists.
 
     Preference order for bootstrapping:
-    1) First existing legacy path
-    2) defaults_path
-    3) initial_text
+    1) defaults_path
+    2) initial_text
     """
     if local_path.exists():
         return
@@ -198,8 +190,6 @@ def ensure_local_file(
     ensure_dir(local_path.parent)
 
     bootstrap_sources: list[Path] = []
-    if legacy_paths:
-        bootstrap_sources.extend(legacy_paths)
     if defaults_path is not None:
         bootstrap_sources.append(defaults_path)
 
@@ -217,15 +207,12 @@ def resolve_layered_read_path(
     *,
     local_path: Path,
     defaults_path: Optional[Path] = None,
-    legacy_paths: Optional[list[Path]] = None,
 ) -> Path:
     """
     Pick an existing file to read, preferring local overrides.
-    Falls back to legacy paths, then defaults.
+    Falls back to defaults.
     """
     candidates: list[Path] = [local_path]
-    if legacy_paths:
-        candidates.extend(legacy_paths)
     if defaults_path is not None:
         candidates.append(defaults_path)
 

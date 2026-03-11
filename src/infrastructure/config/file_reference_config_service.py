@@ -10,7 +10,6 @@ import yaml
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
-    legacy_config_dir,
     ensure_local_file,
 )
 
@@ -35,12 +34,10 @@ class FileReferenceConfigService:
 
     def __init__(self, config_path: Optional[Path] = None):
         self.defaults_path: Optional[Path] = None
-        self.legacy_paths: list[Path] = []
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "file_reference_config.yaml"
             self.config_path = config_local_dir() / "file_reference_config.yaml"
-            self.legacy_paths = [legacy_config_dir() / "file_reference_config.yaml"]
         else:
             self.config_path = Path(config_path)
 
@@ -77,7 +74,6 @@ class FileReferenceConfigService:
         ensure_local_file(
             local_path=self.config_path,
             defaults_path=self.defaults_path,
-            legacy_paths=self.legacy_paths,
             initial_text=initial_text,
         )
         logger.info("Created file reference config at %s", self.config_path)

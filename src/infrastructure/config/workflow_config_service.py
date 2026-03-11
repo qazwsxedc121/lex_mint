@@ -19,7 +19,7 @@ from src.domain.models.workflow import (
     WorkflowInputDef,
     WorkflowsConfig,
 )
-from src.core.paths import data_state_dir, legacy_config_dir, ensure_local_file
+from src.core.paths import data_state_dir, ensure_local_file
 
 
 class WorkflowConfigService:
@@ -47,7 +47,6 @@ class WorkflowConfigService:
         ensure_local_file(
             local_path=self.config_path,
             defaults_path=None,
-            legacy_paths=[legacy_config_dir() / "workflows_config.yaml"],
             initial_text=initial_text,
         )
 

@@ -80,7 +80,6 @@ async def test_finalize_single_turn_persists_and_schedules_tasks():
         sources=[{"type": "memory"}],
         raw_user_message="question",
         assistant_id="assistant-1",
-        is_legacy_assistant=False,
         assistant_memory_enabled=True,
         user_message_id="user-1",
         context_type="chat",

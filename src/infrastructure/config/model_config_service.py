@@ -39,8 +39,6 @@ from src.core.paths import (
     config_local_dir,
     local_keys_config_path,
     shared_keys_config_path,
-    legacy_config_dir,
-    ensure_local_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,22 +66,14 @@ class ModelConfigService:
         self.defaults_provider_path: Path = defaults_dir / "provider_config.yaml"
         self.defaults_catalog_path: Path = defaults_dir / "models_catalog.yaml"
         self.defaults_app_path: Path = defaults_dir / "app_defaults.yaml"
-        self.defaults_legacy_path: Path = defaults_dir / "models_config.yaml"
-        self.legacy_models_paths: list[Path] = []
-        self.legacy_keys_paths: list[Path] = []
         self._defaults_config_cache: Optional[dict[str, Any]] = None
         self._layered_models = config_path is None
         self._layered_keys = keys_path is None
 
         if config_path is None:
-            self.legacy_models_paths = [legacy_config_dir() / "models_config.yaml"]
             config_path = config_local_dir() / "models_config.yaml"
         if keys_path is None:
             # Runtime key writes are local-only; shared home keys are bootstrap source.
-            self.legacy_keys_paths = [
-                shared_keys_config_path(),
-                legacy_config_dir() / "keys_config.yaml",
-            ]
             keys_path = local_keys_config_path()
         self.config_path = config_path
         self.config_dir = self.config_path.parent
@@ -164,14 +154,9 @@ class ModelConfigService:
         data: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         return self._get_repository().split_aggregate_config(data)
-    def _backup_legacy_models_config(self) -> None:
-        self._get_repository().backup_legacy_models_config()
-
-    def _migrate_legacy_config_if_needed(self) -> None:
-        self._get_repository().migrate_legacy_config_if_needed()
 
     def _ensure_config_exists(self):
-        """Ensure split config files exist, migrating legacy aggregate config when needed."""
+        """Ensure split config files exist."""
         self._get_repository().ensure_config_exists()
 
     def _get_default_config(self) -> dict:

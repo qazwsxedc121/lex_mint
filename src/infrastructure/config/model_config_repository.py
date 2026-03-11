@@ -1,8 +1,7 @@
-"""Persistence and migration helpers for model configuration data."""
+"""Persistence helpers for model configuration data."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -105,31 +104,7 @@ class ModelConfigRepository:
             app_payload,
         )
 
-    def backup_legacy_models_config(self) -> None:
-        if not self.owner.config_path.exists():
-            return
-        suffix = datetime.now().strftime("%Y%m%d%H%M%S")
-        backup_path = self.owner.config_path.with_name(f"{self.owner.config_path.name}.bak.{suffix}")
-        if backup_path.exists():
-            return
-        backup_path.write_text(self.owner.config_path.read_text(encoding="utf-8"), encoding="utf-8")
-
-    def migrate_legacy_config_if_needed(self) -> None:
-        if self.split_config_paths_exist() or not self.owner.config_path.exists():
-            return
-
-        legacy_data = self.load_yaml_dict(self.owner.config_path)
-        if not legacy_data or not any(key in legacy_data for key in ("providers", "models", "default")):
-            return
-
-        provider_data, catalog_data, app_data = self.split_aggregate_config(legacy_data)
-        self.write_yaml_dict(self.owner.provider_config_path, provider_data)
-        self.write_yaml_dict(self.owner.models_catalog_path, catalog_data)
-        self.write_yaml_dict(self.owner.app_defaults_path, app_data)
-        self.backup_legacy_models_config()
-
     def ensure_config_exists(self) -> None:
-        self.migrate_legacy_config_if_needed()
         if self.split_config_paths_exist():
             return
 
@@ -180,18 +155,7 @@ class ModelConfigRepository:
             )
             return self.owner._defaults_config_cache
 
-        if not self.owner.defaults_legacy_path.exists():
-            self.owner._defaults_config_cache = {}
-            return self.owner._defaults_config_cache
-
-        try:
-            with open(self.owner.defaults_legacy_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except Exception as e:
-            self.owner.logger.warning("Failed to read legacy defaults models config: %s", e)
-            data = {}
-
-        self.owner._defaults_config_cache = data if isinstance(data, dict) else {}
+        self.owner._defaults_config_cache = {}
         return self.owner._defaults_config_cache
 
     def ensure_keys_config_exists(self) -> None:
@@ -201,10 +165,11 @@ class ModelConfigRepository:
         initial_text = yaml.safe_dump(default_keys, allow_unicode=True, sort_keys=False)
 
         if self.owner._layered_keys:
+            shared_keys_path = self.owner._shared_keys_config_path()
+            bootstrap_path = shared_keys_path if shared_keys_path.exists() else None
             ensure_local_file(
                 local_path=self.owner.keys_path,
-                defaults_path=None,
-                legacy_paths=self.owner.legacy_keys_paths,
+                defaults_path=bootstrap_path,
                 initial_text=initial_text,
             )
             return

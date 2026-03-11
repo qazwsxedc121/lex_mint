@@ -125,7 +125,6 @@ async def test_prepare_context_builds_prompt_and_sources():
     )
 
     assert ctx.assistant_id is None
-    assert ctx.is_legacy_assistant is False
     assert ctx.assistant_memory_enabled is True
     assert ctx.base_system_prompt is None
     assert ctx.memory_context == "MEM"

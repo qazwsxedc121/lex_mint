@@ -191,7 +191,6 @@ class ContextPayload:
     model_id: str
     assistant_id: Optional[str]
     assistant_obj: Optional[AssistantLike]
-    is_legacy_assistant: bool
     assistant_memory_enabled: bool
     max_rounds: Optional[int]
     base_system_prompt: Optional[str] = None

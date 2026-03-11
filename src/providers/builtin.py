@@ -18,18 +18,15 @@ logger = logging.getLogger(__name__)
 def _load_builtin_provider_entries() -> list[dict[str, Any]]:
     defaults_dir = config_defaults_dir()
     provider_path = defaults_dir / "provider_config.yaml"
-    legacy_path = defaults_dir / "models_config.yaml"
-
-    source_path = provider_path if provider_path.exists() else legacy_path
-    if not source_path.exists():
+    if not provider_path.exists():
         logger.warning("Builtin provider defaults file not found: %s", provider_path)
         return []
 
     try:
-        with open(source_path, "r", encoding="utf-8") as f:
+        with open(provider_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except Exception as exc:
-        logger.warning("Failed to load builtin providers from %s: %s", source_path, exc)
+        logger.warning("Failed to load builtin providers from %s: %s", provider_path, exc)
         return []
 
     providers = data.get("providers") if isinstance(data, dict) else None

@@ -30,6 +30,33 @@ class TestModelConfigService:
             "reasoning_supported_patterns": app_data.get("reasoning_supported_patterns", []),
         }
 
+    @staticmethod
+    def _write_split_config(config_dir: Path, payload: dict) -> None:
+        with open(config_dir / "provider_config.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {"providers": payload.get("providers", [])},
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        with open(config_dir / "models_catalog.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {"models": payload.get("models", [])},
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        with open(config_dir / "app_defaults.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {
+                    "default": payload.get("default", {"provider": "", "model": ""}),
+                    "reasoning_supported_patterns": payload.get("reasoning_supported_patterns", []),
+                },
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+
     @pytest.fixture(autouse=True)
     def _disable_builtin_sync(self, monkeypatch, request):
         """Keep unit tests focused on local file behavior, not builtin auto-sync."""
@@ -91,8 +118,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(stale_config, f)
+            self._write_split_config(config_path.parent, stale_config)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -141,8 +167,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(stale_config, f)
+            self._write_split_config(config_path.parent, stale_config)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -177,8 +202,8 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_legacy_models_config_is_auto_migrated_to_split_files(self):
-        test_dir = Path(".tmp") / "test_legacy_models_config_is_auto_migrated_to_split_files"
+    async def test_legacy_models_config_is_not_migrated_to_split_files(self):
+        test_dir = Path(".tmp") / "test_legacy_models_config_is_not_migrated_to_split_files"
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         config_path = test_dir / "models_config.yaml"
@@ -221,11 +246,11 @@ class TestModelConfigService:
             assert (test_dir / "provider_config.yaml").exists()
             assert (test_dir / "models_catalog.yaml").exists()
             assert (test_dir / "app_defaults.yaml").exists()
-            assert list(test_dir.glob("models_config.yaml.bak.*"))
-            assert config.default.provider == "deepseek"
-            assert config.default.model == "deepseek-chat"
-            assert any(provider.id == "deepseek" for provider in config.providers)
-            assert any(model.id == "deepseek-chat" for model in config.models)
+            assert not list(test_dir.glob("models_config.yaml.bak.*"))
+            assert config.default.provider == ""
+            assert config.default.model == ""
+            assert config.providers == []
+            assert config.models == []
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -264,8 +289,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(config_data, f, sort_keys=False)
+            self._write_split_config(config_path.parent, config_data)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -315,8 +339,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(config_data, f)
+            self._write_split_config(config_path.parent, config_data)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -333,10 +356,8 @@ class TestModelConfigService:
         """Layered runtime bootstrap should ignore tracked defaults and stay empty."""
         defaults_dir = temp_config_dir / "defaults"
         local_dir = temp_config_dir / "local"
-        legacy_dir = temp_config_dir / "legacy"
         defaults_dir.mkdir(parents=True, exist_ok=True)
         local_dir.mkdir(parents=True, exist_ok=True)
-        legacy_dir.mkdir(parents=True, exist_ok=True)
 
         defaults_payload = {
             "default": {"provider": "deepseek", "model": "deepseek-chat"},
@@ -385,8 +406,7 @@ class TestModelConfigService:
         monkeypatch.setattr("src.infrastructure.config.model_config_service.config_defaults_dir", lambda: defaults_dir)
         monkeypatch.setattr("src.infrastructure.config.model_config_service.config_local_dir", lambda: local_dir)
         monkeypatch.setattr("src.infrastructure.config.model_config_service.local_keys_config_path", lambda: local_dir / "keys_config.yaml")
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.shared_keys_config_path", lambda: legacy_dir / "shared_keys_config.yaml")
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.legacy_config_dir", lambda: legacy_dir)
+        monkeypatch.setattr("src.infrastructure.config.model_config_service.shared_keys_config_path", lambda: temp_config_dir / "shared_keys_config.yaml")
 
         service = ModelConfigService()
         config = await service.load_config()
@@ -436,8 +456,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         # Write sample config
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
 
         # Create empty keys config
         with open(keys_path, 'w', encoding='utf-8') as f:
@@ -475,8 +494,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -506,8 +524,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -541,8 +558,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -576,8 +592,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -596,8 +611,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -614,8 +628,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -632,8 +645,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -650,8 +662,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -687,8 +698,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -706,8 +716,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -724,8 +733,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -762,8 +770,7 @@ class TestModelConfigService:
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {}}, f)
 
@@ -804,8 +811,7 @@ class TestModelConfigService:
         shared_keys_path = temp_config_dir / "shared" / "keys_config.yaml"
         shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(sample_model_config, f)
+        self._write_split_config(config_path.parent, sample_model_config)
         with open(shared_keys_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump({"providers": {"deepseek": {"api_key": "old_value"}}}, f)
 
@@ -824,7 +830,6 @@ class TestModelConfigService:
         """Default key path should be local, bootstrapped from shared file."""
         config_local_path = temp_config_dir / "config" / "local"
         config_defaults_path = temp_config_dir / "config" / "defaults"
-        legacy_config_path = temp_config_dir / "config"
         shared_keys_path = temp_config_dir / "home" / ".lex_mint" / "keys_config.yaml"
 
         config_defaults_path.mkdir(parents=True, exist_ok=True)
@@ -836,7 +841,6 @@ class TestModelConfigService:
 
         with patch("src.infrastructure.config.model_config_service.config_local_dir", return_value=config_local_path), \
                 patch("src.infrastructure.config.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
-                patch("src.infrastructure.config.model_config_service.legacy_config_dir", return_value=legacy_config_path), \
                 patch("src.infrastructure.config.model_config_service.local_keys_config_path", return_value=config_local_path / "keys_config.yaml"), \
                 patch("src.infrastructure.config.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
             service = ModelConfigService()
@@ -1072,8 +1076,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(config_data, f)
+            self._write_split_config(config_path.parent, config_data)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -1126,8 +1129,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(config_data, f)
+            self._write_split_config(config_path.parent, config_data)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -1180,8 +1182,7 @@ class TestModelConfigService:
         }
 
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(config_data, f)
+            self._write_split_config(config_path.parent, config_data)
             with open(keys_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump({"providers": {}}, f)
 
@@ -1254,6 +1255,3 @@ class TestModelConfigService:
 
         with pytest.raises(ValueError, match="Provider 'openai' is disabled"):
             service.get_llm_instance("openai:gpt-4")
-
-
-
