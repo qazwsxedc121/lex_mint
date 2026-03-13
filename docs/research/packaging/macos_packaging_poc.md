@@ -1,5 +1,9 @@
 # macOS Packaging PoC (PyInstaller)
 
+> Updated: 2026-03-13
+> Research Status: Historical reference (not source-of-truth for current implementation).
+> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+
 This macOS delivery flow produces a portable folder:
 
 - Portable folder: `dist/macos_poc`

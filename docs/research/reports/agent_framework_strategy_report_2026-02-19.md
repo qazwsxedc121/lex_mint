@@ -1,5 +1,9 @@
 # Agent Framework 路线考察与对比报告（2026-02-19）
 
+> Updated: 2026-03-13
+> Research Status: Historical reference (not source-of-truth for current implementation).
+> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+
 ## 1) 结论先行
 
 - 不建议把 lex_mint 全量迁移为 LangGraph-first。你们当前的核心路径已经是自研 runtime，LangGraph 实际使用很少。

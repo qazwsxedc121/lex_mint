@@ -1,5 +1,9 @@
 # pi-mono 研究报告（2026-03-01）
 
+> Updated: 2026-03-13
+> Research Status: Historical reference (not source-of-truth for current implementation).
+> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+
 ## 1. 调研目标与范围
 
 本报告目标：

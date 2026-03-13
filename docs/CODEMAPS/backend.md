@@ -1,105 +1,78 @@
-<!-- Generated: 2026-02-17 (Updated) | Files scanned: ~100 | Token estimate: ~950 -->
+# Backend Architecture Map
 
-# Backend Architecture
+Last updated: 2026-03-13
 
-## Entry Point
-`src/api/main.py` (154 lines) - FastAPI app, startup hooks, router registration
+This map tracks the current backend module boundaries after legacy compatibility removal.
 
-## Route Map
+## Entry and Wiring
 
-### Core Chat
-```
-POST /api/chat/stream         -> chat.py -> AgentServiceSimple.stream_chat() -> simple_llm.call_llm_stream()
-POST /api/chat/{id}/regenerate/{idx} -> chat.py -> AgentServiceSimple.regenerate()
-DELETE /api/chat/{id}/messages/{idx} -> chat.py -> ConversationStorage
-POST /api/chat/compress-context -> chat.py -> CompressionService
-POST /api/chat/compare        -> chat.py -> AgentServiceSimple (multi-model SSE)
-POST /api/chat/upload          -> chat.py -> FileService
-```
+- App entry: `src/api/main.py`
+- Router registration: `src/api/routers/*.py`
+- Error handlers: `src/api/errors.py`
+- Chat graph bootstrap: `src/application/chat/bootstrap.py`
 
-### Sessions
-```
-CRUD /api/sessions             -> sessions.py -> ConversationStorage
-PATCH /api/sessions/{id}/model -> sessions.py -> ConversationStorage.update_metadata()
-POST /api/sessions/{id}/branch -> sessions.py -> ConversationStorage.branch()
-POST /api/sessions/import/*    -> sessions.py -> ConversationStorage (ChatGPT JSON/ZIP, Markdown)
-POST /api/sessions/search      -> sessions.py -> ConversationStorage.search()
-```
+## Layer Overview
 
-### Models & Providers
-```
-CRUD /api/models               -> models.py -> ModelConfigService
-CRUD /api/providers            -> models.py -> ModelConfigService
-POST /api/providers/{id}/test  -> models.py -> AdapterRegistry.test_connection()
-POST /api/providers/{id}/fetch-models -> models.py -> AdapterRegistry.fetch_models()
-```
+- `src/api/` - HTTP/SSE transport, request validation, response shaping
+- `src/application/` - use-case orchestration and flow event mapping
+- `src/infrastructure/` - config persistence, storage, providers, retrieval, files, web
+- `src/domain/` - shared data models and enums
+- `src/providers/` - provider adapters and registry
 
-### Knowledge & Memory
-```
-CRUD /api/knowledge-bases      -> knowledge_base.py -> KnowledgeBaseService -> ChromaDB
-POST /api/knowledge-bases/{id}/documents -> knowledge_base.py -> DocumentProcessingService
-CRUD /api/memory               -> memory.py -> MemoryService -> ChromaDB
-POST /api/memory/extract       -> memory.py -> MemoryService.extract_from_session()
-```
+## Chat Path (Canonical)
 
-### Projects
-```
-CRUD /api/projects             -> projects.py -> ProjectService
-GET /api/projects/{id}/tree    -> projects.py -> ProjectService.get_file_tree()
-CRUD /api/projects/{id}/files  -> projects.py -> ProjectService (file ops)
-POST /api/projects/{id}/search -> projects.py -> ProjectService.search()
-```
+1. `POST /api/chat/stream` enters `src/api/routers/chat.py`
+2. Router delegates to `ChatApplicationService` from `src/application/chat/service.py`
+3. Single-turn path runs `SingleChatFlowService`
+4. Group path runs `GroupChatService` with orchestrators from `src/application/chat/orchestration/`
+5. Compare path runs `CompareFlowService` + `CompareModelsOrchestrator`
+6. Stream output is normalized by flow event mappers and sent as SSE
 
-### Feature Configs (pattern: GET + PUT for each)
-```
-/api/title-generation-config, /api/followup-config, /api/compression-config,
-/api/translation-config, /api/tts-config, /api/search-config,
-/api/webpage-config, /api/rag-config, /api/file-reference-config
-```
+## Orchestration Modes
 
-### Prompt Templates
-```
-CRUD /api/prompt-templates     -> prompt_templates.py -> PromptTemplateConfigService
-GET /api/prompt-templates/{id} -> prompt_templates.py -> PromptTemplateConfigService.get_template()
-```
+Current group orchestration modes:
+- `round_robin`
+- `committee`
+- `compare_models`
 
-## Key Services
+Removed:
+- `single_turn` orchestration compatibility branch
 
-| Service | File | Lines | Purpose |
-|---------|------|-------|---------|
-| ConversationStorage | conversation_storage.py | 1,504 | Markdown file persistence, per-file locks |
-| AgentServiceSimple | agent_service_simple.py | 1,224 | Chat orchestration, RAG/memory/search integration |
-| CompressionService | compression_service.py | 1,260 | Hierarchical context compression |
-| ProjectService | project_service.py | 1,066 | File tree, CRUD, search |
-| ModelConfigService | model_config_service.py | 929 | Provider/model YAML config management |
-| RagService | rag_service.py | ~400 | Vector retrieval via ChromaDB |
-| RerankService | rerank_service.py | ~100 | Model-based reranking of retrieval results |
-| PromptTemplateConfigService | prompt_template_service.py | ~100 | YAML-backed prompt template CRUD |
-| MemoryService | memory_service.py | 729 | Long-term memory extraction/retrieval |
-| WebpageService | webpage_service.py | 751 | Web scraping via trafilatura |
-| PricingService | pricing_service.py | ~300 | Token cost calculation |
+## Flow Event Contract
 
-## Provider Adapter Pattern
+Source of truth:
+- Event types: `src/application/flow/flow_event_types.py`
+- Mapper: `src/application/flow/flow_event_mapper.py`
 
-```
-src/providers/
-  base.py          - Abstract adapter interface (create_llm, stream, invoke, fetch_models, test_connection)
-  registry.py      - AdapterRegistry: provider -> adapter mapping
-  types.py         - StreamChunk, ProviderConfig types
-  builtin.py       - Default provider configs
-  adapters/
-    openai_adapter.py     - OpenAI SDK + compatible providers
-    deepseek_adapter.py   - DeepSeek (thinking mode support)
-    anthropic_adapter.py  - Claude models
-    ollama_adapter.py     - Local Ollama models
-    xai_adapter.py        - Grok models
-```
+Policy:
+- canonical `flow_event` envelope only
+- unknown upstream event types -> `stream_error` + immediate terminate
+- no legacy passthrough event fallback
 
-## Chat Request Flow
-1. Frontend POST `/api/chat/stream` (SSE)
-2. Router validates, extracts session_id + message
-3. AgentServiceSimple loads session, assistant, model config
-4. Optional: RAG retrieval, memory injection, web search
-5. `call_llm_stream()` -> AdapterRegistry -> provider adapter
-6. SSE chunks streamed back: `{type: "token", content: "..."}`, `{type: "usage", ...}`
-7. ConversationStorage appends messages to Markdown file
+See `docs/flow_event_protocol_v1.md`.
+
+## API Domain Routers
+
+- Chat: `chat.py`, `translation.py`
+- Sessions and folders: `sessions.py`, `folders.py`
+- Models and assistants: `models.py`, `assistants.py`
+- Knowledge and memory: `knowledge_base.py`, `memory.py`
+- Projects: `projects.py`
+- Workflows and async runs: `workflows.py`, `runs.py`
+- Feature configs: `rag_config.py`, `compression_config.py`, `search_config.py`, `webpage_config.py`, `file_reference_config.py`, `translation_config.py`, `tts_config.py`, `title_generation.py`, `followup.py`
+- Prompt templates/tools: `prompt_templates.py`, `tools.py`
+
+## High-Impact Services
+
+- Conversation storage: `src/infrastructure/storage/conversation_storage.py`
+- Model/provider config: `src/infrastructure/config/model_config_service.py`
+- Assistant config: `src/infrastructure/config/assistant_config_service.py`
+- RAG config/service: `src/infrastructure/config/rag_config_service.py`, `src/infrastructure/knowledge/rag_service.py`
+- Memory service: `src/infrastructure/memory/memory_service.py`
+- Project service: `src/infrastructure/config/project_service.py`
+
+## Runtime Notes
+
+- Resume/replay stream API lives in both chat and async run routers.
+- Session target is canonicalized by `target_type` + `assistant_id/model_id`.
+- Legacy session/config compatibility paths are removed.

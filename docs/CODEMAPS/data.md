@@ -1,66 +1,82 @@
-<!-- Generated: 2026-02-17 (Updated) | Files scanned: ~25 | Token estimate: ~550 -->
-
 # Data Architecture
 
-## Storage Strategy: No Traditional Database
+Last updated: 2026-03-13
 
-All data stored as files - human-readable, Git-friendly, sync-friendly.
+## Storage Model
 
-## Conversation Storage (Markdown)
+No relational database is required for core runtime paths.
+Data is persisted in markdown/yaml/json files plus vector storage.
 
-**Format:** `.md` with YAML frontmatter
-**Location:** `conversations/chat/` (chat), `{project}/.lex_mint/conversations/` (projects)
-**Naming:** `YYYY-MM-DD_HH-MM-SS_{session_id[:8]}.md`
+## Core Data Locations
 
-```markdown
----
-session_id: uuid-string
-assistant_id: general-assistant
-model_id: deepseek:deepseek-chat
-created_at: 2026-02-17T10:30:00
-title: Session Title
-current_step: 5
-temporary: false
-total_usage: {prompt_tokens: 1200, completion_tokens: 800}
-total_cost: 0.0042
----
+Resolved under `user_data_root()` from `src/core/paths.py`.
+By default:
+- dev runtime: repository root
+- packaged runtime: user app-data directory (`~/.lex_mint/app` or platform equivalent)
 
-## User (2026-02-17 10:30:15)
-Message content...
+Primary directories:
+- Conversations: `conversations/`
+- Attachments: `attachments/`
+- Runtime state: `data/state/`
+- Logs: `logs/`
+- Knowledge assets: `data/knowledge_bases/`
 
-## Assistant (2026-02-17 10:30:22)
-Response content...
-```
+## Conversation Storage
 
-**Concurrency:** Per-file asyncio locks in ConversationStorage
+Implementation:
+- `src/infrastructure/storage/conversation_storage.py`
+- `src/infrastructure/storage/conversation_storage_paths.py`
 
-## Vector Storage (ChromaDB)
+Format:
+- one session per markdown file with yaml frontmatter
+- chat context: `conversations/chat/*.md`
+- project context: `<project_root>/.lex_mint/conversations/*.md`
 
-**Location:** `data/chromadb/`
-**Collections:**
-- Knowledge base vectors (one collection per KB)
-- Memory vectors (global + per-assistant)
+Canonical session target metadata:
+- `target_type` (`assistant` or `model`)
+- `assistant_id` (assistant target only)
+- `model_id` (model target, or resolved assistant model)
 
-**Embedding:** Local GGUF models via llama-cpp-python, or provider embeddings
+Compatibility policy:
+- legacy pseudo assistant IDs and fallback parsing are removed
+- incompatible old metadata is rejected as invalid session input
 
-## Configuration (YAML)
+## Config Layering
 
-**Two-tier system:**
-```
-config/
-  defaults/     # Immutable defaults (in git)
-  local/        # Runtime state (gitignored)
-```
+Canonical config layout:
+- tracked defaults: `config/defaults/*.yaml`
+- writable runtime local: `config/local/*.yaml`
 
-**Key configs:**
-- `models_config.yaml` - Providers, models, pricing, capabilities
-- `assistants_config.yaml` - Assistant definitions, system prompts
-- `keys_config.yaml` - API keys (gitignored)
-- `chat_folders.yaml` - Folder structure
-- Feature configs: compression, rag, translation, tts, search, webpage, followup, title-generation, file-reference
+Path helpers:
+- `config_defaults_dir()`
+- `config_local_dir()`
+- `resolve_layered_read_path()`
+- `ensure_local_file()`
 
-## Runtime State
+Policy:
+- local overrides are preferred when present
+- defaults bootstrap local files on first run
+- legacy config directory fallback has been removed
 
-- `data/state/` - JSON/YAML files for runtime state (e.g. `prompt_templates_config.yaml`)
-- `attachments/{session_id}/{message_index}/` - File attachments
-- `logs/server.log` - Backend logs
+## Runtime State Files
+
+`data/state/` stores runtime-managed state, for example:
+- workflows config
+- prompt templates
+- memory settings
+- project index/config
+
+## Vector and Retrieval Storage
+
+RAG backend is configured by `RagConfigService`:
+- `sqlite_vec` backend (sqlite file)
+- `chroma` backend (persist directory)
+
+Knowledge and memory services consume the configured backend through infrastructure services.
+
+## Logging and Observability Data
+
+- App logs: `logs/server.log`
+- LLM interaction logs: `logs/llm_interactions_YYYYMMDD.log`
+
+See `docs/LLM_LOGGING.md` for inspection workflow.

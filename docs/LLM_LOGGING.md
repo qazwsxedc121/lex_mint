@@ -1,159 +1,76 @@
 # LLM Interaction Logging
 
-Comprehensive logging system to track all DeepSeek API interactions for debugging and auditing.
+Last updated: 2026-03-13
 
-## What Gets Logged
+This project writes per-call LLM debug logs for request/response inspection.
 
-Every interaction with DeepSeek LLM is logged with:
+## Log Files
 
-1. **Timestamp** - Exact time of the interaction
-2. **Session ID** - Which conversation session
-3. **Messages Sent** - All messages sent to DeepSeek (full conversation history)
-   - Message type (HumanMessage/AIMessage)
-   - Full content of each message
-4. **Response Received** - Complete response from DeepSeek
-   - Response type
-   - Full content
-5. **Errors** - Any errors that occur during LLM calls
+- Directory: `logs/`
+- File pattern: `logs/llm_interactions_YYYYMMDD.log`
 
-## Log File Location
+Example:
+- `logs/llm_interactions_20260313.log`
 
-Logs are stored in the `logs/` directory with daily rotation:
-```
-logs/llm_interactions_YYYYMMDD.log
-```
+## What Is Logged
 
-Example: `logs/llm_interactions_20260125.log`
+Each interaction entry includes:
+- timestamp
+- session id
+- model id
+- request messages (type/role/content)
+- response payload (type/role/content)
+- optional extra params
+- error entry when call fails
 
-## Viewing Logs
+Implementation:
+- `src/utils/llm_logger.py`
 
-### Quick Summary View
+## Quick Inspection
 
-View all interactions for today:
-```bash
-python view_llm_logs.py
-```
-
-This shows a summary with:
-- Interaction number
-- Timestamp
-- Session ID
-- Number of messages sent
-- Preview of each message (first 200 chars)
-- Preview of response (first 200 chars)
-
-### View Specific Log File
-
-View a specific date's logs:
-```bash
-python view_llm_logs.py -f logs/llm_interactions_20260124.log
-```
-
-### View Full Interaction Details
-
-See complete JSON for a specific interaction:
-```bash
-python view_llm_logs.py -i 3
-```
-
-This shows interaction #3 in full detail with complete message contents.
-
-### View Specific Interaction from Specific File
+### 1) View latest lines
 
 ```bash
-python view_llm_logs.py -f logs/llm_interactions_20260124.log -i 2
+tail -n 120 logs/llm_interactions_$(date +%Y%m%d).log
 ```
 
-## Log Format
+### 2) Filter one session
 
-Each log entry is formatted as JSON:
-
-```json
-{
-  "timestamp": "2026-01-25T14:30:22.123456",
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "model": "deepseek-chat",
-  "request": {
-    "message_count": 2,
-    "messages": [
-      {
-        "type": "HumanMessage",
-        "content": "Hello",
-        "role": "user"
-      },
-      {
-        "type": "AIMessage",
-        "content": "Hi! How can I help?",
-        "role": "assistant"
-      }
-    ]
-  },
-  "response": {
-    "type": "AIMessage",
-    "content": "I'm here to assist you!",
-    "role": "assistant"
-  }
-}
+```bash
+rg "550e8400-e29b-41d4-a716-446655440000" logs/llm_interactions_*.log
 ```
 
-## Console Output
+### 3) Pretty-print one file with Python
 
-When the API is running, you'll also see real-time summaries in the console:
-
+```bash
+./venv/Scripts/python - <<'PY'
+import json
+from pathlib import Path
+p = Path('logs/llm_interactions_20260313.log')
+text = p.read_text(encoding='utf-8')
+for block in text.split('\\n' + '=' * 80 + '\\n'):
+    block = block.strip()
+    if not block or not block.startswith('{'):
+        continue
+    data = json.loads(block)
+    print(data['timestamp'], data.get('session_id'), data.get('model'))
+PY
 ```
+
+## Runtime Console Summary
+
+Backend process also prints summary lines similar to:
+
+```text
 [INFO] LLM Call | Session: 550e8400... | Sent: 2 msgs | Received: 157 chars
 ```
 
-## Use Cases
+## Adjust Verbosity
 
-### Check for Duplicate Messages
+`LLMLogger` currently uses DEBUG for file detail logs.
+To reduce volume, update logger level in `src/utils/llm_logger.py`.
 
-If DeepSeek says you sent duplicate messages, check the log:
+## Notes
 
-```bash
-python view_llm_logs.py -i 1
-```
-
-Look at the `request.messages` array to see exactly what was sent.
-
-### Debug Conversation Context
-
-See what conversation history is being sent:
-
-```bash
-python view_llm_logs.py
-```
-
-Check if the full conversation is being included or if messages are missing.
-
-### Investigate Response Issues
-
-If responses seem odd, view the full interaction:
-
-```bash
-python view_llm_logs.py -i <interaction_number>
-```
-
-Compare what you sent vs. what you received.
-
-### Track API Usage
-
-Count total interactions per day by viewing the log summary.
-
-## Implementation Details
-
-- **Location**: `src/utils/llm_logger.py`
-- **Integration**: `src/llm_runtime/streaming_client.py` and `src/llm_runtime/sync_client.py`
-- **State Tracking**: Session ID passed through agent state
-- **Error Handling**: Errors are logged before re-raising
-
-## Disabling Logs
-
-To disable or reduce logging, modify the log level in `src/utils/llm_logger.py`:
-
-```python
-# Change from DEBUG to INFO to reduce verbosity
-self.logger.setLevel(logging.INFO)
-```
-
-Or remove the file handler to disable file logging entirely.
+- There is no standalone `view_llm_logs.py` utility in current codebase.
+- For API-level request tracing, also check `logs/server.log`.

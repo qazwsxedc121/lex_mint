@@ -1,5 +1,9 @@
 # Windows Packaging PoC (PyInstaller + Inno Setup)
 
+> Updated: 2026-03-13
+> Research Status: Historical reference (not source-of-truth for current implementation).
+> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+
 This Windows delivery flow now supports two outputs:
 
 - Portable folder: `dist\windows_poc`
@@ -7,7 +11,7 @@ This Windows delivery flow now supports two outputs:
 
 The packaged app runs as a single backend process. `Vite` is only used to build the frontend bundle.
 
-For macOS portable packaging, see `docs/macos_packaging_poc.md`.
+For macOS portable packaging, see `docs/research/packaging/macos_packaging_poc.md`.
 
 ## 1) Build Portable Package
 

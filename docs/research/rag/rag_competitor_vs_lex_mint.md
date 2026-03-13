@@ -1,5 +1,9 @@
 # RAG 横向对比与当前策略（LibreChat / LobeHub / OpenWebUI / lex_mint）
 
+> Updated: 2026-03-13
+> Research Status: Historical reference (not source-of-truth for current implementation).
+> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+
 > 更新日期：2026-02-19
 
 ## 1. 当前判断
