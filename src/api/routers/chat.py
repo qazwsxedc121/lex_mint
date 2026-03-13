@@ -206,7 +206,10 @@ def _map_compare_event_to_flow_payload(
         return emitter.emit(
             event_type=COMPARE_COMPLETED,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={"model_results": event.get("model_results")},
+            payload={
+                "model_results": event.get("model_results"),
+                "reason": event.get("reason"),
+            },
         )
     if event_type == "user_message_id":
         return emitter.emit(

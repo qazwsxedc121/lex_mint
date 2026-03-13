@@ -1,14 +1,16 @@
 """Turn execution primitives for committee orchestration."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Awaitable, Tuple
-
-from src.llm_runtime import call_llm_stream
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from .committee_types import CommitteeRuntimeState
+from .turn_context_builder import GroupTurnContextBuilder
+from .turn_stream_runner import GroupTurnStreamRunner, GroupTurnStreamState
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,19 @@ class CommitteeTurnExecutor:
         self.build_messages_preview_for_log = build_messages_preview_for_log
         self.log_group_trace = log_group_trace
         self.group_trace_preview_chars = group_trace_preview_chars
+        self._context_builder = GroupTurnContextBuilder(
+            storage=storage,
+            memory_service=memory_service,
+            build_rag_context_and_sources=build_rag_context_and_sources,
+            build_group_history_hint=build_group_history_hint,
+            build_group_identity_prompt=build_group_identity_prompt,
+            build_group_instruction_prompt=build_group_instruction_prompt,
+        )
+        self._stream_runner = GroupTurnStreamRunner(
+            pricing_service=pricing_service,
+            file_service=file_service,
+            assistant_params_from_config=assistant_params_from_config,
+        )
 
     @staticmethod
     def extract_bullet_items(text: str, *, limit: int = 5) -> List[str]:
@@ -327,72 +342,27 @@ class CommitteeTurnExecutor:
     ) -> AsyncIterator[Dict[str, Any]]:
         """Execute one assistant turn in group mode and stream structured events."""
         assistant_turn_id = str(uuid.uuid4())
-        assistant_name = assistant_obj.name
+        turn_context = await self._context_builder.build(
+            session_id=session_id,
+            assistant_id=assistant_id,
+            assistant_obj=assistant_obj,
+            group_assistants=group_assistants,
+            assistant_name_map=assistant_name_map,
+            raw_user_message=raw_user_message,
+            context_type=context_type,
+            project_id=project_id,
+            search_context=search_context,
+            instruction=instruction,
+            committee_turn_packet=committee_turn_packet,
+        )
+
         yield {
             "type": "assistant_start",
             "assistant_id": assistant_id,
             "assistant_turn_id": assistant_turn_id,
-            "name": assistant_name,
+            "name": turn_context.assistant_name,
             "icon": assistant_obj.icon,
         }
-
-        session = await self.storage.get_session(
-            session_id, context_type=context_type, project_id=project_id
-        )
-        messages = session["state"]["messages"]
-        model_id = assistant_obj.model_id
-
-        history_hint = self.build_group_history_hint(
-            messages,
-            assistant_id,
-            assistant_name_map,
-        )
-        identity_prompt = self.build_group_identity_prompt(
-            assistant_id,
-            assistant_name,
-            group_assistants,
-            assistant_name_map,
-        )
-        instruction_prompt = self.build_group_instruction_prompt(
-            instruction, committee_turn_packet
-        )
-        system_prompt = assistant_obj.system_prompt
-        prompt_parts = [identity_prompt]
-        if history_hint:
-            prompt_parts.append(history_hint)
-        if instruction_prompt:
-            prompt_parts.append(instruction_prompt)
-        if system_prompt:
-            prompt_parts.append(system_prompt)
-        system_prompt = "\n\n".join(prompt_parts)
-
-        assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
-        try:
-            memory_context, _ = self.memory_service.build_memory_context(
-                query=raw_user_message,
-                assistant_id=assistant_id,
-                include_global=True,
-                include_assistant=assistant_memory_enabled,
-            )
-            if memory_context:
-                system_prompt = (
-                    f"{system_prompt}\n\n{memory_context}" if system_prompt else memory_context
-                )
-        except Exception as e:
-            logger.warning("[GroupChat] Memory retrieval failed for %s: %s", assistant_id, e)
-
-        rag_context, _ = await self.build_rag_context_and_sources(
-            raw_user_message=raw_user_message,
-            assistant_id=assistant_id,
-            assistant_obj=assistant_obj,
-            runtime_model_id=model_id,
-        )
-        if rag_context:
-            system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-        if search_context:
-            system_prompt = (
-                f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
-            )
 
         if trace_id:
             self.log_group_trace(
@@ -402,70 +372,47 @@ class CommitteeTurnExecutor:
                     "mode": trace_mode or "group",
                     "round": trace_round,
                     "assistant_id": assistant_id,
-                    "assistant_name": assistant_name,
+                    "assistant_name": turn_context.assistant_name,
                     "assistant_turn_id": assistant_turn_id,
-                    "model_id": model_id,
+                    "model_id": turn_context.model_id,
                     "instruction": self.truncate_log_text(instruction, self.group_trace_preview_chars),
-                    "identity_prompt": self.truncate_log_text(identity_prompt, self.group_trace_preview_chars),
-                    "history_hint": self.truncate_log_text(history_hint, self.group_trace_preview_chars),
+                    "identity_prompt": self.truncate_log_text(
+                        turn_context.identity_prompt, self.group_trace_preview_chars
+                    ),
+                    "history_hint": self.truncate_log_text(
+                        turn_context.history_hint, self.group_trace_preview_chars
+                    ),
                     "instruction_prompt": self.truncate_log_text(
-                        instruction_prompt, self.group_trace_preview_chars
+                        turn_context.instruction_prompt, self.group_trace_preview_chars
                     ),
                     "committee_turn_packet": committee_turn_packet,
                     "final_system_prompt": self.truncate_log_text(
-                        system_prompt, self.group_trace_preview_chars
+                        turn_context.system_prompt, self.group_trace_preview_chars
                     ),
-                    "messages_preview": self.build_messages_preview_for_log(messages),
+                    "messages_preview": self.build_messages_preview_for_log(turn_context.messages),
                 },
             )
 
-        full_response = ""
-        usage_data = None
-        cost_data = None
-        assistant_params = self.assistant_params_from_config(assistant_obj)
-        max_rounds = assistant_obj.max_rounds
-
+        stream_state = GroupTurnStreamState()
         try:
-            async for chunk in call_llm_stream(
-                messages,
+            async for event in self._stream_runner.stream_turn(
+                state=stream_state,
                 session_id=session_id,
-                model_id=model_id,
-                system_prompt=system_prompt,
-                max_rounds=max_rounds,
+                assistant_id=assistant_id,
+                assistant_turn_id=assistant_turn_id,
+                assistant_obj=assistant_obj,
+                model_id=turn_context.model_id,
+                messages=turn_context.messages,
+                system_prompt=turn_context.system_prompt,
                 reasoning_effort=reasoning_effort,
-                file_service=self.file_service,
-                **assistant_params,
             ):
-                if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                    usage_data = chunk["usage"]
-                    parts = model_id.split(":", 1)
-                    provider_id = parts[0] if len(parts) > 1 else ""
-                    simple_model_id = parts[1] if len(parts) > 1 else model_id
-                    cost_data = self.pricing_service.calculate_cost(
-                        provider_id, simple_model_id, usage_data
-                    )
-                    continue
-
-                if isinstance(chunk, dict):
-                    event = dict(chunk)
-                    event["assistant_id"] = assistant_id
-                    event["assistant_turn_id"] = assistant_turn_id
-                    yield event
-                    continue
-
-                full_response += chunk
-                yield {
-                    "type": "assistant_chunk",
-                    "assistant_id": assistant_id,
-                    "assistant_turn_id": assistant_turn_id,
-                    "chunk": chunk,
-                }
+                yield event
         except asyncio.CancelledError:
-            if full_response:
+            if stream_state.full_response:
                 await self.storage.append_message(
                     session_id,
                     "assistant",
-                    full_response,
+                    stream_state.full_response,
                     assistant_id=assistant_id,
                     context_type=context_type,
                     project_id=project_id,
@@ -475,9 +422,9 @@ class CommitteeTurnExecutor:
         assistant_message_id = await self.storage.append_message(
             session_id,
             "assistant",
-            full_response,
-            usage=usage_data,
-            cost=cost_data,
+            stream_state.full_response,
+            usage=stream_state.usage_data,
+            cost=stream_state.cost_data,
             sources=search_sources if search_sources else None,
             assistant_id=assistant_id,
             context_type=context_type,
@@ -492,26 +439,26 @@ class CommitteeTurnExecutor:
                     "mode": trace_mode or "group",
                     "round": trace_round,
                     "assistant_id": assistant_id,
-                    "assistant_name": assistant_name,
+                    "assistant_name": turn_context.assistant_name,
                     "assistant_turn_id": assistant_turn_id,
                     "assistant_message_id": assistant_message_id,
                     "response_preview": self.truncate_log_text(
-                        full_response, self.group_trace_preview_chars
+                        stream_state.full_response, self.group_trace_preview_chars
                     ),
-                    "usage": usage_data.model_dump() if usage_data else None,
-                    "cost": cost_data.model_dump() if cost_data else None,
+                    "usage": stream_state.usage_data.model_dump() if stream_state.usage_data else None,
+                    "cost": stream_state.cost_data.model_dump() if stream_state.cost_data else None,
                 },
             )
 
-        if usage_data:
+        if stream_state.usage_data:
             usage_event = {
                 "type": "usage",
                 "assistant_id": assistant_id,
                 "assistant_turn_id": assistant_turn_id,
-                "usage": usage_data.model_dump(),
+                "usage": stream_state.usage_data.model_dump(),
             }
-            if cost_data:
-                usage_event["cost"] = cost_data.model_dump()
+            if stream_state.cost_data:
+                usage_event["cost"] = stream_state.cost_data.model_dump()
             yield usage_event
 
         if search_sources:
@@ -533,4 +480,3 @@ class CommitteeTurnExecutor:
             "assistant_id": assistant_id,
             "assistant_turn_id": assistant_turn_id,
         }
-

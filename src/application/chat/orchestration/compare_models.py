@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 from src.providers.types import TokenUsage
 
 from .base import BaseOrchestrator, OrchestrationCancelToken, OrchestrationEvent, OrchestrationRequest
+from .terminal import build_compare_complete_event, cancellation_reason
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,8 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     file_service=self.file_service,
                     **settings.assistant_params,
                 ):
+                    if self.is_cancelled(cancel_token):
+                        break
                     if isinstance(chunk, dict) and chunk.get("type") == "usage":
                         usage_data = chunk["usage"]
                         parts = model_id.split(":", 1)
@@ -107,19 +110,20 @@ class CompareModelsOrchestrator(BaseOrchestrator):
 
                 usage_dump = usage_data.model_dump() if usage_data else None
                 cost_dump = cost_data.model_dump() if cost_data else None
-                await queue.put(
-                    {
-                        "kind": "event",
-                        "event": {
-                            "type": "model_done",
-                            "model_id": model_id,
-                            "model_name": model_name,
-                            "content": full_response,
-                            "usage": usage_dump,
-                            "cost": cost_dump,
-                        },
-                    }
-                )
+                if not self.is_cancelled(cancel_token):
+                    await queue.put(
+                        {
+                            "kind": "event",
+                            "event": {
+                                "type": "model_done",
+                                "model_id": model_id,
+                                "model_name": model_name,
+                                "content": full_response,
+                                "usage": usage_dump,
+                                "cost": cost_dump,
+                            },
+                        }
+                    )
                 model_results[model_id] = {
                     "model_id": model_id,
                     "model_name": model_name,
@@ -156,9 +160,11 @@ class CompareModelsOrchestrator(BaseOrchestrator):
         for model_id in settings.model_ids:
             tasks.append(asyncio.create_task(_stream_model(model_id)))
 
+        cancelled = False
         try:
             while finished < len(tasks):
                 if self.is_cancelled(cancel_token):
+                    cancelled = True
                     break
                 item = await queue.get()
                 if item.get("kind") == "done":
@@ -173,10 +179,13 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        yield self.normalize_event({
-            "type": "compare_complete",
-            "model_results": model_results,
-        })
+        reason = cancellation_reason(cancel_token) if cancelled else "completed"
+        yield self.normalize_event(
+            build_compare_complete_event(
+                model_results=model_results,
+                reason=reason,
+            )
+        )
 
     def _resolve_model_name(self, model_id: str) -> str:
         if self.resolve_model_name is None:

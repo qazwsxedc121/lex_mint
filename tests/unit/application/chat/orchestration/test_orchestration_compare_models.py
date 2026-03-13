@@ -62,6 +62,7 @@ async def test_compare_models_streams_multiplexed_events_and_completion():
 
     completion = events[-1]
     assert completion["type"] == "compare_complete"
+    assert completion["reason"] == "completed"
     assert set(completion["model_results"].keys()) == {"m1", "m2"}
     assert completion["model_results"]["m1"]["model_name"] == "name-m1"
 
@@ -99,3 +100,48 @@ async def test_compare_models_rejects_mismatched_mode():
 
     with pytest.raises(ValueError, match="mode=compare_models"):
         await _collect_events(orchestrator.stream(request))
+
+
+@pytest.mark.asyncio
+async def test_compare_models_marks_cancelled_completion_reason():
+    async def fake_call_llm_stream(_messages, **kwargs):
+        model_id = kwargs["model_id"]
+        for idx in range(10):
+            yield f"{model_id}-chunk{idx}"
+
+    class FakePricingService:
+        @staticmethod
+        def calculate_cost(_provider_id, _model_id, _usage):
+            return None
+
+    orchestrator = CompareModelsOrchestrator(
+        call_llm_stream=fake_call_llm_stream,
+        pricing_service=FakePricingService(),
+        file_service=object(),
+    )
+    request = OrchestrationRequest(
+        session_id="s3",
+        mode="compare_models",
+        user_message="hello",
+        participants=["m1", "m2"],
+        assistant_name_map={},
+        assistant_config_map={},
+        settings=CompareModelsSettings(
+            messages=[{"role": "user", "content": "hello"}],
+            model_ids=["m1", "m2"],
+            system_prompt=None,
+            max_rounds=3,
+        ),
+    )
+
+    from src.application.chat.orchestration import OrchestrationCancelToken
+
+    cancel_token = OrchestrationCancelToken()
+    events = []
+    async for event in orchestrator.stream(request, cancel_token=cancel_token):
+        events.append(event)
+        if event.get("type") == "model_chunk":
+            cancel_token.cancel("manual_stop")
+
+    assert events[-1]["type"] == "compare_complete"
+    assert events[-1]["reason"] == "manual_stop"

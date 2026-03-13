@@ -9,6 +9,7 @@ from .base import (
     OrchestrationRequest,
     RoundRobinSettings,
 )
+from .terminal import build_group_done_event, cancellation_reason
 
 
 class RoundRobinOrchestrator(BaseOrchestrator):
@@ -43,8 +44,16 @@ class RoundRobinOrchestrator(BaseOrchestrator):
         if settings.max_turns and settings.max_turns > 0:
             participant_order = participant_order[: settings.max_turns]
 
+        completed_turns = 0
         for assistant_id in participant_order:
             if self.is_cancelled(cancel_token):
+                yield self.normalize_event(
+                    build_group_done_event(
+                        mode=self.mode,
+                        reason=cancellation_reason(cancel_token),
+                        rounds=completed_turns,
+                    )
+                )
                 return
 
             assistant_obj = request.assistant_config_map.get(assistant_id)
@@ -67,3 +76,12 @@ class RoundRobinOrchestrator(BaseOrchestrator):
                 trace_mode=self.mode,
             ):
                 yield self.normalize_event(event)
+            completed_turns += 1
+
+        yield self.normalize_event(
+            build_group_done_event(
+                mode=self.mode,
+                reason="completed",
+                rounds=completed_turns,
+            )
+        )

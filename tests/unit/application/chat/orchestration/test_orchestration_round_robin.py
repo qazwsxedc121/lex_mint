@@ -48,6 +48,12 @@ async def test_round_robin_streams_participants_in_order():
     events = await _collect_events(orchestrator.stream(request))
     assert [e["assistant_id"] for e in events if e["type"] == "assistant_start"] == ["a1", "a2"]
     assert call_order == ["a1", "a2"]
+    assert events[-1] == {
+        "type": "group_done",
+        "mode": "round_robin",
+        "reason": "completed",
+        "rounds": 2,
+    }
 
 
 @pytest.mark.asyncio
@@ -81,6 +87,12 @@ async def test_round_robin_honors_cancel_token_between_turns():
     events = await _collect_events(orchestrator.stream(request, cancel_token=cancel_token))
     assert call_order == ["a1"]
     assert [e["assistant_id"] for e in events if e["type"] == "assistant_start"] == ["a1"]
+    assert events[-1] == {
+        "type": "group_done",
+        "mode": "round_robin",
+        "reason": "user_stop",
+        "rounds": 1,
+    }
 
 
 @pytest.mark.asyncio
@@ -106,4 +118,3 @@ async def test_round_robin_rejects_mismatched_mode():
 
     with pytest.raises(ValueError, match="mode=round_robin"):
         await _collect_events(orchestrator.stream(request))
-
