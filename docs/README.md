@@ -4,8 +4,6 @@ Last updated: 2026-03-13
 
 ## Core Architecture Docs (keep in sync)
 
-- `docs/backend_refactor_plan.md`
-- `docs/backend_module_responsibilities.md`
 - `docs/CODEMAPS/architecture.md`
 - `docs/CODEMAPS/backend.md`
 - `docs/CODEMAPS/data.md`
@@ -45,3 +43,5 @@ See `docs/research/README.md` for details.
 - `docs/testing_phase1_summary.md`
 - `docs/CODEMAPS/codemap-diff.md`
 - `docs/provider-refactor-todo.md`
+- `docs/backend_refactor_plan.md`
+- `docs/backend_module_responsibilities.md`

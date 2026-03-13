@@ -6,8 +6,8 @@ This directory stores research, competitor analysis, and historical strategy doc
 These files are reference material, not implementation source-of-truth.
 
 Source-of-truth docs for current backend behavior:
-- `docs/backend_refactor_plan.md`
-- `docs/backend_module_responsibilities.md`
+- `docs/CODEMAPS/architecture.md`
+- `docs/CODEMAPS/backend.md`
 - `docs/flow_event_protocol_v1.md`
 - `docs/api_endpoints.md`
 

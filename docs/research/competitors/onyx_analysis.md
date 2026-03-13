@@ -2,7 +2,7 @@
 
 > Updated: 2026-03-13
 > Research Status: Historical reference (not source-of-truth for current implementation).
-> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+> Source-of-truth docs: `docs/CODEMAPS/architecture.md`, `docs/CODEMAPS/backend.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
 
 > 分析版本: Onyx `3bc1b89fee639a583125671826afda6921c19951` (main)
 > 对比项目: lex_mint (当前仓库实现)

@@ -2,7 +2,7 @@
 
 > Updated: 2026-03-13
 > Research Status: Historical reference (not source-of-truth for current implementation).
-> Source-of-truth docs: `docs/backend_refactor_plan.md`, `docs/backend_module_responsibilities.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
+> Source-of-truth docs: `docs/CODEMAPS/architecture.md`, `docs/CODEMAPS/backend.md`, `docs/flow_event_protocol_v1.md`, `docs/api_endpoints.md`.
 
 > 研究对象：`learn_proj/LibreChat` + `learn_proj/rag_api`（本地克隆）
 >
