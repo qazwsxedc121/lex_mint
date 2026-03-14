@@ -286,6 +286,7 @@ class WorkflowExecutionService:
         stream_mode: str = "default",
         artifact_target_path: Optional[str] = None,
         write_mode: Optional[Literal["none", "create", "overwrite"]] = None,
+        resume_from_checkpoint_id: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Execute a workflow and stream runtime events."""
         run_identifier = run_id or str(uuid.uuid4())
@@ -331,20 +332,41 @@ class WorkflowExecutionService:
                     "workflow_id": workflow.id,
                     "context_type": context_type,
                     "project_id": project_id or "",
+                    "resume": bool(resume_from_checkpoint_id),
                 },
                 max_steps=self.max_steps,
                 context_manager=InMemoryContextManager(),
             )
+            runtime_stream = (
+                self.orchestration_engine.resume_stream(
+                    run_spec,
+                    context=run_context,
+                    from_checkpoint_id=resume_from_checkpoint_id,
+                )
+                if resume_from_checkpoint_id
+                else self.orchestration_engine.run_stream(run_spec, run_context)
+            )
 
-            async for runtime_event in self.orchestration_engine.run_stream(run_spec, run_context):
+            async for runtime_event in runtime_stream:
                 event_type = str(runtime_event.get("type") or "")
+                checkpoint_id = runtime_event.get("checkpoint_id")
+                checkpoint_payload: Dict[str, Any] = {}
+                if isinstance(checkpoint_id, str) and checkpoint_id:
+                    checkpoint_payload["checkpoint_id"] = checkpoint_id
+
+                if event_type == "resumed":
+                    ctx["resumed_from_checkpoint_id"] = runtime_event.get("checkpoint_id")
+                    ctx["resume_step"] = runtime_event.get("step")
+                    continue
 
                 if event_type == "started":
-                    yield {
+                    payload = {
                         "type": "workflow_run_started",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
                     }
+                    payload.update(checkpoint_payload)
+                    yield payload
                     continue
 
                 if event_type == "node_started":
@@ -352,13 +374,15 @@ class WorkflowExecutionService:
                     node = node_map.get(node_id)
                     if node is None:
                         raise ValueError(f"Unknown runtime node '{node_id}'")
-                    yield {
+                    payload = {
                         "type": "workflow_node_started",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
                         "node_id": node.id,
                         "node_type": node.type,
                     }
+                    payload.update(checkpoint_payload)
+                    yield payload
                     continue
 
                 if event_type == "node_event":
@@ -416,7 +440,7 @@ class WorkflowExecutionService:
                     node = node_map.get(node_id)
                     if node is None:
                         raise ValueError(f"Unknown runtime node '{node_id}'")
-                    yield {
+                    payload = {
                         "type": "workflow_node_retrying",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
@@ -427,6 +451,8 @@ class WorkflowExecutionService:
                         "delay_ms": runtime_event.get("delay_ms"),
                         "error": runtime_event.get("error"),
                     }
+                    payload.update(checkpoint_payload)
+                    yield payload
                     continue
 
                 if event_type == "node_finished":
@@ -475,6 +501,7 @@ class WorkflowExecutionService:
                         if output_text is None:
                             output_text = str(payload.get("output") or "")
 
+                    finish_payload.update(checkpoint_payload)
                     yield finish_payload
                     continue
 
@@ -487,13 +514,15 @@ class WorkflowExecutionService:
                             output_text = completed_output
                     if output_text is None:
                         output_text = ""
-                    yield {
+                    payload = {
                         "type": "workflow_run_finished",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
                         "status": status,
                         "output": output_text,
                     }
+                    payload.update(checkpoint_payload)
+                    yield payload
                     continue
 
                 if event_type in {"failed", "cancelled"}:

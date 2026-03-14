@@ -57,6 +57,16 @@ class _FakeListStore:
         return list(self.runs)
 
 
+class _FakeResumeService:
+    def __init__(self, record: AsyncRunRecord):
+        self.record = record
+        self.calls: list[dict[str, object]] = []
+
+    async def resume_workflow_run(self, run_id: str, *, checkpoint_id: Optional[str] = None) -> AsyncRunRecord:
+        self.calls.append({"run_id": run_id, "checkpoint_id": checkpoint_id})
+        return self.record
+
+
 @pytest.mark.asyncio
 async def test_create_run_requires_workflow_id_for_workflow_kind():
     class _UnusedService:
@@ -109,3 +119,18 @@ async def test_list_runs_applies_status_filter_after_reconcile():
     )
 
     assert response.runs == []
+
+
+@pytest.mark.asyncio
+async def test_resume_run_endpoint_delegates_to_service():
+    record = _make_record(run_id="run-resume", status="running")
+    service = _FakeResumeService(record)
+
+    response = await runs_router.resume_run(
+        run_id="run-resume",
+        request=runs_router.ResumeRunRequest(checkpoint_id="cp-1"),
+        service=service,  # type: ignore[arg-type]
+    )
+
+    assert response.run_id == "run-resume"
+    assert service.calls == [{"run_id": "run-resume", "checkpoint_id": "cp-1"}]

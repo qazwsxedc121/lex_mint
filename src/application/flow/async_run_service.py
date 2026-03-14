@@ -144,6 +144,82 @@ class AsyncRunService:
         await self.store.save_run(record)
         return record
 
+    async def resume_workflow_run(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: Optional[str] = None,
+    ) -> AsyncRunRecord:
+        """Resume one workflow run from latest or explicit checkpoint."""
+        record = await self.store.get_run(run_id)
+        if record is None:
+            raise ValueError(f"Run '{run_id}' not found")
+        if record.kind != "workflow":
+            raise ValueError("Only workflow runs support resume")
+        if record.status in {"succeeded", "cancelled"}:
+            raise ValueError(f"Run '{run_id}' is already terminal: {record.status}")
+        if self._is_task_active(run_id):
+            return record
+
+        workflow_id = (record.workflow_id or "").strip()
+        if not workflow_id:
+            raise ValueError("Cannot resume run without workflow_id")
+
+        workflow = await self.workflow_config_service.get_workflow(workflow_id)
+        if workflow is None:
+            raise ValueError(f"Workflow '{workflow_id}' not found")
+        if not workflow.enabled:
+            raise ValueError("Workflow is disabled")
+
+        self.runtime.create_stream(
+            stream_id=record.stream_id,
+            conversation_id=record.run_id,
+            context_type=record.context_type,
+            project_id=record.project_id,
+        )
+
+        request_payload = dict(record.request_payload or {})
+        resume_from_checkpoint_id = (
+            checkpoint_id
+            or request_payload.get("checkpoint_id")
+            or record.result_summary.get("last_checkpoint_id")
+        )
+        if isinstance(resume_from_checkpoint_id, str):
+            resume_from_checkpoint_id = resume_from_checkpoint_id.strip() or None
+        else:
+            resume_from_checkpoint_id = None
+
+        cancel_flag = asyncio.Event()
+        self._cancel_flags[run_id] = cancel_flag
+        record.status = "running"
+        record.error = None
+        now = datetime.now(timezone.utc)
+        record.started_at = record.started_at or now
+        record.updated_at = now
+        record.finished_at = None
+        if resume_from_checkpoint_id:
+            record.request_payload["checkpoint_id"] = resume_from_checkpoint_id
+        await self.store.save_run(record)
+
+        task = asyncio.create_task(
+            self._run_workflow_task(
+                record=record,
+                workflow_id=workflow_id,
+                inputs=request_payload.get("inputs", {}) or {},
+                session_id=request_payload.get("session_id"),
+                context_type=record.context_type,
+                project_id=record.project_id,
+                stream_mode=str(request_payload.get("stream_mode", "default") or "default"),
+                artifact_target_path=request_payload.get("artifact_target_path"),
+                write_mode=request_payload.get("write_mode"),
+                cancel_flag=cancel_flag,
+                resume_from_checkpoint_id=resume_from_checkpoint_id,
+            )
+        )
+        self._tasks[run_id] = task
+        task.add_done_callback(lambda _task: self._cleanup_task(run_id))
+        return record
+
     async def get_run(self, run_id: str) -> Optional[AsyncRunRecord]:
         return await self.store.get_run(run_id)
 
@@ -174,6 +250,7 @@ class AsyncRunService:
         artifact_target_path: Optional[str],
         write_mode: Optional[Literal["none", "create", "overwrite"]],
         cancel_flag: asyncio.Event,
+        resume_from_checkpoint_id: Optional[str] = None,
     ) -> None:
         if cancel_flag.is_set():
             record.status = "cancelled"
@@ -218,6 +295,7 @@ class AsyncRunService:
             stream_mode=stream_mode,
             artifact_target_path=artifact_target_path,
             write_mode=write_mode,
+            resume_from_checkpoint_id=resume_from_checkpoint_id,
         )
 
         started_payload = emitter.emit_started(context_type=context_type)
@@ -231,6 +309,10 @@ class AsyncRunService:
                     record.status = "cancelled"
                     final_error = "Cancelled by user"
                     break
+
+                checkpoint_id = event.get("checkpoint_id")
+                if isinstance(checkpoint_id, str) and checkpoint_id:
+                    record.result_summary["last_checkpoint_id"] = checkpoint_id
 
                 payload = map_workflow_event_to_flow_payload(emitter, event)
                 self.runtime.append_payload(record.stream_id, payload)

@@ -47,6 +47,12 @@ class ResumeRunStreamRequest(BaseModel):
     last_event_id: str
 
 
+class ResumeRunRequest(BaseModel):
+    """Resume one workflow run execution."""
+
+    checkpoint_id: Optional[str] = None
+
+
 def _is_terminal_payload(payload: Dict[str, Any]) -> bool:
     flow_event = payload.get("flow_event")
     if isinstance(flow_event, dict):
@@ -136,6 +142,27 @@ async def cancel_run(
         return await service.cancel_run(run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{run_id}/resume", response_model=AsyncRunRecord)
+async def resume_run(
+    run_id: str,
+    request: ResumeRunRequest,
+    service: AsyncRunService = Depends(get_async_run_service),
+):
+    try:
+        return await service.resume_workflow_run(
+            run_id,
+            checkpoint_id=request.checkpoint_id,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        lowered = message.lower()
+        if "not found" in lowered:
+            raise HTTPException(status_code=404, detail=message) from exc
+        if "already terminal" in lowered:
+            raise HTTPException(status_code=409, detail=message) from exc
+        raise HTTPException(status_code=400, detail=message) from exc
 
 
 @router.get("/{run_id}/stream")

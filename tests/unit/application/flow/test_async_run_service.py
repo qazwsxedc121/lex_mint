@@ -28,9 +28,36 @@ def _make_record(*, run_id: str, status: RunStatus) -> AsyncRunRecord:
 class _FakeStore:
     def __init__(self):
         self.saved_runs: list[AsyncRunRecord] = []
+        self.run_map: dict[str, AsyncRunRecord] = {}
 
     async def save_run(self, record: AsyncRunRecord) -> None:
-        self.saved_runs.append(record.model_copy(deep=True))
+        copied = record.model_copy(deep=True)
+        self.saved_runs.append(copied)
+        self.run_map[copied.run_id] = copied
+
+    async def get_run(self, run_id: str) -> AsyncRunRecord | None:
+        record = self.run_map.get(run_id)
+        return record.model_copy(deep=True) if record else None
+
+
+class _FakeWorkflowConfigService:
+    def __init__(self, workflow):
+        self.workflow = workflow
+
+    async def get_workflow(self, workflow_id: str):
+        if self.workflow and getattr(self.workflow, "id", None) == workflow_id:
+            return self.workflow
+        return None
+
+
+class _FakeWorkflowExecutionService:
+    def __init__(self):
+        self.calls: list[dict[str, object]] = []
+
+    async def execute_stream(self, workflow, inputs, **kwargs):
+        self.calls.append({"workflow": workflow, "inputs": inputs, **kwargs})
+        yield {"type": "workflow_run_started", "workflow_id": getattr(workflow, "id", "wf"), "run_id": kwargs.get("run_id"), "checkpoint_id": "cp-1"}
+        yield {"type": "workflow_run_finished", "workflow_id": getattr(workflow, "id", "wf"), "run_id": kwargs.get("run_id"), "status": "success", "output": "ok", "checkpoint_id": "cp-2"}
 
 
 @pytest.mark.asyncio
@@ -63,3 +90,39 @@ async def test_reconcile_orphaned_runs_keeps_active_task_running():
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+@pytest.mark.asyncio
+async def test_resume_workflow_run_restarts_task_with_checkpoint_id():
+    store = _FakeStore()
+    runtime = FlowStreamRuntime()
+    record = _make_record(run_id="run-resume", status="failed")
+    record.workflow_id = "wf-test"
+    record.context_type = "workflow"
+    record.request_payload = {
+        "inputs": {"topic": "x"},
+        "session_id": "session-1",
+        "context_type": "workflow",
+        "project_id": None,
+        "stream_mode": "default",
+        "checkpoint_id": "cp-latest",
+    }
+    store.run_map[record.run_id] = record.model_copy(deep=True)
+    workflow = type("WorkflowObj", (), {"id": "wf-test", "enabled": True})()
+    execution_service = _FakeWorkflowExecutionService()
+    service = AsyncRunService(
+        store=store,
+        runtime=runtime,
+        workflow_config_service=_FakeWorkflowConfigService(workflow),  # type: ignore[arg-type]
+        workflow_execution_service=execution_service,  # type: ignore[arg-type]
+    )
+
+    resumed = await service.resume_workflow_run("run-resume")
+    await asyncio.gather(*service._tasks.values())
+
+    assert resumed.status in {"running", "succeeded"}
+    assert execution_service.calls
+    assert execution_service.calls[0]["resume_from_checkpoint_id"] == "cp-latest"
+    saved = store.run_map["run-resume"]
+    assert saved.status == "succeeded"
+    assert saved.result_summary.get("last_checkpoint_id") == "cp-2"

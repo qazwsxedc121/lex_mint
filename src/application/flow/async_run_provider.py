@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.application.orchestration import OrchestrationEngine, SqliteRunStore
 from src.application.workflows import WorkflowExecutionService
 
 from .async_run_service import AsyncRunService
@@ -10,11 +11,14 @@ from .flow_stream_runtime_provider import get_flow_stream_runtime
 from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 
 _async_run_store = AsyncRunStoreService()
+_orchestration_run_store = SqliteRunStore()
 _async_run_service = AsyncRunService(
     store=_async_run_store,
     runtime=get_flow_stream_runtime(),
     workflow_config_service=WorkflowConfigService(),
-    workflow_execution_service=WorkflowExecutionService(),
+    workflow_execution_service=WorkflowExecutionService(
+        orchestration_engine=OrchestrationEngine(run_store=_orchestration_run_store),
+    ),
 )
 
 
