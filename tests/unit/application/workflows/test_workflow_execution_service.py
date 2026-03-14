@@ -321,6 +321,37 @@ async def test_workflow_execution_service_success(temp_config_dir):
 
 
 @pytest.mark.asyncio
+async def test_workflow_execution_service_condition_branch_routes_to_true_path(temp_config_dir):
+    history_dir = Path(temp_config_dir) / "workflow_runs"
+    history_service = WorkflowRunHistoryService(history_dir=history_dir)
+    captured_prompt: Dict[str, Any] = {}
+
+    async def prompt_echo_stream(**kwargs: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        messages = kwargs.get("messages") or []
+        captured_prompt["content"] = str(messages[0].get("content") or "") if messages else ""
+        yield captured_prompt["content"]
+
+    service = WorkflowExecutionService(
+        history_service=history_service,
+        llm_stream_fn=prompt_echo_stream,
+        max_steps=20,
+    )
+    workflow = _workflow_with_condition()
+
+    events = []
+    async for event in service.execute_stream(
+        workflow,
+        {"topic": "python", "use_alt": True},
+        run_id="run_true_branch",
+    ):
+        events.append(event)
+
+    assert captured_prompt["content"] == "alt python"
+    assert events[-1]["type"] == "workflow_run_finished"
+    assert events[-1]["output"] == "alt python"
+
+
+@pytest.mark.asyncio
 async def test_workflow_execution_service_input_validation_error(temp_config_dir):
     history_dir = Path(temp_config_dir) / "workflow_runs"
     history_service = WorkflowRunHistoryService(history_dir=history_dir)

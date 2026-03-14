@@ -5,12 +5,24 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import re
-import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Union
 
+from src.application.orchestration import (
+    ActorEmit,
+    ActorExecutionContext,
+    ActorRef,
+    ActorResult,
+    EdgeSpec,
+    InMemoryContextManager,
+    NodeSpec,
+    OrchestrationEngine,
+    RetryPolicy,
+    RunContext,
+    RunSpec,
+)
 from src.llm_runtime import call_llm_stream
 from src.core.config import settings
 from src.domain.models.workflow import (
@@ -51,8 +63,19 @@ class _ResolvedRuntimeConfig:
     generation_params: Dict[str, Any]
 
 
-class _NodeAttemptTimeoutError(Exception):
-    """Raised when one LLM attempt exceeds configured timeout."""
+@dataclass
+class _WorkflowRunState:
+    run_id: str
+    workflow: Workflow
+    inputs: Dict[str, Any]
+    ctx: Dict[str, Any]
+    runtime: _ResolvedRuntimeConfig
+    session_id: Optional[str]
+    context_type: str
+    project_id: Optional[str]
+    stream_mode: str
+    artifact_target_path: Optional[str]
+    write_mode: Optional[Literal["none", "create", "overwrite"]]
 
 
 class _ConditionParser:
@@ -224,6 +247,7 @@ class WorkflowExecutionService:
         self,
         *,
         history_service: Optional[WorkflowRunHistoryService] = None,
+        orchestration_engine: Optional[OrchestrationEngine] = None,
         llm_stream_fn: Optional[
             Callable[..., AsyncIterator[Union[str, Dict[str, Any]]]]
         ] = None,
@@ -236,6 +260,7 @@ class WorkflowExecutionService:
         max_llm_retry_backoff_ms: int = 5000,
     ):
         self.history_service = history_service or WorkflowRunHistoryService()
+        self.orchestration_engine = orchestration_engine or OrchestrationEngine()
         self.llm_stream_fn = llm_stream_fn or call_llm_stream
         self.storage = storage or create_storage_with_project_resolver(settings.conversations_dir)
         self.project_service = project_service or ProjectService()
@@ -285,200 +310,133 @@ class WorkflowExecutionService:
                 "context_type": context_type,
                 "project_id": project_id or "",
             }
+            run_state = _WorkflowRunState(
+                run_id=run_identifier,
+                workflow=workflow,
+                inputs=normalized_inputs,
+                ctx=ctx,
+                runtime=runtime,
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+                stream_mode=stream_mode,
+                artifact_target_path=artifact_target_path,
+                write_mode=write_mode,
+            )
+            run_spec = self._compile_workflow_run_spec(workflow, run_state)
             node_map = {node.id: node for node in workflow.nodes}
-            current_id = workflow.entry_node_id
-            step_count = 0
-
-            yield {
-                "type": "workflow_run_started",
-                "workflow_id": workflow.id,
-                "run_id": run_identifier,
-            }
-
-            while True:
-                if step_count >= self.max_steps:
-                    raise ValueError(
-                        f"Workflow exceeded max steps ({self.max_steps}), possible loop detected"
-                    )
-                step_count += 1
-
-                node = node_map[current_id]
-                yield {
-                    "type": "workflow_node_started",
+            run_context = RunContext(
+                run_id=run_identifier,
+                metadata={
                     "workflow_id": workflow.id,
-                    "run_id": run_identifier,
-                    "node_id": node.id,
-                    "node_type": node.type,
-                }
+                    "context_type": context_type,
+                    "project_id": project_id or "",
+                },
+                max_steps=self.max_steps,
+                context_manager=InMemoryContextManager(),
+            )
 
-                template_context = {"inputs": normalized_inputs, "ctx": ctx}
+            async for runtime_event in self.orchestration_engine.run_stream(run_spec, run_context):
+                event_type = str(runtime_event.get("type") or "")
 
-                if isinstance(node, StartNode):
+                if event_type == "started":
                     yield {
-                        "type": "workflow_node_finished",
+                        "type": "workflow_run_started",
+                        "workflow_id": workflow.id,
+                        "run_id": run_identifier,
+                    }
+                    continue
+
+                if event_type == "node_started":
+                    node_id = str(runtime_event.get("node_id") or "")
+                    node = node_map.get(node_id)
+                    if node is None:
+                        raise ValueError(f"Unknown runtime node '{node_id}'")
+                    yield {
+                        "type": "workflow_node_started",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
                         "node_id": node.id,
                         "node_type": node.type,
                     }
-                    current_id = node.next_id
                     continue
 
-                if isinstance(node, LlmNode):
-                    prompt = self._render_template(node.prompt_template, template_context)
-                    request_params = self._build_llm_request_params(node=node, runtime=runtime)
-                    timeout_ms = self._resolve_llm_timeout_ms(node)
-                    max_retries = self._resolve_llm_retry_count(node)
-                    backoff_ms = self._resolve_llm_retry_backoff_ms(node)
-                    max_attempts = max_retries + 1
-                    usage: Optional[Dict[str, Any]] = None
-                    node_output = ""
-                    for attempt in range(1, max_attempts + 1):
-                        chunk_parts: List[str] = []
-                        attempt_usage: Optional[Dict[str, Any]] = None
-                        think_filter = (
-                            ThinkTagStreamFilter() if stream_mode == "editor_rewrite" else None
-                        )
-                        attempt_emitted_text = False
-                        stream = self.llm_stream_fn(
-                            messages=[{"role": "user", "content": prompt}],
-                            session_id=f"workflow:{workflow.id}:{run_identifier}",
-                            **request_params,
-                        )
-                        deadline = (
-                            time.monotonic() + (timeout_ms / 1000.0)
-                            if timeout_ms is not None
-                            else None
-                        )
-                        try:
-                            iterator = stream.__aiter__()
-                            while True:
-                                if deadline is not None:
-                                    remaining = deadline - time.monotonic()
-                                    if remaining <= 0:
-                                        raise _NodeAttemptTimeoutError(
-                                            f"LLM node '{node.id}' timed out after {timeout_ms} ms"
-                                        )
-                                else:
-                                    remaining = None
-                                try:
-                                    if remaining is None:
-                                        chunk = await iterator.__anext__()
-                                    else:
-                                        chunk = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
-                                except asyncio.TimeoutError as exc:
-                                    if str(exc):
-                                        raise
-                                    raise _NodeAttemptTimeoutError(
-                                        f"LLM node '{node.id}' timed out after {timeout_ms} ms"
-                                    ) from exc
-                                except StopAsyncIteration:
-                                    break
+                if event_type == "node_event":
+                    node_id = str(runtime_event.get("node_id") or "")
+                    payload = runtime_event.get("payload") or {}
+                    if not isinstance(payload, dict):
+                        payload = {}
+                    emitted_type = str(runtime_event.get("event_type") or "")
+                    if emitted_type == "text_delta":
+                        yield {
+                            "type": "text_delta",
+                            "workflow_id": workflow.id,
+                            "run_id": run_identifier,
+                            "node_id": node_id,
+                            "text": str(payload.get("text") or ""),
+                        }
+                        continue
+                    if emitted_type == "workflow_condition_evaluated":
+                        yield {
+                            "type": "workflow_condition_evaluated",
+                            "workflow_id": workflow.id,
+                            "run_id": run_identifier,
+                            "node_id": node_id,
+                            "expression": payload.get("expression"),
+                            "result": payload.get("result"),
+                        }
+                        continue
+                    if emitted_type == "workflow_output_reported":
+                        output_text = str(payload.get("output") or "")
+                        yield {
+                            "type": "workflow_output_reported",
+                            "workflow_id": workflow.id,
+                            "run_id": run_identifier,
+                            "node_id": node_id,
+                            "output": output_text,
+                        }
+                        continue
+                    if emitted_type == "workflow_artifact_written":
+                        yield {
+                            "type": "workflow_artifact_written",
+                            "workflow_id": workflow.id,
+                            "run_id": run_identifier,
+                            "node_id": node_id,
+                            "file_path": payload.get("file_path"),
+                            "write_mode": payload.get("write_mode"),
+                            "written": payload.get("written"),
+                            "output_key": payload.get("output_key"),
+                            "content_hash": payload.get("content_hash"),
+                        }
+                        continue
+                    raise ValueError(f"Unsupported workflow runtime event '{emitted_type}'")
 
-                                if isinstance(chunk, str):
-                                    visible_text = chunk
-                                    if think_filter is not None:
-                                        visible_text = think_filter.feed(chunk)
-                                        if not visible_text:
-                                            continue
-                                    chunk_parts.append(visible_text)
-                                    attempt_emitted_text = True
-                                    yield {
-                                        "type": "text_delta",
-                                        "workflow_id": workflow.id,
-                                        "run_id": run_identifier,
-                                        "node_id": node.id,
-                                        "text": visible_text,
-                                    }
-                                    continue
+                if event_type == "node_retrying":
+                    node_id = str(runtime_event.get("node_id") or "")
+                    node = node_map.get(node_id)
+                    if node is None:
+                        raise ValueError(f"Unknown runtime node '{node_id}'")
+                    yield {
+                        "type": "workflow_node_retrying",
+                        "workflow_id": workflow.id,
+                        "run_id": run_identifier,
+                        "node_id": node_id,
+                        "node_type": node.type,
+                        "attempt": runtime_event.get("attempt"),
+                        "max_attempts": runtime_event.get("max_attempts"),
+                        "delay_ms": runtime_event.get("delay_ms"),
+                        "error": runtime_event.get("error"),
+                    }
+                    continue
 
-                                if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                                    raw_usage = chunk.get("usage")
-                                    if isinstance(raw_usage, dict):
-                                        attempt_usage = raw_usage
-
-                            if think_filter is not None:
-                                tail = think_filter.flush()
-                                if tail:
-                                    chunk_parts.append(tail)
-                                    attempt_emitted_text = True
-                                    yield {
-                                        "type": "text_delta",
-                                        "workflow_id": workflow.id,
-                                        "run_id": run_identifier,
-                                        "node_id": node.id,
-                                        "text": tail,
-                                    }
-
-                            node_output = "".join(chunk_parts)
-                            usage = attempt_usage
-                            break
-                        except _NodeAttemptTimeoutError as timeout_error:
-                            should_retry = (
-                                attempt < max_attempts
-                                and not attempt_emitted_text
-                                and self._is_retryable_llm_error(timeout_error)
-                            )
-                            if not should_retry:
-                                raise timeout_error
-
-                            delay_ms = self._compute_backoff_delay_ms(
-                                base_delay_ms=backoff_ms,
-                                retry_index=attempt,
-                            )
-                            yield {
-                                "type": "workflow_node_retrying",
-                                "workflow_id": workflow.id,
-                                "run_id": run_identifier,
-                                "node_id": node.id,
-                                "node_type": node.type,
-                                "attempt": attempt + 1,
-                                "max_attempts": max_attempts,
-                                "delay_ms": delay_ms,
-                                "error": str(timeout_error),
-                            }
-                            if delay_ms > 0:
-                                await asyncio.sleep(delay_ms / 1000)
-                            continue
-                        except Exception as exc:
-                            should_retry = (
-                                attempt < max_attempts
-                                and not attempt_emitted_text
-                                and self._is_retryable_llm_error(exc)
-                            )
-                            if not should_retry:
-                                raise
-
-                            delay_ms = self._compute_backoff_delay_ms(
-                                base_delay_ms=backoff_ms,
-                                retry_index=attempt,
-                            )
-                            yield {
-                                "type": "workflow_node_retrying",
-                                "workflow_id": workflow.id,
-                                "run_id": run_identifier,
-                                "node_id": node.id,
-                                "node_type": node.type,
-                                "attempt": attempt + 1,
-                                "max_attempts": max_attempts,
-                                "delay_ms": delay_ms,
-                                "error": str(exc),
-                            }
-                            if delay_ms > 0:
-                                await asyncio.sleep(delay_ms / 1000)
-                            continue
-                        finally:
-                            await self._close_async_iterator(stream)
-
-                    else:
-                        raise ValueError(
-                            f"LLM node '{node.id}' failed after {max_attempts} attempts"
-                        )
-
-                    output_key = node.output_key or f"node_{node.id}_output"
-                    ctx[output_key] = node_output
-                    ctx["last_output"] = node_output
-                    output_text = node_output
+                if event_type == "node_finished":
+                    node_id = str(runtime_event.get("node_id") or "")
+                    node = node_map.get(node_id)
+                    if node is None:
+                        raise ValueError(f"Unknown runtime node '{node_id}'")
+                    payload = runtime_event.get("payload") or {}
+                    if not isinstance(payload, dict):
+                        payload = {}
 
                     finish_payload: Dict[str, Any] = {
                         "type": "workflow_node_finished",
@@ -486,57 +444,49 @@ class WorkflowExecutionService:
                         "run_id": run_identifier,
                         "node_id": node.id,
                         "node_type": node.type,
-                        "output_key": output_key,
-                        "output": node_output,
                     }
-                    if usage:
-                        finish_payload["usage"] = usage
+
+                    if isinstance(node, LlmNode):
+                        output_key = str(payload.get("output_key") or f"node_{node.id}_output")
+                        node_output = str(payload.get("output") or "")
+                        usage = payload.get("usage")
+                        run_state.ctx[output_key] = node_output
+                        run_state.ctx["last_output"] = node_output
+                        output_text = node_output
+                        finish_payload["output_key"] = output_key
+                        finish_payload["output"] = node_output
+                        if isinstance(usage, dict):
+                            finish_payload["usage"] = usage
+                    elif isinstance(node, ConditionNode):
+                        finish_payload["result"] = bool(payload.get("result"))
+                    elif isinstance(node, ArtifactNode):
+                        output_key = str(payload.get("output_key") or f"node_{node.id}_artifact")
+                        artifact_payload = payload.get("artifact")
+                        if isinstance(artifact_payload, dict):
+                            run_state.ctx[output_key] = artifact_payload
+                            run_state.ctx["last_artifact"] = artifact_payload
+                            artifact_content = payload.get("artifact_content")
+                            if isinstance(artifact_content, str):
+                                run_state.ctx["last_output"] = artifact_content
+                                output_text = artifact_content
+                            finish_payload["output_key"] = output_key
+                            finish_payload["artifact"] = artifact_payload
+                    elif isinstance(node, EndNode):
+                        if output_text is None:
+                            output_text = str(payload.get("output") or "")
+
                     yield finish_payload
-                    current_id = node.next_id
                     continue
 
-                if isinstance(node, ConditionNode):
-                    result = _ConditionParser(node.expression, template_context).parse()
-                    yield {
-                        "type": "workflow_condition_evaluated",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "expression": node.expression,
-                        "result": result,
-                    }
-                    yield {
-                        "type": "workflow_node_finished",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "node_type": node.type,
-                        "result": result,
-                    }
-                    current_id = node.true_next_id if result else node.false_next_id
-                    continue
-
-                if isinstance(node, EndNode):
-                    if node.result_template:
-                        output_text = self._render_template(node.result_template, template_context)
-                    elif output_text is None:
-                        output_text = ""
-
-                    yield {
-                        "type": "workflow_output_reported",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "output": output_text,
-                    }
-                    yield {
-                        "type": "workflow_node_finished",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "node_type": node.type,
-                    }
+                if event_type == "completed":
                     status = "success"
+                    payload = runtime_event.get("payload") or {}
+                    if isinstance(payload, dict):
+                        completed_output = payload.get("output")
+                        if isinstance(completed_output, str):
+                            output_text = completed_output
+                    if output_text is None:
+                        output_text = ""
                     yield {
                         "type": "workflow_run_finished",
                         "workflow_id": workflow.id,
@@ -544,89 +494,13 @@ class WorkflowExecutionService:
                         "status": status,
                         "output": output_text,
                     }
-                    break
-
-                if isinstance(node, ArtifactNode):
-                    if not project_id or context_type != "project":
-                        raise ValueError(
-                            "Artifact node requires project context (context_type='project' and project_id)"
-                        )
-
-                    artifact_file_path = (
-                        (artifact_target_path or "").strip()
-                        or self._render_template(node.file_path_template, template_context).strip()
-                    )
-                    artifact_file_path = self._validate_artifact_file_path(
-                        artifact_file_path,
-                        node_id=node.id,
-                    )
-
-                    node_write_mode = write_mode or node.write_mode
-                    if node_write_mode not in {"none", "create", "overwrite"}:
-                        raise ValueError(
-                            f"Unsupported write mode '{node_write_mode}' for artifact node '{node.id}'"
-                        )
-
-                    artifact_content = self._render_template(node.content_template, template_context)
-                    artifact_payload: Dict[str, Any] = {
-                        "file_path": artifact_file_path,
-                        "write_mode": node_write_mode,
-                        "bytes": len(artifact_content.encode("utf-8")),
-                    }
-
-                    if node_write_mode == "none":
-                        artifact_payload["written"] = False
-                    else:
-                        if node_write_mode == "create":
-                            if await self._project_file_exists(project_id, artifact_file_path):
-                                raise ValueError(
-                                    f"Artifact path already exists: {artifact_file_path}"
-                                )
-
-                        written_file = await self.project_service.write_file(
-                            project_id,
-                            artifact_file_path,
-                            artifact_content,
-                        )
-                        artifact_payload.update(
-                            {
-                                "written": True,
-                                "content_hash": written_file.content_hash,
-                                "encoding": written_file.encoding,
-                                "size": written_file.size,
-                            }
-                        )
-
-                    output_key = node.output_key or f"node_{node.id}_artifact"
-                    ctx[output_key] = artifact_payload
-                    ctx["last_artifact"] = artifact_payload
-                    ctx["last_output"] = artifact_content
-                    output_text = artifact_content
-
-                    yield {
-                        "type": "workflow_artifact_written",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "file_path": artifact_file_path,
-                        "write_mode": node_write_mode,
-                        "written": artifact_payload.get("written", False),
-                        "output_key": output_key,
-                        "content_hash": artifact_payload.get("content_hash"),
-                    }
-                    yield {
-                        "type": "workflow_node_finished",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "node_type": node.type,
-                        "output_key": output_key,
-                        "artifact": artifact_payload,
-                    }
-                    current_id = node.next_id
                     continue
 
-                raise ValueError(f"Unsupported node type '{node.type}'")
+                if event_type in {"failed", "cancelled"}:
+                    reason = str(runtime_event.get("terminal_reason") or "workflow runtime error")
+                    raise ValueError(reason)
+
+                raise ValueError(f"Unsupported orchestration runtime lifecycle '{event_type}'")
 
         except Exception as exc:
             error_message = str(exc)
@@ -652,6 +526,356 @@ class WorkflowExecutionService:
                 error=error_message,
             )
             await self.history_service.append_run(record)
+
+    def _compile_workflow_run_spec(
+        self,
+        workflow: Workflow,
+        run_state: _WorkflowRunState,
+    ) -> RunSpec:
+        node_specs: List[NodeSpec] = []
+        edges: List[EdgeSpec] = []
+
+        for node in workflow.nodes:
+            if isinstance(node, StartNode):
+                actor = ActorRef(
+                    actor_id=node.id,
+                    kind="workflow_start",
+                    handler=lambda ctx, current=node: self._run_start_node(
+                        execution_context=ctx,
+                        node=current,
+                    ),
+                )
+                node_specs.append(
+                    NodeSpec(
+                        node_id=node.id,
+                        actor=actor,
+                        metadata={"node_type": node.type},
+                    )
+                )
+                edges.append(EdgeSpec(source_id=node.id, target_id=node.next_id))
+                continue
+
+            if isinstance(node, LlmNode):
+                timeout_ms = self._resolve_llm_timeout_ms(node)
+                retry_count = self._resolve_llm_retry_count(node)
+                retry_backoff_ms = self._resolve_llm_retry_backoff_ms(node)
+                actor = ActorRef(
+                    actor_id=node.id,
+                    kind="workflow_llm",
+                    handler=lambda ctx, current=node: self._run_llm_node(
+                        execution_context=ctx,
+                        node=current,
+                        run_state=run_state,
+                    ),
+                )
+                node_specs.append(
+                    NodeSpec(
+                        node_id=node.id,
+                        actor=actor,
+                        timeout_ms=timeout_ms,
+                        retry_policy=RetryPolicy(
+                            max_retries=retry_count,
+                            backoff_ms=retry_backoff_ms,
+                            max_backoff_ms=self.max_llm_retry_backoff_ms,
+                            retry_only_if_no_events=True,
+                            is_retryable=self._is_retryable_llm_error,
+                        ),
+                        metadata={"node_type": node.type},
+                    )
+                )
+                edges.append(EdgeSpec(source_id=node.id, target_id=node.next_id))
+                continue
+
+            if isinstance(node, ConditionNode):
+                actor = ActorRef(
+                    actor_id=node.id,
+                    kind="workflow_condition",
+                    handler=lambda ctx, current=node: self._run_condition_node(
+                        execution_context=ctx,
+                        node=current,
+                        run_state=run_state,
+                    ),
+                )
+                node_specs.append(
+                    NodeSpec(
+                        node_id=node.id,
+                        actor=actor,
+                        metadata={"node_type": node.type},
+                    )
+                )
+                edges.append(EdgeSpec(source_id=node.id, target_id=node.true_next_id, branch="true"))
+                edges.append(EdgeSpec(source_id=node.id, target_id=node.false_next_id, branch="false"))
+                continue
+
+            if isinstance(node, ArtifactNode):
+                actor = ActorRef(
+                    actor_id=node.id,
+                    kind="workflow_artifact",
+                    handler=lambda ctx, current=node: self._run_artifact_node(
+                        execution_context=ctx,
+                        node=current,
+                        run_state=run_state,
+                    ),
+                )
+                node_specs.append(
+                    NodeSpec(
+                        node_id=node.id,
+                        actor=actor,
+                        metadata={"node_type": node.type},
+                    )
+                )
+                edges.append(EdgeSpec(source_id=node.id, target_id=node.next_id))
+                continue
+
+            if isinstance(node, EndNode):
+                actor = ActorRef(
+                    actor_id=node.id,
+                    kind="workflow_end",
+                    handler=lambda ctx, current=node: self._run_end_node(
+                        execution_context=ctx,
+                        node=current,
+                        run_state=run_state,
+                    ),
+                )
+                node_specs.append(
+                    NodeSpec(
+                        node_id=node.id,
+                        actor=actor,
+                        metadata={"node_type": node.type},
+                    )
+                )
+                continue
+
+            raise ValueError(f"Unsupported node type '{node.type}'")
+
+        return RunSpec(
+            run_id=run_state.run_id,
+            entry_node_id=workflow.entry_node_id,
+            nodes=tuple(node_specs),
+            edges=tuple(edges),
+            metadata={
+                "workflow_id": workflow.id,
+                "context_type": run_state.context_type,
+                "project_id": run_state.project_id or "",
+            },
+        )
+
+    def _build_template_context(self, run_state: _WorkflowRunState) -> Dict[str, Any]:
+        return {"inputs": run_state.inputs, "ctx": run_state.ctx}
+
+    async def _run_start_node(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        node: StartNode,
+    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+        await execution_context.patch_context(
+            namespace="workflow",
+            payload={"status": "started"},
+        )
+        yield ActorResult(next_node_id=node.next_id)
+
+    async def _run_llm_node(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        node: LlmNode,
+        run_state: _WorkflowRunState,
+    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+        template_context = self._build_template_context(run_state)
+        prompt = self._render_template(node.prompt_template, template_context)
+        request_params = self._build_llm_request_params(node=node, runtime=run_state.runtime)
+        chunk_parts: List[str] = []
+        usage: Optional[Dict[str, Any]] = None
+        think_filter = ThinkTagStreamFilter() if run_state.stream_mode == "editor_rewrite" else None
+        stream = self.llm_stream_fn(
+            messages=[{"role": "user", "content": prompt}],
+            session_id=f"workflow:{run_state.workflow.id}:{run_state.run_id}",
+            **request_params,
+        )
+        try:
+            async for chunk in stream:
+                if isinstance(chunk, str):
+                    visible_text = chunk
+                    if think_filter is not None:
+                        visible_text = think_filter.feed(chunk)
+                        if not visible_text:
+                            continue
+                    chunk_parts.append(visible_text)
+                    yield ActorEmit(event_type="text_delta", payload={"text": visible_text})
+                    continue
+
+                if isinstance(chunk, dict) and chunk.get("type") == "usage":
+                    raw_usage = chunk.get("usage")
+                    if isinstance(raw_usage, dict):
+                        usage = raw_usage
+
+            if think_filter is not None:
+                tail = think_filter.flush()
+                if tail:
+                    chunk_parts.append(tail)
+                    yield ActorEmit(event_type="text_delta", payload={"text": tail})
+        finally:
+            await self._close_async_iterator(stream)
+
+        node_output = "".join(chunk_parts)
+        output_key = node.output_key or f"node_{node.id}_output"
+        run_state.ctx[output_key] = node_output
+        run_state.ctx["last_output"] = node_output
+        await execution_context.patch_context(
+            namespace="workflow",
+            payload={output_key: node_output, "last_output": node_output},
+        )
+
+        payload: Dict[str, Any] = {
+            "output_key": output_key,
+            "output": node_output,
+        }
+        if usage:
+            payload["usage"] = usage
+
+        yield ActorResult(next_node_id=node.next_id, payload=payload)
+
+    async def _run_condition_node(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        node: ConditionNode,
+        run_state: _WorkflowRunState,
+    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+        template_context = self._build_template_context(run_state)
+        result = _ConditionParser(node.expression, template_context).parse()
+        await execution_context.patch_context(
+            namespace="workflow",
+            payload={"last_condition_result": result},
+        )
+        yield ActorEmit(
+            event_type="workflow_condition_evaluated",
+            payload={
+                "expression": node.expression,
+                "result": result,
+            },
+        )
+        yield ActorResult(
+            branch="true" if result else "false",
+            payload={"result": result},
+        )
+
+    async def _run_artifact_node(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        node: ArtifactNode,
+        run_state: _WorkflowRunState,
+    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+        if not run_state.project_id or run_state.context_type != "project":
+            raise ValueError(
+                "Artifact node requires project context (context_type='project' and project_id)"
+            )
+
+        template_context = self._build_template_context(run_state)
+        artifact_file_path = (
+            (run_state.artifact_target_path or "").strip()
+            or self._render_template(node.file_path_template, template_context).strip()
+        )
+        artifact_file_path = self._validate_artifact_file_path(
+            artifact_file_path,
+            node_id=node.id,
+        )
+
+        node_write_mode = run_state.write_mode or node.write_mode
+        if node_write_mode not in {"none", "create", "overwrite"}:
+            raise ValueError(
+                f"Unsupported write mode '{node_write_mode}' for artifact node '{node.id}'"
+            )
+
+        artifact_content = self._render_template(node.content_template, template_context)
+        artifact_payload: Dict[str, Any] = {
+            "file_path": artifact_file_path,
+            "write_mode": node_write_mode,
+            "bytes": len(artifact_content.encode("utf-8")),
+        }
+
+        if node_write_mode == "none":
+            artifact_payload["written"] = False
+        else:
+            if node_write_mode == "create":
+                if await self._project_file_exists(run_state.project_id, artifact_file_path):
+                    raise ValueError(f"Artifact path already exists: {artifact_file_path}")
+
+            written_file = await self.project_service.write_file(
+                run_state.project_id,
+                artifact_file_path,
+                artifact_content,
+            )
+            artifact_payload.update(
+                {
+                    "written": True,
+                    "content_hash": written_file.content_hash,
+                    "encoding": written_file.encoding,
+                    "size": written_file.size,
+                }
+            )
+
+        output_key = node.output_key or f"node_{node.id}_artifact"
+        run_state.ctx[output_key] = artifact_payload
+        run_state.ctx["last_artifact"] = artifact_payload
+        run_state.ctx["last_output"] = artifact_content
+        await execution_context.patch_context(
+            namespace="workflow",
+            payload={
+                output_key: artifact_payload,
+                "last_artifact": artifact_payload,
+                "last_output": artifact_content,
+            },
+        )
+
+        yield ActorEmit(
+            event_type="workflow_artifact_written",
+            payload={
+                "file_path": artifact_file_path,
+                "write_mode": node_write_mode,
+                "written": artifact_payload.get("written", False),
+                "output_key": output_key,
+                "content_hash": artifact_payload.get("content_hash"),
+            },
+        )
+        yield ActorResult(
+            next_node_id=node.next_id,
+            payload={
+                "output_key": output_key,
+                "artifact": artifact_payload,
+                "artifact_content": artifact_content,
+            },
+        )
+
+    async def _run_end_node(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        node: EndNode,
+        run_state: _WorkflowRunState,
+    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+        template_context = self._build_template_context(run_state)
+        if node.result_template:
+            output = self._render_template(node.result_template, template_context)
+        else:
+            output = str(run_state.ctx.get("last_output", "") or "")
+
+        run_state.ctx["last_output"] = output
+        await execution_context.patch_context(
+            namespace="workflow",
+            payload={"last_output": output},
+        )
+        yield ActorEmit(
+            event_type="workflow_output_reported",
+            payload={"output": output},
+        )
+        yield ActorResult(
+            terminal_status="completed",
+            terminal_reason="workflow completed",
+            payload={"output": output},
+        )
 
     def _build_llm_request_params(
         self,
@@ -703,13 +927,6 @@ class WorkflowExecutionService:
         if node.retry_backoff_ms is None:
             return self.default_llm_retry_backoff_ms
         return max(0, int(node.retry_backoff_ms))
-
-    def _compute_backoff_delay_ms(self, *, base_delay_ms: int, retry_index: int) -> int:
-        if base_delay_ms <= 0:
-            return 0
-        # retry_index starts from 1 (first retry)
-        delay = int(base_delay_ms * (2 ** max(0, retry_index - 1)))
-        return min(delay, self.max_llm_retry_backoff_ms)
 
     def _is_retryable_llm_error(self, exc: Exception) -> bool:
         if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError, OSError)):
