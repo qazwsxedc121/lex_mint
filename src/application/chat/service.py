@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from .orchestration_gateway import ChatOrchestrationGateway, ChatOrchestrationGatewayDeps
+
 
 @dataclass(frozen=True)
 class ChatApplicationDeps:
@@ -14,6 +16,7 @@ class ChatApplicationDeps:
     single_chat_flow_service: Any
     compare_flow_service: Any
     group_chat_service: Any
+    orchestration_gateway: Optional[ChatOrchestrationGateway] = None
 
 
 class ChatApplicationService:
@@ -21,9 +24,13 @@ class ChatApplicationService:
 
     def __init__(self, deps: ChatApplicationDeps):
         self.storage = deps.storage
-        self._single_chat_flow_service = deps.single_chat_flow_service
-        self._compare_flow_service = deps.compare_flow_service
-        self._group_chat_service = deps.group_chat_service
+        self._orchestration_gateway = deps.orchestration_gateway or ChatOrchestrationGateway(
+            ChatOrchestrationGatewayDeps(
+                single_chat_flow_service=deps.single_chat_flow_service,
+                compare_flow_service=deps.compare_flow_service,
+                group_chat_service=deps.group_chat_service,
+            )
+        )
 
     async def process_message(
         self,
@@ -38,7 +45,7 @@ class ChatApplicationService:
         active_file_hash: Optional[str] = None,
     ) -> tuple[str, List[Dict[str, Any]]]:
         """Run the single-chat use case and collect the final response."""
-        return await self._single_chat_flow_service.process_message(
+        return await self._orchestration_gateway.run_single_message(
             session_id=session_id,
             user_message=user_message,
             context_type=context_type,
@@ -66,7 +73,7 @@ class ChatApplicationService:
         active_file_hash: Optional[str] = None,
     ) -> AsyncIterator[Any]:
         """Stream the single-chat use case."""
-        async for event in self._single_chat_flow_service.process_message_stream(
+        async for event in self._orchestration_gateway.stream_single(
             session_id=session_id,
             user_message=user_message,
             skip_user_append=skip_user_append,
@@ -99,7 +106,7 @@ class ChatApplicationService:
         file_references: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncIterator[Any]:
         """Stream the group-chat use case."""
-        async for event in self._group_chat_service.process_group_message_stream(
+        async for event in self._orchestration_gateway.stream_group(
             session_id=session_id,
             user_message=user_message,
             group_assistants=group_assistants,
@@ -130,7 +137,7 @@ class ChatApplicationService:
         file_references: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncIterator[Any]:
         """Stream the compare-model use case."""
-        async for event in self._compare_flow_service.process_compare_stream(
+        async for event in self._orchestration_gateway.stream_compare(
             session_id=session_id,
             user_message=user_message,
             model_ids=model_ids,
