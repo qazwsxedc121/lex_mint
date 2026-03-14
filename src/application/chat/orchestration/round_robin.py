@@ -1,6 +1,18 @@
 """Round-robin orchestration loop over group participants."""
 
+import uuid
 from typing import Any, AsyncIterator, Callable, Dict, Optional
+
+from src.application.orchestration import (
+    ActorEmit,
+    ActorExecutionContext,
+    ActorRef,
+    ActorResult,
+    NodeSpec,
+    OrchestrationEngine,
+    RunContext,
+    RunSpec,
+)
 
 from .base import (
     BaseOrchestrator,
@@ -21,8 +33,10 @@ class RoundRobinOrchestrator(BaseOrchestrator):
         self,
         *,
         stream_group_assistant_turn: Callable[..., AsyncIterator[Dict[str, Any]]],
+        orchestration_engine: Optional[OrchestrationEngine] = None,
     ):
         self.stream_group_assistant_turn = stream_group_assistant_turn
+        self.orchestration_engine = orchestration_engine or OrchestrationEngine()
 
     async def stream(
         self,
@@ -34,6 +48,52 @@ class RoundRobinOrchestrator(BaseOrchestrator):
             raise ValueError(f"RoundRobinOrchestrator only supports mode={self.mode}")
         if request.settings is not None and not isinstance(request.settings, RoundRobinSettings):
             raise ValueError("RoundRobinOrchestrator requires RoundRobinSettings")
+        run_id = f"round-robin-{request.session_id[:12]}-{uuid.uuid4().hex[:8]}"
+        spec = RunSpec(
+            run_id=run_id,
+            entry_node_id="round_robin_driver",
+            nodes=(
+                NodeSpec(
+                    node_id="round_robin_driver",
+                    actor=ActorRef(
+                        actor_id="round_robin_driver",
+                        kind="round_robin",
+                        handler=lambda ctx: self._run_round_robin_actor(
+                            execution_context=ctx,
+                            request=request,
+                            cancel_token=cancel_token,
+                        ),
+                    ),
+                ),
+            ),
+            metadata={"mode": self.mode, "session_id": request.session_id},
+        )
+        context = RunContext(run_id=run_id, max_steps=2)
+
+        async for runtime_event in self.orchestration_engine.run_stream(spec, context):
+            if runtime_event.get("type") == "node_event" and runtime_event.get("event_type") == "round_robin_event":
+                payload = runtime_event.get("payload") or {}
+                event = payload.get("event") if isinstance(payload, dict) else None
+                if isinstance(event, dict):
+                    yield self.normalize_event(event)
+                continue
+            if runtime_event.get("type") in {"failed", "cancelled"}:
+                yield self.normalize_event(
+                    build_group_done_event(
+                        mode=self.mode,
+                        reason=str(runtime_event.get("terminal_reason") or cancellation_reason(cancel_token)),
+                        rounds=0,
+                    )
+                )
+                return
+
+    async def _run_round_robin_actor(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        request: OrchestrationRequest,
+        cancel_token: Optional[OrchestrationCancelToken],
+    ) -> AsyncIterator[Any]:
         settings = request.settings if isinstance(request.settings, RoundRobinSettings) else RoundRobinSettings()
 
         participant_order = [
@@ -47,12 +107,16 @@ class RoundRobinOrchestrator(BaseOrchestrator):
         completed_turns = 0
         for assistant_id in participant_order:
             if self.is_cancelled(cancel_token):
-                yield self.normalize_event(
-                    build_group_done_event(
-                        mode=self.mode,
-                        reason=cancellation_reason(cancel_token),
-                        rounds=completed_turns,
-                    )
+                done_event = build_group_done_event(
+                    mode=self.mode,
+                    reason=cancellation_reason(cancel_token),
+                    rounds=completed_turns,
+                )
+                yield ActorEmit(event_type="round_robin_event", payload={"event": done_event})
+                yield ActorResult(
+                    terminal_status="completed",
+                    terminal_reason=done_event.get("reason", "cancelled"),
+                    payload={"rounds": completed_turns},
                 )
                 return
 
@@ -75,13 +139,21 @@ class RoundRobinOrchestrator(BaseOrchestrator):
                 trace_id=request.trace_id,
                 trace_mode=self.mode,
             ):
-                yield self.normalize_event(event)
+                yield ActorEmit(event_type="round_robin_event", payload={"event": event})
             completed_turns += 1
 
-        yield self.normalize_event(
-            build_group_done_event(
-                mode=self.mode,
-                reason="completed",
-                rounds=completed_turns,
-            )
+        done_event = build_group_done_event(
+            mode=self.mode,
+            reason="completed",
+            rounds=completed_turns,
+        )
+        await execution_context.patch_context(
+            namespace="group",
+            payload={"completed_turns": completed_turns, "mode": self.mode},
+        )
+        yield ActorEmit(event_type="round_robin_event", payload={"event": done_event})
+        yield ActorResult(
+            terminal_status="completed",
+            terminal_reason="completed",
+            payload={"rounds": completed_turns},
         )

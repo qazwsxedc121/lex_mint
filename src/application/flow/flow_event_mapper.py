@@ -9,6 +9,11 @@ from .flow_event_types import (
     ASSISTANT_MESSAGE_IDENTIFIED,
     ASSISTANT_TURN_FINISHED,
     ASSISTANT_TURN_STARTED,
+    COMPRESSION_COMPLETED,
+    COMPARE_COMPLETED,
+    COMPARE_MODEL_FAILED,
+    COMPARE_MODEL_FINISHED,
+    COMPARE_MODEL_STARTED,
     CONTEXT_REPORTED,
     FOLLOWUP_QUESTIONS_REPORTED,
     GROUP_ACTION_REPORTED,
@@ -232,6 +237,33 @@ class FlowEventMapper:
             )
             return ASSISTANT_TURN_FINISHED, FlowEventStage.ORCHESTRATION, payload
 
+        if event_type == "model_start":
+            payload = self._copy_selected_fields(event, ("model_id", "model_name"))
+            return COMPARE_MODEL_STARTED, FlowEventStage.ORCHESTRATION, payload
+
+        if event_type == "model_chunk":
+            payload = self._copy_selected_fields(event, ("model_id",))
+            payload["text"] = str(event.get("chunk") or "")
+            return TEXT_DELTA, FlowEventStage.CONTENT, payload
+
+        if event_type == "model_done":
+            payload = self._copy_selected_fields(
+                event,
+                ("model_id", "model_name", "content", "usage", "cost"),
+            )
+            return COMPARE_MODEL_FINISHED, FlowEventStage.ORCHESTRATION, payload
+
+        if event_type == "model_error":
+            payload = self._copy_selected_fields(
+                event,
+                ("model_id", "model_name", "error"),
+            )
+            return COMPARE_MODEL_FAILED, FlowEventStage.ORCHESTRATION, payload
+
+        if event_type == "compare_complete":
+            payload = self._copy_selected_fields(event, ("model_results", "reason"))
+            return COMPARE_COMPLETED, FlowEventStage.ORCHESTRATION, payload
+
         if event_type == "group_round_start":
             payload = dict(event)
             payload.pop("type", None)
@@ -250,6 +282,13 @@ class FlowEventMapper:
         if event_type == "followup_questions":
             payload = self._copy_selected_fields(event, ("questions",))
             return FOLLOWUP_QUESTIONS_REPORTED, FlowEventStage.META, payload
+
+        if event_type == "compression_complete":
+            payload = self._copy_selected_fields(
+                event,
+                ("message_id", "compressed_count", "compression_meta"),
+            )
+            return COMPRESSION_COMPLETED, FlowEventStage.META, payload
 
         return STREAM_ERROR, FlowEventStage.TRANSPORT, {
             "error": f"unsupported stream event type: {event_type}",

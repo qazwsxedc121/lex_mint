@@ -1,7 +1,19 @@
 """Committee orchestration loop."""
 
 import asyncio
+import uuid
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+
+from src.application.orchestration import (
+    ActorEmit,
+    ActorExecutionContext,
+    ActorRef,
+    ActorResult,
+    NodeSpec,
+    OrchestrationEngine,
+    RunContext,
+    RunSpec,
+)
 
 from .base import (
     BaseOrchestrator,
@@ -37,6 +49,7 @@ class CommitteeOrchestrator(BaseOrchestrator):
         truncate_log_text: Callable[[Optional[str], int], str],
         log_group_trace: Callable[[str, str, Dict[str, Any]], None],
         group_trace_preview_chars: int = 1600,
+        orchestration_engine: Optional[OrchestrationEngine] = None,
     ):
         self.llm_call = llm_call
         self.assistant_params_from_config = assistant_params_from_config
@@ -49,6 +62,7 @@ class CommitteeOrchestrator(BaseOrchestrator):
         self.truncate_log_text = truncate_log_text
         self.log_group_trace = log_group_trace
         self.group_trace_preview_chars = group_trace_preview_chars
+        self.orchestration_engine = orchestration_engine or OrchestrationEngine()
         self._loop = CommitteeLoopStateMachine(
             log_group_trace=log_group_trace,
             truncate_log_text=truncate_log_text,
@@ -77,7 +91,54 @@ class CommitteeOrchestrator(BaseOrchestrator):
             raise ValueError(f"CommitteeOrchestrator only supports mode={self.mode}")
         if not isinstance(request.settings, ResolvedCommitteeSettings):
             raise ValueError("CommitteeOrchestrator requires ResolvedCommitteeSettings")
+        run_id = f"committee-{request.session_id[:12]}-{uuid.uuid4().hex[:8]}"
+        spec = RunSpec(
+            run_id=run_id,
+            entry_node_id="committee_driver",
+            nodes=(
+                NodeSpec(
+                    node_id="committee_driver",
+                    actor=ActorRef(
+                        actor_id="committee_driver",
+                        kind="committee",
+                        handler=lambda ctx: self._run_committee_actor(
+                            execution_context=ctx,
+                            request=request,
+                            cancel_token=cancel_token,
+                        ),
+                    ),
+                ),
+            ),
+            metadata={"mode": self.mode, "session_id": request.session_id},
+        )
+        context = RunContext(run_id=run_id, max_steps=2)
 
+        async for runtime_event in self.orchestration_engine.run_stream(spec, context):
+            if runtime_event.get("type") == "node_event" and runtime_event.get("event_type") == "committee_event":
+                payload = runtime_event.get("payload") or {}
+                event = payload.get("event") if isinstance(payload, dict) else None
+                if isinstance(event, dict):
+                    yield self.normalize_event(event)
+                continue
+            if runtime_event.get("type") in {"failed", "cancelled"}:
+                yield self.normalize_event(
+                    build_group_done_event(
+                        mode=self.mode,
+                        reason=str(runtime_event.get("terminal_reason") or "committee_failed"),
+                        rounds=0,
+                    )
+                )
+                return
+
+    async def _run_committee_actor(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        request: OrchestrationRequest,
+        cancel_token: Optional[OrchestrationCancelToken],
+    ) -> AsyncIterator[Any]:
+        terminated = False
+        rounds = 0
         async for event in self.process(
             session_id=request.session_id,
             raw_user_message=request.user_message,
@@ -93,7 +154,20 @@ class CommitteeOrchestrator(BaseOrchestrator):
             trace_id=request.trace_id,
             cancel_token=cancel_token,
         ):
-            yield self.normalize_event(event)
+            if event.get("type") == "group_done":
+                terminated = True
+                rounds = int(event.get("rounds") or 0)
+            yield ActorEmit(event_type="committee_event", payload={"event": event})
+
+        await execution_context.patch_context(
+            namespace="group",
+            payload={"terminated": terminated, "rounds": rounds, "mode": self.mode},
+        )
+        yield ActorResult(
+            terminal_status="completed",
+            terminal_reason="completed",
+            payload={"rounds": rounds, "terminated": terminated},
+        )
 
     async def process(
         self,

@@ -74,3 +74,49 @@ def test_mapper_unknown_event_type_maps_to_stream_error():
     assert flow_event["event_type"] == "stream_error"
     assert flow_event["stage"] == "transport"
     assert flow_event["payload"]["error"] == "unsupported stream event type: unknown_event"
+
+
+def test_mapper_maps_compare_events():
+    mapper = FlowEventMapper(stream_id="stream-6")
+
+    start_payload = mapper.to_sse_payload({"type": "model_start", "model_id": "m1", "model_name": "Model-1"})
+    chunk_payload = mapper.to_sse_payload({"type": "model_chunk", "model_id": "m1", "chunk": "A"})
+    done_payload = mapper.to_sse_payload(
+        {
+            "type": "model_done",
+            "model_id": "m1",
+            "model_name": "Model-1",
+            "content": "Answer A",
+            "usage": {"total_tokens": 2},
+        }
+    )
+    complete_payload = mapper.to_sse_payload(
+        {"type": "compare_complete", "model_results": {"m1": {"content": "Answer A"}}, "reason": "completed"}
+    )
+
+    assert start_payload["flow_event"]["event_type"] == "compare_model_started"
+    assert start_payload["flow_event"]["stage"] == "orchestration"
+    assert chunk_payload["flow_event"]["event_type"] == "text_delta"
+    assert chunk_payload["flow_event"]["payload"]["model_id"] == "m1"
+    assert chunk_payload["flow_event"]["payload"]["text"] == "A"
+    assert done_payload["flow_event"]["event_type"] == "compare_model_finished"
+    assert done_payload["flow_event"]["payload"]["content"] == "Answer A"
+    assert complete_payload["flow_event"]["event_type"] == "compare_completed"
+
+
+def test_mapper_maps_compression_complete_event():
+    mapper = FlowEventMapper(stream_id="stream-7")
+
+    payload = mapper.to_sse_payload(
+        {
+            "type": "compression_complete",
+            "message_id": "msg-1",
+            "compressed_count": 12,
+            "compression_meta": {"ratio": 0.42},
+        }
+    )
+
+    flow_event = payload["flow_event"]
+    assert flow_event["event_type"] == "compression_completed"
+    assert flow_event["stage"] == "meta"
+    assert flow_event["payload"]["message_id"] == "msg-1"

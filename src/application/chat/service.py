@@ -89,6 +89,65 @@ class ChatApplicationService:
         ):
             yield event
 
+    async def process_chat_stream(
+        self,
+        session_id: str,
+        user_message: str,
+        skip_user_append: bool = False,
+        reasoning_effort: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+        use_web_search: bool = False,
+        search_query: Optional[str] = None,
+        file_references: Optional[List[Dict[str, str]]] = None,
+        active_file_path: Optional[str] = None,
+        active_file_hash: Optional[str] = None,
+    ) -> AsyncIterator[Any]:
+        """Stream chat with unified mode resolution through orchestration gateway."""
+        session_data = await self.storage.get_session(
+            session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+        group_assistants = session_data.get("group_assistants")
+        group_mode = session_data.get("group_mode", "round_robin")
+        group_settings = session_data.get("group_settings")
+        if isinstance(group_assistants, list) and len(group_assistants) >= 2:
+            async for event in self._orchestration_gateway.stream_group(
+                session_id=session_id,
+                user_message=user_message,
+                group_assistants=group_assistants,
+                group_mode=group_mode,
+                group_settings=group_settings if isinstance(group_settings, dict) else None,
+                skip_user_append=skip_user_append,
+                reasoning_effort=reasoning_effort,
+                attachments=attachments,
+                context_type=context_type,
+                project_id=project_id,
+                use_web_search=use_web_search,
+                search_query=search_query,
+                file_references=file_references,
+            ):
+                yield event
+            return
+
+        async for event in self._orchestration_gateway.stream_single(
+            session_id=session_id,
+            user_message=user_message,
+            skip_user_append=skip_user_append,
+            reasoning_effort=reasoning_effort,
+            attachments=attachments,
+            context_type=context_type,
+            project_id=project_id,
+            use_web_search=use_web_search,
+            search_query=search_query,
+            file_references=file_references,
+            active_file_path=active_file_path,
+            active_file_hash=active_file_hash,
+        ):
+            yield event
+
     async def process_group_message_stream(
         self,
         session_id: str,

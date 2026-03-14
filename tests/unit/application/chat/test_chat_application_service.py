@@ -47,6 +47,22 @@ class _FakeGroupChatService:
         yield {"type": "group_done"}
 
 
+class _FakeStorage:
+    def __init__(self, session_payload):
+        self._session_payload = session_payload
+        self.calls = []
+
+    async def get_session(self, session_id, *, context_type="chat", project_id=None):
+        self.calls.append(
+            {
+                "session_id": session_id,
+                "context_type": context_type,
+                "project_id": project_id,
+            }
+        )
+        return dict(self._session_payload)
+
+
 async def test_chat_application_service_delegates_single_message():
     single = _FakeSingleChatFlowService()
     service = ChatApplicationService(
@@ -140,3 +156,48 @@ async def test_chat_application_service_delegates_group_stream():
     assert events == [{"type": "group_start"}, {"type": "group_done"}]
     assert len(group.calls) == 1
     assert group.calls[0]["group_assistants"] == ["a1", "a2"]
+
+
+async def test_chat_application_service_auto_stream_routes_to_group_mode():
+    group = _FakeGroupChatService()
+    storage = _FakeStorage(
+        {
+            "group_assistants": ["a1", "a2"],
+            "group_mode": "committee",
+            "group_settings": {"max_rounds": 2},
+        }
+    )
+    service = ChatApplicationService(
+        ChatApplicationDeps(
+            storage=storage,
+            single_chat_flow_service=_FakeSingleChatFlowService(),
+            compare_flow_service=_FakeCompareFlowService(),
+            group_chat_service=group,
+        )
+    )
+
+    events = await _collect(service.process_chat_stream(session_id="s1", user_message="hello"))
+
+    assert events == [{"type": "group_start"}, {"type": "group_done"}]
+    assert len(group.calls) == 1
+    assert group.calls[0]["group_mode"] == "committee"
+    assert group.calls[0]["group_assistants"] == ["a1", "a2"]
+    assert storage.calls == [{"session_id": "s1", "context_type": "chat", "project_id": None}]
+
+
+async def test_chat_application_service_auto_stream_routes_to_single_mode():
+    single = _FakeSingleChatFlowService()
+    storage = _FakeStorage({})
+    service = ChatApplicationService(
+        ChatApplicationDeps(
+            storage=storage,
+            single_chat_flow_service=single,
+            compare_flow_service=_FakeCompareFlowService(),
+            group_chat_service=_FakeGroupChatService(),
+        )
+    )
+
+    events = await _collect(service.process_chat_stream(session_id="s1", user_message="hello"))
+
+    assert events == ["chunk-1", {"type": "usage"}]
+    assert len(single.process_message_stream_calls) == 1

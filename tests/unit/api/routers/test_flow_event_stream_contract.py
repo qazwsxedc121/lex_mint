@@ -54,6 +54,10 @@ class _FakeChatAgent:
     def __init__(self):
         self.storage = _FakeStorage()
 
+    async def process_chat_stream(self, *_args, **_kwargs):
+        async for event in self.process_message_stream(*_args, **_kwargs):
+            yield event
+
     async def process_message_stream(self, *_args, **_kwargs):
         yield "hello"
         yield " world"

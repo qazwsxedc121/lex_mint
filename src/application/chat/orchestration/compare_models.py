@@ -3,9 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
+from src.application.orchestration import (
+    ActorEmit,
+    ActorExecutionContext,
+    ActorRef,
+    ActorResult,
+    NodeSpec,
+    OrchestrationEngine,
+    RunContext,
+    RunSpec,
+)
 from src.providers.types import TokenUsage
 
 from .base import BaseOrchestrator, OrchestrationCancelToken, OrchestrationEvent, OrchestrationRequest
@@ -37,11 +48,13 @@ class CompareModelsOrchestrator(BaseOrchestrator):
         pricing_service: Any,
         file_service: Any,
         resolve_model_name: Optional[Callable[[str], str]] = None,
+        orchestration_engine: Optional[OrchestrationEngine] = None,
     ):
         self.call_llm_stream = call_llm_stream
         self.pricing_service = pricing_service
         self.file_service = file_service
         self.resolve_model_name = resolve_model_name
+        self.orchestration_engine = orchestration_engine or OrchestrationEngine()
 
     async def stream(
         self,
@@ -55,6 +68,69 @@ class CompareModelsOrchestrator(BaseOrchestrator):
             raise ValueError("CompareModelsOrchestrator requires CompareModelsSettings")
 
         settings = request.settings
+        run_id = f"compare-{request.session_id[:12]}-{uuid.uuid4().hex[:8]}"
+        spec = RunSpec(
+            run_id=run_id,
+            entry_node_id="compare_driver",
+            nodes=(
+                NodeSpec(
+                    node_id="compare_driver",
+                    actor=ActorRef(
+                        actor_id="compare_driver",
+                        kind="compare_models",
+                        handler=lambda ctx: self._run_compare_actor(
+                            execution_context=ctx,
+                            request=request,
+                            settings=settings,
+                            cancel_token=cancel_token,
+                        ),
+                    ),
+                ),
+            ),
+            metadata={"mode": self.mode, "session_id": request.session_id},
+        )
+        context = RunContext(run_id=run_id, max_steps=2)
+
+        completion_emitted = False
+        async for runtime_event in self.orchestration_engine.run_stream(spec, context):
+            event_type = str(runtime_event.get("type") or "")
+            if event_type == "node_event" and runtime_event.get("event_type") == "compare_event":
+                payload = runtime_event.get("payload") or {}
+                if not isinstance(payload, dict):
+                    continue
+                event = payload.get("event")
+                if isinstance(event, dict):
+                    normalized = self.normalize_event(event)
+                    if normalized.get("type") == "compare_complete":
+                        completion_emitted = True
+                    yield normalized
+                continue
+            if event_type in {"failed", "cancelled"} and not completion_emitted:
+                reason = str(runtime_event.get("terminal_reason") or cancellation_reason(cancel_token))
+                completion_emitted = True
+                yield self.normalize_event(
+                    build_compare_complete_event(
+                        model_results={},
+                        reason=reason,
+                    )
+                )
+
+        if not completion_emitted:
+            yield self.normalize_event(
+                build_compare_complete_event(
+                    model_results={},
+                    reason=cancellation_reason(cancel_token),
+                )
+            )
+
+    async def _run_compare_actor(
+        self,
+        *,
+        execution_context: ActorExecutionContext,
+        request: OrchestrationRequest,
+        settings: CompareModelsSettings,
+        cancel_token: Optional[OrchestrationCancelToken],
+    ) -> AsyncIterator[Any]:
         queue: asyncio.Queue = asyncio.Queue()
         tasks: List[asyncio.Task] = []
         model_results: Dict[str, Dict[str, Any]] = {}
@@ -87,13 +163,18 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     if self.is_cancelled(cancel_token):
                         break
                     if isinstance(chunk, dict) and chunk.get("type") == "usage":
-                        usage_data = chunk["usage"]
-                        parts = model_id.split(":", 1)
-                        provider_id = parts[0] if len(parts) > 1 else ""
-                        simple_model_id = parts[1] if len(parts) > 1 else model_id
-                        cost_data = self.pricing_service.calculate_cost(
-                            provider_id, simple_model_id, usage_data
-                        )
+                        raw_usage = chunk.get("usage")
+                        if isinstance(raw_usage, dict):
+                            usage_data = TokenUsage(**raw_usage)
+                        elif isinstance(raw_usage, TokenUsage):
+                            usage_data = raw_usage
+                        if usage_data is not None:
+                            parts = model_id.split(":", 1)
+                            provider_id = parts[0] if len(parts) > 1 else ""
+                            simple_model_id = parts[1] if len(parts) > 1 else model_id
+                            cost_data = self.pricing_service.calculate_cost(
+                                provider_id, simple_model_id, usage_data
+                            )
                         continue
 
                     if isinstance(chunk, dict):
@@ -133,7 +214,7 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     "thinking_content": "",
                     "error": None,
                 }
-            except Exception as e:
+            except Exception as exc:
                 await queue.put(
                     {
                         "kind": "event",
@@ -141,7 +222,7 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                             "type": "model_error",
                             "model_id": model_id,
                             "model_name": model_name,
-                            "error": str(e),
+                            "error": str(exc),
                         },
                     }
                 )
@@ -152,7 +233,7 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     "usage": None,
                     "cost": None,
                     "thinking_content": "",
-                    "error": str(e),
+                    "error": str(exc),
                 }
             finally:
                 await queue.put({"kind": "done"})
@@ -171,8 +252,8 @@ class CompareModelsOrchestrator(BaseOrchestrator):
                     finished += 1
                     continue
                 event = item.get("event")
-                if event:
-                    yield self.normalize_event(event)
+                if isinstance(event, dict):
+                    yield ActorEmit(event_type="compare_event", payload={"event": event})
         finally:
             for task in tasks:
                 if not task.done():
@@ -180,11 +261,26 @@ class CompareModelsOrchestrator(BaseOrchestrator):
             await asyncio.gather(*tasks, return_exceptions=True)
 
         reason = cancellation_reason(cancel_token) if cancelled else "completed"
-        yield self.normalize_event(
-            build_compare_complete_event(
-                model_results=model_results,
-                reason=reason,
-            )
+        await execution_context.patch_context(
+            namespace="compare",
+            payload={
+                "reason": reason,
+                "model_results": model_results,
+            },
+        )
+        yield ActorEmit(
+            event_type="compare_event",
+            payload={
+                "event": build_compare_complete_event(
+                    model_results=model_results,
+                    reason=reason,
+                )
+            },
+        )
+        yield ActorResult(
+            terminal_status="completed",
+            terminal_reason=reason,
+            payload={"reason": reason, "model_results": model_results},
         )
 
     def _resolve_model_name(self, model_id: str) -> str:
