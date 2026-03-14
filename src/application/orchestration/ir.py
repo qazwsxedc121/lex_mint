@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from .context_manager import ContextManager
+
+if TYPE_CHECKING:
+    from .run_store import RunStore
 
 
 TerminalStatus = Literal["completed", "failed", "cancelled"]
@@ -153,6 +156,7 @@ class RunContext:
     cancel_event: Optional[Any] = None
     cancel_reason: str = "cancelled"
     context_manager: Optional[ContextManager] = None
+    run_store: Optional["RunStore"] = None
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property

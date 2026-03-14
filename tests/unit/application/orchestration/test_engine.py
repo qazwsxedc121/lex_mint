@@ -10,6 +10,7 @@ from src.application.orchestration import (
     ActorRef,
     ActorResult,
     EdgeSpec,
+    InMemoryRunStore,
     NodeSpec,
     OrchestrationEngine,
     RetryPolicy,
@@ -150,3 +151,71 @@ async def test_engine_stops_when_cancelled():
 
     assert [event["type"] for event in events] == ["started", "cancelled"]
     assert events[-1]["terminal_reason"] == "user cancelled"
+
+
+@pytest.mark.asyncio
+async def test_engine_persists_checkpoints_for_lifecycle_events():
+    store = InMemoryRunStore()
+    spec = RunSpec(
+        run_id="run-with-checkpoints",
+        entry_node_id="start",
+        nodes=(
+            NodeSpec(node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)),
+            NodeSpec(node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)),
+        ),
+        edges=(EdgeSpec(source_id="start", target_id="end"),),
+    )
+    engine = OrchestrationEngine(run_store=store)
+
+    events = [event async for event in engine.run_stream(spec)]
+    checkpoints = await store.list_checkpoints(run_id="run-with-checkpoints")
+
+    assert len(checkpoints) >= 6
+    assert checkpoints[0].event_type == "started"
+    assert checkpoints[-1].event_type == "completed"
+    assert all("checkpoint_id" in event for event in events if event["type"] in {"started", "node_started", "node_finished", "completed"})
+
+
+@pytest.mark.asyncio
+async def test_engine_resume_from_node_finished_checkpoint():
+    state = {"start_calls": 0, "end_calls": 0}
+
+    async def start_actor(_: object) -> AsyncIterator[object]:
+        state["start_calls"] += 1
+        yield ActorResult(next_node_id="end")
+
+    async def end_actor(_: object) -> AsyncIterator[object]:
+        state["end_calls"] += 1
+        yield ActorResult(terminal_status="completed", terminal_reason="done")
+
+    spec = RunSpec(
+        run_id="run-resume",
+        entry_node_id="start",
+        nodes=(
+            NodeSpec(node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=start_actor)),
+            NodeSpec(node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=end_actor)),
+        ),
+        edges=(EdgeSpec(source_id="start", target_id="end"),),
+    )
+    store = InMemoryRunStore()
+    engine = OrchestrationEngine(run_store=store)
+
+    _ = [event async for event in engine.run_stream(spec)]
+    checkpoints = await store.list_checkpoints(run_id="run-resume")
+    start_finished = next(
+        item for item in checkpoints
+        if item.event_type == "node_finished" and item.node_id == "start"
+    )
+
+    resumed_events = [
+        event async for event in engine.resume_stream(
+            spec,
+            from_checkpoint_id=start_finished.checkpoint_id,
+        )
+    ]
+
+    assert resumed_events[0]["type"] == "resumed"
+    assert resumed_events[1]["type"] == "node_started"
+    assert resumed_events[1]["node_id"] == "end"
+    assert state["start_calls"] == 1
+    assert state["end_calls"] == 2
