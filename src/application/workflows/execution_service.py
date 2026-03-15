@@ -392,16 +392,18 @@ class WorkflowExecutionService:
                         payload = {}
                     emitted_type = str(runtime_event.get("event_type") or "")
                     if emitted_type == "text_delta":
-                        yield {
+                        payload = {
                             "type": "text_delta",
                             "workflow_id": workflow.id,
                             "run_id": run_identifier,
                             "node_id": node_id,
                             "text": str(payload.get("text") or ""),
                         }
+                        payload.update(checkpoint_payload)
+                        yield payload
                         continue
                     if emitted_type == "workflow_condition_evaluated":
-                        yield {
+                        condition_payload = {
                             "type": "workflow_condition_evaluated",
                             "workflow_id": workflow.id,
                             "run_id": run_identifier,
@@ -409,19 +411,23 @@ class WorkflowExecutionService:
                             "expression": payload.get("expression"),
                             "result": payload.get("result"),
                         }
+                        condition_payload.update(checkpoint_payload)
+                        yield condition_payload
                         continue
                     if emitted_type == "workflow_output_reported":
                         output_text = str(payload.get("output") or "")
-                        yield {
+                        output_payload = {
                             "type": "workflow_output_reported",
                             "workflow_id": workflow.id,
                             "run_id": run_identifier,
                             "node_id": node_id,
                             "output": output_text,
                         }
+                        output_payload.update(checkpoint_payload)
+                        yield output_payload
                         continue
                     if emitted_type == "workflow_artifact_written":
-                        yield {
+                        artifact_payload = {
                             "type": "workflow_artifact_written",
                             "workflow_id": workflow.id,
                             "run_id": run_identifier,
@@ -432,6 +438,8 @@ class WorkflowExecutionService:
                             "output_key": payload.get("output_key"),
                             "content_hash": payload.get("content_hash"),
                         }
+                        artifact_payload.update(checkpoint_payload)
+                        yield artifact_payload
                         continue
                     raise ValueError(f"Unsupported workflow runtime event '{emitted_type}'")
 

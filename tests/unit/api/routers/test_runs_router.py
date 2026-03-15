@@ -61,8 +61,11 @@ class _FakeResumeService:
     def __init__(self, record: AsyncRunRecord):
         self.record = record
         self.calls: list[dict[str, object]] = []
+        self.error: Optional[ValueError] = None
 
     async def resume_workflow_run(self, run_id: str, *, checkpoint_id: Optional[str] = None) -> AsyncRunRecord:
+        if self.error is not None:
+            raise self.error
         self.calls.append({"run_id": run_id, "checkpoint_id": checkpoint_id})
         return self.record
 
@@ -134,3 +137,27 @@ async def test_resume_run_endpoint_delegates_to_service():
 
     assert response.run_id == "run-resume"
     assert service.calls == [{"run_id": "run-resume", "checkpoint_id": "cp-1"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message", "status_code"),
+    [
+        ("Run 'x' not found", 404),
+        ("Run 'x' is already terminal: succeeded", 409),
+        ("Only workflow runs support resume", 400),
+    ],
+)
+async def test_resume_run_endpoint_maps_resume_errors_to_http(message: str, status_code: int):
+    record = _make_record(run_id="run-resume", status="running")
+    service = _FakeResumeService(record)
+    service.error = ValueError(message)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.resume_run(
+            run_id="run-resume",
+            request=runs_router.ResumeRunRequest(),
+            service=service,  # type: ignore[arg-type]
+        )
+
+    assert exc_info.value.status_code == status_code

@@ -72,8 +72,15 @@ class FlowStreamRuntime:
         project_id: Optional[str],
     ) -> FlowStreamState:
         self._gc()
-        if stream_id in self._streams:
-            return self._streams[stream_id]
+        existing = self._streams.get(stream_id)
+        if existing is not None:
+            existing.updated_at = time.time()
+            if existing.done:
+                existing.done = False
+                existing.seq = 0
+                existing.events = deque(maxlen=self.max_events_per_stream)
+                existing.subscribers.clear()
+            return existing
 
         if len(self._streams) >= self.max_active_streams:
             self._evict_completed_streams()

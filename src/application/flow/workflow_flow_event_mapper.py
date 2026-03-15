@@ -19,6 +19,13 @@ from .flow_event_types import (
 from .flow_events import FlowEventStage
 
 
+def _with_checkpoint(payload: Dict[str, Any], event: Dict[str, Any]) -> Dict[str, Any]:
+    checkpoint_id = event.get("checkpoint_id")
+    if isinstance(checkpoint_id, str) and checkpoint_id:
+        payload["checkpoint_id"] = checkpoint_id
+    return payload
+
+
 def map_workflow_event_to_flow_payload(
     emitter: FlowEventEmitter,
     event: Dict[str, Any],
@@ -30,38 +37,47 @@ def map_workflow_event_to_flow_payload(
         return emitter.emit(
             event_type=WORKFLOW_RUN_STARTED,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                },
+                event,
+            ),
         )
 
     if event_type == "workflow_node_started":
         return emitter.emit(
             event_type=WORKFLOW_NODE_STARTED,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "node_type": event.get("node_type"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "node_id": event.get("node_id"),
+                    "node_type": event.get("node_type"),
+                },
+                event,
+            ),
         )
 
     if event_type == "workflow_node_retrying":
         return emitter.emit(
             event_type=WORKFLOW_NODE_RETRYING,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "node_type": event.get("node_type"),
-                "attempt": event.get("attempt"),
-                "max_attempts": event.get("max_attempts"),
-                "delay_ms": event.get("delay_ms"),
-                "error": event.get("error"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "node_id": event.get("node_id"),
+                    "node_type": event.get("node_type"),
+                    "attempt": event.get("attempt"),
+                    "max_attempts": event.get("max_attempts"),
+                    "delay_ms": event.get("delay_ms"),
+                    "error": event.get("error"),
+                },
+                event,
+            ),
         )
 
     if event_type == "text_delta":
@@ -78,69 +94,84 @@ def map_workflow_event_to_flow_payload(
         return emitter.emit(
             event_type=WORKFLOW_CONDITION_EVALUATED,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "expression": event.get("expression"),
-                "result": event.get("result"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "node_id": event.get("node_id"),
+                    "expression": event.get("expression"),
+                    "result": event.get("result"),
+                },
+                event,
+            ),
         )
 
     if event_type == "workflow_node_finished":
         return emitter.emit(
             event_type=WORKFLOW_NODE_FINISHED,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "node_type": event.get("node_type"),
-                "result": event.get("result"),
-                "output_key": event.get("output_key"),
-                "output": event.get("output"),
-                "usage": event.get("usage"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "node_id": event.get("node_id"),
+                    "node_type": event.get("node_type"),
+                    "result": event.get("result"),
+                    "output_key": event.get("output_key"),
+                    "output": event.get("output"),
+                    "usage": event.get("usage"),
+                },
+                event,
+            ),
         )
 
     if event_type == "workflow_output_reported":
         return emitter.emit(
             event_type=WORKFLOW_OUTPUT_REPORTED,
             stage=FlowEventStage.META,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "output": event.get("output"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "node_id": event.get("node_id"),
+                    "output": event.get("output"),
+                },
+                event,
+            ),
         )
 
     if event_type == "workflow_artifact_written":
         return emitter.emit(
             event_type=WORKFLOW_ARTIFACT_WRITTEN,
             stage=FlowEventStage.META,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "node_id": event.get("node_id"),
-                "file_path": event.get("file_path"),
-                "write_mode": event.get("write_mode"),
-                "written": event.get("written"),
-                "output_key": event.get("output_key"),
-                "content_hash": event.get("content_hash"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "node_id": event.get("node_id"),
+                    "file_path": event.get("file_path"),
+                    "write_mode": event.get("write_mode"),
+                    "written": event.get("written"),
+                    "output_key": event.get("output_key"),
+                    "content_hash": event.get("content_hash"),
+                },
+                event,
+            ),
         )
 
     if event_type == "workflow_run_finished":
         return emitter.emit(
             event_type=WORKFLOW_RUN_FINISHED,
             stage=FlowEventStage.ORCHESTRATION,
-            payload={
-                "workflow_id": event.get("workflow_id"),
-                "run_id": event.get("run_id"),
-                "status": event.get("status"),
-                "output": event.get("output"),
-            },
+            payload=_with_checkpoint(
+                {
+                    "workflow_id": event.get("workflow_id"),
+                    "run_id": event.get("run_id"),
+                    "status": event.get("status"),
+                    "output": event.get("output"),
+                },
+                event,
+            ),
         )
 
     if event_type == STREAM_ERROR:

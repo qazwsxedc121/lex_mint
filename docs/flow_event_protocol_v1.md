@@ -10,6 +10,8 @@ This document defines the canonical `flow_event` envelope for streaming SSE APIs
   - `POST /api/chat/compare`
   - `POST /api/chat/compress`
   - `POST /api/translate`
+  - `GET /api/runs/{run_id}/stream`
+  - `POST /api/runs/{run_id}/stream/resume`
 - Mode: `flow_event` only
 
 ## Envelope
@@ -80,6 +82,7 @@ Backend source of truth: `src/application/flow/flow_event_types.py`
 ## Compatibility
 
 - Clients must parse `flow_event`.
+- Additional non-breaking fields may appear in `payload` (for example `checkpoint_id` on workflow runtime events).
 
 ## Protocol guard tests
 

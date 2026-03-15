@@ -106,3 +106,25 @@ def test_completed_stream_is_evicted_after_ttl():
 
     with pytest.raises(FlowStreamNotFoundError):
         runtime.get_stream("stream-1")
+
+
+def test_create_stream_resets_completed_stream_state():
+    runtime = FlowStreamRuntime(ttl_seconds=60, max_events_per_stream=50, max_active_streams=5)
+    runtime.create_stream(
+        stream_id="stream-1",
+        conversation_id="session-1",
+        context_type="chat",
+        project_id=None,
+    )
+    runtime.append_payload("stream-1", _payload("e1", 1, event_type="stream_ended"))
+
+    state = runtime.create_stream(
+        stream_id="stream-1",
+        conversation_id="session-1",
+        context_type="chat",
+        project_id=None,
+    )
+
+    assert state.done is False
+    assert state.seq == 0
+    assert list(state.events) == []

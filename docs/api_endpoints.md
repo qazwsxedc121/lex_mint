@@ -1,6 +1,6 @@
 # API Endpoints (Current)
 
-Last updated: 2026-03-13
+Last updated: 2026-03-15
 
 This file is a quick map of backend HTTP APIs. The runtime source of truth is:
 - Swagger: `/docs`
@@ -119,8 +119,13 @@ Protocol doc: `docs/flow_event_protocol_v1.md`
   - `GET /api/runs`
   - `GET /api/runs/{run_id}`
   - `POST /api/runs/{run_id}/cancel`
+  - `POST /api/runs/{run_id}/resume` (optional body `{ "checkpoint_id": "..." }`)
   - `GET /api/runs/{run_id}/stream`
   - `POST /api/runs/{run_id}/stream/resume`
+- Runtime resume/checkpoint notes:
+  - Workflow async execution persists orchestration checkpoints.
+  - Resume without `checkpoint_id` uses the latest known checkpoint for that run.
+  - Stream payload keeps canonical `flow_event` envelope; workflow events may include `payload.checkpoint_id`.
 
 ## Tools
 

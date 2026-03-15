@@ -126,3 +126,14 @@ async def test_resume_workflow_run_restarts_task_with_checkpoint_id():
     saved = store.run_map["run-resume"]
     assert saved.status == "succeeded"
     assert saved.result_summary.get("last_checkpoint_id") == "cp-2"
+
+    state = runtime.get_stream("run-resume")
+    flow_events = [
+        payload.get("flow_event", {})
+        for payload in state.events
+        if isinstance(payload.get("flow_event"), dict)
+    ]
+    workflow_started = next(item for item in flow_events if item.get("event_type") == "workflow_run_started")
+    workflow_finished = next(item for item in flow_events if item.get("event_type") == "workflow_run_finished")
+    assert workflow_started.get("payload", {}).get("checkpoint_id") == "cp-1"
+    assert workflow_finished.get("payload", {}).get("checkpoint_id") == "cp-2"
