@@ -86,6 +86,7 @@ export {
   createWorkflowRun,
   getAsyncRun,
   listAsyncRuns,
+  resumeAsyncRun,
 } from './asyncRunApi';
 export type {
   AsyncRunKind,

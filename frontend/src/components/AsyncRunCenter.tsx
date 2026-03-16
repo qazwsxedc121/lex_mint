@@ -1,6 +1,6 @@
 import React from 'react';
 import { ClockIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { cancelAsyncRun, listAsyncRuns } from '../services/api';
+import { cancelAsyncRun, listAsyncRuns, resumeAsyncRun } from '../services/api';
 import type { AsyncRunRecord, AsyncRunStatus } from '../services/api';
 
 interface AsyncRunCenterProps {
@@ -46,12 +46,29 @@ const describeRun = (run: AsyncRunRecord): string => {
   return `${run.kind} run`;
 };
 
+const asString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const getLatestCheckpointId = (run: AsyncRunRecord): string | null => {
+  const summaryCheckpoint = asString(run.result_summary['last_checkpoint_id']);
+  if (summaryCheckpoint) {
+    return summaryCheckpoint;
+  }
+  return asString(run.request_payload['checkpoint_id']);
+};
+
 export const AsyncRunCenter: React.FC<AsyncRunCenterProps> = ({ collapsed }) => {
   const [open, setOpen] = React.useState(false);
   const [runs, setRuns] = React.useState<AsyncRunRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [cancellingRunId, setCancellingRunId] = React.useState<string | null>(null);
+  const [resumingRunId, setResumingRunId] = React.useState<string | null>(null);
 
   const refreshRuns = React.useCallback(async () => {
     setLoading(true);
@@ -84,11 +101,26 @@ export const AsyncRunCenter: React.FC<AsyncRunCenterProps> = ({ collapsed }) => 
     setCancellingRunId(runId);
     try {
       await cancelAsyncRun(runId);
+      setError(null);
       await refreshRuns();
     } catch {
       // Ignore cancellation errors; run may already be terminal.
     } finally {
       setCancellingRunId(null);
+    }
+  }, [refreshRuns]);
+
+  const handleResume = React.useCallback(async (run: AsyncRunRecord) => {
+    setResumingRunId(run.run_id);
+    try {
+      await resumeAsyncRun(run.run_id, getLatestCheckpointId(run) || undefined);
+      setError(null);
+      await refreshRuns();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to resume run.';
+      setError(message);
+    } finally {
+      setResumingRunId(null);
     }
   }, [refreshRuns]);
 
@@ -146,6 +178,9 @@ export const AsyncRunCenter: React.FC<AsyncRunCenterProps> = ({ collapsed }) => 
               {runs.map((run) => {
                 const canCancel = ACTIVE_STATUSES.includes(run.status);
                 const isCancelling = cancellingRunId === run.run_id;
+                const canResume = run.kind === 'workflow' && run.status === 'failed';
+                const checkpointId = getLatestCheckpointId(run);
+                const isResuming = resumingRunId === run.run_id;
                 return (
                   <div
                     key={run.run_id}
@@ -163,21 +198,40 @@ export const AsyncRunCenter: React.FC<AsyncRunCenterProps> = ({ collapsed }) => 
                     <p className="mb-1 truncate text-xs text-gray-500 dark:text-gray-400">
                       run_id: {run.run_id}
                     </p>
+                    <p
+                      className="mb-1 truncate text-xs text-gray-500 dark:text-gray-400"
+                      data-name="async-run-center-checkpoint"
+                    >
+                      checkpoint: {checkpointId || '--'}
+                    </p>
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {formatTimestamp(run.updated_at)}
                       </p>
-                      {canCancel ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleCancel(run.run_id)}
-                          disabled={isCancelling}
-                          className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-600/60 dark:text-red-300 dark:hover:bg-red-500/20"
-                          data-name="async-run-center-cancel"
-                        >
-                          {isCancelling ? 'Cancelling...' : 'Cancel'}
-                        </button>
-                      ) : null}
+                      <div className="flex items-center gap-1">
+                        {canResume ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleResume(run)}
+                            disabled={isResuming}
+                            className="rounded border border-blue-200 px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/60 dark:text-blue-200 dark:hover:bg-blue-500/20"
+                            data-name="async-run-center-resume"
+                          >
+                            {isResuming ? 'Resuming...' : 'Resume'}
+                          </button>
+                        ) : null}
+                        {canCancel ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleCancel(run.run_id)}
+                            disabled={isCancelling}
+                            className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-600/60 dark:text-red-300 dark:hover:bg-red-500/20"
+                            data-name="async-run-center-cancel"
+                          >
+                            {isCancelling ? 'Cancelling...' : 'Cancel'}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );

@@ -106,3 +106,12 @@ export async function cancelAsyncRun(runId: string): Promise<AsyncRunRecord> {
   const response = await api.post<AsyncRunRecord>(`/api/runs/${runId}/cancel`);
   return response.data;
 }
+
+export async function resumeAsyncRun(
+  runId: string,
+  checkpointId?: string,
+): Promise<AsyncRunRecord> {
+  const payload = checkpointId ? { checkpoint_id: checkpointId } : {};
+  const response = await api.post<AsyncRunRecord>(`/api/runs/${runId}/resume`, payload);
+  return response.data;
+}
