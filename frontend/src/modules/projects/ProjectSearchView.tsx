@@ -73,7 +73,7 @@ export const ProjectSearchView: React.FC = () => {
   };
 
   return (
-    <div data-name="project-search-view" className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
+    <div data-name="project-search-view" className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
       <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-blue-50 p-2 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
