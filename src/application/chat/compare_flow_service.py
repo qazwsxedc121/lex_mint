@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
-from src.application.chat.orchestration import CompareModelsSettings, OrchestrationRequest
+from src.application.chat.chat_runtime import CompareModelsSettings, ChatOrchestrationRequest
 from src.application.chat.service_contracts import (
     ContextPayload,
     SourcePayload,
@@ -57,7 +57,7 @@ class _ChatInputServiceLike(Protocol):
 
 
 class _CompareModelsOrchestratorLike(Protocol):
-    def stream(self, request: OrchestrationRequest, /) -> AsyncIterator[StreamEvent]: ...
+    def stream(self, request: ChatOrchestrationRequest, /) -> AsyncIterator[StreamEvent]: ...
 
 
 @dataclass(frozen=True)
@@ -120,7 +120,7 @@ class CompareFlowService:
         if ctx.all_sources:
             yield {"type": "sources", "sources": ctx.all_sources}
 
-        compare_request = OrchestrationRequest(
+        compare_request = ChatOrchestrationRequest(
             session_id=session_id,
             mode="compare_models",
             user_message=prepared_input.raw_user_message,

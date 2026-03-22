@@ -16,10 +16,10 @@ from src.application.orchestration import (
 )
 
 from .base import (
-    BaseOrchestrator,
-    OrchestrationCancelToken,
-    OrchestrationEvent,
-    OrchestrationRequest,
+    BaseChatOrchestrator,
+    ChatOrchestrationCancelToken,
+    ChatOrchestrationEvent,
+    ChatOrchestrationRequest,
 )
 from .committee_actions import CommitteeActionExecutor, CommitteeRunContext
 from .committee_loop import CommitteeLoopContext, CommitteeLoopStateMachine
@@ -30,7 +30,7 @@ from .committee_types import CommitteeRuntimeConfig, CommitteeRuntimeState
 from .terminal import build_group_done_event
 
 
-class CommitteeOrchestrator(BaseOrchestrator):
+class CommitteeOrchestrator(BaseChatOrchestrator):
     """Runs committee rounds and emits group events without owning business services."""
 
     mode = "committee"
@@ -82,10 +82,10 @@ class CommitteeOrchestrator(BaseOrchestrator):
 
     async def stream(
         self,
-        request: OrchestrationRequest,
+        request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[OrchestrationCancelToken] = None,
-    ) -> AsyncIterator[OrchestrationEvent]:
+        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+    ) -> AsyncIterator[ChatOrchestrationEvent]:
         """Mode-agnostic interface used by orchestrator callers."""
         if request.mode and request.mode != self.mode:
             raise ValueError(f"CommitteeOrchestrator only supports mode={self.mode}")
@@ -134,8 +134,8 @@ class CommitteeOrchestrator(BaseOrchestrator):
         self,
         *,
         execution_context: ActorExecutionContext,
-        request: OrchestrationRequest,
-        cancel_token: Optional[OrchestrationCancelToken],
+        request: ChatOrchestrationRequest,
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Any]:
         terminated = False
         rounds = 0
@@ -184,7 +184,7 @@ class CommitteeOrchestrator(BaseOrchestrator):
         search_context: Optional[str],
         search_sources: List[Dict[str, Any]],
         trace_id: Optional[str] = None,
-        cancel_token: Optional[OrchestrationCancelToken] = None,
+        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
         participant_order = [

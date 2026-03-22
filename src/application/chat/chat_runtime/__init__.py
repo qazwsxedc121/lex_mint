@@ -1,12 +1,12 @@
-"""Orchestration primitives."""
+"""Chat runtime primitives."""
 
 from .base import (
-    BaseOrchestrator,
-    OrchestrationCancelToken,
-    OrchestrationEvent,
-    OrchestrationMode,
-    OrchestrationRequest,
-    OrchestrationSettings,
+    BaseChatOrchestrator,
+    ChatOrchestrationCancelToken,
+    ChatOrchestrationEvent,
+    ChatOrchestrationMode,
+    ChatOrchestrationRequest,
+    ChatOrchestrationSettings,
     RoundRobinSettings,
 )
 from .compare_models import CompareModelsOrchestrator, CompareModelsSettings
@@ -28,12 +28,12 @@ from .committee_types import (
 )
 
 __all__ = [
-    "BaseOrchestrator",
-    "OrchestrationCancelToken",
-    "OrchestrationEvent",
-    "OrchestrationMode",
-    "OrchestrationRequest",
-    "OrchestrationSettings",
+    "BaseChatOrchestrator",
+    "ChatOrchestrationCancelToken",
+    "ChatOrchestrationEvent",
+    "ChatOrchestrationMode",
+    "ChatOrchestrationRequest",
+    "ChatOrchestrationSettings",
     "RoundRobinSettings",
     "CompareModelsOrchestrator",
     "CompareModelsSettings",

@@ -65,6 +65,35 @@ def test_validate_run_spec_rejects_unreachable_nodes():
 
 
 @pytest.mark.asyncio
+async def test_engine_allows_static_cycle_graphs_bounded_by_terminal_signal():
+    state = {"calls": 0}
+
+    async def loop_actor(_: object) -> AsyncIterator[object]:
+        state["calls"] += 1
+        if state["calls"] < 3:
+            yield ActorResult(next_node_id="loop")
+            return
+        yield ActorResult(terminal_status="completed", terminal_reason="done")
+
+    spec = RunSpec(
+        run_id="run-loop",
+        entry_node_id="loop",
+        nodes=(
+            NodeSpec(node_id="loop", actor=ActorRef(actor_id="loop", kind="test", handler=loop_actor)),
+        ),
+        edges=(EdgeSpec(source_id="loop", target_id="loop"),),
+    )
+    validate_run_spec(spec)
+
+    engine = OrchestrationEngine()
+    events = [event async for event in engine.run_stream(spec, RunContext(run_id="run-loop", max_steps=5))]
+
+    assert state["calls"] == 3
+    assert events[-1]["type"] == "completed"
+    assert events[-1]["terminal_reason"] == "done"
+
+
+@pytest.mark.asyncio
 async def test_engine_retries_retryable_errors_and_emits_retrying_event():
     state = {"attempt": 0}
 

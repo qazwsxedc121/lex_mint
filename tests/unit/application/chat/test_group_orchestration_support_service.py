@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from src.application.chat.group_orchestration_support_service import (
     GroupOrchestrationSupportService,
 )
-from src.application.chat.orchestration import CommitteeOrchestrator, RoundRobinOrchestrator
+from src.application.chat.chat_runtime import CommitteeOrchestrator, RoundRobinOrchestrator
 
 
 def _build_service() -> GroupOrchestrationSupportService:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.application.chat.orchestration.events import normalize_orchestration_event
+from src.application.chat.chat_runtime.events import normalize_orchestration_event
 
 
 def test_normalize_event_accepts_known_event_type():
@@ -25,4 +25,3 @@ def test_normalize_event_rejects_unknown_type():
 def test_normalize_event_rejects_missing_required_fields():
     with pytest.raises(Exception):
         normalize_orchestration_event({"type": "model_done", "model_id": "m1"})
-

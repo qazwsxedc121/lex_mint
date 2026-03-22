@@ -51,9 +51,11 @@ class ChatOrchestrationGateway:
         active_file_path: Optional[str] = None,
         active_file_hash: Optional[str] = None,
     ) -> tuple[str, List[Dict[str, Any]]]:
-        """Run one single_direct orchestration request and collect output."""
+        """Run one single_direct orchestration request through the runtime and collect output."""
+        response_chunks: List[str] = []
+        latest_sources: List[Dict[str, Any]] = []
 
-        return await self._single_chat_flow_service.process_message(
+        async for event in self.stream_single(
             session_id=session_id,
             user_message=user_message,
             context_type=context_type,
@@ -63,7 +65,16 @@ class ChatOrchestrationGateway:
             file_references=file_references,
             active_file_path=active_file_path,
             active_file_hash=active_file_hash,
-        )
+        ):
+            if isinstance(event, str):
+                response_chunks.append(event)
+                continue
+            if isinstance(event, dict) and event.get("type") == "sources":
+                sources = event.get("sources")
+                if isinstance(sources, list):
+                    latest_sources = sources
+
+        return "".join(response_chunks), latest_sources
 
     async def stream_single(
         self,

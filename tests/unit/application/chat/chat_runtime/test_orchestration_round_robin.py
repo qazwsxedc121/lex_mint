@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.application.chat.orchestration import (
-    OrchestrationCancelToken,
-    OrchestrationRequest,
+from src.application.chat.chat_runtime import (
+    ChatOrchestrationCancelToken,
+    ChatOrchestrationRequest,
     RoundRobinSettings,
     RoundRobinOrchestrator,
 )
@@ -32,7 +32,7 @@ async def test_round_robin_streams_participants_in_order():
     orchestrator = RoundRobinOrchestrator(
         stream_group_assistant_turn=fake_stream_group_assistant_turn,
     )
-    request = OrchestrationRequest(
+    request = ChatOrchestrationRequest(
         session_id="s1",
         mode="round_robin",
         user_message="hello",
@@ -58,7 +58,7 @@ async def test_round_robin_streams_participants_in_order():
 
 @pytest.mark.asyncio
 async def test_round_robin_honors_cancel_token_between_turns():
-    cancel_token = OrchestrationCancelToken()
+    cancel_token = ChatOrchestrationCancelToken()
     call_order = []
 
     async def fake_stream_group_assistant_turn(**kwargs):
@@ -71,7 +71,7 @@ async def test_round_robin_honors_cancel_token_between_turns():
     orchestrator = RoundRobinOrchestrator(
         stream_group_assistant_turn=fake_stream_group_assistant_turn,
     )
-    request = OrchestrationRequest(
+    request = ChatOrchestrationRequest(
         session_id="s2",
         mode="round_robin",
         user_message="hello",
@@ -103,7 +103,7 @@ async def test_round_robin_rejects_mismatched_mode():
     orchestrator = RoundRobinOrchestrator(
         stream_group_assistant_turn=fake_stream_group_assistant_turn,
     )
-    request = OrchestrationRequest(
+    request = ChatOrchestrationRequest(
         session_id="s3",
         mode="committee",
         user_message="hello",

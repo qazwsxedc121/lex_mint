@@ -19,7 +19,12 @@ from src.application.orchestration import (
 )
 from src.providers.types import TokenUsage
 
-from .base import BaseOrchestrator, OrchestrationCancelToken, OrchestrationEvent, OrchestrationRequest
+from .base import (
+    BaseChatOrchestrator,
+    ChatOrchestrationCancelToken,
+    ChatOrchestrationEvent,
+    ChatOrchestrationRequest,
+)
 from .terminal import build_compare_complete_event, cancellation_reason
 
 
@@ -36,7 +41,7 @@ class CompareModelsSettings:
     reasoning_effort: Optional[str] = None
 
 
-class CompareModelsOrchestrator(BaseOrchestrator):
+class CompareModelsOrchestrator(BaseChatOrchestrator):
     """Runs multiple model streams concurrently and multiplexes events."""
 
     mode = "compare_models"
@@ -58,10 +63,10 @@ class CompareModelsOrchestrator(BaseOrchestrator):
 
     async def stream(
         self,
-        request: OrchestrationRequest,
+        request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[OrchestrationCancelToken] = None,
-    ) -> AsyncIterator[OrchestrationEvent]:
+        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+    ) -> AsyncIterator[ChatOrchestrationEvent]:
         if request.mode and request.mode != self.mode:
             raise ValueError(f"CompareModelsOrchestrator only supports mode={self.mode}")
         if not isinstance(request.settings, CompareModelsSettings):
@@ -127,9 +132,9 @@ class CompareModelsOrchestrator(BaseOrchestrator):
         self,
         *,
         execution_context: ActorExecutionContext,
-        request: OrchestrationRequest,
+        request: ChatOrchestrationRequest,
         settings: CompareModelsSettings,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Any]:
         queue: asyncio.Queue = asyncio.Queue()
         tasks: List[asyncio.Task] = []

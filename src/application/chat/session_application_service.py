@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from src.application.chat.orchestration.settings import GroupSettingsResolver
+from src.application.chat.chat_runtime.settings import GroupSettingsResolver
 from src.domain.models.group_participant import parse_group_participant
 
 

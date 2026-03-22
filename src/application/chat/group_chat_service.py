@@ -8,9 +8,9 @@ import uuid
 from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol, Tuple
 
 from src.application.chat.chat_input_service import PreparedUserInput
-from src.application.chat.orchestration import (
+from src.application.chat.chat_runtime import (
     CommitteeOrchestrator,
-    OrchestrationRequest,
+    ChatOrchestrationRequest,
     ResolvedCommitteeSettings,
     ResolvedGroupSettings,
     RoundRobinOrchestrator,
@@ -106,7 +106,7 @@ class GroupChatService:
             return
 
         orchestrator = self.deps.create_committee_orchestrator()
-        request = OrchestrationRequest(
+        request = ChatOrchestrationRequest(
             session_id=session_id,
             mode="committee",
             user_message=raw_user_message,
@@ -286,7 +286,7 @@ class GroupChatService:
                 yield event
             return
 
-        request = OrchestrationRequest(
+        request = ChatOrchestrationRequest(
             session_id=session_id,
             mode="round_robin",
             user_message=raw_user_message,

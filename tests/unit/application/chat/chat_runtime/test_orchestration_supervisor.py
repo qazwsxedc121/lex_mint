@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.application.chat.orchestration.supervisor import CommitteeSupervisor
-from src.application.chat.orchestration.committee_types import CommitteeRuntimeState, CommitteeTurnRecord
+from src.application.chat.chat_runtime.supervisor import CommitteeSupervisor
+from src.application.chat.chat_runtime.committee_types import CommitteeRuntimeState, CommitteeTurnRecord
 
 
 @pytest.mark.asyncio
@@ -186,4 +186,3 @@ async def test_supervisor_parallel_fallbacks_to_single_speak():
     decision = await supervisor.decide(state, fake_llm)
     assert decision.action == "speak"
     assert decision.assistant_id == "a"
-

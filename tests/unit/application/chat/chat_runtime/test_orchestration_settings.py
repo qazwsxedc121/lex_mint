@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from src.application.chat.orchestration.settings import GroupSettingsResolver
+from src.application.chat.chat_runtime.settings import GroupSettingsResolver
 
 
 def _assistant(max_rounds: int = 6):
@@ -109,4 +109,3 @@ def test_resolve_round_robin_mode_has_no_committee_payload():
 
     assert resolved.group_mode == "round_robin"
     assert resolved.committee is None
-

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from src.application.chat.orchestration import (
+from src.application.chat.chat_runtime import (
     CommitteeOrchestrator,
     CommitteeRuntimeState,
     CommitteeTurnExecutor,

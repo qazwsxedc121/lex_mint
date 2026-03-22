@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from .base import OrchestrationCancelToken
+from .base import ChatOrchestrationCancelToken
 
 
 def cancellation_reason(
-    cancel_token: Optional[OrchestrationCancelToken],
+    cancel_token: Optional[ChatOrchestrationCancelToken],
     *,
     default: str = "cancelled",
 ) -> str:

@@ -15,16 +15,16 @@ from src.application.orchestration import (
 )
 
 from .base import (
-    BaseOrchestrator,
-    OrchestrationCancelToken,
-    OrchestrationEvent,
-    OrchestrationRequest,
+    BaseChatOrchestrator,
+    ChatOrchestrationCancelToken,
+    ChatOrchestrationEvent,
+    ChatOrchestrationRequest,
     RoundRobinSettings,
 )
 from .terminal import build_group_done_event, cancellation_reason
 
 
-class RoundRobinOrchestrator(BaseOrchestrator):
+class RoundRobinOrchestrator(BaseChatOrchestrator):
     """Simple sequential orchestrator that iterates participants in fixed order."""
 
     mode = "round_robin"
@@ -40,10 +40,10 @@ class RoundRobinOrchestrator(BaseOrchestrator):
 
     async def stream(
         self,
-        request: OrchestrationRequest,
+        request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[OrchestrationCancelToken] = None,
-    ) -> AsyncIterator[OrchestrationEvent]:
+        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+    ) -> AsyncIterator[ChatOrchestrationEvent]:
         if request.mode and request.mode != self.mode:
             raise ValueError(f"RoundRobinOrchestrator only supports mode={self.mode}")
         if request.settings is not None and not isinstance(request.settings, RoundRobinSettings):
@@ -91,8 +91,8 @@ class RoundRobinOrchestrator(BaseOrchestrator):
         self,
         *,
         execution_context: ActorExecutionContext,
-        request: OrchestrationRequest,
-        cancel_token: Optional[OrchestrationCancelToken],
+        request: ChatOrchestrationRequest,
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Any]:
         settings = request.settings if isinstance(request.settings, RoundRobinSettings) else RoundRobinSettings()
 

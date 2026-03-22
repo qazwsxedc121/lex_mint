@@ -20,11 +20,11 @@ from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.files.file_service import FileService
 from src.infrastructure.memory.memory_service import MemoryService
-from src.application.chat.orchestration import (
+from src.application.chat.chat_runtime import (
     CommitteePolicy,
     CompareModelsOrchestrator,
 )
-from src.application.chat.orchestration.log_utils import (
+from src.application.chat.chat_runtime.log_utils import (
     build_messages_preview_for_log,
     truncate_log_text,
 )

@@ -6,10 +6,10 @@ from typing import List, Optional
 import pytest
 
 from src.application.chat.group_orchestration_support_service import GroupOrchestrationSupportService
-from src.application.chat.orchestration import (
+from src.application.chat.chat_runtime import (
     CommitteeOrchestrator,
     CommitteePolicy,
-    OrchestrationRequest,
+    ChatOrchestrationRequest,
     ResolvedCommitteeSettings,
 )
 from src.application.chat.service_contracts import AssistantLike
@@ -91,7 +91,7 @@ def _build_request(
     assistant_config_map,
     settings: Optional[ResolvedCommitteeSettings] = None,
 ):
-    return OrchestrationRequest(
+    return ChatOrchestrationRequest(
         session_id="s1",
         mode="committee",
         user_message=raw_user_message,

@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
-from .base import OrchestrationCancelToken
+from .base import ChatOrchestrationCancelToken
 from .committee_types import CommitteeDecision, CommitteeRuntimeState, CommitteeTurnRecord
 from .runtime import CommitteeRuntime
 from .settings import ResolvedCommitteeSettings
@@ -72,7 +72,7 @@ class CommitteeActionExecutor:
         runtime: CommitteeRuntime,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         """Dispatch action to the matching handler."""
         if decision.action == "finish":
@@ -118,7 +118,7 @@ class CommitteeActionExecutor:
         state: CommitteeRuntimeState,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
         draft_summary: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream final supervisor synthesis and emit canonical group_done event."""
@@ -175,7 +175,7 @@ class CommitteeActionExecutor:
         self,
         *,
         state: CommitteeRuntimeState,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> Dict[str, Any]:
         """Build canonical cancellation terminal event."""
         return build_group_done_event(
@@ -185,7 +185,7 @@ class CommitteeActionExecutor:
         )
 
     @staticmethod
-    def is_cancelled(cancel_token: Optional[OrchestrationCancelToken]) -> bool:
+    def is_cancelled(cancel_token: Optional[ChatOrchestrationCancelToken]) -> bool:
         return bool(cancel_token and cancel_token.is_cancelled)
 
     async def _handle_finish_action(
@@ -196,7 +196,7 @@ class CommitteeActionExecutor:
         state: CommitteeRuntimeState,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         finish_reason = decision.reason or "supervisor_finish"
         async for event in self.stream_supervisor_summary(
@@ -219,7 +219,7 @@ class CommitteeActionExecutor:
         runtime: CommitteeRuntime,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         if self.is_cancelled(cancel_token):
             yield self.build_cancelled_event(state=state, cancel_token=cancel_token)
@@ -391,7 +391,7 @@ class CommitteeActionExecutor:
         state: CommitteeRuntimeState,
         runtime: CommitteeRuntime,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
     ) -> AsyncIterator[Dict[str, Any]]:
         if self.is_cancelled(cancel_token):
             yield self.build_cancelled_event(state=state, cancel_token=cancel_token)

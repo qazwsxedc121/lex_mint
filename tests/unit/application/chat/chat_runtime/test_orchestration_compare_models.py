@@ -2,10 +2,10 @@
 
 import pytest
 
-from src.application.chat.orchestration import (
+from src.application.chat.chat_runtime import (
     CompareModelsOrchestrator,
     CompareModelsSettings,
-    OrchestrationRequest,
+    ChatOrchestrationRequest,
 )
 from src.providers.types import CostInfo, TokenUsage
 
@@ -39,7 +39,7 @@ async def test_compare_models_streams_multiplexed_events_and_completion():
         file_service=object(),
         resolve_model_name=lambda model_id: f"name-{model_id}",
     )
-    request = OrchestrationRequest(
+    request = ChatOrchestrationRequest(
         session_id="s1",
         mode="compare_models",
         user_message="hello",
@@ -83,7 +83,7 @@ async def test_compare_models_rejects_mismatched_mode():
         pricing_service=FakePricingService(),
         file_service=object(),
     )
-    request = OrchestrationRequest(
+    request = ChatOrchestrationRequest(
         session_id="s2",
         mode="committee",
         user_message="hello",
@@ -119,7 +119,7 @@ async def test_compare_models_marks_cancelled_completion_reason():
         pricing_service=FakePricingService(),
         file_service=object(),
     )
-    request = OrchestrationRequest(
+    request = ChatOrchestrationRequest(
         session_id="s3",
         mode="compare_models",
         user_message="hello",
@@ -134,9 +134,9 @@ async def test_compare_models_marks_cancelled_completion_reason():
         ),
     )
 
-    from src.application.chat.orchestration import OrchestrationCancelToken
+    from src.application.chat.chat_runtime import ChatOrchestrationCancelToken
 
-    cancel_token = OrchestrationCancelToken()
+    cancel_token = ChatOrchestrationCancelToken()
     events = []
     async for event in orchestrator.stream(request, cancel_token=cancel_token):
         events.append(event)

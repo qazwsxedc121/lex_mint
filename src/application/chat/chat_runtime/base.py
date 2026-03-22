@@ -1,4 +1,4 @@
-"""Base contracts for pluggable orchestration engines."""
+"""Base contracts for chat runtime orchestrators."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optio
 
 from .events import normalize_orchestration_event
 
-OrchestrationMode = Literal["round_robin", "committee", "compare_models"]
+ChatOrchestrationMode = Literal["round_robin", "committee", "compare_models"]
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class RoundRobinSettings:
 
 
 @dataclass
-class OrchestrationCancelToken:
+class ChatOrchestrationCancelToken:
     """Cooperative cancellation token for orchestrator control APIs."""
 
     is_cancelled: bool = False
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from .settings import ResolvedCommitteeSettings
 
 
-OrchestrationSettings = Union[
+ChatOrchestrationSettings = Union[
     "ResolvedCommitteeSettings",
     "CompareModelsSettings",
     RoundRobinSettings,
@@ -47,16 +47,16 @@ OrchestrationSettings = Union[
 
 
 @dataclass(frozen=True)
-class OrchestrationRequest:
+class ChatOrchestrationRequest:
     """Normalized orchestration input shared by concrete orchestrators."""
 
     session_id: str
-    mode: OrchestrationMode
+    mode: ChatOrchestrationMode
     user_message: str
     participants: List[str]
     assistant_name_map: Dict[str, str]
     assistant_config_map: Dict[str, Any]
-    settings: OrchestrationSettings
+    settings: ChatOrchestrationSettings
     reasoning_effort: Optional[str] = None
     context_type: str = "chat"
     project_id: Optional[str] = None
@@ -64,10 +64,10 @@ class OrchestrationRequest:
     search_sources: List[Dict[str, Any]] = field(default_factory=list)
     trace_id: Optional[str] = None
 
-OrchestrationEvent = Dict[str, Any]
+ChatOrchestrationEvent = Dict[str, Any]
 
 
-class BaseOrchestrator(ABC):
+class BaseChatOrchestrator(ABC):
     """Abstract base for mode-specific orchestration engines."""
 
     mode: str = "unknown"
@@ -75,31 +75,31 @@ class BaseOrchestrator(ABC):
     @abstractmethod
     def stream(
         self,
-        request: OrchestrationRequest,
+        request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[OrchestrationCancelToken] = None,
-    ) -> AsyncIterator[OrchestrationEvent]:
+        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+    ) -> AsyncIterator[ChatOrchestrationEvent]:
         """Run orchestration and yield streaming events."""
         raise NotImplementedError
 
     async def run(
         self,
-        request: OrchestrationRequest,
+        request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[OrchestrationCancelToken] = None,
-    ) -> List[OrchestrationEvent]:
+        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+    ) -> List[ChatOrchestrationEvent]:
         """Collect all streamed events into a materialized result."""
-        events: List[OrchestrationEvent] = []
+        events: List[ChatOrchestrationEvent] = []
         async for event in self.stream(request, cancel_token=cancel_token):
             events.append(event)
         return events
 
     @staticmethod
-    def is_cancelled(cancel_token: Optional[OrchestrationCancelToken]) -> bool:
+    def is_cancelled(cancel_token: Optional[ChatOrchestrationCancelToken]) -> bool:
         """Return True when cooperative cancellation was requested."""
         return bool(cancel_token and cancel_token.is_cancelled)
 
     @staticmethod
-    def normalize_event(event: Dict[str, Any]) -> OrchestrationEvent:
+    def normalize_event(event: Dict[str, Any]) -> ChatOrchestrationEvent:
         """Validate one event against the shared event schema."""
         return normalize_orchestration_event(event)

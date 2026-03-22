@@ -180,15 +180,12 @@ def validate_run_spec(spec: RunSpec) -> None:
         raise ValueError(f"RunSpec entry node '{spec.entry_node_id}' does not exist")
 
     adjacency: Dict[str, List[str]] = {node.node_id: [] for node in spec.nodes}
-    in_degree: Dict[str, int] = {node.node_id: 0 for node in spec.nodes}
-
     for edge in spec.edges:
         if edge.source_id not in node_map:
             raise ValueError(f"Edge source '{edge.source_id}' does not exist")
         if edge.target_id not in node_map:
             raise ValueError(f"Edge target '{edge.target_id}' does not exist")
         adjacency[edge.source_id].append(edge.target_id)
-        in_degree[edge.target_id] += 1
 
     reachable: set[str] = set()
     queue = [spec.entry_node_id]
@@ -207,21 +204,5 @@ def validate_run_spec(spec: RunSpec) -> None:
             "RunSpec contains unreachable nodes from entry node: " + ", ".join(unreachable)
         )
 
-    sink_nodes = [node_id for node_id in reachable if not adjacency.get(node_id)]
-    if not sink_nodes:
-        raise ValueError("RunSpec must have at least one terminal node (sink)")
-
-    topo_queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
-    visited = 0
-    idx = 0
-    while idx < len(topo_queue):
-        current = topo_queue[idx]
-        idx += 1
-        visited += 1
-        for nxt in adjacency.get(current, []):
-            in_degree[nxt] -= 1
-            if in_degree[nxt] == 0:
-                topo_queue.append(nxt)
-
-    if visited != len(node_map):
-        raise ValueError("RunSpec contains a cycle; cyclic graphs are not supported")
+    # Cycles are allowed. Runtime progress is bounded by RunContext.max_steps and
+    # optional terminal ActorResult signals.

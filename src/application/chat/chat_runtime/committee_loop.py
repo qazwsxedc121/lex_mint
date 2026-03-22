@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
 
-from .base import OrchestrationCancelToken
+from .base import ChatOrchestrationCancelToken
 from .committee_types import CommitteeDecision, CommitteeRuntimeState
 from .runtime import CommitteeRuntime
 
@@ -45,7 +45,7 @@ class CommitteeLoopStateMachine:
         runtime: CommitteeRuntime,
         state: CommitteeRuntimeState,
         context: CommitteeLoopContext,
-        cancel_token: Optional[OrchestrationCancelToken],
+        cancel_token: Optional[ChatOrchestrationCancelToken],
         decide_round: DecideRoundFn,
         execute_action: ExecuteActionFn,
         build_cancelled_event: BuildCancelledFn,
@@ -97,7 +97,7 @@ class CommitteeLoopStateMachine:
                 return
 
     @staticmethod
-    def is_cancelled(cancel_token: Optional[OrchestrationCancelToken]) -> bool:
+    def is_cancelled(cancel_token: Optional[ChatOrchestrationCancelToken]) -> bool:
         return bool(cancel_token and cancel_token.is_cancelled)
 
     def _log_round_state(

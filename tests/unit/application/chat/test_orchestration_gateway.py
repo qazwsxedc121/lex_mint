@@ -13,11 +13,18 @@ async def _collect(async_iter):
 
 
 class _FakeSingle:
+    def __init__(self):
+        self.process_message_calls = []
+        self.process_message_stream_calls = []
+
     async def process_message(self, **kwargs):
+        self.process_message_calls.append(kwargs)
         return "ok", [{"type": "source"}]
 
     async def process_message_stream(self, **kwargs):
-        yield "chunk"
+        self.process_message_stream_calls.append(kwargs)
+        yield "ok"
+        yield {"type": "sources", "sources": [{"type": "source"}]}
 
 
 class _FakeGroup:
@@ -31,9 +38,10 @@ class _FakeCompare:
 
 
 async def test_gateway_routes_single_direct_and_group_modes():
+    single = _FakeSingle()
     gateway = ChatOrchestrationGateway(
         ChatOrchestrationGatewayDeps(
-            single_chat_flow_service=_FakeSingle(),
+            single_chat_flow_service=single,
             compare_flow_service=_FakeCompare(),
             group_chat_service=_FakeGroup(),
         )
@@ -51,6 +59,8 @@ async def test_gateway_routes_single_direct_and_group_modes():
 
     assert message == "ok"
     assert sources == [{"type": "source"}]
+    assert single.process_message_calls == []
+    assert len(single.process_message_stream_calls) == 1
     assert group_events == [{"type": "committee"}]
 
 

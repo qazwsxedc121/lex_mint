@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.domain.models.group_participant import parse_group_participant
-from src.application.chat.orchestration import GroupSettingsResolver
+from src.application.chat.chat_runtime import GroupSettingsResolver
 from src.application.chat.service_contracts import AssistantLike
 
 
