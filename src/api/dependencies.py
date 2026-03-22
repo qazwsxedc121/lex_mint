@@ -7,6 +7,8 @@ from typing import Optional
 from src.core.config import settings
 from src.application.chat import (
     ChatApplicationService,
+    SessionApplicationService,
+    SessionApplicationDeps,
     build_default_chat_application_service,
 )
 from src.infrastructure.config.assistant_config_service import AssistantConfigService
@@ -26,6 +28,7 @@ _project_workspace_state_service: Optional[ProjectWorkspaceStateService] = None
 _storage: Optional[ConversationStorage] = None
 _file_service: Optional[FileService] = None
 _chat_application_service: Optional[ChatApplicationService] = None
+_session_application_service: Optional[SessionApplicationService] = None
 
 
 def get_model_service() -> ModelConfigService:
@@ -83,3 +86,17 @@ def get_chat_application_service() -> ChatApplicationService:
             file_service=get_file_service(),
         )
     return _chat_application_service
+
+
+def get_session_application_service() -> SessionApplicationService:
+    global _session_application_service
+    if _session_application_service is None:
+        _session_application_service = SessionApplicationService(
+            SessionApplicationDeps(
+                storage=get_storage(),
+                assistant_service=get_assistant_service(),
+                model_service=get_model_service(),
+                file_service=get_file_service(),
+            )
+        )
+    return _session_application_service

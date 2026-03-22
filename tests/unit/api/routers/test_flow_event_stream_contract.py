@@ -49,6 +49,9 @@ class _FakeStorage:
     async def get_session(self, *_args, **_kwargs):
         return {}
 
+    async def truncate_messages_after(self, *_args, **_kwargs):
+        return None
+
 
 class _FakeChatAgent:
     def __init__(self):
@@ -74,6 +77,16 @@ class _FakeChatAgent:
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         }
         yield {"type": "compare_complete", "model_results": {"m1": {"content": "Answer A"}}}
+
+    async def truncate_messages_after(self, **kwargs):
+        await self.storage.truncate_messages_after(**kwargs)
+
+    async def compress_context_stream(self, **kwargs):
+        from src.infrastructure.compression.compression_service import CompressionService
+
+        compression_service = CompressionService(self.storage)
+        async for chunk in compression_service.compress_context_stream(**kwargs):
+            yield chunk
 
 
 class _FakeChatAgentWithCompareError(_FakeChatAgent):

@@ -49,6 +49,7 @@ from .group_chat_service import GroupChatDeps, GroupChatService
 from .group_orchestration_support_service import GroupOrchestrationSupportService
 from .group_runtime_support_service import GroupRuntimeSupportService
 from .post_turn_service import PostTurnService
+from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 from .service import ChatApplicationService
 
 logger = logging.getLogger(__name__)
@@ -194,9 +195,16 @@ def build_default_chat_application_service(
         prepare_context=context_assembly_service.prepare_context,
         build_file_context_block=file_reference_context_builder.build_context_block,
     )
+    session_command_service = ChatSessionCommandService(
+        ChatSessionCommandDeps(
+            storage=storage,
+            compression_service_factory=CompressionService,
+        )
+    )
     return build_chat_application_service(
         storage=storage,
         single_chat_flow_service=single_chat_flow_service,
         compare_flow_service=compare_flow_service,
         group_chat_service=group_chat_service,
+        session_command_service=session_command_service,
     )

@@ -1,4 +1,6 @@
-"""Helpers for mixed group chat participants (assistant/model)."""
+"""Shared helpers for mixed group chat participants."""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
@@ -11,6 +13,7 @@ MODEL_PREFIX = "model::"
 @dataclass(frozen=True)
 class GroupParticipant:
     """Normalized group participant descriptor."""
+
     raw: str
     kind: Literal["assistant", "model"]
     value: str
@@ -41,5 +44,4 @@ def parse_group_participant(raw_value: str) -> GroupParticipant:
             raise ValueError("Assistant participant token is missing assistant id")
         return GroupParticipant(raw=cleaned, kind="assistant", value=assistant_id)
 
-    # Plain assistant id.
     return GroupParticipant(raw=cleaned, kind="assistant", value=cleaned)

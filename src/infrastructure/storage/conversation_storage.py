@@ -15,7 +15,7 @@ import re
 from src.providers.types import TokenUsage, CostInfo
 from .conversation_storage_paths import StoragePathResolver, build_project_root_resolver
 from .conversation_target_resolver import ConversationSessionTargetResolver
-from src.application.chat.group_participants import parse_group_participant
+from src.domain.models.group_participant import parse_group_participant
 
 
 class ConversationStorage:

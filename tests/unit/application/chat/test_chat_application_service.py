@@ -47,6 +47,37 @@ class _FakeGroupChatService:
         yield {"type": "group_done"}
 
 
+class _FakeSessionCommandService:
+    def __init__(self):
+        self.truncate_calls = []
+        self.delete_calls = []
+        self.update_calls = []
+        self.separator_calls = []
+        self.clear_calls = []
+        self.compress_calls = []
+
+    async def truncate_messages_after(self, **kwargs):
+        self.truncate_calls.append(kwargs)
+
+    async def delete_message(self, **kwargs):
+        self.delete_calls.append(kwargs)
+
+    async def update_message_content(self, **kwargs):
+        self.update_calls.append(kwargs)
+
+    async def append_separator(self, **kwargs):
+        self.separator_calls.append(kwargs)
+        return "sep-1"
+
+    async def clear_all_messages(self, **kwargs):
+        self.clear_calls.append(kwargs)
+
+    async def compress_context_stream(self, **kwargs):
+        self.compress_calls.append(kwargs)
+        yield "summary"
+        yield {"type": "compression_complete", "message_id": "mid-1", "compressed_count": 2}
+
+
 class _FakeStorage:
     def __init__(self, session_payload):
         self._session_payload = session_payload
@@ -201,3 +232,59 @@ async def test_chat_application_service_auto_stream_routes_to_single_mode():
 
     assert events == ["chunk-1", {"type": "usage"}]
     assert len(single.process_message_stream_calls) == 1
+
+
+async def test_chat_application_service_delegates_session_commands():
+    commands = _FakeSessionCommandService()
+    service = ChatApplicationService(
+        ChatApplicationDeps(
+            storage=object(),
+            single_chat_flow_service=_FakeSingleChatFlowService(),
+            compare_flow_service=_FakeCompareFlowService(),
+            group_chat_service=_FakeGroupChatService(),
+            session_command_service=commands,
+        )
+    )
+
+    await service.truncate_messages_after(session_id="s1", keep_until_index=3)
+    await service.delete_message(session_id="s1", message_id="m1")
+    await service.update_message_content(session_id="s1", message_id="m2", content="updated")
+    message_id = await service.append_separator(session_id="s1")
+    await service.clear_all_messages(session_id="s1")
+    events = await _collect(service.compress_context_stream(session_id="s1"))
+
+    assert commands.truncate_calls == [
+        {"session_id": "s1", "keep_until_index": 3, "context_type": "chat", "project_id": None}
+    ]
+    assert commands.delete_calls == [
+        {
+            "session_id": "s1",
+            "message_index": None,
+            "message_id": "m1",
+            "context_type": "chat",
+            "project_id": None,
+        }
+    ]
+    assert commands.update_calls == [
+        {
+            "session_id": "s1",
+            "message_id": "m2",
+            "content": "updated",
+            "context_type": "chat",
+            "project_id": None,
+        }
+    ]
+    assert commands.separator_calls == [
+        {"session_id": "s1", "context_type": "chat", "project_id": None}
+    ]
+    assert commands.clear_calls == [
+        {"session_id": "s1", "context_type": "chat", "project_id": None}
+    ]
+    assert commands.compress_calls == [
+        {"session_id": "s1", "context_type": "chat", "project_id": None}
+    ]
+    assert message_id == "sep-1"
+    assert events == [
+        "summary",
+        {"type": "compression_complete", "message_id": "mid-1", "compressed_count": 2},
+    ]

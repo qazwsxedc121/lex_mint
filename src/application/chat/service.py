@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from .orchestration_gateway import ChatOrchestrationGateway, ChatOrchestrationGatewayDeps
+from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class ChatApplicationDeps:
     single_chat_flow_service: Any
     compare_flow_service: Any
     group_chat_service: Any
+    session_command_service: Optional[ChatSessionCommandService] = None
     orchestration_gateway: Optional[ChatOrchestrationGateway] = None
 
 
@@ -24,6 +26,9 @@ class ChatApplicationService:
 
     def __init__(self, deps: ChatApplicationDeps):
         self.storage = deps.storage
+        self._session_commands = deps.session_command_service or ChatSessionCommandService(
+            ChatSessionCommandDeps(storage=deps.storage)
+        )
         self._orchestration_gateway = deps.orchestration_gateway or ChatOrchestrationGateway(
             ChatOrchestrationGatewayDeps(
                 single_chat_flow_service=deps.single_chat_flow_service,
@@ -207,5 +212,94 @@ class ChatApplicationService:
             use_web_search=use_web_search,
             search_query=search_query,
             file_references=file_references,
+        ):
+            yield event
+
+    async def truncate_messages_after(
+        self,
+        *,
+        session_id: str,
+        keep_until_index: int,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> None:
+        await self._session_commands.truncate_messages_after(
+            session_id=session_id,
+            keep_until_index=keep_until_index,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    async def delete_message(
+        self,
+        *,
+        session_id: str,
+        message_index: Optional[int] = None,
+        message_id: Optional[str] = None,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> None:
+        await self._session_commands.delete_message(
+            session_id=session_id,
+            message_index=message_index,
+            message_id=message_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    async def update_message_content(
+        self,
+        *,
+        session_id: str,
+        message_id: str,
+        content: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> None:
+        await self._session_commands.update_message_content(
+            session_id=session_id,
+            message_id=message_id,
+            content=content,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    async def append_separator(
+        self,
+        *,
+        session_id: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> str:
+        return await self._session_commands.append_separator(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    async def clear_all_messages(
+        self,
+        *,
+        session_id: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> None:
+        await self._session_commands.clear_all_messages(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    async def compress_context_stream(
+        self,
+        *,
+        session_id: str,
+        context_type: str = "chat",
+        project_id: Optional[str] = None,
+    ) -> AsyncIterator[Any]:
+        async for event in self._session_commands.compress_context_stream(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
         ):
             yield event

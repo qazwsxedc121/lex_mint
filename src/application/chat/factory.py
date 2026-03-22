@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .compare_flow_service import CompareFlowDeps, CompareFlowService
+from .session_command_service import ChatSessionCommandService
 from .service import ChatApplicationDeps, ChatApplicationService
 from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
 
@@ -111,6 +112,7 @@ def build_chat_application_service(
     single_chat_flow_service: Any,
     compare_flow_service: Any,
     group_chat_service: Any,
+    session_command_service: ChatSessionCommandService,
 ) -> ChatApplicationService:
     """Build the application-facing chat entry service."""
     return ChatApplicationService(
@@ -119,5 +121,6 @@ def build_chat_application_service(
             single_chat_flow_service=single_chat_flow_service,
             compare_flow_service=compare_flow_service,
             group_chat_service=group_chat_service,
+            session_command_service=session_command_service,
         )
     )

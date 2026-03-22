@@ -27,9 +27,7 @@ from src.application.flow.flow_stream_runtime import (
 )
 from src.application.flow.flow_stream_runtime_provider import get_flow_stream_runtime
 from src.infrastructure.files.file_service import FileService
-from src.infrastructure.storage.conversation_storage import create_storage_with_project_resolver
 from src.domain.models.search import SearchSource
-from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -155,9 +153,9 @@ async def _build_stream_fn(
     if request.truncate_after_index is not None:
         print(f"[SSE] Truncating messages to index {request.truncate_after_index}")
         logger.info(f"[SSE] Truncating messages to index {request.truncate_after_index}")
-        await agent.storage.truncate_messages_after(
-            request.session_id,
-            request.truncate_after_index,
+        await agent.truncate_messages_after(
+            session_id=request.session_id,
+            keep_until_index=request.truncate_after_index,
             context_type=request.context_type,
             project_id=request.project_id,
         )
@@ -589,9 +587,9 @@ async def delete_message(
     if request.message_id:
         logger.info(f"Delete message request: session={request.session_id[:16]}..., message_id={request.message_id}")
         try:
-            await agent.storage.delete_message_by_id(
-                request.session_id,
-                request.message_id,
+            await agent.delete_message(
+                session_id=request.session_id,
+                message_id=request.message_id,
                 context_type=request.context_type,
                 project_id=request.project_id
             )
@@ -606,9 +604,9 @@ async def delete_message(
     elif request.message_index is not None:
         logger.info(f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}")
         try:
-            await agent.storage.delete_message(
-                request.session_id,
-                request.message_index,
+            await agent.delete_message(
+                session_id=request.session_id,
+                message_index=request.message_index,
                 context_type=request.context_type,
                 project_id=request.project_id
             )
@@ -637,10 +635,10 @@ async def update_message(
 
     logger.info(f"Update message request: session={request.session_id[:16]}..., message_id={request.message_id}")
     try:
-        await agent.storage.update_message_content(
-            request.session_id,
-            request.message_id,
-            request.content,
+        await agent.update_message_content(
+            session_id=request.session_id,
+            message_id=request.message_id,
+            content=request.content,
             context_type=request.context_type,
             project_id=request.project_id
         )
@@ -681,8 +679,8 @@ async def insert_separator(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     try:
-        message_id = await agent.storage.append_separator(
-            request.session_id,
+        message_id = await agent.append_separator(
+            session_id=request.session_id,
             context_type=request.context_type,
             project_id=request.project_id
         )
@@ -722,8 +720,8 @@ async def clear_all_messages(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     try:
-        await agent.storage.clear_all_messages(
-            request.session_id,
+        await agent.clear_all_messages(
+            session_id=request.session_id,
             context_type=request.context_type,
             project_id=request.project_id
         )
@@ -760,8 +758,6 @@ async def compress_context(
     if request.context_type == "project" and not request.project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    from src.infrastructure.compression.compression_service import CompressionService
-    compression_service = CompressionService(agent.storage)
     mapper = FlowEventMapper(
         stream_id=str(uuid.uuid4()),
         conversation_id=request.session_id,
@@ -771,7 +767,7 @@ async def compress_context(
         started_payload = mapper.make_stream_started_payload(context_type=request.context_type)
         yield f"data: {json.dumps(started_payload, ensure_ascii=False, default=str)}\n\n"
         try:
-            async for chunk in compression_service.compress_context_stream(
+            async for chunk in agent.compress_context_stream(
                 session_id=request.session_id,
                 context_type=request.context_type,
                 project_id=request.project_id,

@@ -9,16 +9,15 @@ import re
 import json
 import io
 import zipfile
-import shutil
 from urllib.parse import quote
 
-from ..dependencies import get_storage as get_shared_storage
-from src.application.chat.orchestration.settings import GroupSettingsResolver
-from src.infrastructure.storage.conversation_storage import ConversationStorage
-from src.infrastructure.storage.comparison_storage import ComparisonStorage
+from src.application.chat import SessionApplicationService
 from src.application.chat.chatgpt_import_service import ChatGPTImportService
 from src.application.chat.markdown_import_service import MarkdownImportService
-from src.application.chat.group_participants import parse_group_participant
+from ..dependencies import get_storage as get_shared_storage
+from ..dependencies import get_session_application_service as get_shared_session_application_service
+from src.infrastructure.storage.conversation_storage import ConversationStorage
+from src.infrastructure.storage.comparison_storage import ComparisonStorage
 
 logger = logging.getLogger(__name__)
 
@@ -89,100 +88,9 @@ def get_storage() -> ConversationStorage:
     return get_shared_storage()
 
 
-async def _normalize_and_validate_group_assistants(group_assistants: Optional[List[str]]) -> Optional[List[str]]:
-    """Normalize and validate mixed group participants for create/update operations."""
-    if group_assistants is None:
-        return None
-
-    normalized: List[str] = []
-    seen = set()
-    for participant_token in group_assistants:
-        if not isinstance(participant_token, str):
-            raise HTTPException(status_code=400, detail="group participant IDs must be strings")
-        try:
-            participant = parse_group_participant(participant_token)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        stable_token = participant.token
-        if stable_token in seen:
-            continue
-        seen.add(stable_token)
-        normalized.append(stable_token)
-
-    if len(normalized) < 2:
-        raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique participants")
-
-    # Validate all participant IDs exist and are enabled.
-    from src.infrastructure.config.assistant_config_service import AssistantConfigService
-    from src.infrastructure.config.model_config_service import ModelConfigService
-    assistant_service = AssistantConfigService()
-    model_service = ModelConfigService()
-    for participant_token in normalized:
-        participant = parse_group_participant(participant_token)
-        if participant.kind == "assistant":
-            try:
-                await assistant_service.require_enabled_assistant(participant.value)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            continue
-
-        try:
-            await model_service.require_enabled_model(participant.value)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return normalized
-
-
-def _normalize_target_type(
-    target_type: Optional[str],
-    *,
-    assistant_id: Optional[str],
-    model_id: Optional[str],
-) -> Optional[str]:
-    """Normalize target type for create-session requests."""
-    if target_type is not None:
-        normalized = target_type.strip().lower()
-        if normalized not in {"assistant", "model"}:
-            raise HTTPException(status_code=400, detail="target_type must be one of: assistant, model")
-        return normalized
-
-    if assistant_id:
-        return "assistant"
-    if model_id:
-        return "model"
-    return None
-
-
-def _normalize_and_validate_group_mode(
-    group_mode: Optional[str],
-    group_assistants: Optional[List[str]],
-) -> Optional[str]:
-    """Normalize and validate group mode for group chat sessions."""
-    normalized_mode = GroupSettingsResolver.normalize_group_mode(
-        group_mode,
-        group_assistants=group_assistants,
-    )
-    if group_mode is not None and normalized_mode is None:
-        raise HTTPException(
-            status_code=400,
-            detail="group_mode must be one of: round_robin, committee",
-        )
-    if group_mode is not None and not group_assistants:
-        raise HTTPException(status_code=400, detail="group_mode requires group_assistants")
-    return normalized_mode
-
-
-def _normalize_group_settings_payload(
-    group_settings: Optional[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    """Normalize group_settings payload into stable schema shape."""
-    if group_settings is None:
-        return None
-    if not isinstance(group_settings, dict):
-        raise HTTPException(status_code=400, detail="group_settings must be an object")
-    return GroupSettingsResolver.normalize_group_settings(group_settings)
+def get_session_application_service() -> SessionApplicationService:
+    """Dependency injection for session application service."""
+    return get_shared_session_application_service()
 
 
 @router.post("", response_model=Dict[str, str])
@@ -190,7 +98,7 @@ async def create_session(
     request: Optional[CreateSessionRequest] = None,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Create a new conversation session.
 
@@ -211,23 +119,11 @@ async def create_session(
 
     assistant_id = request.assistant_id if request else None
     model_id = request.model_id if request else None
-    target_type = _normalize_target_type(
-        request.target_type if request else None,
-        assistant_id=assistant_id,
-        model_id=model_id,
-    )
+    target_type = request.target_type if request else None
     temporary = request.temporary if request else False
     group_assistants = request.group_assistants if request else None
-    group_assistants = await _normalize_and_validate_group_assistants(group_assistants)
-    group_mode = _normalize_and_validate_group_mode(
-        request.group_mode if request else None,
-        group_assistants,
-    )
-    group_settings = _normalize_group_settings_payload(
-        request.group_settings if request else None
-    )
-    if group_settings is not None and not group_assistants:
-        raise HTTPException(status_code=400, detail="group_settings requires group_assistants")
+    group_mode = request.group_mode if request else None
+    group_settings = request.group_settings if request else None
     logger.info(
         f"Creating new session (target_type: {target_type or 'default'}, assistant: {assistant_id or 'default'}, "
         f"model: {model_id or 'default'}, "
@@ -235,16 +131,16 @@ async def create_session(
     )
 
     try:
-        session_id = await storage.create_session(
-            model_id=model_id,
+        session_id = await session_service.create_session(
             assistant_id=assistant_id,
+            model_id=model_id,
             target_type=target_type,
-            context_type=context_type,
-            project_id=project_id,
             temporary=temporary,
             group_assistants=group_assistants,
             group_mode=group_mode,
             group_settings=group_settings,
+            context_type=context_type,
+            project_id=project_id,
         )
         logger.info(f"✅ 新会话已创建: {session_id}")
         return {"session_id": session_id}
@@ -384,7 +280,7 @@ async def delete_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Delete a conversation session.
 
@@ -406,7 +302,11 @@ async def delete_session(
 
     logger.info(f"🗑️ 删除会话: {session_id[:16]}...")
     try:
-        await storage.delete_session(session_id, context_type=context_type, project_id=project_id)
+        await session_service.delete_session(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
         logger.info(f"✅ 会话已删除")
         return {"message": "Session deleted"}
     except FileNotFoundError:
@@ -422,7 +322,7 @@ async def save_temporary_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Convert a temporary session to a permanent one.
 
@@ -443,7 +343,11 @@ async def save_temporary_session(
 
     logger.info(f"Saving temporary session: {session_id[:16]}...")
     try:
-        await storage.convert_to_permanent(session_id, context_type=context_type, project_id=project_id)
+        await session_service.save_temporary_session(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
         logger.info(f"Session saved successfully")
         return {"message": "Session saved"}
     except FileNotFoundError:
@@ -460,7 +364,7 @@ async def update_session_model(
     request: UpdateModelRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """更新会话使用的模型.
 
@@ -483,8 +387,8 @@ async def update_session_model(
 
     logger.info(f"🔄 更新会话模型: {session_id[:16]} -> {request.model_id}")
     try:
-        await storage.update_session_target(
-            session_id,
+        await session_service.update_session_target(
+            session_id=session_id,
             target_type="model",
             model_id=request.model_id,
             context_type=context_type,
@@ -506,7 +410,7 @@ async def update_session_assistant(
     request: UpdateAssistantRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """更新会话使用的助手.
 
@@ -529,8 +433,8 @@ async def update_session_assistant(
 
     logger.info(f"🔄 更新会话助手: {session_id[:16]} -> {request.assistant_id}")
     try:
-        await storage.update_session_target(
-            session_id,
+        await session_service.update_session_target(
+            session_id=session_id,
             target_type="assistant",
             assistant_id=request.assistant_id,
             context_type=context_type,
@@ -552,7 +456,7 @@ async def update_session_target(
     request: UpdateTargetRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update session chat target (assistant or model)."""
     if context_type == "project" and not project_id:
@@ -566,8 +470,8 @@ async def update_session_target(
         request.model_id,
     )
     try:
-        await storage.update_session_target(
-            session_id,
+        await session_service.update_session_target(
+            session_id=session_id,
             target_type=request.target_type,
             assistant_id=request.assistant_id,
             model_id=request.model_id,
@@ -594,37 +498,13 @@ class UpdateGroupSettingsRequest(BaseModel):
     group_settings: Optional[Dict[str, Any]] = None
 
 
-async def _load_assistant_config_map(group_assistants: List[str]) -> Dict[str, Any]:
-    """Load assistant objects for current group participants."""
-    from src.infrastructure.config.assistant_config_service import AssistantConfigService
-
-    assistant_service = AssistantConfigService()
-    assistant_config_map: Dict[str, Any] = {}
-    for assistant_id in group_assistants:
-        assistant_obj = await assistant_service.get_assistant(assistant_id)
-        if assistant_obj:
-            assistant_config_map[assistant_id] = assistant_obj
-    return assistant_config_map
-
-
-def _deep_merge_dict(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively merge dictionaries; updates win over base values."""
-    merged = dict(base)
-    for key, value in updates.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge_dict(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
 @router.put("/{session_id}/group-assistants", response_model=Dict[str, str])
 async def update_group_assistants(
     session_id: str,
     request: UpdateGroupAssistantsRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update the group assistants list for a session.
 
@@ -644,15 +524,13 @@ async def update_group_assistants(
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    group_assistants = await _normalize_and_validate_group_assistants(request.group_assistants)
-    if group_assistants is None:
-        raise HTTPException(status_code=400, detail="group_assistants is required")
-
-    logger.info(f"Updating group assistants for session {session_id[:16]}: {group_assistants}")
+    logger.info(f"Updating group assistants for session {session_id[:16]}: {request.group_assistants}")
     try:
-        await storage.update_group_assistants(
-            session_id, group_assistants,
-            context_type=context_type, project_id=project_id
+        await session_service.update_group_assistants(
+            session_id=session_id,
+            group_assistants=request.group_assistants,
+            context_type=context_type,
+            project_id=project_id,
         )
         return {"message": "Group assistants updated"}
     except FileNotFoundError:
@@ -666,45 +544,22 @@ async def get_group_settings(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Read structured group settings with effective runtime values."""
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     try:
-        session = await storage.get_session(
-            session_id,
+        return await session_service.get_group_settings(
+            session_id=session_id,
             context_type=context_type,
             project_id=project_id,
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    group_assistants = session.get("group_assistants") or []
-    if len(group_assistants) < 2:
-        raise HTTPException(status_code=400, detail="Session is not a group chat")
-
-    group_mode = _normalize_and_validate_group_mode(
-        session.get("group_mode"),
-        group_assistants,
-    ) or "round_robin"
-    raw_group_settings = GroupSettingsResolver.normalize_group_settings(
-        session.get("group_settings") if isinstance(session.get("group_settings"), dict) else None
-    )
-    assistant_config_map = await _load_assistant_config_map(group_assistants)
-    resolved = GroupSettingsResolver.resolve(
-        group_mode=group_mode,
-        group_assistants=group_assistants,
-        group_settings=raw_group_settings,
-        assistant_config_map=assistant_config_map,
-    )
-    return {
-        "group_mode": group_mode,
-        "group_assistants": group_assistants,
-        "group_settings": raw_group_settings,
-        "effective_settings": resolved.to_effective_dict(),
-    }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/{session_id}/group-settings", response_model=Dict[str, Any])
@@ -713,69 +568,25 @@ async def update_group_settings(
     request: UpdateGroupSettingsRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update group_mode/group_assistants/group_settings for one session."""
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     try:
-        session = await storage.get_session(
-            session_id,
+        return await session_service.update_group_settings(
+            session_id=session_id,
+            group_assistants=request.group_assistants,
+            group_mode=request.group_mode,
+            group_settings=request.group_settings,
             context_type=context_type,
             project_id=project_id,
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    existing_group_assistants = session.get("group_assistants")
-    if request.group_assistants is not None:
-        next_group_assistants = await _normalize_and_validate_group_assistants(request.group_assistants)
-    else:
-        next_group_assistants = existing_group_assistants
-
-    if not next_group_assistants or len(next_group_assistants) < 2:
-        raise HTTPException(status_code=400, detail="Group chat requires at least 2 unique assistants")
-
-    next_group_mode = _normalize_and_validate_group_mode(
-        request.group_mode if request.group_mode is not None else session.get("group_mode"),
-        next_group_assistants,
-    ) or "round_robin"
-
-    existing_group_settings = GroupSettingsResolver.normalize_group_settings(
-        session.get("group_settings") if isinstance(session.get("group_settings"), dict) else None
-    )
-    if request.group_settings is not None:
-        update_settings = _normalize_group_settings_payload(request.group_settings) or {"version": 1}
-        next_group_settings = _deep_merge_dict(existing_group_settings, update_settings)
-    else:
-        next_group_settings = existing_group_settings
-
-    assistant_config_map = await _load_assistant_config_map(next_group_assistants)
-    resolved = GroupSettingsResolver.resolve(
-        group_mode=next_group_mode,
-        group_assistants=next_group_assistants,
-        group_settings=next_group_settings,
-        assistant_config_map=assistant_config_map,
-    )
-
-    await storage.update_session_metadata(
-        session_id=session_id,
-        metadata_updates={
-            "group_assistants": next_group_assistants,
-            "group_mode": next_group_mode,
-            "group_settings": next_group_settings,
-        },
-        context_type=context_type,
-        project_id=project_id,
-    )
-    return {
-        "message": "Group settings updated",
-        "group_mode": next_group_mode,
-        "group_assistants": next_group_assistants,
-        "group_settings": next_group_settings,
-        "effective_settings": resolved.to_effective_dict(),
-    }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/{session_id}/title", response_model=Dict[str, str])
@@ -784,7 +595,7 @@ async def update_session_title(
     request: UpdateTitleRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """更新会话标题.
 
@@ -807,7 +618,12 @@ async def update_session_title(
 
     logger.info(f"✏️ 更新会话标题: {session_id[:16]} -> {request.title}")
     try:
-        await storage.update_session_metadata(session_id, {"title": request.title}, context_type=context_type, project_id=project_id)
+        await session_service.update_session_title(
+            session_id=session_id,
+            title=request.title,
+            context_type=context_type,
+            project_id=project_id,
+        )
         logger.info(f"✅ 标题更新成功")
         return {"message": "Title updated successfully"}
     except FileNotFoundError:
@@ -818,29 +634,13 @@ async def update_session_title(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-ALLOWED_OVERRIDE_KEYS = {
-    "model_id", "temperature", "max_tokens", "top_p", "top_k",
-    "frequency_penalty", "presence_penalty", "max_rounds"
-}
-
-PARAM_RANGES = {
-    "temperature": (0, 2),
-    "max_tokens": (1, 8192),
-    "top_p": (0, 1),
-    "top_k": (1, 200),
-    "frequency_penalty": (-2, 2),
-    "presence_penalty": (-2, 2),
-    "max_rounds": (-1, 1000),
-}
-
-
 @router.put("/{session_id}/param-overrides", response_model=Dict[str, str])
 async def update_param_overrides(
     session_id: str,
     request: UpdateParamOverridesRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update per-session parameter overrides.
 
@@ -857,38 +657,13 @@ async def update_param_overrides(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     overrides = request.param_overrides
-
-    # Validate keys
-    invalid_keys = set(overrides.keys()) - ALLOWED_OVERRIDE_KEYS
-    if invalid_keys:
-        raise HTTPException(status_code=400, detail=f"Invalid override keys: {invalid_keys}")
-
-    # Validate ranges for numeric parameters
-    for key, value in overrides.items():
-        if key == "model_id":
-            if not isinstance(value, str) or ':' not in value:
-                raise HTTPException(status_code=400, detail="model_id must be in 'provider:model' format")
-            # Validate model exists
-            from src.infrastructure.config.model_config_service import ModelConfigService
-            model_service = ModelConfigService()
-            parts = value.split(":", 1)
-            model = await model_service.get_model(parts[1])
-            if not model:
-                raise HTTPException(status_code=400, detail=f"Model '{value}' not found")
-            continue
-
-        if key in PARAM_RANGES:
-            if not isinstance(value, (int, float)):
-                raise HTTPException(status_code=400, detail=f"{key} must be a number")
-            min_val, max_val = PARAM_RANGES[key]
-            if value < min_val or value > max_val:
-                raise HTTPException(status_code=400, detail=f"{key} must be between {min_val} and {max_val}")
-
     logger.info(f"Updating param overrides for session {session_id[:16]}: {overrides}")
     try:
-        await storage.update_session_metadata(
-            session_id, {"param_overrides": overrides},
-            context_type=context_type, project_id=project_id
+        await session_service.update_param_overrides(
+            session_id=session_id,
+            overrides=overrides,
+            context_type=context_type,
+            project_id=project_id,
         )
         return {"message": "Parameter overrides updated"}
     except FileNotFoundError:
@@ -908,7 +683,7 @@ async def branch_session(
     request: BranchSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Branch a session from a specific message.
 
@@ -933,47 +708,17 @@ async def branch_session(
 
     logger.info(f"Branching session: {session_id[:16]} from message {request.message_id}...")
     try:
-        original_session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
-
-        # Find the message by message_id
-        original_messages = original_session.get('state', {}).get('messages', [])
-        branch_index = None
-        for i, msg in enumerate(original_messages):
-            if msg.get('message_id') == request.message_id:
-                branch_index = i
-                break
-
-        if branch_index is None:
-            raise HTTPException(status_code=400, detail=f"message_id '{request.message_id}' not found in session")
-
-        truncated_messages = original_messages[:branch_index + 1]
-
-        # Create new session with same model/assistant
-        assistant_id = original_session.get('assistant_id')
-        model_id = original_session.get('model_id')
-        new_session_id = await storage.create_session(
-            model_id=model_id,
-            assistant_id=assistant_id,
+        new_session_id = await session_service.branch_session(
+            session_id=session_id,
+            message_id=request.message_id,
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
         )
-
-        # Set title with Branch suffix
-        original_title = original_session.get('title', 'New Chat')
-        new_title = f"{original_title} (Branch)"
-        await storage.update_session_metadata(new_session_id, {"title": new_title}, context_type=context_type, project_id=project_id)
-
-        # Copy truncated messages
-        if truncated_messages:
-            await storage.set_messages(new_session_id, truncated_messages, context_type=context_type, project_id=project_id)
-
-        logger.info(f"Session branched successfully: {new_session_id} with {len(truncated_messages)} messages")
+        logger.info(f"Session branched successfully: {new_session_id}")
         return {"session_id": new_session_id, "message": "Session branched successfully"}
     except FileNotFoundError:
         logger.error(f"Session not found: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
-    except HTTPException:
-        raise
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -984,7 +729,7 @@ async def duplicate_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """复制会话.
 
@@ -1006,29 +751,11 @@ async def duplicate_session(
 
     logger.info(f"📋 复制会话: {session_id[:16]}...")
     try:
-        # Get the original session
-        original_session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
-
-        # Create a new session with the same model/assistant in the same context
-        assistant_id = original_session.get('assistant_id')
-        model_id = original_session.get('model_id')
-        new_session_id = await storage.create_session(
-            model_id=model_id,
-            assistant_id=assistant_id,
+        new_session_id = await session_service.duplicate_session(
+            session_id=session_id,
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
         )
-
-        # Copy the title with a suffix
-        original_title = original_session.get('title', 'New Chat')
-        new_title = f"{original_title} (Copy)"
-        await storage.update_session_metadata(new_session_id, {"title": new_title}, context_type=context_type, project_id=project_id)
-
-        # Copy the messages using set_messages method
-        original_messages = original_session.get('state', {}).get('messages', [])
-        if original_messages:
-            await storage.set_messages(new_session_id, original_messages, context_type=context_type, project_id=project_id)
-
         logger.info(f"✅ 会话复制成功: {new_session_id}")
         return {"session_id": new_session_id, "message": "Session duplicated successfully"}
     except FileNotFoundError:
@@ -1039,32 +766,13 @@ async def duplicate_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def _copy_session_attachments(source_session_id: str, target_session_id: str) -> None:
-    """Copy attachment files for a session to a new session ID."""
-    source_dir = settings.attachments_dir / source_session_id
-    if not source_dir.exists():
-        return
-
-    target_dir = settings.attachments_dir / target_session_id
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    for entry in source_dir.iterdir():
-        if entry.name == "temp":
-            continue
-        destination = target_dir / entry.name
-        if entry.is_dir():
-            shutil.copytree(entry, destination, dirs_exist_ok=True)
-        else:
-            shutil.copy2(entry, destination)
-
-
 @router.post("/{session_id}/move", response_model=Dict[str, str])
 async def move_session(
     session_id: str,
     request: TransferSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Move a session between chat/projects context."""
     if context_type == "project" and not project_id:
@@ -1078,8 +786,8 @@ async def move_session(
 
     logger.info(f"📦 移动会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}")
     try:
-        await storage.move_session(
-            session_id,
+        await session_service.move_session(
+            session_id=session_id,
             source_context_type=context_type,
             source_project_id=project_id,
             target_context_type=request.target_context_type,
@@ -1103,7 +811,7 @@ async def copy_session(
     request: TransferSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Copy a session between chat/projects context."""
     if context_type == "project" and not project_id:
@@ -1117,19 +825,13 @@ async def copy_session(
 
     logger.info(f"📄 复制会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}")
     try:
-        new_session_id = await storage.copy_session(
-            session_id,
+        new_session_id = await session_service.copy_session(
+            session_id=session_id,
             source_context_type=context_type,
             source_project_id=project_id,
             target_context_type=request.target_context_type,
             target_project_id=request.target_project_id
         )
-
-        try:
-            _copy_session_attachments(session_id, new_session_id)
-        except Exception as e:
-            logger.warning(f"⚠️ 附件复制失败: {session_id} -> {new_session_id}: {e}")
-
         return {"session_id": new_session_id, "message": "Session copied successfully"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
@@ -1336,7 +1038,7 @@ async def update_session_folder(
     request: Dict = Body(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """
     Update session's folder assignment.
@@ -1356,7 +1058,7 @@ async def update_session_folder(
 
     try:
         folder_id = request.get("folder_id")
-        await storage.update_session_folder(
+        await session_service.update_session_folder(
             session_id=session_id,
             folder_id=folder_id,
             context_type=context_type,
