@@ -8,6 +8,7 @@ import type { CrudSettingsConfig } from './types';
 import type { Assistant } from '../../../types/assistant';
 import { PARAM_SUPPORT } from '../../../shared/constants/paramSupport';
 import { getAssistantIcon } from '../../../shared/constants/assistantIcons';
+import { DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import i18n from '../../../i18n';
 
 // === Provider-aware parameter visibility ===
@@ -45,6 +46,20 @@ const getEnabledModelOptions = (context: any) => {
       value: `${model.provider_id}:${model.id}`,
       label: `${model.name} (${model.provider_id}:${model.id})`
     }));
+};
+
+const buildSuggestedAssistantId = (sourceId: string, existingIds: Iterable<string>): string => {
+  const existingIdSet = new Set(Array.from(existingIds, (value) => String(value)));
+  const baseId = `${sourceId}-copy`;
+  if (!existingIdSet.has(baseId)) {
+    return baseId;
+  }
+
+  let index = 2;
+  while (existingIdSet.has(`${baseId}-${index}`)) {
+    index += 1;
+  }
+  return `${baseId}-${index}`;
 };
 
 // === Shared field definitions for LLM parameters ===
@@ -201,6 +216,36 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       sortable: true,
       hideOnMobile: true,
       render: (value) => (value === true ? i18n.t('settings:configField.on') : i18n.t('settings:configField.off'))
+    }
+  ],
+
+  rowActions: [
+    {
+      id: 'duplicate-assistant',
+      label: '',
+      icon: DocumentDuplicateIcon,
+      get tooltip() { return i18n.t('common:duplicate'); },
+      onClick: (item: Assistant, context: any) => {
+        const navigate = context.navigate as ((path: string, options?: { state?: unknown }) => void) | undefined;
+        if (!navigate) {
+          return;
+        }
+
+        const items = Array.isArray(context.items) ? context.items as Assistant[] : [];
+        const suggestedId = buildSuggestedAssistantId(
+          item.id,
+          items.map((assistant) => assistant.id)
+        );
+
+        navigate('/settings/assistants/new', {
+          state: {
+            prefill: {
+              ...item,
+              id: suggestedId,
+            },
+          },
+        });
+      }
     }
   ],
 

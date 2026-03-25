@@ -5,7 +5,7 @@
  * This component eliminates 200-400 lines of boilerplate per page.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon } from '@heroicons/react/24/outline';
@@ -49,6 +49,14 @@ export function CrudSettingsPage<T = any>({
       <SettingsHelp help={config.help} />
     </span>
   ) : config.title;
+  const pageContext = useMemo(
+    () => ({
+      ...context,
+      navigate,
+      items: hook.items,
+    }),
+    [context, navigate, hook.items]
+  );
 
   // Initialize form data with defaults
   const initializeFormData = (item?: T) => {
@@ -229,7 +237,7 @@ export function CrudSettingsPage<T = any>({
             {config.globalActions?.map((action) => (
               <button
                 key={action.id}
-                onClick={() => action.onClick(null as any, context)}
+                onClick={() => action.onClick(null as any, pageContext)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md ${
                   action.variant === 'danger'
                     ? 'text-white bg-red-600 hover:bg-red-700'
@@ -284,7 +292,7 @@ export function CrudSettingsPage<T = any>({
           onSetDefault={hook.setDefault ? handleSetDefault : undefined}
           onToggleStatus={config.statusKey ? handleToggleStatus : undefined}
           togglingIds={togglingIds}
-          context={context}
+          context={pageContext}
           getItemId={getItemId}
         />
       )}
@@ -299,7 +307,7 @@ export function CrudSettingsPage<T = any>({
         formData={formData}
         onChange={setFormData}
         onSubmit={handleSubmit}
-        context={context}
+        context={pageContext}
         isEdit={isEdit}
         isSubmitting={isSubmitting}
         showErrors={showErrors}

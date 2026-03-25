@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage } from '../common';
@@ -29,6 +29,14 @@ export function CrudCreatePage<T = any>({
   context = {},
   backPath
 }: CrudCreatePageProps<T>) {
+  const location = useLocation();
+  const prefillData = useMemo(() => {
+    const state = location.state as { prefill?: Record<string, unknown> } | null;
+    if (!state?.prefill || typeof state.prefill !== 'object') {
+      return undefined;
+    }
+    return state.prefill;
+  }, [location.state]);
   const initialFormData = useMemo(() => {
     const data: any = {};
     config.createFields.forEach((field) => {
@@ -39,8 +47,11 @@ export function CrudCreatePage<T = any>({
         }
       }
     });
+    if (prefillData) {
+      Object.assign(data, prefillData);
+    }
     return data;
-  }, [config.createFields]);
+  }, [config.createFields, prefillData]);
   const [formData, setFormData] = useState<any>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);

@@ -4,7 +4,7 @@
  * Defines the structure and behavior of the Models settings page.
  */
 
-import { SignalIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, SignalIcon } from '@heroicons/react/24/outline';
 import type { CrudSettingsConfig } from './types';
 import type { Model } from '../../../types/model';
 import { testModelConnection } from '../../../services/api';
@@ -23,6 +23,20 @@ const normalizeTags = (rawValue: unknown): string[] => {
       .filter(Boolean);
   }
   return [];
+};
+
+const buildSuggestedModelId = (sourceId: string, existingIds: Iterable<string>): string => {
+  const existingIdSet = new Set(Array.from(existingIds, (value) => String(value)));
+  const baseId = `${sourceId}-copy`;
+  if (!existingIdSet.has(baseId)) {
+    return baseId;
+  }
+
+  let index = 2;
+  while (existingIdSet.has(`${baseId}-${index}`)) {
+    index += 1;
+  }
+  return `${baseId}-${index}`;
 };
 
 export const modelsConfig: CrudSettingsConfig<Model> = {
@@ -352,6 +366,35 @@ export const modelsConfig: CrudSettingsConfig<Model> = {
 
   // Row actions
   rowActions: [
+    {
+      id: 'duplicate-model',
+      label: '',
+      icon: DocumentDuplicateIcon,
+      get tooltip() { return i18n.t('common:duplicate'); },
+      onClick: (item: Model, context: any) => {
+        const navigate = context.navigate as ((path: string, options?: { state?: unknown }) => void) | undefined;
+        if (!navigate) {
+          return;
+        }
+
+        const items = Array.isArray(context.items) ? context.items as Model[] : [];
+        const suggestedId = buildSuggestedModelId(
+          item.id,
+          items
+            .filter((model) => model.provider_id === item.provider_id)
+            .map((model) => model.id)
+        );
+
+        navigate('/settings/models/new', {
+          state: {
+            prefill: {
+              ...item,
+              id: suggestedId,
+            },
+          },
+        });
+      }
+    },
     {
       id: 'test-connection',
       label: '',
