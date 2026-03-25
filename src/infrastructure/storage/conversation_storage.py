@@ -87,6 +87,31 @@ class ConversationStorage:
     def _as_dict(value: Any) -> Dict[str, Any]:
         return value if isinstance(value, dict) else {}
 
+    async def _migrate_legacy_session_metadata(
+        self,
+        post: frontmatter.Post,
+    ) -> bool:
+        metadata: Dict[str, Any] = dict(post.metadata or {})
+        assistant_id = self._as_optional_str(metadata.get("assistant_id"))
+        model_id = self._as_optional_str(metadata.get("model_id"))
+        target_type = self._as_optional_str(metadata.get("target_type"))
+
+        if target_type in {"assistant", "model"}:
+            return False
+
+        inferred_target_type: Optional[str] = None
+        if assistant_id:
+            inferred_target_type = "assistant"
+        elif model_id:
+            inferred_target_type = "model"
+
+        if inferred_target_type is None:
+            return False
+
+        metadata["target_type"] = inferred_target_type
+        post.metadata = metadata
+        return True
+
     async def create_session(
         self,
         model_id: Optional[str] = None,
@@ -211,6 +236,10 @@ class ConversationStorage:
             content = await f.read()
 
         post = frontmatter.loads(content)
+        metadata_migrated = await self._migrate_legacy_session_metadata(post)
+        if metadata_migrated:
+            async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+                await f.write(frontmatter.dumps(post))
         metadata: Dict[str, Any] = dict(post.metadata or {})
 
         # Parse messages from markdown content
@@ -235,11 +264,20 @@ class ConversationStorage:
             assistant_service = AssistantConfigService()
             assistant = await assistant_service.get_assistant(assistant_id)
             if assistant is None:
-                raise ValueError(
-                    f"Session assistant '{assistant_id}' no longer exists. "
-                    "This session is not compatible with the current runtime."
-                )
-            model_id = assistant.model_id
+                if not model_id:
+                    raise ValueError(
+                        f"Session assistant '{assistant_id}' no longer exists. "
+                        "This session is not compatible with the current runtime."
+                    )
+                metadata["target_type"] = "model"
+                metadata.pop("assistant_id", None)
+                post.metadata = metadata
+                async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+                    await f.write(frontmatter.dumps(post))
+                target_type = "model"
+                assistant_id = None
+            else:
+                model_id = assistant.model_id
         else:
             if not model_id:
                 raise ValueError(

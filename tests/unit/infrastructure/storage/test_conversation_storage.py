@@ -498,6 +498,96 @@ class TestConversationStorage:
                     await storage.update_session_model(session_id, "openai:gpt-4")
 
     @pytest.mark.asyncio
+    async def test_get_session_migrates_legacy_assistant_target_metadata(self, temp_conversation_dir, mock_assistant_service):
+        with patch('src.infrastructure.config.assistant_config_service.AssistantConfigService', return_value=mock_assistant_service):
+            storage = ConversationStorage(temp_conversation_dir)
+
+            chat_dir = temp_conversation_dir / "chat"
+            chat_dir.mkdir(parents=True, exist_ok=True)
+            session_path = chat_dir / "2026-01-01_12345678.md"
+            session_path.write_text(
+                """---
+session_id: legacy-session
+created_at: '2026-01-01T00:00:00'
+title: Legacy Chat
+assistant_id: default
+model_id: deepseek:deepseek-chat
+current_step: 0
+---
+""",
+                encoding='utf-8',
+            )
+
+            session = await storage.get_session("legacy-session")
+
+            assert session["target_type"] == "assistant"
+            assert session["assistant_id"] == "default"
+            assert session["model_id"] == "deepseek:deepseek-chat"
+            assert "target_type: assistant" in session_path.read_text(encoding='utf-8')
+
+    @pytest.mark.asyncio
+    async def test_get_session_migrates_legacy_model_target_metadata(self, temp_conversation_dir):
+        storage = ConversationStorage(temp_conversation_dir)
+
+        chat_dir = temp_conversation_dir / "chat"
+        chat_dir.mkdir(parents=True, exist_ok=True)
+        session_path = chat_dir / "2026-01-01_12345678.md"
+        session_path.write_text(
+            """---
+session_id: legacy-model-session
+created_at: '2026-01-01T00:00:00'
+title: Legacy Model Chat
+model_id: deepseek:deepseek-chat
+current_step: 0
+---
+""",
+            encoding='utf-8',
+        )
+
+        session = await storage.get_session("legacy-model-session")
+
+        assert session["target_type"] == "model"
+        assert session["assistant_id"] is None
+        assert session["model_id"] == "deepseek:deepseek-chat"
+        assert "target_type: model" in session_path.read_text(encoding='utf-8')
+
+    @pytest.mark.asyncio
+    async def test_get_session_falls_back_to_model_when_assistant_missing(self, temp_conversation_dir):
+        missing_assistant_service = AsyncMock()
+        missing_assistant_service.get_assistant.return_value = None
+
+        storage = ConversationStorage(
+            temp_conversation_dir,
+            assistant_service=missing_assistant_service,
+        )
+
+        chat_dir = temp_conversation_dir / "chat"
+        chat_dir.mkdir(parents=True, exist_ok=True)
+        session_path = chat_dir / "2026-01-01_12345678.md"
+        session_path.write_text(
+            """---
+session_id: missing-assistant-session
+created_at: '2026-01-01T00:00:00'
+title: Missing Assistant Chat
+assistant_id: retired-assistant
+model_id: deepseek:deepseek-chat
+target_type: assistant
+current_step: 0
+---
+""",
+            encoding='utf-8',
+        )
+
+        session = await storage.get_session("missing-assistant-session")
+
+        assert session["target_type"] == "model"
+        assert session["assistant_id"] is None
+        assert session["model_id"] == "deepseek:deepseek-chat"
+        session_text = session_path.read_text(encoding='utf-8')
+        assert "target_type: model" in session_text
+        assert "assistant_id:" not in session_text
+
+    @pytest.mark.asyncio
     async def test_parse_messages_with_usage(self, temp_conversation_dir):
         """Test parsing messages from markdown content."""
         storage = ConversationStorage(temp_conversation_dir)
@@ -524,5 +614,3 @@ Python is a programming language.
         assert messages[1]["usage"]["total_tokens"] == 30
         assert "cost" in messages[1]
         assert messages[1]["cost"]["total_cost"] == 0.0015
-
-
