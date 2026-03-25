@@ -51,18 +51,21 @@ export const TranslationBlock: React.FC<TranslationBlockProps> = ({
   };
 
   return (
-    <div data-name="translation-block" className="mt-3 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden">
+    <div
+      data-name="translation-block"
+      className="mt-3 w-full min-w-0 max-w-full rounded-lg border border-teal-200 dark:border-teal-800 overflow-hidden"
+    >
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs font-medium hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors"
+        className="flex w-full min-w-0 items-center gap-2 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition-colors hover:bg-teal-100 dark:bg-teal-900/30 dark:text-teal-300 dark:hover:bg-teal-900/50"
       >
         <span className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}>
           <ChevronDownIcon className="w-4 h-4" />
         </span>
         <LanguageIcon className={`w-4 h-4 ${isTranslating ? 'animate-pulse' : ''}`} />
-        <span>{headerText}</span>
-        <span className="ml-auto flex items-center gap-1">
+        <span className="min-w-0 flex-1 truncate text-left">{headerText}</span>
+        <span className="ml-auto flex flex-shrink-0 items-center gap-1">
           {/* Copy button */}
           {!isTranslating && translatedText && (
             isCopied ? (
@@ -84,7 +87,7 @@ export const TranslationBlock: React.FC<TranslationBlockProps> = ({
 
       {/* Content */}
       {isExpanded && (
-        <div className="px-3 py-2 bg-teal-50/50 dark:bg-teal-900/20 text-sm text-gray-700 dark:text-gray-300 max-h-96 overflow-y-auto prose prose-sm dark:prose-invert max-w-none">
+        <div className="min-w-0 max-w-full overflow-x-auto overflow-y-auto bg-teal-50/50 px-3 py-2 text-sm text-gray-700 dark:bg-teal-900/20 dark:text-gray-300 max-h-96 break-words [overflow-wrap:anywhere] prose prose-sm dark:prose-invert max-w-none [&_a]:break-all [&_code]:break-words [&_li]:break-words [&_p]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap">
           {translatedText ? (
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
               {normalizedTranslatedText}

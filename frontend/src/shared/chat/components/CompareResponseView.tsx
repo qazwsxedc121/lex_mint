@@ -113,7 +113,7 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
               {t('compare.generating')}
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] prose prose-sm max-w-none dark:prose-invert [&_a]:break-all [&_code]:break-words [&_li]:break-words [&_p]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -129,7 +129,7 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
   };
 
   return (
-    <div data-name="compare-response-view" className="w-full">
+    <div data-name="compare-response-view" className="w-full min-w-0">
       {/* View mode toggle */}
       <div className="flex justify-end mb-2">
         <button
@@ -143,11 +143,11 @@ export const CompareResponseView: React.FC<CompareResponseViewProps> = ({
 
       {viewMode === 'side-by-side' ? (
         /* Side-by-side layout */
-        <div className={`grid ${gridCols} gap-4`}>
+        <div className={`grid ${gridCols} gap-4 min-w-0`}>
           {responses.map((response) => (
             <div
               key={response.model_id}
-              className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800/50"
+              className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800/50 min-w-0"
             >
               {renderResponsePanel(response)}
             </div>

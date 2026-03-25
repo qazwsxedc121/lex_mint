@@ -264,16 +264,16 @@ const developerPayloadBlock = (
   args: Record<string, unknown>,
   result?: string,
 ) => (
-  <details className="rounded border border-gray-200 bg-white/40 p-2 dark:border-gray-700 dark:bg-gray-900/20">
+  <details className="min-w-0 max-w-full rounded border border-gray-200 bg-white/40 p-2 dark:border-gray-700 dark:bg-gray-900/20">
     <summary className="cursor-pointer font-medium text-gray-600 dark:text-gray-400">
       {title}
     </summary>
-    <div className="mt-1 space-y-2">
+    <div className="mt-1 min-w-0 space-y-2">
       <div>
         <span className="font-medium text-gray-500 dark:text-gray-400">
           {argumentsLabel}:
         </span>
-        <pre className="mt-0.5 overflow-x-auto rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
           {JSON.stringify(args, null, 2)}
         </pre>
       </div>
@@ -282,7 +282,7 @@ const developerPayloadBlock = (
           <span className="font-medium text-gray-500 dark:text-gray-400">
             {resultLabel}:
           </span>
-          <pre className="mt-0.5 overflow-x-auto whitespace-pre-wrap rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             {result}
           </pre>
         </div>
@@ -401,7 +401,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
   };
 
   return (
-    <div data-name="tool-call-block" className="mb-3 space-y-1.5">
+    <div data-name="tool-call-block" className="mb-3 w-full min-w-0 max-w-full space-y-1.5">
       {toolCalls.map((tc, index) => {
         const isExpanded = expandedIndex === index;
         const isCalling = tc.status === 'calling';
@@ -470,12 +470,12 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
           <div
             key={`${tc.toolCallId || tc.name}-${index}`}
             data-name="tool-call-item"
-            className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50/70 text-sm dark:border-gray-700 dark:bg-gray-900/20"
+            className="min-w-0 max-w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 text-sm dark:border-gray-700 dark:bg-gray-900/20"
           >
             <button
               type="button"
               onClick={() => toggleExpand(index)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-100/80 dark:hover:bg-gray-800/30"
+              className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-gray-100/80 dark:hover:bg-gray-800/30"
             >
               <span className="flex-shrink-0">{statusIcon}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-800 dark:text-gray-200">
@@ -487,7 +487,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
             </button>
 
             {isExpanded && (
-              <div className="space-y-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+              <div className="min-w-0 max-w-full space-y-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
                 {isWebSearchTool && parsedSearchResult ? (
                   <div data-name="tool-web-search" className="space-y-3">
                     <div className="grid gap-2 sm:grid-cols-3">
@@ -691,7 +691,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
                               </span>
                             )}
                           </div>
-                          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">
+                          <pre className="max-h-72 max-w-full overflow-auto whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">
                             {parsedReadResult.content || parsedReadResult.preview || '-'}
                           </pre>
                         </div>
@@ -713,7 +713,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
                         {t('toolCall.applyDiff.diffPreview')}
                       </div>
                       {applyDiffPreview ? (
-                        <pre className="max-h-64 overflow-auto p-2 text-[11px] font-mono leading-5 whitespace-pre-wrap break-words">
+                        <pre className="max-h-64 max-w-full overflow-auto p-2 text-[11px] font-mono leading-5 whitespace-pre-wrap break-words">
                           {applyDiffPreview.lines.map((line, lineIndex) => (
                             <div
                               key={`${lineIndex}-${line.text}`}
@@ -785,7 +785,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
                         <span className="font-medium text-gray-500 dark:text-gray-400">
                           {t('toolCall.arguments')}:
                         </span>
-                        <pre className="mt-0.5 overflow-x-auto rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                           {JSON.stringify(tc.args, null, 2)}
                         </pre>
                       </div>
@@ -796,7 +796,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
                         <span className="font-medium text-gray-500 dark:text-gray-400">
                           {t('toolCall.result')}:
                         </span>
-                        <pre className="mt-0.5 overflow-x-auto whitespace-pre-wrap rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                           {tc.result}
                         </pre>
                       </div>

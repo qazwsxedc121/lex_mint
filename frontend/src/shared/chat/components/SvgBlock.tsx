@@ -36,10 +36,10 @@ export const SvgBlock: React.FC<SvgBlockProps> = ({ value }) => {
   const showingCode = showCode || !!error || !sanitizedSvg;
 
   return (
-    <div data-name="svg-block-root" className="relative group my-4">
-      <div data-name="svg-block-header" className="flex items-center justify-between bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
-        <span className="font-mono">svg</span>
-        <div className="flex items-center gap-2">
+    <div data-name="svg-block-root" className="relative my-4 w-full min-w-0 max-w-full group">
+      <div data-name="svg-block-header" className="flex min-w-0 items-center justify-between gap-2 bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
+        <span className="min-w-0 truncate font-mono">svg</span>
+        <div className="flex flex-shrink-0 items-center gap-2">
           {(sanitizedSvg || error) && (
             <button
               onClick={() => setShowCode(!showCode)}
@@ -80,7 +80,7 @@ export const SvgBlock: React.FC<SvgBlockProps> = ({ value }) => {
       </div>
 
       {showingCode ? (
-        <div className="bg-gray-900 rounded-b-lg overflow-x-auto">
+        <div className="bg-gray-900 rounded-b-lg overflow-x-auto max-w-full">
           {error && (
             <div className="px-4 py-2 text-xs text-red-400 bg-red-900/30 border-b border-red-800/50">
               Render error: {error}
@@ -91,7 +91,7 @@ export const SvgBlock: React.FC<SvgBlockProps> = ({ value }) => {
           </pre>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-b-lg p-4 overflow-x-auto flex justify-center [&_svg]:max-w-full [&_svg]:h-auto">
+        <div className="bg-white dark:bg-gray-900 rounded-b-lg p-4 overflow-x-auto flex justify-center max-w-full [&_svg]:max-w-full [&_svg]:h-auto">
           <div dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         </div>
       )}

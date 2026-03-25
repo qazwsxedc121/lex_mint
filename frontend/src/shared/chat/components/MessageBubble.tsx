@@ -748,8 +748,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   }
 
   return (
-    <div data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}>
-      <div data-name="message-bubble-content-wrapper" className={isUser ? 'max-w-[80%]' : 'w-full'}>
+    <div
+      data-name={`message-bubble-${isUser ? 'user' : 'assistant'}`}
+      className={`mb-4 flex min-w-0 flex-col ${isUser ? 'items-end' : 'items-start'}`}
+    >
+      <div
+        data-name="message-bubble-content-wrapper"
+        className={isUser ? 'max-w-[80%] min-w-0' : 'w-full min-w-0'}
+      >
         {/* Group chat: assistant identity label */}
         {!isUser && assistantDisplayName && (
           <div data-name="message-bubble-assistant-label" className="flex items-center gap-1.5 mb-1 ml-1">
@@ -766,7 +772,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         )}
         <div
           data-name="message-bubble-content"
-          className={`rounded-lg px-4 py-3 ${
+          className={`min-w-0 max-w-full rounded-lg px-4 py-3 ${
             isUser
               ? 'bg-blue-500 text-white'
               : isGroupAssistantMessage
@@ -990,7 +996,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   isStreaming={isStreaming && !message.message_id}
                 />
               ) : (
-                <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] prose prose-sm max-w-none dark:prose-invert [&_a]:break-all [&_code]:break-words [&_li]:break-words [&_p]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap">
                   {latestRagDiagnostics && (
                     <div data-name="message-bubble-rag-diagnostics" className="not-prose mb-3 rounded-md border border-amber-200 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-900/30">
                       <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
@@ -1108,7 +1114,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                                 </div>
                               )}
                               {!isMemorySource && source.snippet && (
-                                <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                                <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 break-words">
                                   {source.snippet}
                                 </div>
                               )}

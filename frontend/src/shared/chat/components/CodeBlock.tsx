@@ -26,13 +26,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
   };
 
   return (
-    <div data-name="code-block-root" className="relative group my-4">
+    <div data-name="code-block-root" className="relative my-4 w-full min-w-0 max-w-full group">
       {/* Language label and copy button */}
-      <div data-name="code-block-header" className="flex items-center justify-between bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
-        <span className="font-mono">{language || 'text'}</span>
+      <div data-name="code-block-header" className="flex min-w-0 items-center justify-between gap-2 bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
+        <span className="min-w-0 truncate font-mono">{language || 'text'}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+          className="flex flex-shrink-0 items-center gap-1.5 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
           title={isCopied ? 'Copied' : 'Copy code'}
         >
           {isCopied ? (
@@ -50,20 +50,24 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
       </div>
 
       {/* Code content */}
-      <SyntaxHighlighter
-        language={language || 'text'}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          borderTopLeftRadius: 0,
-          borderTopRightRadius: 0,
-          borderBottomLeftRadius: '0.5rem',
-          borderBottomRightRadius: '0.5rem',
-        }}
-        showLineNumbers
-      >
-        {value}
-      </SyntaxHighlighter>
+      <div className="min-w-0 max-w-full overflow-x-auto">
+        <SyntaxHighlighter
+          language={language || 'text'}
+          style={vscDarkPlus}
+          customStyle={{
+            margin: 0,
+            maxWidth: '100%',
+            borderTopLeftRadius: 0,
+            borderTopRightRadius: 0,
+            borderBottomLeftRadius: '0.5rem',
+            borderBottomRightRadius: '0.5rem',
+          }}
+          showLineNumbers
+          wrapLongLines
+        >
+          {value}
+        </SyntaxHighlighter>
+      </div>
     </div>
   );
 };

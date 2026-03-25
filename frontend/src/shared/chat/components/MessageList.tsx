@@ -52,7 +52,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [messages, sessionId]);
 
   return (
-    <div data-name="message-list" className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+    <div data-name="message-list" className="flex-1 min-w-0 overflow-y-auto bg-gray-50 p-4 dark:bg-gray-900">
       {messages.length === 0 ? (
         <div data-name="message-list-empty" className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
           {loading ? (

@@ -93,17 +93,20 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
   const isOpen = isExpanded;
 
   return (
-    <div data-name="thinking-block" className="mb-3 border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden">
+    <div
+      data-name="thinking-block"
+      className="mb-3 w-full min-w-0 max-w-full rounded-lg border border-amber-200 dark:border-amber-800 overflow-hidden"
+    >
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+        className="flex w-full min-w-0 items-center gap-2 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
       >
         <span className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-0' : '-rotate-90'}`}>
           <ChevronDownIcon className="w-4 h-4" />
         </span>
         <LightBulbIcon className={`w-4 h-4 ${isThinkingInProgress ? 'animate-pulse' : ''}`} />
-        <span>{headerText}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{headerText}</span>
         {/* Copy button (only when completed and expanded) */}
         {!isThinkingInProgress && isOpen && (
           <span className="ml-auto">
@@ -123,7 +126,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
       {!isOpen && isThinkingInProgress && previewLines.length > 0 && (
         <div
           ref={previewRef}
-          className="relative px-3 py-1.5 bg-amber-50/50 dark:bg-amber-900/20 overflow-hidden"
+          className="relative min-w-0 overflow-hidden bg-amber-50/50 px-3 py-1.5 dark:bg-amber-900/20"
           style={{ maxHeight: '42px' }}
         >
           <div
@@ -139,7 +142,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
             }}
           />
           {previewLines.map((line, i) => (
-            <div key={i} className="text-[11px] leading-[14px] text-gray-500 dark:text-gray-400 truncate">
+            <div key={i} className="truncate text-[11px] leading-[14px] text-gray-500 dark:text-gray-400">
               {line}
             </div>
           ))}
@@ -148,7 +151,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
 
       {/* Expanded content */}
       {isOpen && (
-        <div className="px-3 py-2 bg-amber-50/50 dark:bg-amber-900/20 text-xs text-gray-600 dark:text-gray-400 max-h-64 overflow-y-auto prose prose-xs dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-1">
+        <div className="min-w-0 max-w-full overflow-x-auto overflow-y-auto bg-amber-50/50 px-3 py-2 text-xs text-gray-600 dark:bg-amber-900/20 dark:text-gray-400 max-h-64 break-words [overflow-wrap:anywhere] prose prose-xs dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-1 [&_a]:break-all [&_code]:break-words [&_li]:break-words [&_p]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
             {normalizedThinking}
           </ReactMarkdown>

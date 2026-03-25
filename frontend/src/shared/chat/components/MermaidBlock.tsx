@@ -118,11 +118,11 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ value }) => {
   const showingCode = showCode || (!svg && !error);
 
   return (
-    <div data-name="mermaid-block-root" className="relative group my-4">
+    <div data-name="mermaid-block-root" className="relative my-4 w-full min-w-0 max-w-full group">
       {/* Header */}
-      <div data-name="mermaid-block-header" className="flex items-center justify-between bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
-        <span className="font-mono">mermaid</span>
-        <div className="flex items-center gap-2">
+      <div data-name="mermaid-block-header" className="flex min-w-0 items-center justify-between gap-2 bg-gray-800 text-gray-300 px-4 py-2 rounded-t-lg text-sm">
+        <span className="min-w-0 truncate font-mono">mermaid</span>
+        <div className="flex flex-shrink-0 items-center gap-2">
           {/* Toggle button — only show when we have a rendered diagram to switch to */}
           {(svg || error) && (
             <button
@@ -166,7 +166,7 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ value }) => {
 
       {/* Content */}
       {showingCode || error ? (
-        <div className="bg-gray-900 rounded-b-lg overflow-x-auto">
+        <div className="bg-gray-900 rounded-b-lg overflow-x-auto max-w-full">
           {error && (
             <div className="px-4 py-2 text-xs text-red-400 bg-red-900/30 border-b border-red-800/50">
               Render error: {error}
@@ -179,7 +179,7 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ value }) => {
       ) : (
         <div
           ref={containerRef}
-          className="bg-white dark:bg-gray-900 rounded-b-lg p-4 overflow-x-auto flex justify-center"
+          className="bg-white dark:bg-gray-900 rounded-b-lg p-4 overflow-x-auto flex justify-center max-w-full [&_svg]:max-w-full [&_svg]:h-auto"
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       )}

@@ -74,7 +74,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       context={context}
     >
       <ChatComposerProvider>
-        <div data-name="chat-interface" className="flex flex-1">
+        <div data-name="chat-interface" className="flex flex-1 min-w-0">
           {/* Chat Sidebar */}
           <ChatSidebar />
 
