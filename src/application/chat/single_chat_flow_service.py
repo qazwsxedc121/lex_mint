@@ -45,6 +45,7 @@ from src.application.chat.service_contracts import (
     StreamEvent,
     StreamItem,
 )
+from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
 from src.providers.types import CostInfo, TokenUsage
 
 
@@ -1152,7 +1153,7 @@ class SingleChatFlowService:
         print(f"[Step 4] Saving complete AI response to file...")
         logger.info(f"[Step 4] Saving complete AI response")
         if outcome.tool_diagnostics:
-            runtime.all_sources = self._merge_tool_diagnostics_into_sources(
+            runtime.all_sources = merge_tool_diagnostics_into_sources(
                 runtime.all_sources,
                 outcome.tool_diagnostics,
             )
@@ -1195,64 +1196,6 @@ class SingleChatFlowService:
         )
         if followup_questions:
             yield {"type": "followup_questions", "questions": followup_questions}
-
-    @staticmethod
-    def _merge_tool_diagnostics_into_sources(
-        all_sources: List[SourcePayload],
-        tool_diagnostics: Optional[Dict[str, Any]],
-    ) -> List[SourcePayload]:
-        if not tool_diagnostics:
-            return all_sources
-
-        payload = {
-            "tool_search_count": int(tool_diagnostics.get("tool_search_count", 0) or 0),
-            "tool_search_unique_count": int(
-                tool_diagnostics.get("tool_search_unique_count", 0) or 0
-            ),
-            "tool_search_duplicate_count": int(
-                tool_diagnostics.get("tool_search_duplicate_count", 0) or 0
-            ),
-            "tool_read_count": int(tool_diagnostics.get("tool_read_count", 0) or 0),
-            "tool_finalize_reason": str(
-                tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
-            ),
-        }
-
-        diagnostics_source: Optional[SourcePayload] = None
-        for source in reversed(all_sources):
-            if str(source.get("type", "")) == "rag_diagnostics":
-                diagnostics_source = source
-                break
-
-        should_create_new = (
-            payload["tool_search_count"] > 0
-            or payload["tool_read_count"] > 0
-            or payload["tool_search_duplicate_count"] > 0
-            or payload["tool_finalize_reason"] != "normal_no_tools"
-        )
-        if diagnostics_source is None:
-            if not should_create_new:
-                return all_sources
-            diagnostics_source = {
-                "type": "rag_diagnostics",
-                "title": "RAG Diagnostics",
-                "snippet": "Tool diagnostics",
-            }
-            all_sources.append(diagnostics_source)
-
-        diagnostics_source.update(payload)
-        tool_snippet = (
-            f"tool s:{payload['tool_search_count']} "
-            f"u:{payload['tool_search_unique_count']} "
-            f"d:{payload['tool_search_duplicate_count']} "
-            f"r:{payload['tool_read_count']} "
-            f"f:{payload['tool_finalize_reason']}"
-        )
-        existing_snippet = str(diagnostics_source.get("snippet", "") or "").strip()
-        diagnostics_source["snippet"] = (
-            f"{existing_snippet} | {tool_snippet}" if existing_snippet else tool_snippet
-        )
-        return all_sources
 
     async def _maybe_auto_compress(
         self,

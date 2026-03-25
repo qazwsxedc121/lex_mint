@@ -15,6 +15,7 @@ class GroupTurnStreamState:
     full_response: str = ""
     usage_data: Optional[Any] = None
     cost_data: Optional[Any] = None
+    tool_diagnostics: Optional[Dict[str, Any]] = None
 
 
 class GroupTurnStreamRunner:
@@ -71,6 +72,9 @@ class GroupTurnStreamRunner:
                 continue
 
             if isinstance(chunk, dict):
+                if chunk.get("type") == "tool_diagnostics":
+                    state.tool_diagnostics = dict(chunk)
+                    continue
                 event = dict(chunk)
                 event["assistant_id"] = assistant_id
                 event["assistant_turn_id"] = assistant_turn_id

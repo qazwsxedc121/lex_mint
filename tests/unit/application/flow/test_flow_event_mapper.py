@@ -120,3 +120,30 @@ def test_mapper_maps_compression_complete_event():
     assert flow_event["event_type"] == "compression_completed"
     assert flow_event["stage"] == "meta"
     assert flow_event["payload"]["message_id"] == "msg-1"
+
+
+def test_mapper_maps_tool_diagnostics_event():
+    mapper = FlowEventMapper(stream_id="stream-8", conversation_id="session-8")
+
+    payload = mapper.to_sse_payload(
+        {
+            "type": "tool_diagnostics",
+            "assistant_id": "assistant-1",
+            "assistant_turn_id": "turn-1",
+            "tool_search_count": 3,
+            "tool_search_unique_count": 2,
+            "tool_read_count": 1,
+            "tool_finalize_reason": "fallback_empty_answer",
+        }
+    )
+
+    flow_event = payload["flow_event"]
+    assert flow_event["event_type"] == "tool_diagnostics_reported"
+    assert flow_event["stage"] == "meta"
+    assert flow_event["conversation_id"] == "session-8"
+    assert flow_event["turn_id"] == "turn-1"
+    assert flow_event["payload"]["assistant_id"] == "assistant-1"
+    assert flow_event["payload"]["tool_search_count"] == 3
+    assert flow_event["payload"]["tool_search_unique_count"] == 2
+    assert flow_event["payload"]["tool_read_count"] == 1
+    assert flow_event["payload"]["tool_finalize_reason"] == "fallback_empty_answer"

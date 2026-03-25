@@ -16,6 +16,7 @@ from src.application.chat.service_contracts import (
     SourcePayload,
     WebpageServiceLike,
 )
+from src.application.chat.source_diagnostics import merge_source_groups
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ class ContextAssemblyService:
             project_id=project_id,
         )
 
-        all_sources = self._merge_all_sources(
+        all_sources = merge_source_groups(
             memory_sources,
             webpage_sources,
             search_sources,
@@ -196,14 +197,6 @@ class ContextAssemblyService:
             "frequency_penalty": assistant.frequency_penalty,
             "presence_penalty": assistant.presence_penalty,
         }
-
-    @staticmethod
-    def _merge_all_sources(*source_groups: List[SourcePayload]) -> List[SourcePayload]:
-        merged: List[SourcePayload] = []
-        for group in source_groups:
-            if group:
-                merged.extend(group)
-        return merged
 
     def _is_structured_source_context_enabled(self) -> bool:
         try:

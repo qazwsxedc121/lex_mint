@@ -26,6 +26,7 @@ from .flow_event_types import (
     STREAM_STARTED,
     TEXT_DELTA,
     TOOL_CALL_FINISHED,
+    TOOL_DIAGNOSTICS_REPORTED,
     TOOL_CALL_STARTED,
     USAGE_REPORTED,
     USER_MESSAGE_IDENTIFIED,
@@ -222,6 +223,26 @@ class FlowEventMapper:
                 ("results", "assistant_id", "assistant_turn_id"),
             )
             return TOOL_CALL_FINISHED, FlowEventStage.TOOL, payload
+
+        if event_type == "tool_diagnostics":
+            payload = self._copy_selected_fields(
+                event,
+                (
+                    "assistant_id",
+                    "assistant_turn_id",
+                    "tool_search_count",
+                    "tool_search_unique_count",
+                    "tool_search_duplicate_count",
+                    "tool_read_count",
+                    "tool_read_duplicate_count",
+                    "web_search_count",
+                    "web_read_count",
+                    "no_progress_rounds",
+                    "max_tool_rounds",
+                    "tool_finalize_reason",
+                ),
+            )
+            return TOOL_DIAGNOSTICS_REPORTED, FlowEventStage.META, payload
 
         if event_type == "assistant_start":
             payload = self._copy_selected_fields(

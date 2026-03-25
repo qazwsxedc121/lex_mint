@@ -92,6 +92,20 @@ class ToolResultsEvent(_EventBase):
     results: Any
 
 
+class ToolDiagnosticsEvent(_EventBase):
+    type: str = "tool_diagnostics"
+    tool_search_count: Optional[int] = None
+    tool_search_unique_count: Optional[int] = None
+    tool_search_duplicate_count: Optional[int] = None
+    tool_read_count: Optional[int] = None
+    tool_read_duplicate_count: Optional[int] = None
+    web_search_count: Optional[int] = None
+    web_read_count: Optional[int] = None
+    no_progress_rounds: Optional[int] = None
+    max_tool_rounds: Optional[int] = None
+    tool_finalize_reason: Optional[str] = None
+
+
 class ModelStartEvent(_EventBase):
     type: str = "model_start"
     model_id: str
@@ -137,6 +151,7 @@ OrchestrationEventModel = Union[
     ThinkingDurationEvent,
     ToolCallsEvent,
     ToolResultsEvent,
+    ToolDiagnosticsEvent,
     ModelStartEvent,
     ModelChunkEvent,
     ModelDoneEvent,
@@ -159,6 +174,7 @@ _EVENT_MODEL_BY_TYPE: Dict[str, Type[_EventBase]] = {
     "thinking_duration": ThinkingDurationEvent,
     "tool_calls": ToolCallsEvent,
     "tool_results": ToolResultsEvent,
+    "tool_diagnostics": ToolDiagnosticsEvent,
     "model_start": ModelStartEvent,
     "model_chunk": ModelChunkEvent,
     "model_done": ModelDoneEvent,

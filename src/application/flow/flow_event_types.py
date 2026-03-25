@@ -16,6 +16,7 @@ REASONING_DURATION_REPORTED: Final[str] = "reasoning_duration_reported"
 
 TOOL_CALL_STARTED: Final[str] = "tool_call_started"
 TOOL_CALL_FINISHED: Final[str] = "tool_call_finished"
+TOOL_DIAGNOSTICS_REPORTED: Final[str] = "tool_diagnostics_reported"
 
 ASSISTANT_TURN_STARTED: Final[str] = "assistant_turn_started"
 ASSISTANT_TURN_FINISHED: Final[str] = "assistant_turn_finished"

@@ -6,6 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
+from src.application.chat.source_diagnostics import merge_source_groups
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,6 +22,7 @@ class GroupTurnContext:
     identity_prompt: str
     instruction_prompt: Optional[str]
     system_prompt: str
+    sources: List[Dict[str, Any]]
 
 
 class GroupTurnContextBuilder:
@@ -54,6 +57,7 @@ class GroupTurnContextBuilder:
         context_type: str,
         project_id: Optional[str],
         search_context: Optional[str],
+        search_sources: List[Dict[str, Any]],
         instruction: Optional[str] = None,
         committee_turn_packet: Optional[Dict[str, Any]] = None,
     ) -> GroupTurnContext:
@@ -93,8 +97,9 @@ class GroupTurnContextBuilder:
         system_prompt = "\n\n".join(prompt_parts)
 
         assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
+        memory_sources: List[Dict[str, Any]] = []
         try:
-            memory_context, _ = self.memory_service.build_memory_context(
+            memory_context, memory_sources = self.memory_service.build_memory_context(
                 query=raw_user_message,
                 assistant_id=assistant_id,
                 include_global=True,
@@ -107,7 +112,9 @@ class GroupTurnContextBuilder:
         except Exception as e:
             logger.warning("[GroupChat] Memory retrieval failed for %s: %s", assistant_id, e)
 
-        rag_context, _ = await self.build_rag_context_and_sources(
+        rag_context, rag_sources = await self.build_rag_context_and_sources(
+            context_type=context_type,
+            project_id=project_id,
             raw_user_message=raw_user_message,
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
@@ -119,6 +126,7 @@ class GroupTurnContextBuilder:
             system_prompt = (
                 f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
             )
+        sources = merge_source_groups(memory_sources, search_sources, rag_sources)
 
         return GroupTurnContext(
             assistant_name=assistant_name,
@@ -128,4 +136,5 @@ class GroupTurnContextBuilder:
             identity_prompt=identity_prompt,
             instruction_prompt=instruction_prompt,
             system_prompt=system_prompt,
+            sources=sources,
         )

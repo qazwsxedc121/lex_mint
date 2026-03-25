@@ -8,6 +8,8 @@ import re
 import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
+from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
+
 from .committee_types import CommitteeRuntimeState
 from .turn_context_builder import GroupTurnContextBuilder
 from .turn_stream_runner import GroupTurnStreamRunner, GroupTurnStreamState
@@ -352,6 +354,7 @@ class CommitteeTurnExecutor:
             context_type=context_type,
             project_id=project_id,
             search_context=search_context,
+            search_sources=search_sources,
             instruction=instruction,
             committee_turn_packet=committee_turn_packet,
         )
@@ -419,13 +422,18 @@ class CommitteeTurnExecutor:
                 )
             raise
 
+        all_sources = merge_tool_diagnostics_into_sources(
+            turn_context.sources,
+            stream_state.tool_diagnostics,
+        )
+
         assistant_message_id = await self.storage.append_message(
             session_id,
             "assistant",
             stream_state.full_response,
             usage=stream_state.usage_data,
             cost=stream_state.cost_data,
-            sources=search_sources if search_sources else None,
+            sources=all_sources if all_sources else None,
             assistant_id=assistant_id,
             context_type=context_type,
             project_id=project_id,
@@ -461,12 +469,12 @@ class CommitteeTurnExecutor:
                 usage_event["cost"] = stream_state.cost_data.model_dump()
             yield usage_event
 
-        if search_sources:
+        if all_sources:
             yield {
                 "type": "sources",
                 "assistant_id": assistant_id,
                 "assistant_turn_id": assistant_turn_id,
-                "sources": search_sources,
+                "sources": all_sources,
             }
 
         yield {
