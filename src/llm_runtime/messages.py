@@ -33,7 +33,7 @@ async def convert_to_langchain_messages(
                 langchain_messages.append(HumanMessage(content=msg["content"]))
                 continue
 
-            content_list: List[Dict[str, Any]] = []
+            content_list: List[str | Dict[str, Any]] = []
             if msg["content"].strip():
                 content_list.append({
                     "type": "text",

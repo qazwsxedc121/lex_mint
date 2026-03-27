@@ -20,7 +20,7 @@ from src.application.orchestration import (
     RunContext,
     RunSpec,
 )
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from src.llm_runtime import (
     build_context_info_event,
@@ -780,7 +780,7 @@ class SingleChatFlowService:
             context_budget_tokens=max_input_tokens,
         )
 
-        langchain_messages = [
+        langchain_messages: List[BaseMessage] = [
             SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
             for segment in context_plan.system_segments
         ]

@@ -85,11 +85,13 @@ class _FakeSearchService:
 
 class _FakeSourceContextService:
     @staticmethod
-    def build_source_tags(query, sources):
+    def build_source_tags(query, sources, max_sources: int = 20, max_chars_per_source: int = 1200):
+        _ = max_sources, max_chars_per_source
         return {"q": query, "count": len(sources)}
 
     @staticmethod
-    def apply_template(query, source_context):
+    def apply_template(query, source_context, template=None):
+        _ = template
         return f"STRUCT:{query}:{source_context['count']}"
 
 

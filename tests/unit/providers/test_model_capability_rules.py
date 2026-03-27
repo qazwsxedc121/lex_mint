@@ -52,6 +52,7 @@ def test_apply_model_capability_hints_preserves_explicit_capabilities():
         provider_id="local_gguf",
     )
 
+    assert hinted is not None
     assert hinted["reasoning"] is False
     assert hinted["function_calling"] is False
     assert hinted["reasoning_controls"] is None

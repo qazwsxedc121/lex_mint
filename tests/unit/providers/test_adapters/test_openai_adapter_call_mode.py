@@ -68,7 +68,7 @@ def test_interleaved_wrapper_injects_reasoning_content_for_tool_call_messages():
     llm = ChatOpenAIInterleaved(
         model="moonshotai/kimi-k2.5",
         base_url="https://openrouter.ai/api/v1",
-        api_key="k",
+        api_key=SecretStr("k"),
         use_responses_api=False,
     )
     object.__setattr__(llm, "_requires_interleaved_thinking", True)
@@ -96,7 +96,7 @@ def test_interleaved_wrapper_skips_reasoning_content_when_disabled():
     llm = ChatOpenAIInterleaved(
         model="moonshotai/kimi-k2.5",
         base_url="https://openrouter.ai/api/v1",
-        api_key="k",
+        api_key=SecretStr("k"),
         use_responses_api=False,
     )
     object.__setattr__(llm, "_requires_interleaved_thinking", False)

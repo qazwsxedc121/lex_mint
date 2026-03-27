@@ -2,6 +2,7 @@
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from pydantic import SecretStr
 
 from src.providers.adapters.kimi_adapter import ChatKimiOpenAI, KimiAdapter
 
@@ -165,7 +166,7 @@ def test_chat_kimi_payload_keeps_reasoning_content_for_tool_call_messages():
     llm = ChatKimiOpenAI(
         model="kimi-k2.5",
         base_url="https://api.moonshot.cn/v1",
-        api_key="k",
+        api_key=SecretStr("k"),
         use_responses_api=False,
     )
     object.__setattr__(llm, "_requires_interleaved_thinking", True)
@@ -192,7 +193,7 @@ def test_chat_kimi_payload_skips_reasoning_when_interleaved_not_required():
     llm = ChatKimiOpenAI(
         model="kimi-k2.5",
         base_url="https://api.moonshot.cn/v1",
-        api_key="k",
+        api_key=SecretStr("k"),
         use_responses_api=False,
     )
     object.__setattr__(llm, "_requires_interleaved_thinking", False)

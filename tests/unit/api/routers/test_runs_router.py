@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pytest
 from fastapi import HTTPException
@@ -78,7 +78,7 @@ async def test_create_run_requires_workflow_id_for_workflow_kind():
 
     request = runs_router.CreateRunRequest(kind="workflow", inputs={"input": "x"})
     with pytest.raises(HTTPException) as exc_info:
-        await runs_router.create_run(request=request, service=_UnusedService())
+        await runs_router.create_run(request=request, service=cast(Any, _UnusedService()))
     assert exc_info.value.status_code == 400
 
 
@@ -87,10 +87,10 @@ async def test_stream_run_returns_synthetic_terminal_payload_when_runtime_stream
     store = _FakeStore(_make_record(run_id="run-synthetic", status="failed", error="boom"))
     runtime = FlowStreamRuntime()
 
-    response = await runs_router.stream_run(run_id="run-synthetic", store=store, runtime=runtime)
+    response = await runs_router.stream_run(run_id="run-synthetic", store=cast(Any, store), runtime=runtime)
     payloads = await _collect_sse_payloads(response)
 
-    flow_events = [item.get("flow_event") for item in payloads]
+    flow_events = [cast(Dict[str, Any], item["flow_event"]) for item in payloads]
     assert [event.get("event_type") for event in flow_events] == [
         "stream_started",
         "stream_error",
@@ -117,8 +117,8 @@ async def test_list_runs_applies_status_filter_after_reconcile():
         project_id=None,
         session_id=None,
         workflow_id=None,
-        store=store,
-        service=_ReconcilingService(),
+        store=cast(Any, store),
+        service=cast(Any, _ReconcilingService()),
     )
 
     assert response.runs == []

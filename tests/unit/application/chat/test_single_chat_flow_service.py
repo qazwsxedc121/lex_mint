@@ -234,6 +234,7 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
         use_web_search=True,
     )
 
+    assert tools is not None
     assert [tool.name for tool in tools] == [
         "simple_calculator",
         "web_search",

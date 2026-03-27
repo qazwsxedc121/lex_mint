@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Protocol
 
+from src.domain.models.project_config import FileContent
+
 from src.infrastructure.config.file_reference_config_service import (
     FileReferenceConfig,
     FileReferenceConfigService,
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProjectFileReader(Protocol):
-    async def read_file(self, project_id: str, file_path: str): ...
+    async def read_file(self, project_id: str, relative_path: str) -> FileContent: ...
 
 
 class FileReferenceContextBuilder:

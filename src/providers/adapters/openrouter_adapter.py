@@ -6,7 +6,7 @@ Adapter for OpenRouter API with provider-native reasoning controls.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from .reasoning_openai import inject_tool_call_reasoning_content
 from .openai_adapter import OpenAIAdapter
@@ -30,7 +30,7 @@ if ChatOpenRouter is not None:
             stop: list[str] | None = None,
             **kwargs: Any,
         ) -> dict:
-            payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+            payload = cast(Any, super())._get_request_payload(input_, stop=stop, **kwargs)
             source_messages = self._convert_input(input_).to_messages()
             return inject_tool_call_reasoning_content(
                 payload,

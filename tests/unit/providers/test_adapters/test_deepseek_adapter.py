@@ -1,6 +1,7 @@
 """Tests for DeepSeek adapter interleaved thinking behavior."""
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from pydantic import SecretStr
 
 from src.providers.adapters.deepseek_adapter import ChatDeepSeekInterleaved, DeepSeekAdapter
 
@@ -20,7 +21,7 @@ def test_create_llm_returns_interleaved_wrapper():
 def test_deepseek_payload_keeps_reasoning_content_for_tool_call_messages():
     llm = ChatDeepSeekInterleaved(
         model="deepseek-chat",
-        api_key="k",
+        api_key=SecretStr("k"),
         api_base="https://api.deepseek.com",
         streaming=False,
     )
@@ -47,7 +48,7 @@ def test_deepseek_payload_keeps_reasoning_content_for_tool_call_messages():
 def test_deepseek_payload_skips_reasoning_when_interleaved_not_required():
     llm = ChatDeepSeekInterleaved(
         model="deepseek-chat",
-        api_key="k",
+        api_key=SecretStr("k"),
         api_base="https://api.deepseek.com",
         streaming=False,
     )

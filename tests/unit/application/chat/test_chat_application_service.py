@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from src.application.chat.service import ChatApplicationDeps, ChatApplicationService
 
 
@@ -244,7 +246,7 @@ async def test_chat_application_service_delegates_session_commands():
             single_chat_flow_service=_FakeSingleChatFlowService(),
             compare_flow_service=_FakeCompareFlowService(),
             group_chat_service=_FakeGroupChatService(),
-            session_command_service=commands,
+            session_command_service=cast(Any, commands),
         )
     )
 

@@ -129,16 +129,16 @@ async def test_apply_diff_hash_mismatch_returns_error(tmp_path, project_service:
         "-line2\n"
         "+line-two\n"
     )
-    payload = json.loads(
-        await service.execute_tool(
-            "apply_diff_current_document",
-            {
-                "unified_diff": diff_text,
-                "base_hash": "invalid_hash_value_123456",
-                "dry_run": True,
-            },
-        )
+    result = await service.execute_tool(
+        "apply_diff_current_document",
+        {
+            "unified_diff": diff_text,
+            "base_hash": "invalid_hash_value_123456",
+            "dry_run": True,
+        },
     )
+    assert result is not None
+    payload = json.loads(result)
 
     assert payload["ok"] is False
     assert payload["error"]["code"] == "HASH_MISMATCH"
@@ -317,16 +317,16 @@ async def test_apply_diff_rejects_ambiguous_hunk_fallback(tmp_path, project_serv
         "-dup\n"
         "+updated\n"
     )
-    payload = json.loads(
-        await service.execute_tool(
-            "apply_diff_current_document",
-            {
-                "unified_diff": diff_text,
-                "base_hash": base_hash,
-                "dry_run": True,
-            },
-        )
+    result = await service.execute_tool(
+        "apply_diff_current_document",
+        {
+            "unified_diff": diff_text,
+            "base_hash": base_hash,
+            "dry_run": True,
+        },
     )
+    assert result is not None
+    payload = json.loads(result)
 
     assert payload["ok"] is False
     assert payload["error"]["code"] == "PATCH_APPLY_FAILED"
@@ -353,16 +353,16 @@ async def test_apply_diff_rejects_invalid_hunk_counts(tmp_path, project_service:
         "-line2\n"
         "+line-two\n"
     )
-    payload = json.loads(
-        await service.execute_tool(
-            "apply_diff_current_document",
-            {
-                "unified_diff": diff_text,
-                "base_hash": base_hash,
-                "dry_run": True,
-            },
-        )
+    result = await service.execute_tool(
+        "apply_diff_current_document",
+        {
+            "unified_diff": diff_text,
+            "base_hash": base_hash,
+            "dry_run": True,
+        },
     )
+    assert result is not None
+    payload = json.loads(result)
 
     assert payload["ok"] is False
     assert payload["error"]["code"] == "INVALID_DIFF_FORMAT"
@@ -428,15 +428,15 @@ async def test_search_project_text_invalid_regex_returns_error(tmp_path, project
         pending_store=PendingPatchStore(),
     )
 
-    payload = json.loads(
-        await service.execute_tool(
-            "search_project_text",
-            {
-                "query": "(",
-                "use_regex": True,
-            },
-        )
+    result = await service.execute_tool(
+        "search_project_text",
+        {
+            "query": "(",
+            "use_regex": True,
+        },
     )
+    assert result is not None
+    payload = json.loads(result)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "INVALID_ARGUMENT"
     assert "regex" in payload["error"]["message"].lower()
@@ -547,7 +547,9 @@ async def test_read_current_document_without_active_file_returns_error(tmp_path,
         pending_store=PendingPatchStore(),
     )
 
-    payload = json.loads(await service.execute_tool("read_current_document", {}))
+    result = await service.execute_tool("read_current_document", {})
+    assert result is not None
+    payload = json.loads(result)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "NO_ACTIVE_FILE"
 

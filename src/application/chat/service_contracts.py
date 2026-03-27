@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Sequence, Tuple, Union
 
+from src.domain.models.search import SearchSource
+
 SourcePayload = Dict[str, Any]
 MessagePayload = Dict[str, Any]
 StreamEvent = Dict[str, Any]
@@ -142,14 +144,15 @@ class SourceContextServiceLike(Protocol):
         self,
         query: str,
         sources: List[SourcePayload],
-        /,
+        max_sources: int = 20,
+        max_chars_per_source: int = 1200,
     ) -> Any: ...
 
     def apply_template(
         self,
         query: str,
         source_context: Any,
-        /,
+        template: Optional[str] = None,
     ) -> Optional[str]: ...
 
 

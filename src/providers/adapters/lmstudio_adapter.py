@@ -1,23 +1,34 @@
 """Native adapter for LM Studio built on the official Python SDK."""
 
+# pyright: reportMissingImports=false
+
 from __future__ import annotations
 
 import asyncio
 import base64
 import contextlib
 import logging
-from typing import Any, AsyncIterator, Callable, Dict, Iterable, List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Any, AsyncIterator, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, cast
 from urllib.parse import urlparse
 
-import lmstudio as lms
-from lmstudio import history as lm_history
-from lmstudio.json_api import ToolFunctionDef
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 
 from ..base import BaseLLMAdapter
 from ..model_capability_rules import apply_model_capability_hints
 from ..types import LLMResponse, StreamChunk, TokenUsage
+
+try:  # pragma: no cover - optional dependency
+    import lmstudio as lms
+    from lmstudio import history as lm_history
+    from lmstudio.json_api import ToolFunctionDef
+except Exception:  # pragma: no cover - keep import-time optional
+    lms = SimpleNamespace(AsyncClient=None)
+    lm_history = SimpleNamespace(Chat=None)
+    ToolFunctionDef = None
+
+_ToolFunctionDefT = TypeVar("_ToolFunctionDefT")
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +84,28 @@ class _ThinkTagParser:
                 output.append((self._mode, flush))
             break
         return output
+
+
+class _FallbackChatHistory:
+    """Minimal chat-history shape used when LM Studio SDK helpers are unavailable."""
+
+    def __init__(self) -> None:
+        self.messages: List[Dict[str, Any]] = []
+
+    def add_system_prompt(self, text: str) -> None:
+        self.messages.append({"role": "system", "content": text})
+
+    def add_user_message(self, text: str, images: Optional[List[Any]] = None) -> None:
+        payload: Dict[str, Any] = {"role": "user", "content": text}
+        if images:
+            payload["images"] = list(images)
+        self.messages.append(payload)
+
+    def add_assistant_response(self, text: str) -> None:
+        self.messages.append({"role": "assistant", "content": text})
+
+    def add_tool_result(self, payload: Dict[str, Any]) -> None:
+        self.messages.append({"role": "tool", **payload})
 
 
 class LmStudioChatModel:
@@ -221,7 +254,7 @@ class LmStudioAdapter(BaseLLMAdapter):
     async def _extract_user_parts(
         cls,
         content: Any,
-        client: lms.AsyncClient,
+        client: Any,
     ) -> Tuple[List[str], List[Any]]:
         if isinstance(content, str):
             return [content], []
@@ -258,9 +291,10 @@ class LmStudioAdapter(BaseLLMAdapter):
     async def build_history(
         cls,
         messages: Iterable[BaseMessage],
-        client: lms.AsyncClient,
-    ) -> lm_history.Chat:
-        chat = lm_history.Chat()
+        client: Any,
+    ) -> Any:
+        chat_cls = getattr(lm_history, "Chat", None)
+        chat = chat_cls() if callable(chat_cls) else _FallbackChatHistory()
         for message in messages:
             role = getattr(message, "type", "")
             if role == "system":
@@ -309,11 +343,14 @@ class LmStudioAdapter(BaseLLMAdapter):
         return params
 
     @classmethod
-    def _sdk_tool_from_langchain(cls, tool: BaseTool) -> ToolFunctionDef:
+    def _sdk_tool_from_langchain(cls, tool: BaseTool) -> Any:
         async def _invoke_tool(**kwargs):
             return await tool.ainvoke(kwargs)
 
-        return ToolFunctionDef(
+        tool_function_def_cls = ToolFunctionDef
+        if tool_function_def_cls is None:
+            raise RuntimeError("lmstudio SDK is not installed")
+        return tool_function_def_cls(
             name=tool.name,
             description=(tool.description or tool.name or "tool").strip(),
             parameters=cls._tool_parameters_from_langchain(tool),
@@ -323,8 +360,9 @@ class LmStudioAdapter(BaseLLMAdapter):
     @classmethod
     def _normalize_sdk_tools(cls, tools: List[Any]) -> List[Any]:
         normalized: List[Any] = []
+        tool_function_def_cls = ToolFunctionDef if isinstance(ToolFunctionDef, type) else None
         for tool in tools:
-            if isinstance(tool, ToolFunctionDef):
+            if tool_function_def_cls is not None and isinstance(tool, tool_function_def_cls):
                 normalized.append(tool)
             elif isinstance(tool, BaseTool):
                 normalized.append(cls._sdk_tool_from_langchain(tool))
@@ -383,7 +421,7 @@ class LmStudioAdapter(BaseLLMAdapter):
                 "disable_supported": True,
             },
         }
-        capabilities = apply_model_capability_hints(model_id, capabilities, provider_id="lmstudio")
+        capabilities = apply_model_capability_hints(model_id, capabilities, provider_id="lmstudio") or capabilities
 
         tags: List[str] = []
         if capabilities.get("vision"):
@@ -397,8 +435,12 @@ class LmStudioAdapter(BaseLLMAdapter):
 
         return {"capabilities": capabilities, "tags": tags}
 
-    async def _open_model(self, llm: LmStudioChatModel) -> tuple[lms.AsyncClient, Any]:
-        client = lms.AsyncClient(llm.api_host)
+    async def _open_model(self, llm: LmStudioChatModel) -> tuple[Any, Any]:
+        sdk = lms
+        async_client_cls = getattr(sdk, "AsyncClient", None)
+        if async_client_cls is None:
+            raise RuntimeError("lmstudio SDK is not installed")
+        client = async_client_cls(llm.api_host)
         await client.__aenter__()
         try:
             model = await client.llm.model(llm.model)
@@ -622,8 +664,12 @@ class LmStudioAdapter(BaseLLMAdapter):
 
     async def fetch_models(self, base_url: str, api_key: str) -> List[Dict[str, Any]]:
         del api_key
+        sdk = lms
+        async_client_cls = getattr(sdk, "AsyncClient", None)
+        if async_client_cls is None:
+            return []
         try:
-            async with lms.AsyncClient(self.normalize_api_host(base_url)) as client:
+            async with async_client_cls(self.normalize_api_host(base_url)) as client:
                 downloaded = await client.llm.list_downloaded()
                 loaded = await client.llm.list_loaded()
 
@@ -658,8 +704,12 @@ class LmStudioAdapter(BaseLLMAdapter):
         model_id: Optional[str] = None,
     ) -> tuple[bool, str]:
         del api_key
+        sdk = lms
+        async_client_cls = getattr(sdk, "AsyncClient", None)
+        if async_client_cls is None:
+            return False, "LM Studio SDK not installed"
         try:
-            async with lms.AsyncClient(self.normalize_api_host(base_url)) as client:
+            async with async_client_cls(self.normalize_api_host(base_url)) as client:
                 downloaded = await client.llm.list_downloaded()
                 loaded = await client.llm.list_loaded()
 

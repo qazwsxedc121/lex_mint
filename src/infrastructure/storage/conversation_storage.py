@@ -1266,7 +1266,7 @@ class ConversationStorage:
         if self._project_root_resolver:
             try:
                 import yaml
-                from ..config import settings
+                from src.core.config import settings
                 config_path = settings.projects_config_path
                 if config_path.exists():
                     with open(config_path, 'r', encoding='utf-8') as f:

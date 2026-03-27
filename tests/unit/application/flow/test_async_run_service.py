@@ -63,7 +63,7 @@ class _FakeWorkflowExecutionService:
 @pytest.mark.asyncio
 async def test_reconcile_orphaned_runs_marks_non_terminal_runs_as_failed():
     store = _FakeStore()
-    service = AsyncRunService(store=store, runtime=FlowStreamRuntime())
+    service = AsyncRunService(store=store, runtime=FlowStreamRuntime())  # type: ignore[arg-type]
     record = _make_record(run_id="run-orphan", status="running")
 
     reconciled = await service.reconcile_orphaned_runs([record])
@@ -77,7 +77,7 @@ async def test_reconcile_orphaned_runs_marks_non_terminal_runs_as_failed():
 @pytest.mark.asyncio
 async def test_reconcile_orphaned_runs_keeps_active_task_running():
     store = _FakeStore()
-    service = AsyncRunService(store=store, runtime=FlowStreamRuntime())
+    service = AsyncRunService(store=store, runtime=FlowStreamRuntime())  # type: ignore[arg-type]
     record = _make_record(run_id="run-active", status="running")
     task = asyncio.create_task(asyncio.sleep(10))
     service._tasks[record.run_id] = task
@@ -111,7 +111,7 @@ async def test_resume_workflow_run_restarts_task_with_checkpoint_id():
     workflow = type("WorkflowObj", (), {"id": "wf-test", "enabled": True})()
     execution_service = _FakeWorkflowExecutionService()
     service = AsyncRunService(
-        store=store,
+        store=store,  # type: ignore[arg-type]
         runtime=runtime,
         workflow_config_service=_FakeWorkflowConfigService(workflow),  # type: ignore[arg-type]
         workflow_execution_service=execution_service,  # type: ignore[arg-type]

@@ -76,8 +76,8 @@ def build_project_root_resolver(project_service: object) -> Callable[[str], Opti
     def resolve_project_root(project_id: str) -> Optional[str]:
         resolver = getattr(project_service, "resolve_project_root", None)
         if callable(resolver):
-            return resolver(project_id)
+            resolved_path = resolver(project_id)
+            return resolved_path if isinstance(resolved_path, str) else None
         return None
 
     return resolve_project_root
-

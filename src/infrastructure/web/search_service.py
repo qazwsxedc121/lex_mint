@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional, Sequence
 import logging
 import asyncio
 import yaml
@@ -261,17 +261,22 @@ class SearchService:
             return []
 
     @staticmethod
-    def build_search_context(query: str, sources: List[SearchSource]) -> str:
+    def build_search_context(query: str, sources: Sequence[Any]) -> str:
         lines = [
             "Web search results (use for grounding; cite sources by URL):",
             f"Query: {query}",
         ]
         for index, source in enumerate(sources, start=1):
-            snippet = (source.snippet or "").strip()
+            source_payload = source.model_dump() if hasattr(source, "model_dump") else source
+            if not isinstance(source_payload, dict):
+                continue
+            snippet = str(source_payload.get("snippet") or "").strip()
             if len(snippet) > 400:
                 snippet = snippet[:400] + "..."
-            lines.append(f"[{index}] {source.title}")
-            lines.append(f"URL: {source.url}")
+            title = str(source_payload.get("title") or "")
+            url = str(source_payload.get("url") or "")
+            lines.append(f"[{index}] {title}")
+            lines.append(f"URL: {url}")
             if snippet:
                 lines.append(f"Snippet: {snippet}")
         return "\n".join(lines)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.utils.llm_logger import get_llm_logger
@@ -85,7 +85,7 @@ def call_llm(
         context_budget_tokens=max_input_tokens,
     )
 
-    langchain_messages = [
+    langchain_messages: List[BaseMessage] = [
         SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
         for segment in context_plan.system_segments
     ]

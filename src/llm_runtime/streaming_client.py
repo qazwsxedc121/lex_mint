@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Union
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from src.llm_runtime.stream_call_policy import (
     build_stream_kwargs,
@@ -240,7 +240,7 @@ async def call_llm_stream(
         context_budget_tokens=max_input_tokens,
     )
 
-    langchain_messages = [
+    langchain_messages: List[BaseMessage] = [
         SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
         for segment in context_plan.system_segments
     ]

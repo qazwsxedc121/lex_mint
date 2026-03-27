@@ -194,8 +194,9 @@ def _parse_tool_result(raw_result: str, tool_name: str) -> ToolResultRecord:
     if isinstance(payload, dict):
         if isinstance(payload.get("ok"), bool):
             ok = bool(payload.get("ok"))
-        if isinstance(payload.get("status_code"), int):
-            status_code = int(payload.get("status_code"))
+        status_code_value = payload.get("status_code")
+        if isinstance(status_code_value, int):
+            status_code = int(status_code_value)
         error = payload.get("error")
         if isinstance(error, dict):
             error_code = str(error.get("code") or "")

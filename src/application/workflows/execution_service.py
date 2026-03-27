@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Union
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Literal, Optional, Union, cast
 
 from src.application.orchestration import (
     ActorEmit,
@@ -134,8 +135,9 @@ class _ConditionParser:
 
     def parse(self) -> bool:
         value = self._parse_or_expr()
-        if self._peek() is not None:
-            raise ValueError(f"Unexpected token '{self._peek().value}'")
+        trailing_token = self._peek()
+        if trailing_token is not None:
+            raise ValueError(f"Unexpected token '{trailing_token.value}'")
         return bool(value)
 
     def _parse_or_expr(self) -> Any:
@@ -990,7 +992,9 @@ class WorkflowExecutionService:
         aclose = getattr(stream, "aclose", None)
         if callable(aclose):
             with contextlib.suppress(Exception):
-                await aclose()
+                close_result = aclose()
+                if inspect.isawaitable(close_result):
+                    await cast(Awaitable[Any], close_result)
 
     async def _resolve_runtime_config(
         self,

@@ -80,7 +80,6 @@ class SourceContextService:
 
     def build_source_tags(
         self,
-        *,
         query: str,
         sources: List[Dict[str, Any]],
         max_sources: int = 20,
@@ -129,7 +128,6 @@ class SourceContextService:
 
     def apply_template(
         self,
-        *,
         query: str,
         source_context: str,
         template: Optional[str] = None,

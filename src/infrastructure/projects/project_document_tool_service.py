@@ -404,7 +404,7 @@ class ProjectDocumentToolService:
     ) -> None:
         self.project_id = project_id
         self.session_id = session_id
-        self.active_file_path = _normalize_rel_path(active_file_path) or None
+        self.active_file_path = _normalize_rel_path(active_file_path) if active_file_path else None
         self.active_file_hash = (active_file_hash or "").strip() or None
         self.project_service = project_service or ProjectService()
         self.pending_store = pending_store or _pending_patch_store

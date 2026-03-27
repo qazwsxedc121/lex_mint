@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any, cast
 
 from src.domain.models.search import SearchSource
 from src.infrastructure.web.web_tool_service import WebToolService
+
+
+def _make_search_source(**kwargs: Any) -> SearchSource:
+    return cast(Any, SearchSource)(**kwargs)
 
 
 class _FakeSearchConfig:
@@ -25,8 +30,8 @@ class _FakeSearchService:
         self.last_page = page
         assert query in {"latest llm news", "latest llm news page 2"}
         return [
-            SearchSource(type="search", title="Result A", url="https://a.test", snippet="Snippet A"),
-            SearchSource(type="search", title="Result B", url="https://b.test", snippet="Snippet B"),
+            _make_search_source(type="search", title="Result A", url="https://a.test", snippet="Snippet A"),
+            _make_search_source(type="search", title="Result B", url="https://b.test", snippet="Snippet B"),
         ]
 
 
@@ -63,7 +68,7 @@ class _FakeTavilySearchService:
         if page > 2:
             raise ValueError("Search provider 'tavily' supports simulated pagination only up to page 2")
         return [
-            SearchSource(type="search", title="Result T", url="https://t.test", snippet="Snippet T"),
+            _make_search_source(type="search", title="Result T", url="https://t.test", snippet="Snippet T"),
         ]
 
 

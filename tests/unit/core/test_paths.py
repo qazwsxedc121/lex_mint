@@ -34,7 +34,7 @@ def test_packaged_mode_uses_localappdata_for_runtime_writes(monkeypatch):
     assert paths.logs_dir() == expected_root / "logs"
     assert paths.resolve_user_data_path("data/chromadb") == expected_root / "data" / "chromadb"
 
-    settings = Settings()
+    settings = Settings(api_port=18000)
     assert settings.conversations_dir == expected_root / "conversations"
     assert settings.attachments_dir == expected_root / "attachments"
     assert settings.projects_config_path == expected_root / "data" / "state" / "projects_config.yaml"

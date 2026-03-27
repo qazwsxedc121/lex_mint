@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, cast
 
 from src.application.orchestration import (
     ActorEmit,
@@ -19,6 +19,7 @@ from .base import (
     BaseChatOrchestrator,
     ChatOrchestrationCancelToken,
     ChatOrchestrationEvent,
+    ChatOrchestrationSettings,
     ChatOrchestrationRequest,
 )
 from .committee_actions import CommitteeActionExecutor, CommitteeRunContext
@@ -139,11 +140,14 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
     ) -> AsyncIterator[Any]:
         terminated = False
         rounds = 0
+        committee_settings = cast(Optional["ResolvedCommitteeSettings"], request.settings)
+        if committee_settings is None:
+            raise ValueError("Committee orchestrator requires resolved committee settings")
         async for event in self.process(
             session_id=request.session_id,
             raw_user_message=request.user_message,
             group_assistants=request.participants,
-            committee_settings=request.settings,
+            committee_settings=committee_settings,
             assistant_name_map=request.assistant_name_map,
             assistant_config_map=request.assistant_config_map,
             reasoning_effort=request.reasoning_effort,

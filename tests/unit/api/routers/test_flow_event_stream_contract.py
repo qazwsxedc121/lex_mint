@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 import pytest
 from fastapi import HTTPException
@@ -102,7 +102,7 @@ async def test_chat_stream_contract_flow_event_only():
     agent = _FakeChatAgent()
     request = chat_router.ChatRequest(session_id="session-1", message="hi")
 
-    response = await chat_router.chat_stream(request=request, agent=agent, runtime=runtime)
+    response = await chat_router.chat_stream(request=request, agent=cast(Any, agent), runtime=runtime)
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
     _assert_seq_strictly_increasing(events)
@@ -128,7 +128,7 @@ async def test_chat_compare_contract_flow_event_only():
         model_ids=["p:m1", "p:m2"],
     )
 
-    response = await chat_router.chat_compare(request=request, agent=agent)
+    response = await chat_router.chat_compare(request=request, agent=cast(Any, agent))
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
     _assert_seq_strictly_increasing(events)
@@ -155,7 +155,7 @@ async def test_chat_compare_stream_error_terminates_early():
         model_ids=["p:m1", "p:m2"],
     )
 
-    response = await chat_router.chat_compare(request=request, agent=agent)
+    response = await chat_router.chat_compare(request=request, agent=cast(Any, agent))
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
     _assert_seq_strictly_increasing(events)
@@ -182,7 +182,7 @@ async def test_chat_compress_contract_flow_event_only(monkeypatch):
 
     agent = _FakeChatAgent()
     request = chat_router.CompressContextRequest(session_id="session-3")
-    response = await chat_router.compress_context(request=request, agent=agent)
+    response = await chat_router.compress_context(request=request, agent=cast(Any, agent))
 
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
@@ -213,7 +213,7 @@ async def test_chat_compress_unknown_event_maps_to_stream_error_and_stops(monkey
 
     agent = _FakeChatAgent()
     request = chat_router.CompressContextRequest(session_id="session-legacy")
-    response = await chat_router.compress_context(request=request, agent=agent)
+    response = await chat_router.compress_context(request=request, agent=cast(Any, agent))
 
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
@@ -295,8 +295,8 @@ async def test_workflow_editor_rewrite_contract_flow_event_only():
     response = await workflows_router.run_workflow_stream(
         workflow_id="wf_inline_rewrite_default",
         request=request,
-        service=_FakeWorkflowConfigService(),
-        execution_service=execution_service,
+        service=cast(Any, _FakeWorkflowConfigService()),
+        execution_service=cast(Any, execution_service),
     )
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
@@ -324,8 +324,8 @@ async def test_workflow_stream_requires_project_id_for_project_context():
                 stream_mode="editor_rewrite",
                 inputs={"_selected_text": "source text"},
             ),
-            service=_FakeWorkflowConfigService(),
-            execution_service=_FakeWorkflowExecutionService(),
+            service=cast(Any, _FakeWorkflowConfigService()),
+            execution_service=cast(Any, _FakeWorkflowExecutionService()),
         )
 
     assert exc_info.value.status_code == 400
@@ -342,8 +342,8 @@ async def test_workflow_stream_write_mode_requires_project_context():
                 write_mode="overwrite",
                 inputs={"_selected_text": "source text"},
             ),
-            service=_FakeWorkflowConfigService(),
-            execution_service=_FakeWorkflowExecutionService(),
+            service=cast(Any, _FakeWorkflowConfigService()),
+            execution_service=cast(Any, _FakeWorkflowExecutionService()),
         )
 
     assert exc_info.value.status_code == 400

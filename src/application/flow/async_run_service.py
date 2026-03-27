@@ -6,7 +6,8 @@ import asyncio
 import contextlib
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Literal, Optional
+import inspect
+from typing import Any, Awaitable, Dict, Literal, Optional, cast
 
 from src.application.workflows import WorkflowExecutionService
 
@@ -348,7 +349,11 @@ class AsyncRunService:
             terminal_emitted = True
         finally:
             with contextlib.suppress(Exception):
-                await stream.aclose()
+                close_stream = getattr(stream, "aclose", None)
+                if callable(close_stream):
+                    close_result = close_stream()
+                    if inspect.isawaitable(close_result):
+                        await cast(Awaitable[Any], close_result)
 
             if record.status == "running":
                 if cancel_flag.is_set():

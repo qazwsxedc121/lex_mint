@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.domain.models.workflow import (
+    EndNode,
     LlmNode,
     StartNode,
     Workflow,
@@ -34,7 +35,7 @@ def _sample_workflow(workflow_id: str = "wf_demo") -> Workflow:
                 prompt_template="hello",
                 next_id="end_1",
             ),
-            {"id": "end_1", "type": "end"},
+            EndNode(id="end_1", type="end"),
         ],
         created_at=now,
         updated_at=now,

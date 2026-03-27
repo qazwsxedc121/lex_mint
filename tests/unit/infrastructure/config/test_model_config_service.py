@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, Mock, AsyncMock
 
 from src.infrastructure.config.model_config_service import ModelConfigService
-from src.domain.models.model_config import Provider, Model, ModelsConfig
+from src.domain.models.model_config import DefaultConfig, Provider, Model, ModelsConfig
 from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
 
 
@@ -1086,6 +1086,8 @@ class TestModelConfigService:
 
             assert deepseek_provider is not None
             assert kimi_provider is not None
+            assert deepseek_provider.default_capabilities is not None
+            assert kimi_provider.default_capabilities is not None
             assert deepseek_provider.default_capabilities.requires_interleaved_thinking is False
             assert kimi_provider.default_capabilities.requires_interleaved_thinking is False
         finally:
@@ -1241,7 +1243,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
         service = ModelConfigService(config_path, keys_path)
         config = ModelsConfig(
-            default={"provider": "", "model": ""},
+            default=DefaultConfig(provider="", model=""),
             providers=[
                 Provider(id="openai", name="OpenAI", base_url="https://api.openai.com/v1", enabled=False),
             ],

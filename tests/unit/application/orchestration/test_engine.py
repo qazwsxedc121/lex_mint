@@ -20,11 +20,11 @@ from src.application.orchestration import (
 )
 
 
-async def _start_actor(_: object) -> AsyncIterator[object]:
+async def _start_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
     yield ActorResult(next_node_id="end")
 
 
-async def _end_actor(_: object) -> AsyncIterator[object]:
+async def _end_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
     yield ActorResult(terminal_status="completed", terminal_reason="done")
 
 
@@ -68,7 +68,7 @@ def test_validate_run_spec_rejects_unreachable_nodes():
 async def test_engine_allows_static_cycle_graphs_bounded_by_terminal_signal():
     state = {"calls": 0}
 
-    async def loop_actor(_: object) -> AsyncIterator[object]:
+    async def loop_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
         state["calls"] += 1
         if state["calls"] < 3:
             yield ActorResult(next_node_id="loop")
@@ -97,7 +97,7 @@ async def test_engine_allows_static_cycle_graphs_bounded_by_terminal_signal():
 async def test_engine_retries_retryable_errors_and_emits_retrying_event():
     state = {"attempt": 0}
 
-    async def flaky_actor(_: object) -> AsyncIterator[object]:
+    async def flaky_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
         state["attempt"] += 1
         if state["attempt"] == 1:
             raise TimeoutError("temporary timeout")
@@ -131,7 +131,7 @@ async def test_engine_retries_retryable_errors_and_emits_retrying_event():
 
 @pytest.mark.asyncio
 async def test_engine_honors_node_timeout():
-    async def slow_actor(_: object) -> AsyncIterator[object]:
+    async def slow_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
         await asyncio.sleep(0.05)
         yield ActorResult(terminal_status="completed", terminal_reason="done")
 
@@ -209,11 +209,11 @@ async def test_engine_persists_checkpoints_for_lifecycle_events():
 async def test_engine_resume_from_node_finished_checkpoint():
     state = {"start_calls": 0, "end_calls": 0}
 
-    async def start_actor(_: object) -> AsyncIterator[object]:
+    async def start_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
         state["start_calls"] += 1
         yield ActorResult(next_node_id="end")
 
-    async def end_actor(_: object) -> AsyncIterator[object]:
+    async def end_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
         state["end_calls"] += 1
         yield ActorResult(terminal_status="completed", terminal_reason="done")
 

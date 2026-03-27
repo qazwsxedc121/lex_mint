@@ -41,7 +41,7 @@ def test_build_group_instruction_prompt_includes_packet_json():
     prompt = GroupOrchestrationSupportService.build_group_instruction_prompt(
         instruction="Focus on trade-offs.",
         structured_packet={"identity": {"assistant_id": "assistant-2"}},
-    )
+    ) or ""
 
     assert "Committee instruction:" in prompt
     assert "Focus on trade-offs." in prompt

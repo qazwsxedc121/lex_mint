@@ -6,9 +6,9 @@ import asyncio
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, cast
 
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from ..base import BaseLLMAdapter
@@ -16,8 +16,9 @@ from ..types import LLMResponse, StreamChunk
 
 if TYPE_CHECKING:
     from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
-
-LocalLlamaCppService = None
+else:
+    class LocalLlamaCppService:
+        pass
 
 
 def _get_local_llama_cpp_service_class():
@@ -170,7 +171,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
         additional_kwargs = {"reasoning_content": thinking} if thinking else {}
         return AIMessageChunk(
             content=content,
-            tool_calls=tool_calls,
+            tool_calls=cast(List[ToolCall], tool_calls),
             additional_kwargs=additional_kwargs,
         )
 

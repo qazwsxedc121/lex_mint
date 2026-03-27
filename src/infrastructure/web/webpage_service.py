@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 import importlib.util
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 import asyncio
 import html
@@ -631,16 +631,17 @@ class WebpageService:
         proxy: Optional[str],
         timeout_seconds: float,
     ) -> _FetchedPage | WebpageResult | None:
-        if curl_requests is None:
+        curl_client = curl_requests
+        if curl_client is None:
             return None
 
         headers = self._browser_navigation_headers(url=url)
-        proxies = {"http": proxy, "https": proxy} if proxy else None
+        proxies: Any = {"http": proxy, "https": proxy} if proxy else None
 
         def _do_request() -> _FetchedPage | WebpageResult:
             start_time = time.monotonic()
             try:
-                response = curl_requests.get(
+                response = curl_client.get(
                     url,
                     impersonate="chrome",
                     proxies=proxies,

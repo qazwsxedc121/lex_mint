@@ -43,7 +43,9 @@ async def test_build_group_runtime_assistant_resolves_assistant(monkeypatch):
     monkeypatch.setattr(assistant_config_service, "AssistantConfigService", _FakeAssistantService)
     service = GroupRuntimeSupportService()
 
-    participant_id, assistant_obj, assistant_name = await service.build_group_runtime_assistant("assistant-1")
+    result = await service.build_group_runtime_assistant("assistant-1")
+    assert result is not None
+    participant_id, assistant_obj, assistant_name = result
 
     assert participant_id == "assistant-1"
     assert assistant_name == "Assistant One"
@@ -70,9 +72,11 @@ async def test_build_group_runtime_assistant_resolves_model_token(monkeypatch):
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
     service = GroupRuntimeSupportService()
 
-    participant_id, assistant_obj, assistant_name = await service.build_group_runtime_assistant(
+    result = await service.build_group_runtime_assistant(
         "model::provider:model-a"
     )
+    assert result is not None
+    participant_id, assistant_obj, assistant_name = result
 
     assert participant_id == "model::provider:model-a"
     assert assistant_name == "Model A"

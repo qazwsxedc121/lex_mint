@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import Any, AsyncIterator, Dict, List, Optional
+import inspect
+from typing import Any, AsyncIterator, Awaitable, Dict, List, Optional, cast
 import uuid
 
 from .checkpoint import RunCheckpoint
 from .context_manager import InMemoryContextManager
-from .ir import ActorEmit, ActorExecutionContext, ActorResult, EdgeSpec, NodeSpec, RunContext, RunSpec, validate_run_spec
+from .ir import ActorEmit, ActorExecutionContext, ActorResult, ActorSignal, EdgeSpec, NodeSpec, RunContext, RunSpec, validate_run_spec
 from .run_store import RunStore
 
 
@@ -210,6 +211,7 @@ class OrchestrationEngine:
                     failed_event["checkpoint_id"] = failed_checkpoint_id
                 yield failed_event
                 return
+            assert node is not None
 
             node_started_checkpoint_id = await self._save_checkpoint(
                 run_store=run_store,
@@ -234,7 +236,7 @@ class OrchestrationEngine:
             max_attempts = node.retry_policy.max_retries + 1
             for attempt in range(1, max_attempts + 1):
                 emitted_runtime_events = False
-                stream = None
+                stream: AsyncIterator[ActorSignal] | None = None
                 try:
                     execution_context = ActorExecutionContext(
                         run_id=run_id,
@@ -245,12 +247,14 @@ class OrchestrationEngine:
                     )
 
                     result = ActorResult()
-                    stream = node.actor.handler(execution_context)
+                    active_node = node
+                    active_stream = active_node.actor.handler(execution_context)
+                    stream = active_stream
 
                     async def _iterate_signals() -> AsyncIterator[Dict[str, Any]]:
                         nonlocal result
                         nonlocal emitted_runtime_events
-                        async for signal in stream:
+                        async for signal in active_stream:
                             if run_context.is_cancelled:
                                 raise _RunCancelledError(run_context.cancel_reason)
 
@@ -259,8 +263,8 @@ class OrchestrationEngine:
                                 yield {
                                     "type": "node_event",
                                     "run_id": run_id,
-                                    "node_id": node.node_id,
-                                    "actor_id": node.actor.actor_id,
+                                    "node_id": active_node.node_id,
+                                    "actor_id": active_node.actor.actor_id,
                                     "event_type": signal.event_type,
                                     "payload": dict(signal.payload),
                                 }
@@ -271,7 +275,7 @@ class OrchestrationEngine:
                                 continue
 
                             raise ValueError(
-                                f"Actor '{node.actor.actor_id}' returned unsupported signal type "
+                                f"Actor '{active_node.actor.actor_id}' returned unsupported signal type "
                                 f"'{type(signal).__name__}'"
                             )
 
@@ -593,7 +597,9 @@ class OrchestrationEngine:
         aclose = getattr(stream, "aclose", None)
         if callable(aclose):
             with contextlib.suppress(Exception):
-                await aclose()
+                close_result = aclose()
+                if inspect.isawaitable(close_result):
+                    await cast(Awaitable[Any], close_result)
 
     @staticmethod
     def _index_edges(edges: tuple[EdgeSpec, ...]) -> Dict[str, List[EdgeSpec]]:
