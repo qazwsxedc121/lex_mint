@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
@@ -70,6 +71,31 @@ class _FakeResumeService:
         return self.record
 
 
+class _FakeCreateService:
+    def __init__(self, record: AsyncRunRecord):
+        self.record = record
+        self.error: Optional[ValueError] = None
+        self.calls: list[dict[str, object]] = []
+
+    async def create_workflow_run(self, **kwargs) -> AsyncRunRecord:
+        if self.error is not None:
+            raise self.error
+        self.calls.append(kwargs)
+        return self.record
+
+
+class _FakeCancelService:
+    def __init__(self, record: AsyncRunRecord):
+        self.record = record
+        self.error: Optional[ValueError] = None
+
+    async def cancel_run(self, run_id: str) -> AsyncRunRecord:
+        if self.error is not None:
+            raise self.error
+        assert run_id == self.record.run_id
+        return self.record
+
+
 @pytest.mark.asyncio
 async def test_create_run_requires_workflow_id_for_workflow_kind():
     class _UnusedService:
@@ -79,6 +105,38 @@ async def test_create_run_requires_workflow_id_for_workflow_kind():
     request = runs_router.CreateRunRequest(kind="workflow", inputs={"input": "x"})
     with pytest.raises(HTTPException) as exc_info:
         await runs_router.create_run(request=request, service=cast(Any, _UnusedService()))
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_run_success_and_error_mapping():
+    service = _FakeCreateService(_make_record(run_id="run-create", status="running"))
+
+    response = await runs_router.create_run(
+        request=runs_router.CreateRunRequest(kind="workflow", workflow_id="wf-test", inputs={"x": 1}),
+        service=service,  # type: ignore[arg-type]
+    )
+    assert response.run_id == "run-create"
+    assert service.calls[0]["workflow_id"] == "wf-test"
+
+    for message, status_code in [
+        ("workflow not found", 404),
+        ("workflow disabled", 409),
+        ("invalid inputs", 400),
+    ]:
+        service.error = ValueError(message)
+        with pytest.raises(HTTPException) as exc_info:
+            await runs_router.create_run(
+                request=runs_router.CreateRunRequest(kind="workflow", workflow_id="wf-test"),
+                service=service,  # type: ignore[arg-type]
+            )
+        assert exc_info.value.status_code == status_code
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.create_run(
+            request=runs_router.CreateRunRequest(kind="workflow", workflow_id="wf-test").model_copy(update={"kind": "chat"}),
+            service=service,  # type: ignore[arg-type]
+        )
     assert exc_info.value.status_code == 400
 
 
@@ -122,6 +180,133 @@ async def test_list_runs_applies_status_filter_after_reconcile():
     )
 
     assert response.runs == []
+
+
+@pytest.mark.asyncio
+async def test_get_run_and_cancel_run_routes():
+    record = _make_record(run_id="run-get", status="running")
+    store = _FakeStore(record)
+
+    class _ReconcilingService:
+        async def reconcile_orphaned_runs(self, runs: List[AsyncRunRecord]) -> List[AsyncRunRecord]:
+            return runs
+
+    response = await runs_router.get_run(
+        run_id="run-get",
+        store=store,  # type: ignore[arg-type]
+        service=_ReconcilingService(),  # type: ignore[arg-type]
+    )
+    assert response.run_id == "run-get"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.get_run(
+            run_id="missing",
+            store=_FakeStore(None),  # type: ignore[arg-type]
+            service=_ReconcilingService(),  # type: ignore[arg-type]
+        )
+    assert exc_info.value.status_code == 404
+
+    cancel_service = _FakeCancelService(record)
+    cancelled = await runs_router.cancel_run("run-get", service=cancel_service)  # type: ignore[arg-type]
+    assert cancelled.run_id == "run-get"
+
+    cancel_service.error = ValueError("run missing")
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.cancel_run("run-get", service=cancel_service)  # type: ignore[arg-type]
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_stream_run_and_resume_stream_live_paths():
+    record = _make_record(run_id="run-live", status="running")
+    runtime = FlowStreamRuntime()
+    runtime.create_stream(stream_id=record.stream_id, conversation_id=record.run_id, context_type="workflow", project_id=None)
+    emitter = runs_router.FlowEventEmitter(stream_id=record.stream_id, conversation_id=record.run_id)
+    started = emitter.emit_started(context_type="workflow")
+    runtime.append_payload(record.stream_id, started)
+
+    response = await runs_router.stream_run(
+        run_id="run-live",
+        store=_FakeStore(record),  # type: ignore[arg-type]
+        runtime=runtime,
+    )
+    collect_stream = asyncio.create_task(_collect_sse_payloads(response))
+    await asyncio.sleep(0)
+    runtime.append_payload(record.stream_id, emitter.emit_ended())
+    payloads = await collect_stream
+    assert payloads[0]["flow_event"]["event_type"] == "stream_started"
+
+    runtime = FlowStreamRuntime()
+    runtime.create_stream(stream_id=record.stream_id, conversation_id=record.run_id, context_type="workflow", project_id=None)
+    emitter = runs_router.FlowEventEmitter(stream_id=record.stream_id, conversation_id=record.run_id)
+    started = emitter.emit_started(context_type="workflow")
+    runtime.append_payload(record.stream_id, started)
+
+    response = await runs_router.resume_run_stream(
+        run_id="run-live",
+        request=runs_router.ResumeRunStreamRequest(last_event_id=started["flow_event"]["event_id"]),
+        store=_FakeStore(record),  # type: ignore[arg-type]
+        runtime=runtime,
+    )
+    collect_resume = asyncio.create_task(_collect_sse_payloads(response))
+    await asyncio.sleep(0)
+    runtime.append_payload(record.stream_id, emitter.emit_ended())
+    payloads = await collect_resume
+    assert payloads[0]["flow_event"]["event_type"] == "resume_started"
+    assert any(payload["flow_event"]["event_type"] == "replay_finished" for payload in payloads)
+
+
+@pytest.mark.asyncio
+async def test_resume_run_stream_error_mapping():
+    record = _make_record(run_id="run-live", status="running")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.resume_run_stream(
+            run_id="missing",
+            request=runs_router.ResumeRunStreamRequest(last_event_id="evt-1"),
+            store=_FakeStore(None),  # type: ignore[arg-type]
+            runtime=FlowStreamRuntime(),
+        )
+    assert exc_info.value.status_code == 404
+
+    class _MissingRuntime:
+        def resume_subscribe(self, **_kwargs):
+            raise runs_router.FlowStreamNotFoundError("missing")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.resume_run_stream(
+            run_id="run-live",
+            request=runs_router.ResumeRunStreamRequest(last_event_id="evt-1"),
+            store=_FakeStore(record),  # type: ignore[arg-type]
+            runtime=_MissingRuntime(),  # type: ignore[arg-type]
+        )
+    assert exc_info.value.status_code == 404
+
+    class _GoneRuntime:
+        def resume_subscribe(self, **_kwargs):
+            raise runs_router.FlowReplayCursorGoneError("gone")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.resume_run_stream(
+            run_id="run-live",
+            request=runs_router.ResumeRunStreamRequest(last_event_id="evt-1"),
+            store=_FakeStore(record),  # type: ignore[arg-type]
+            runtime=_GoneRuntime(),  # type: ignore[arg-type]
+        )
+    assert exc_info.value.status_code == 410
+
+    class _MismatchRuntime:
+        def resume_subscribe(self, **_kwargs):
+            raise runs_router.FlowStreamContextMismatchError("mismatch")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await runs_router.resume_run_stream(
+            run_id="run-live",
+            request=runs_router.ResumeRunStreamRequest(last_event_id="evt-1"),
+            store=_FakeStore(record),  # type: ignore[arg-type]
+            runtime=_MismatchRuntime(),  # type: ignore[arg-type]
+        )
+    assert exc_info.value.status_code == 409
 
 
 @pytest.mark.asyncio
