@@ -60,8 +60,10 @@ class FileReferenceConfigService:
 
     @staticmethod
     def _safe_int(value: object, fallback: int) -> int:
+        if not isinstance(value, (int, float, str, bytes, bytearray)):
+            return fallback
         try:
-            parsed = int(value)  # type: ignore[arg-type]
+            parsed = int(value)
         except Exception:
             return fallback
         return parsed if parsed > 0 else fallback
@@ -129,4 +131,3 @@ class FileReferenceConfigService:
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 
         self.config = self._load_config()
-

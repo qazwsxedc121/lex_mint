@@ -790,17 +790,17 @@ class MemoryService:
             if lines:
                 lines.append("")
             lines.append("## User context (relevant background):")
-            for idx, item in enumerate(fact_results, start=1):
-                content = self._clean_text(item.get("content", ""))
+            for idx, fact_item in enumerate(fact_results, start=1):
+                content = self._clean_text(str(fact_item.get("content", "")))
                 if len(content) > cfg.retrieval.max_item_length:
                     content = f"{content[:cfg.retrieval.max_item_length]}..."
-                score = self._safe_float(item.get("score"), 0.0)
+                score = self._safe_float(fact_item.get("score"), 0.0)
                 lines.append(f"[{idx}] (score={score:.2f}) {content}")
                 sources.append(
                     {
                         "type": "memory",
-                        "id": item.get("id"),
-                        "scope": item.get("scope") or "global",
+                        "id": fact_item.get("id"),
+                        "scope": fact_item.get("scope") or "global",
                         "layer": "fact",
                         "score": score,
                         "content": content,

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 try:  # pragma: no cover - optional dependency in CI
     from langchain_openrouter import ChatOpenRouter
 except Exception:  # pragma: no cover - fallback keeps app usable without extra package
-    ChatOpenRouter = None  # type: ignore[assignment]
+    ChatOpenRouter = cast(Any, None)  # type: ignore[misc]
 
 
 if ChatOpenRouter is not None:
@@ -38,7 +38,7 @@ if ChatOpenRouter is not None:
                 enabled=bool(getattr(self, "_requires_interleaved_thinking", False)),
             )
 else:
-    ChatOpenRouterInterleaved = None  # type: ignore[assignment]
+    ChatOpenRouterInterleaved = cast(Any, None)  # type: ignore[misc]
 
 
 class OpenRouterAdapter(OpenAIAdapter):
@@ -147,7 +147,11 @@ class OpenRouterAdapter(OpenAIAdapter):
             llm_kwargs["model_kwargs"] = model_kwargs
 
         requires_interleaved = bool(kwargs.get("requires_interleaved_thinking", False))
-        llm_cls = ChatOpenRouterInterleaved if (requires_interleaved and ChatOpenRouterInterleaved) else ChatOpenRouter
+        llm_cls = (
+            ChatOpenRouterInterleaved
+            if requires_interleaved and ChatOpenRouterInterleaved is not None
+            else ChatOpenRouter
+        )
         llm = llm_cls(**llm_kwargs)
         if requires_interleaved:
             object.__setattr__(llm, "_requires_interleaved_thinking", True)

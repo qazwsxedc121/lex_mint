@@ -448,50 +448,50 @@ class ProjectDocumentToolService:
         """Request-scoped executor contract used by tool loop."""
         try:
             if name == "read_project_document":
-                parsed = ReadProjectDocumentArgs.model_validate(args or {})
+                read_args = ReadProjectDocumentArgs.model_validate(args or {})
                 return await self.read_project_document(
-                    file_path=parsed.file_path,
-                    start_line=parsed.start_line,
-                    end_line=parsed.end_line,
-                    max_chars=parsed.max_chars,
+                    file_path=read_args.file_path,
+                    start_line=read_args.start_line,
+                    end_line=read_args.end_line,
+                    max_chars=read_args.max_chars,
                 )
 
             if name == "apply_diff_project_document":
-                parsed = ApplyDiffProjectDocumentArgs.model_validate(args or {})
+                diff_project_args = ApplyDiffProjectDocumentArgs.model_validate(args or {})
                 return await self.apply_diff_project_document(
-                    file_path=parsed.file_path,
-                    unified_diff=parsed.unified_diff,
-                    base_hash=parsed.base_hash,
-                    dry_run=parsed.dry_run,
+                    file_path=diff_project_args.file_path,
+                    unified_diff=diff_project_args.unified_diff,
+                    base_hash=diff_project_args.base_hash,
+                    dry_run=diff_project_args.dry_run,
                 )
 
             if name == "read_current_document":
-                parsed = ReadCurrentDocumentArgs.model_validate(args or {})
+                read_current_args = ReadCurrentDocumentArgs.model_validate(args or {})
                 return await self.read_current_document(
-                    start_line=parsed.start_line,
-                    end_line=parsed.end_line,
-                    max_chars=parsed.max_chars,
+                    start_line=read_current_args.start_line,
+                    end_line=read_current_args.end_line,
+                    max_chars=read_current_args.max_chars,
                 )
 
             if name == "apply_diff_current_document":
-                parsed = ApplyDiffCurrentDocumentArgs.model_validate(args or {})
+                diff_current_args = ApplyDiffCurrentDocumentArgs.model_validate(args or {})
                 return await self.apply_diff_current_document(
-                    unified_diff=parsed.unified_diff,
-                    base_hash=parsed.base_hash,
-                    dry_run=parsed.dry_run,
+                    unified_diff=diff_current_args.unified_diff,
+                    base_hash=diff_current_args.base_hash,
+                    dry_run=diff_current_args.dry_run,
                 )
 
             if name == "search_project_text":
-                parsed = SearchProjectTextArgs.model_validate(args or {})
+                search_args = SearchProjectTextArgs.model_validate(args or {})
                 return await self.search_project_text(
-                    query=parsed.query,
-                    case_sensitive=parsed.case_sensitive,
-                    use_regex=parsed.use_regex,
-                    include_glob=parsed.include_glob,
-                    exclude_glob=parsed.exclude_glob,
-                    max_results=parsed.max_results,
-                    context_lines=parsed.context_lines,
-                    max_chars_per_line=parsed.max_chars_per_line,
+                    query=search_args.query,
+                    case_sensitive=search_args.case_sensitive,
+                    use_regex=search_args.use_regex,
+                    include_glob=search_args.include_glob,
+                    exclude_glob=search_args.exclude_glob,
+                    max_results=search_args.max_results,
+                    context_lines=search_args.context_lines,
+                    max_chars_per_line=search_args.max_chars_per_line,
                 )
 
             return None

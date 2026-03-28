@@ -452,15 +452,15 @@ class ToolLoopRunner:
         if state.tool_round <= self.max_tool_rounds:
             return False
 
-        ai_kwargs: Dict[str, Any] = {}
-        additional_kwargs: Dict[str, Any] = {}
+        finalize_ai_kwargs: Dict[str, Any] = {}
+        finalize_additional_kwargs: Dict[str, Any] = {}
         if round_reasoning:
-            additional_kwargs["reasoning_content"] = round_reasoning
+            finalize_additional_kwargs["reasoning_content"] = round_reasoning
         if round_reasoning_details is not None:
-            additional_kwargs["reasoning_details"] = round_reasoning_details
-        if additional_kwargs:
-            ai_kwargs["additional_kwargs"] = additional_kwargs
-        state.current_messages.append(AIMessage(content=round_content, **ai_kwargs))
+            finalize_additional_kwargs["reasoning_details"] = round_reasoning_details
+        if finalize_additional_kwargs:
+            finalize_ai_kwargs["additional_kwargs"] = finalize_additional_kwargs
+        state.current_messages.append(AIMessage(content=round_content, **finalize_ai_kwargs))
         state.current_messages.append(HumanMessage(content=_FINALIZE_WITHOUT_TOOLS_PROMPT))
         state.force_finalize_without_tools = True
         state.tool_finalize_reason = "max_round_force_finalize"

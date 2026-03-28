@@ -198,7 +198,9 @@ class EmbeddingService:
             data = self.model_config_service._load_split_config()
             for provider in data.get('providers', []):
                 if provider.get('id') == provider_id:
-                    return provider.get('base_url')
+                    base_url = provider.get('base_url')
+                    if isinstance(base_url, str):
+                        return base_url
         except Exception as e:
             logger.warning(f"Failed to read provider base_url for {provider_id}: {e}")
         return None
@@ -229,15 +231,15 @@ class EmbeddingService:
         if config_base_url:
             # model_id may contain provider: prefix, strip it
             model_name = model_id.split(":", 1)[-1] if ":" in model_id else model_id
-            kwargs: dict[str, Any] = {
+            direct_kwargs: dict[str, Any] = {
                 "model": model_name,
                 "api_key": SecretStr(config_api_key or "local"),
                 "base_url": config_base_url,
                 "check_embedding_ctx_length": False,
             }
             if batch_size is not None:
-                kwargs["chunk_size"] = int(batch_size)
-            return OpenAIEmbeddings(**kwargs)
+                direct_kwargs["chunk_size"] = int(batch_size)
+            return OpenAIEmbeddings(**direct_kwargs)
 
         # Fall back: resolve from LLM provider config using provider:model format
         parts = model_id.split(":", 1)
@@ -258,17 +260,17 @@ class EmbeddingService:
         # Try RAG config base_url first, then fall back to provider base_url
         base_url = config_base_url if config_base_url else self._get_provider_base_url_sync(provider_id)
 
-        kwargs: dict[str, Any] = {
+        resolved_kwargs: dict[str, Any] = {
             "model": model_name,
             "api_key": SecretStr(api_key),
             "check_embedding_ctx_length": False,
         }
         if base_url:
-            kwargs["base_url"] = base_url
+            resolved_kwargs["base_url"] = base_url
 
         if batch_size is not None:
-            kwargs["chunk_size"] = int(batch_size)
-        return OpenAIEmbeddings(**kwargs)
+            resolved_kwargs["chunk_size"] = int(batch_size)
+        return OpenAIEmbeddings(**resolved_kwargs)
 
     def _get_local_embeddings(self, model_name: str, device: str = "cpu"):
         """

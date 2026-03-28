@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from html.parser import HTMLParser
 import importlib.util
-from pathlib import Path
-from typing import Any, List, Optional, Tuple
-from urllib.parse import urlparse
-import asyncio
 import html
 import ipaddress
 import json
@@ -18,6 +15,10 @@ import re
 import socket
 import ssl
 import time
+from pathlib import Path
+from types import ModuleType
+from typing import Any, Callable, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 import yaml
@@ -30,6 +31,10 @@ from src.core.paths import (
 )
 
 logger = logging.getLogger(__name__)
+
+trafilatura: ModuleType | None
+extract_metadata: Callable[..., Any] | None
+curl_requests: ModuleType | None
 
 try:
     import trafilatura
@@ -314,14 +319,14 @@ class WebpageService:
         if not sources:
             for result in results:
                 label = self._label_for_result(result)
-                snippet = result.error or None
+                error_snippet = result.error or None
                 sources.append(
                     SearchSource.model_validate(
                         {
                             "type": "webpage",
                             "title": label,
                             "url": result.final_url,
-                            "snippet": snippet,
+                            "snippet": error_snippet,
                         }
                     )
                 )
@@ -741,7 +746,7 @@ class WebpageService:
                         logger.info("[Webpage] Extractor=trafilatura text_len=%s", len(extracted))
                         title = ""
                         description = ""
-                        if extract_metadata:
+                        if extract_metadata is not None:
                             meta = extract_metadata(html_text)
                             if meta:
                                 title = meta.title or ""

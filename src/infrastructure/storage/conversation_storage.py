@@ -622,7 +622,7 @@ class ConversationStorage:
         if not conversation_dir.exists():
             return []
 
-        results = []
+        results: List[Dict[str, Any]] = []
         for filepath in sorted(conversation_dir.glob("*.md"), reverse=True):
             if len(results) >= limit:
                 break
@@ -1477,9 +1477,9 @@ class ConversationStorage:
             List of message dicts:
             [{"role": "user/assistant", "content": "...", "message_id": "...", "attachments": [...], "usage": {...}, "cost": {...}}, ...]
         """
-        messages = []
+        messages: List[Dict[str, Any]] = []
         lines = content.split('\n')
-        current_message = None
+        current_message: Dict[str, Any] | None = None
 
         for line in lines:
             # Detect message headers (## User/Assistant/Separator/Summary (timestamp))
@@ -1527,7 +1527,11 @@ class ConversationStorage:
                     try:
                         if "attachments" not in current_message:
                             current_message["attachments"] = []
-                        current_message["attachments"].append(
+                        attachments = current_message["attachments"]
+                        if not isinstance(attachments, list):
+                            attachments = []
+                            current_message["attachments"] = attachments
+                        attachments.append(
                             json.loads(attachment_match.group(1))
                         )
                     except json.JSONDecodeError:
@@ -1549,8 +1553,11 @@ class ConversationStorage:
                 else:
                     # Append line to current message content
                     # Skip empty lines at the start
-                    if current_message["content"] or line.strip():
-                        current_message["content"] += line + "\n"
+                    content_value = current_message.get("content")
+                    if not isinstance(content_value, str):
+                        content_value = ""
+                    if content_value or line.strip():
+                        current_message["content"] = content_value + line + "\n"
 
         # Save last message
         if current_message:
@@ -1558,7 +1565,7 @@ class ConversationStorage:
 
         # Clean up: strip trailing whitespace and generate fallback message IDs
         for index, msg in enumerate(messages):
-            msg["content"] = msg["content"].strip()
+            msg["content"] = str(msg.get("content", "")).strip()
             # Generate fallback UUID if message_id not found.
             if "message_id" not in msg:
                 msg["message_id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{index}"))

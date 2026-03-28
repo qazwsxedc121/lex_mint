@@ -201,11 +201,11 @@ class WebToolService:
         """Execute a supported web tool by name. Return None if unknown."""
         try:
             if name == "web_search":
-                parsed = WebSearchArgs.model_validate(args or {})
-                return await self.web_search(query=parsed.query, page=parsed.page)
+                search_args = WebSearchArgs.model_validate(args or {})
+                return await self.web_search(query=search_args.query, page=search_args.page)
             if name == "read_webpage":
-                parsed = ReadWebpageArgs.model_validate(args or {})
-                return await self.read_webpage(url=parsed.url)
+                read_args = ReadWebpageArgs.model_validate(args or {})
+                return await self.read_webpage(url=read_args.url)
             return None
         except ValidationError as exc:
             return self._error("INVALID_ARGS", f"{exc}")

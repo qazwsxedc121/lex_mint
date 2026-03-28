@@ -3,10 +3,11 @@ Pricing Service for LLM Token Cost Calculation
 
 Provides pricing configuration and cost calculation for different LLM providers and models.
 """
-import yaml
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional, cast
+
+import yaml
 
 from src.providers.types import TokenUsage, CostInfo
 from src.core.paths import config_defaults_dir, config_local_dir, resolve_layered_read_path
@@ -68,14 +69,21 @@ class PricingService:
 
         # Get provider pricing
         provider_pricing = pricing.get(provider_id, {})
+        if not isinstance(provider_pricing, dict):
+            return {
+                "input_price_per_1m": 0.0,
+                "output_price_per_1m": 0.0
+            }
 
         # Try specific model first
-        if model_id in provider_pricing:
-            return provider_pricing[model_id]
+        model_pricing = provider_pricing.get(model_id)
+        if isinstance(model_pricing, dict):
+            return cast(Dict[str, float], model_pricing)
 
         # Fall back to default for provider
-        if "default" in provider_pricing:
-            return provider_pricing["default"]
+        default_pricing = provider_pricing.get("default")
+        if isinstance(default_pricing, dict):
+            return cast(Dict[str, float], default_pricing)
 
         # No pricing info available
         return {

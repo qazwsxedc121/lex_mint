@@ -403,7 +403,7 @@ class RagConfigService:
 
     def save_flat_config(self, flat_updates: Dict):
         """Save from flat dictionary format (from API)"""
-        nested = {}
+        nested: Dict[str, Dict[str, object]] = {}
         mapping = {
             'embedding_provider': ('embedding', 'provider'),
             'embedding_api_model': ('embedding', 'api_model'),

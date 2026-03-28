@@ -378,7 +378,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         has_file_upload = "file" in input_modalities
         has_streaming = True  # Assumed for OpenAI-compatible APIs
 
-        capabilities = {
+        capabilities: Dict[str, Any] = {
             "context_length": context_length or 4096,
             "vision": has_vision,
             "function_calling": has_function_calling,
@@ -403,11 +403,13 @@ class OpenAIAdapter(BaseLLMAdapter):
         if not tags:
             tags.append("chat")
 
-        capabilities = apply_model_capability_hints(
+        hinted_capabilities = apply_model_capability_hints(
             model.get("id", ""),
             capabilities,
             provider_id=provider_id,
         )
+        if hinted_capabilities is not None:
+            capabilities = hinted_capabilities
         return {"capabilities": capabilities, "tags": tags}
 
     async def fetch_models(

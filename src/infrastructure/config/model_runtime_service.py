@@ -30,8 +30,17 @@ class ModelRuntimeService:
                 keys_data = yaml.safe_load(f)
         except Exception:
             return None
-        if keys_data and "providers" in keys_data:
-            return keys_data["providers"].get(provider_id, {}).get("api_key")
+        if not isinstance(keys_data, dict):
+            return None
+        providers = keys_data.get("providers")
+        if not isinstance(providers, dict):
+            return None
+        provider_data = providers.get(provider_id)
+        if not isinstance(provider_data, dict):
+            return None
+        api_key = provider_data.get("api_key")
+        if isinstance(api_key, str):
+            return api_key
         return None
 
     def provider_requires_api_key(self, provider: Provider | ProviderConfig) -> bool:

@@ -181,17 +181,17 @@ class _ConditionParser:
     @staticmethod
     def _compare(left: Any, op: str, right: Any) -> bool:
         if op == "==":
-            return left == right
+            return bool(left == right)
         if op == "!=":
-            return left != right
+            return bool(left != right)
         if op == ">":
-            return left > right
+            return bool(left > right)
         if op == "<":
-            return left < right
+            return bool(left < right)
         if op == ">=":
-            return left >= right
+            return bool(left >= right)
         if op == "<=":
-            return left <= right
+            return bool(left <= right)
         raise ValueError(f"Unsupported operator '{op}'")
 
     def _parse_term(self) -> Any:
@@ -450,7 +450,7 @@ class WorkflowExecutionService:
                     node = node_map.get(node_id)
                     if node is None:
                         raise ValueError(f"Unknown runtime node '{node_id}'")
-                    payload = {
+                    retry_payload: Dict[str, Any] = {
                         "type": "workflow_node_retrying",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
@@ -461,8 +461,8 @@ class WorkflowExecutionService:
                         "delay_ms": runtime_event.get("delay_ms"),
                         "error": runtime_event.get("error"),
                     }
-                    payload.update(checkpoint_payload)
-                    yield payload
+                    retry_payload.update(checkpoint_payload)
+                    yield retry_payload
                     continue
 
                 if event_type == "node_finished":
@@ -497,16 +497,16 @@ class WorkflowExecutionService:
                         finish_payload["result"] = bool(payload.get("result"))
                     elif isinstance(node, ArtifactNode):
                         output_key = str(payload.get("output_key") or f"node_{node.id}_artifact")
-                        artifact_payload = payload.get("artifact")
-                        if isinstance(artifact_payload, dict):
-                            run_state.ctx[output_key] = artifact_payload
-                            run_state.ctx["last_artifact"] = artifact_payload
+                        artifact_data = payload.get("artifact")
+                        if isinstance(artifact_data, dict):
+                            run_state.ctx[output_key] = artifact_data
+                            run_state.ctx["last_artifact"] = artifact_data
                             artifact_content = payload.get("artifact_content")
                             if isinstance(artifact_content, str):
                                 run_state.ctx["last_output"] = artifact_content
                                 output_text = artifact_content
                             finish_payload["output_key"] = output_key
-                            finish_payload["artifact"] = artifact_payload
+                            finish_payload["artifact"] = artifact_data
                     elif isinstance(node, EndNode):
                         if output_text is None:
                             output_text = str(payload.get("output") or "")
@@ -579,9 +579,12 @@ class WorkflowExecutionService:
                 actor = ActorRef(
                     actor_id=node.id,
                     kind="workflow_start",
-                    handler=lambda ctx, current=node: self._run_start_node(
-                        execution_context=ctx,
-                        node=current,
+                    handler=cast(
+                        Callable[[ActorExecutionContext], AsyncIterator[Any]],
+                        lambda ctx, current=node: self._run_start_node(
+                            execution_context=ctx,
+                            node=current,
+                        ),
                     ),
                 )
                 node_specs.append(
@@ -601,10 +604,13 @@ class WorkflowExecutionService:
                 actor = ActorRef(
                     actor_id=node.id,
                     kind="workflow_llm",
-                    handler=lambda ctx, current=node: self._run_llm_node(
-                        execution_context=ctx,
-                        node=current,
-                        run_state=run_state,
+                    handler=cast(
+                        Callable[[ActorExecutionContext], AsyncIterator[Any]],
+                        lambda ctx, current=node: self._run_llm_node(
+                            execution_context=ctx,
+                            node=current,
+                            run_state=run_state,
+                        ),
                     ),
                 )
                 node_specs.append(
@@ -629,10 +635,13 @@ class WorkflowExecutionService:
                 actor = ActorRef(
                     actor_id=node.id,
                     kind="workflow_condition",
-                    handler=lambda ctx, current=node: self._run_condition_node(
-                        execution_context=ctx,
-                        node=current,
-                        run_state=run_state,
+                    handler=cast(
+                        Callable[[ActorExecutionContext], AsyncIterator[Any]],
+                        lambda ctx, current=node: self._run_condition_node(
+                            execution_context=ctx,
+                            node=current,
+                            run_state=run_state,
+                        ),
                     ),
                 )
                 node_specs.append(
@@ -650,10 +659,13 @@ class WorkflowExecutionService:
                 actor = ActorRef(
                     actor_id=node.id,
                     kind="workflow_artifact",
-                    handler=lambda ctx, current=node: self._run_artifact_node(
-                        execution_context=ctx,
-                        node=current,
-                        run_state=run_state,
+                    handler=cast(
+                        Callable[[ActorExecutionContext], AsyncIterator[Any]],
+                        lambda ctx, current=node: self._run_artifact_node(
+                            execution_context=ctx,
+                            node=current,
+                            run_state=run_state,
+                        ),
                     ),
                 )
                 node_specs.append(
@@ -670,10 +682,13 @@ class WorkflowExecutionService:
                 actor = ActorRef(
                     actor_id=node.id,
                     kind="workflow_end",
-                    handler=lambda ctx, current=node: self._run_end_node(
-                        execution_context=ctx,
-                        node=current,
-                        run_state=run_state,
+                    handler=cast(
+                        Callable[[ActorExecutionContext], AsyncIterator[Any]],
+                        lambda ctx, current=node: self._run_end_node(
+                            execution_context=ctx,
+                            node=current,
+                            run_state=run_state,
+                        ),
                     ),
                 )
                 node_specs.append(

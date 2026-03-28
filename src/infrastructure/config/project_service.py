@@ -9,7 +9,7 @@ import hashlib
 import fnmatch
 import re
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 
 from src.core.errors import ConflictError
@@ -306,7 +306,7 @@ class ProjectService:
         for i, project in enumerate(config.projects):
             if project.id == project_id:
                 # Update fields
-                update_data = {}
+                update_data: Dict[str, object] = {}
                 if name is not None:
                     update_data['name'] = name
                 if root_path is not None:
@@ -802,7 +802,10 @@ class ProjectService:
                 })
 
         # Sort by score and limit
-        scored_files.sort(key=lambda x: x['score'], reverse=True)
+        scored_files.sort(
+            key=lambda x: float(cast(float | int | str, x["score"])),
+            reverse=True,
+        )
         return scored_files[:limit]
 
     def _calculate_file_score(

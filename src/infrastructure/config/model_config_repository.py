@@ -161,7 +161,7 @@ class ModelConfigRepository:
     def ensure_keys_config_exists(self) -> None:
         if self.owner.keys_path.exists():
             return
-        default_keys = {"providers": {}}
+        default_keys: dict[str, dict[str, object]] = {"providers": {}}
         initial_text = yaml.safe_dump(default_keys, allow_unicode=True, sort_keys=False)
 
         if self.owner._layered_keys:

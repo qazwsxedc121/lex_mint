@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Optional
+from typing import Any, AsyncIterator, Callable, Optional, cast
 
 
 def _default_compression_service_factory(storage: Any) -> Any:
@@ -94,10 +94,13 @@ class ChatSessionCommandService:
         context_type: str = "chat",
         project_id: Optional[str] = None,
     ) -> str:
-        return await self._storage.append_separator(
+        return cast(
+            str,
+            await self._storage.append_separator(
             session_id,
             context_type=context_type,
             project_id=project_id,
+            ),
         )
 
     async def clear_all_messages(

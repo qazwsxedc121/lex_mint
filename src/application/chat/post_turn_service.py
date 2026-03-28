@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, List, Optional, cast
 
 from src.application.chat.service_contracts import (
     FollowupServiceLike,
@@ -80,7 +80,9 @@ class PostTurnService:
         project_id: Optional[str],
     ) -> str:
         """Persist final assistant message and schedule post-turn background tasks."""
-        assistant_message_id = await self.storage.append_message(
+        assistant_message_id = cast(
+            str,
+            await self.storage.append_message(
             session_id,
             "assistant",
             assistant_message,
@@ -89,6 +91,7 @@ class PostTurnService:
             sources=sources if sources else None,
             context_type=context_type,
             project_id=project_id,
+            ),
         )
 
         self._schedule_memory_extraction(

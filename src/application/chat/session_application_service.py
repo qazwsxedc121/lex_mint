@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 from src.application.chat.chat_runtime.settings import GroupSettingsResolver
 from src.domain.models.group_participant import parse_group_participant
@@ -189,7 +189,9 @@ class SessionApplicationService:
         if normalized_group_settings is not None and not normalized_group_assistants:
             raise ValueError("group_settings requires group_assistants")
 
-        return await self._storage.create_session(
+        return cast(
+            str,
+            await self._storage.create_session(
             model_id=model_id,
             assistant_id=assistant_id,
             target_type=normalized_target_type,
@@ -199,6 +201,7 @@ class SessionApplicationService:
             group_assistants=normalized_group_assistants,
             group_mode=normalized_group_mode,
             group_settings=normalized_group_settings,
+            ),
         )
 
     async def delete_session(
@@ -458,7 +461,7 @@ class SessionApplicationService:
                 context_type=context_type,
                 project_id=project_id,
             )
-        return new_session_id
+        return cast(str, new_session_id)
 
     async def duplicate_session(
         self,
@@ -495,7 +498,7 @@ class SessionApplicationService:
                 context_type=context_type,
                 project_id=project_id,
             )
-        return new_session_id
+        return cast(str, new_session_id)
 
     async def move_session(
         self,
@@ -531,7 +534,7 @@ class SessionApplicationService:
             target_project_id=target_project_id,
         )
         self._copy_session_attachments(session_id, new_session_id)
-        return new_session_id
+        return cast(str, new_session_id)
 
     async def update_session_folder(
         self,

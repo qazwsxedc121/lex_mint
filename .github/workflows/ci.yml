@@ -41,6 +41,12 @@ jobs:
       - name: Install backend dependencies
         run: ./venv/bin/pip install -r requirements.txt
 
+      - name: Check workflow schema
+        run: ./venv/bin/python scripts/generate_workflow_schema.py --check
+
+      - name: Mypy
+        run: ./venv/bin/python -m mypy src
+
       - name: Pytest
         run: ./venv/bin/pytest tests --ignore=tests/e2e --ignore=tests/test_function_calling.py
 

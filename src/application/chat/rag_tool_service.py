@@ -189,7 +189,7 @@ class RagToolService:
             "query_transform_applied": diagnostics.get("query_transform_applied"),
             "rerank_applied": diagnostics.get("rerank_applied"),
         }
-        payload: Dict[str, Any] = {
+        response_payload: Dict[str, Any] = {
             "ok": True,
             "query_original": query_text,
             "query_effective": diagnostics.get("query_effective", query_text),
@@ -201,16 +201,16 @@ class RagToolService:
             "hits": hits,
         }
         self._search_cache[cache_key] = {
-            "query_effective": payload["query_effective"],
-            "retrieval_queries": list(payload["retrieval_queries"] or [query_text]),
-            "planner_applied": payload["planner_applied"],
+            "query_effective": response_payload["query_effective"],
+            "retrieval_queries": list(response_payload["retrieval_queries"] or [query_text]),
+            "planner_applied": response_payload["planner_applied"],
             "diagnostics": condensed_diagnostics,
             "hits": hits,
         }
         if include_diagnostics:
-            payload["diagnostics"] = condensed_diagnostics
+            response_payload["diagnostics"] = condensed_diagnostics
 
-        return self._json(payload)
+        return self._json(response_payload)
 
     def _resolve_refs(self, refs: List[str]) -> Tuple[List[Tuple[str, str]], List[str]]:
         resolved: List[Tuple[str, str]] = []
@@ -444,18 +444,18 @@ class RagToolService:
         """Execute a supported RAG tool by name. Return None if unknown."""
         try:
             if name == "search_knowledge":
-                parsed = SearchKnowledgeArgs(**(args or {}))
+                search_args = SearchKnowledgeArgs(**(args or {}))
                 return await self.search_knowledge(
-                    query=parsed.query,
-                    top_k=parsed.top_k,
-                    include_diagnostics=parsed.include_diagnostics,
+                    query=search_args.query,
+                    top_k=search_args.top_k,
+                    include_diagnostics=search_args.include_diagnostics,
                 )
             if name == "read_knowledge":
-                parsed = ReadKnowledgeArgs(**(args or {}))
+                read_args = ReadKnowledgeArgs(**(args or {}))
                 return await self.read_knowledge(
-                    refs=parsed.refs,
-                    max_chars=parsed.max_chars,
-                    neighbor_window=parsed.neighbor_window,
+                    refs=read_args.refs,
+                    max_chars=read_args.max_chars,
+                    neighbor_window=read_args.neighbor_window,
                 )
             return None
         except ValidationError as e:

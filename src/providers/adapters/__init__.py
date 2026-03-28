@@ -3,6 +3,8 @@ LLM Adapters
 
 This package contains SDK adapters for different LLM providers.
 """
+from typing import Any
+
 from .openai_adapter import OpenAIAdapter
 from .openrouter_adapter import OpenRouterAdapter
 from .deepseek_adapter import DeepSeekAdapter
@@ -18,14 +20,17 @@ from .kimi_adapter import KimiAdapter
 from .local_gguf_adapter import LocalGgufAdapter
 
 LMSTUDIO_IMPORT_ERROR = None
+LmStudioAdapter: type[Any] | None
 try:
-    from .lmstudio_adapter import LmStudioAdapter
+    from .lmstudio_adapter import LmStudioAdapter as _LmStudioAdapter
 except ModuleNotFoundError as exc:
     if exc.name and exc.name.startswith("lmstudio"):
         LmStudioAdapter = None
         LMSTUDIO_IMPORT_ERROR = exc
     else:
         raise
+else:
+    LmStudioAdapter = _LmStudioAdapter
 
 __all__ = [
     "OpenAIAdapter",

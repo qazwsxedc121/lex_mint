@@ -6,7 +6,7 @@ Stores comparison responses in sidecar JSON files alongside conversation markdow
 import json
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, cast
 from pathlib import Path
 
 import aiofiles
@@ -55,7 +55,7 @@ class ComparisonStorage:
         try:
             async with aiofiles.open(compare_path, "r", encoding="utf-8") as f:
                 content = await f.read()
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to load comparison data for {session_id}: {e}")
             return {}

@@ -21,9 +21,9 @@ class ThinkTagStreamFilter:
     _open_tag = "<think>"
     _close_tag = "</think>"
 
-    def __init__(self):
-        self._in_think = False
-        self._pending = ""
+    def __init__(self) -> None:
+        self._in_think: bool = False
+        self._pending: str = ""
 
     def feed(self, chunk: str) -> str:
         if not chunk:

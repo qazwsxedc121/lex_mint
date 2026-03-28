@@ -52,7 +52,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         """
         from langchain_anthropic import ChatAnthropic
 
-        llm_kwargs = {
+        llm_kwargs: Dict[str, Any] = {
             "model": model,
             "api_key": api_key,
             "streaming": streaming,

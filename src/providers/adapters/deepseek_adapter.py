@@ -75,7 +75,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
         Returns:
             ChatDeepSeek instance
         """
-        llm_kwargs = {
+        llm_kwargs: Dict[str, Any] = {
             "model": model,
             "api_key": api_key,
             "api_base": base_url,
@@ -102,7 +102,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
             llm_kwargs["max_tokens"] = kwargs["max_tokens"]
 
         # Add sampling parameters via model_kwargs.
-        extra_model_kwargs = {}
+        extra_model_kwargs: Dict[str, Any] = {}
         for key in ["top_p", "frequency_penalty", "presence_penalty"]:
             if key in kwargs:
                 extra_model_kwargs[key] = kwargs[key]

@@ -78,13 +78,15 @@ class LocalGgufChatModel:
         return params
 
     def bind_tools(self, _tools: List[Any]):
+        max_tokens = cast(int | None, self._defaults.get("max_tokens"))
+        top_k = cast(int | None, self._defaults.get("top_k"))
         return LocalGgufChatModel(
             self._service,
             model_id=self.model_id,
             temperature=float(self._defaults.get("temperature") or 0.7),
-            max_tokens=self._defaults.get("max_tokens"),
+            max_tokens=max_tokens,
             top_p=self._defaults.get("top_p"),
-            top_k=self._defaults.get("top_k"),
+            top_k=top_k,
             frequency_penalty=self._defaults.get("frequency_penalty"),
             presence_penalty=self._defaults.get("presence_penalty"),
             disable_thinking=bool(self._defaults.get("disable_thinking", False)),

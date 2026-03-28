@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import operator
+from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +32,7 @@ TOOL = ToolDefinition(
 )
 
 
-_SAFE_OPERATORS = {
+_SAFE_OPERATORS: dict[type[ast.operator] | type[ast.unaryop], Callable[..., float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -48,19 +49,19 @@ def _safe_eval_expr(node: ast.AST) -> float:
     if isinstance(node, ast.Expression):
         return _safe_eval_expr(node.body)
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        return node.value
+        return float(node.value)
     if isinstance(node, ast.BinOp):
         op_func = _SAFE_OPERATORS.get(type(node.op))
         if op_func is None:
             raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
         left = _safe_eval_expr(node.left)
         right = _safe_eval_expr(node.right)
-        return op_func(left, right)
+        return float(op_func(left, right))
     if isinstance(node, ast.UnaryOp):
         op_func = _SAFE_OPERATORS.get(type(node.op))
         if op_func is None:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
-        return op_func(_safe_eval_expr(node.operand))
+        return float(op_func(_safe_eval_expr(node.operand)))
     raise ValueError(f"Unsupported expression type: {type(node).__name__}")
 
 

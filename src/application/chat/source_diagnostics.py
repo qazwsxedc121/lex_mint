@@ -25,18 +25,19 @@ def merge_tool_diagnostics_into_sources(
     if not tool_diagnostics:
         return merged_sources
 
-    payload = {
-        "tool_search_count": int(tool_diagnostics.get("tool_search_count", 0) or 0),
-        "tool_search_unique_count": int(
-            tool_diagnostics.get("tool_search_unique_count", 0) or 0
-        ),
-        "tool_search_duplicate_count": int(
-            tool_diagnostics.get("tool_search_duplicate_count", 0) or 0
-        ),
-        "tool_read_count": int(tool_diagnostics.get("tool_read_count", 0) or 0),
-        "tool_finalize_reason": str(
-            tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
-        ),
+    tool_search_count = int(tool_diagnostics.get("tool_search_count", 0) or 0)
+    tool_search_unique_count = int(tool_diagnostics.get("tool_search_unique_count", 0) or 0)
+    tool_search_duplicate_count = int(tool_diagnostics.get("tool_search_duplicate_count", 0) or 0)
+    tool_read_count = int(tool_diagnostics.get("tool_read_count", 0) or 0)
+    tool_finalize_reason = str(
+        tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
+    )
+    payload: Dict[str, int | str] = {
+        "tool_search_count": tool_search_count,
+        "tool_search_unique_count": tool_search_unique_count,
+        "tool_search_duplicate_count": tool_search_duplicate_count,
+        "tool_read_count": tool_read_count,
+        "tool_finalize_reason": tool_finalize_reason,
     }
 
     diagnostics_index: Optional[int] = None
@@ -46,10 +47,10 @@ def merge_tool_diagnostics_into_sources(
             break
 
     should_create_new = (
-        payload["tool_search_count"] > 0
-        or payload["tool_read_count"] > 0
-        or payload["tool_search_duplicate_count"] > 0
-        or payload["tool_finalize_reason"] != "normal_no_tools"
+        tool_search_count > 0
+        or tool_read_count > 0
+        or tool_search_duplicate_count > 0
+        or tool_finalize_reason != "normal_no_tools"
     )
     if diagnostics_index is None:
         if not should_create_new:

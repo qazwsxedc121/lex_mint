@@ -612,17 +612,17 @@ class LmStudioAdapter(BaseLLMAdapter):
                     if reasoning_type != "none":
                         yield StreamChunk(content="", thinking=text, raw=fragment)
                         continue
-                    for kind, chunk in parser.feed(text):
+                    for kind, segment_text in parser.feed(text):
                         if kind == "thinking":
-                            yield StreamChunk(content="", thinking=chunk, raw=fragment)
+                            yield StreamChunk(content="", thinking=segment_text, raw=fragment)
                         else:
-                            yield StreamChunk(content=chunk, raw=fragment)
+                            yield StreamChunk(content=segment_text, raw=fragment)
 
-                for kind, chunk in parser.finalize():
+                for kind, segment_text in parser.finalize():
                     if kind == "thinking":
-                        yield StreamChunk(content="", thinking=chunk, raw=active_stream)
+                        yield StreamChunk(content="", thinking=segment_text, raw=active_stream)
                     else:
-                        yield StreamChunk(content=chunk, raw=active_stream)
+                        yield StreamChunk(content=segment_text, raw=active_stream)
 
                 result = active_stream.result()
                 usage = self._stats_to_usage(getattr(result, "stats", None))

@@ -395,9 +395,9 @@ class OrchestrationEngine:
             if result is None:
                 result = ActorResult()
 
-            terminal_status = result.terminal_status
+            result_terminal_status = result.terminal_status
             computed_next_node_id = result.next_node_id
-            if terminal_status is None and computed_next_node_id is None:
+            if result_terminal_status is None and computed_next_node_id is None:
                 computed_next_node_id = self._resolve_next_node(
                     node_id=node.node_id,
                     branch=result.branch,
@@ -415,7 +415,7 @@ class OrchestrationEngine:
                 next_node_id=computed_next_node_id,
                 branch=result.branch,
                 payload=dict(result.payload),
-                terminal_status=terminal_status,
+                terminal_status=result_terminal_status,
                 terminal_reason=result.terminal_reason,
             )
 
@@ -430,25 +430,25 @@ class OrchestrationEngine:
                 node_finished_event["checkpoint_id"] = node_finished_checkpoint_id
             yield node_finished_event
 
-            if terminal_status:
+            if result_terminal_status:
                 terminal_reason = self._normalize_reason(
                     result.terminal_reason,
-                    fallback=terminal_status,
+                    fallback=result_terminal_status,
                 )
                 terminal_checkpoint_id = await self._save_checkpoint(
                     run_store=run_store,
                     run_id=run_id,
                     seq=(checkpoint_seq := checkpoint_seq + 1),
                     step=step,
-                    event_type=terminal_status,
+                    event_type=result_terminal_status,
                     node_id=node.node_id,
                     actor_id=node.actor.actor_id,
-                    terminal_status=terminal_status,
+                    terminal_status=result_terminal_status,
                     terminal_reason=terminal_reason,
                     payload=dict(result.payload),
                 )
                 terminal_event = {
-                    "type": terminal_status,
+                    "type": result_terminal_status,
                     "run_id": run_id,
                     "terminal_reason": terminal_reason,
                     "payload": dict(result.payload),

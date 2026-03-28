@@ -530,7 +530,16 @@ class ModelConfigService:
             The API key, or ``None`` if it is not configured.
         """
         keys_data = await self.load_keys_config()
-        return keys_data.get("providers", {}).get(provider_id, {}).get("api_key")
+        providers = keys_data.get("providers")
+        if not isinstance(providers, dict):
+            return None
+        provider_data = providers.get(provider_id)
+        if not isinstance(provider_data, dict):
+            return None
+        api_key = provider_data.get("api_key")
+        if isinstance(api_key, str):
+            return api_key
+        return None
 
     async def set_api_key(self, provider_id: str, api_key: str):
         """

@@ -393,7 +393,7 @@ class CompressionService:
         *,
         output_language_code: Optional[str],
     ) -> str:
-        base_prompt = config.prompt_template.format(formatted_messages=formatted_messages)
+        base_prompt = str(config.prompt_template.format(formatted_messages=formatted_messages))
         language_instruction = cls._build_output_language_instruction(output_language_code)
         if not language_instruction:
             return base_prompt

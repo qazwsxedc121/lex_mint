@@ -4,7 +4,7 @@ Adapter Registry
 Maps providers to their SDK adapters without text matching.
 """
 import logging
-from typing import Type, Dict, Optional, Any, AsyncIterator, List
+from typing import Type, Dict, Optional, Any, AsyncIterator, List, cast
 
 from langchain_core.messages import BaseMessage
 
@@ -80,7 +80,7 @@ class MissingDependencyAdapter(BaseLLMAdapter):
             self._raise()
             yield None
 
-        return _missing_dependency_stream()
+        return cast(AsyncIterator[Any], _missing_dependency_stream())
 
     async def fetch_models(self, base_url: str, api_key: str):
         self._raise()
@@ -109,7 +109,6 @@ class AdapterRegistry:
         "deepseek": DeepSeekAdapter,
         "anthropic": AnthropicAdapter,
         "ollama": OllamaAdapter,
-        "lmstudio": LmStudioAdapter,
         "xai": XAIAdapter,
         "zhipu": ZhipuAdapter,
         "volcengine": VolcEngineAdapter,
@@ -119,6 +118,8 @@ class AdapterRegistry:
         "kimi": KimiAdapter,
         "local_gguf": LocalGgufAdapter,
     }
+    if LmStudioAdapter is not None:
+        _adapters["lmstudio"] = LmStudioAdapter
 
     # Mapping of API protocols to default adapter classes
     _protocol_adapters: Dict[ApiProtocol, str] = {
