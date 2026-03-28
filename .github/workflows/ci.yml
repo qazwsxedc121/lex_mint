@@ -53,6 +53,8 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    env:
+      API_PORT: "18080"
     defaults:
       run:
         working-directory: frontend
