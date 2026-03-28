@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 import logging
+from functools import lru_cache
 from typing import Any
 
 import yaml
@@ -23,7 +23,7 @@ def _load_builtin_provider_entries() -> list[dict[str, Any]]:
         return []
 
     try:
-        with open(provider_path, "r", encoding="utf-8") as f:
+        with open(provider_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except Exception as exc:
         logger.warning("Failed to load builtin providers from %s: %s", provider_path, exc)
@@ -39,12 +39,10 @@ def _coerce_provider_definition(entry: dict[str, Any]) -> ProviderDefinition | N
     if str(entry.get("type") or "builtin") != "builtin":
         return None
 
-    payload = {
-        key: value
-        for key, value in entry.items()
-        if key in ProviderDefinition.model_fields
-    }
-    default_profile_id = entry.get("default_endpoint_profile_id") or entry.get("endpoint_profile_id")
+    payload = {key: value for key, value in entry.items() if key in ProviderDefinition.model_fields}
+    default_profile_id = entry.get("default_endpoint_profile_id") or entry.get(
+        "endpoint_profile_id"
+    )
     if default_profile_id and "default_endpoint_profile_id" not in payload:
         payload["default_endpoint_profile_id"] = default_profile_id
 

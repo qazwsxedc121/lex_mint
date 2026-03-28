@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.infrastructure.storage.conversation_storage import ConversationStorage
 
@@ -16,10 +16,10 @@ class ChatGPTImportService:
 
     async def import_conversations(
         self,
-        conversations: List[Dict[str, Any]],
+        conversations: list[dict[str, Any]],
         context_type: str = "chat",
-        project_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
         """Import a list of ChatGPT conversations.
 
         Returns:
@@ -30,8 +30,8 @@ class ChatGPTImportService:
                 "errors": List[str],
             }
         """
-        imported_sessions: List[Dict[str, Any]] = []
-        errors: List[str] = []
+        imported_sessions: list[dict[str, Any]] = []
+        errors: list[str] = []
         skipped = 0
 
         for index, conv in enumerate(conversations):
@@ -43,15 +43,11 @@ class ChatGPTImportService:
 
                 title = self._extract_title(conv, messages)
                 session_id = await self.storage.create_session(
-                    context_type=context_type,
-                    project_id=project_id
+                    context_type=context_type, project_id=project_id
                 )
 
                 await self.storage.set_messages(
-                    session_id,
-                    messages,
-                    context_type=context_type,
-                    project_id=project_id
+                    session_id, messages, context_type=context_type, project_id=project_id
                 )
 
                 metadata_updates = {
@@ -69,17 +65,16 @@ class ChatGPTImportService:
                     metadata_updates["import_source_id"] = source_id
 
                 await self.storage.update_session_metadata(
-                    session_id,
-                    metadata_updates,
-                    context_type=context_type,
-                    project_id=project_id
+                    session_id, metadata_updates, context_type=context_type, project_id=project_id
                 )
 
-                imported_sessions.append({
-                    "session_id": session_id,
-                    "title": title,
-                    "message_count": len(messages),
-                })
+                imported_sessions.append(
+                    {
+                        "session_id": session_id,
+                        "title": title,
+                        "message_count": len(messages),
+                    }
+                )
             except Exception as exc:
                 errors.append(f"Conversation #{index + 1}: {exc}")
 
@@ -90,7 +85,7 @@ class ChatGPTImportService:
             "errors": errors,
         }
 
-    def _extract_created_at(self, conv: Dict[str, Any]) -> Optional[str]:
+    def _extract_created_at(self, conv: dict[str, Any]) -> str | None:
         timestamp = conv.get("create_time") or conv.get("update_time")
         if isinstance(timestamp, (int, float)):
             try:
@@ -99,7 +94,7 @@ class ChatGPTImportService:
                 return None
         return None
 
-    def _extract_title(self, conv: Dict[str, Any], messages: List[Dict[str, Any]]) -> str:
+    def _extract_title(self, conv: dict[str, Any], messages: list[dict[str, Any]]) -> str:
         title = str(conv.get("title") or "").strip()
         if not title:
             title = self._title_from_messages(messages)
@@ -107,7 +102,7 @@ class ChatGPTImportService:
             title = "Imported Chat"
         return title
 
-    def _title_from_messages(self, messages: List[Dict[str, Any]]) -> str:
+    def _title_from_messages(self, messages: list[dict[str, Any]]) -> str:
         for msg in messages:
             if msg.get("role") == "user":
                 content = str(msg.get("content") or "").strip()
@@ -118,7 +113,7 @@ class ChatGPTImportService:
                     return one_line
         return ""
 
-    def _extract_messages(self, conv: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_messages(self, conv: dict[str, Any]) -> list[dict[str, Any]]:
         mapping = conv.get("mapping") or {}
         if not isinstance(mapping, dict) or not mapping:
             return []
@@ -129,7 +124,7 @@ class ChatGPTImportService:
         if not current_node:
             return []
 
-        path_ids: List[str] = []
+        path_ids: list[str] = []
         node_id = current_node
         seen: set[str] = set()
 
@@ -143,7 +138,7 @@ class ChatGPTImportService:
 
         path_ids.reverse()
 
-        messages: List[Dict[str, Any]] = []
+        messages: list[dict[str, Any]] = []
         for node_id in path_ids:
             node = mapping.get(node_id) or {}
             message = node.get("message")
@@ -161,15 +156,17 @@ class ChatGPTImportService:
             if not content_text.strip():
                 continue
 
-            messages.append({
-                "role": role,
-                "content": content_text,
-                "message_id": message.get("id") or node_id,
-            })
+            messages.append(
+                {
+                    "role": role,
+                    "content": content_text,
+                    "message_id": message.get("id") or node_id,
+                }
+            )
 
         return messages
 
-    def _find_latest_node(self, mapping: Dict[str, Any]) -> Optional[str]:
+    def _find_latest_node(self, mapping: dict[str, Any]) -> str | None:
         latest_id = None
         latest_time = -1.0
         for node_id, node in mapping.items():
@@ -190,7 +187,7 @@ class ChatGPTImportService:
 
         parts = content.get("parts")
         if isinstance(parts, list):
-            texts: List[str] = []
+            texts: list[str] = []
             for part in parts:
                 if isinstance(part, str):
                     texts.append(part)

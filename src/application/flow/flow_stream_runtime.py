@@ -7,7 +7,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any
 
 from .flow_event_types import TERMINAL_EVENT_TYPES
 
@@ -35,13 +35,13 @@ class FlowStreamState:
     stream_id: str
     conversation_id: str
     context_type: str
-    project_id: Optional[str]
+    project_id: str | None
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     done: bool = False
     seq: int = 0
-    events: Deque[Dict[str, Any]] = field(default_factory=deque)
-    subscribers: Dict[str, asyncio.Queue] = field(default_factory=dict)
+    events: deque[dict[str, Any]] = field(default_factory=deque)
+    subscribers: dict[str, asyncio.Queue] = field(default_factory=dict)
 
     def next_seq(self) -> int:
         self.seq += 1
@@ -61,7 +61,7 @@ class FlowStreamRuntime:
         self.ttl_seconds = int(ttl_seconds)
         self.max_events_per_stream = int(max_events_per_stream)
         self.max_active_streams = int(max_active_streams)
-        self._streams: Dict[str, FlowStreamState] = {}
+        self._streams: dict[str, FlowStreamState] = {}
 
     def create_stream(
         self,
@@ -69,7 +69,7 @@ class FlowStreamRuntime:
         stream_id: str,
         conversation_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> FlowStreamState:
         self._gc()
         existing = self._streams.get(stream_id)
@@ -108,7 +108,7 @@ class FlowStreamRuntime:
         state = self.get_stream(stream_id)
         return state.next_seq()
 
-    def append_payload(self, stream_id: str, payload: Dict[str, Any]) -> None:
+    def append_payload(self, stream_id: str, payload: dict[str, Any]) -> None:
         state = self.get_stream(stream_id)
         state.updated_at = time.time()
         state.events.append(payload)
@@ -127,7 +127,7 @@ class FlowStreamRuntime:
         for queue in state.subscribers.values():
             queue.put_nowait(payload)
 
-    def subscribe(self, stream_id: str) -> Tuple[str, asyncio.Queue]:
+    def subscribe(self, stream_id: str) -> tuple[str, asyncio.Queue]:
         state = self.get_stream(stream_id)
         subscriber_id = str(uuid.uuid4())
         queue: asyncio.Queue = asyncio.Queue()
@@ -142,8 +142,8 @@ class FlowStreamRuntime:
         last_event_id: str,
         conversation_id: str,
         context_type: str,
-        project_id: Optional[str],
-    ) -> Tuple[str, asyncio.Queue, List[Dict[str, Any]]]:
+        project_id: str | None,
+    ) -> tuple[str, asyncio.Queue, list[dict[str, Any]]]:
         state = self.get_stream(stream_id)
 
         if (
@@ -181,7 +181,7 @@ class FlowStreamRuntime:
         if not self._streams:
             return
         now = time.time()
-        to_delete: List[str] = []
+        to_delete: list[str] = []
         for stream_id, state in self._streams.items():
             if not state.done:
                 continue

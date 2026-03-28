@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, Optional, Type
+from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel
-
 
 SyncToolHandler = Callable[..., Any]
 AsyncToolHandler = Callable[..., Awaitable[Any]]
@@ -19,7 +19,7 @@ class ToolDefinition:
 
     name: str
     description: str
-    args_schema: Type[BaseModel]
+    args_schema: type[BaseModel]
     group: str
     source: str
     enabled_by_default: bool = False
@@ -33,7 +33,7 @@ class ToolDefinition:
     def description_i18n_key(self) -> str:
         return f"workspace.settings.tools.{self.name}.description"
 
-    def metadata(self) -> Dict[str, Any]:
+    def metadata(self) -> dict[str, Any]:
         return {
             "group": self.group,
             "source": self.source,
@@ -44,8 +44,8 @@ class ToolDefinition:
     def build_tool(
         self,
         *,
-        func: Optional[SyncToolHandler] = None,
-        coroutine: Optional[AsyncToolHandler] = None,
+        func: SyncToolHandler | None = None,
+        coroutine: AsyncToolHandler | None = None,
     ) -> BaseTool:
         if func is None and coroutine is None:
             raise ValueError(f"Tool '{self.name}' requires func or coroutine")

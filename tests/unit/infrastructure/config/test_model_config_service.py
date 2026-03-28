@@ -1,14 +1,15 @@
-﻿"""Unit tests for ModelConfigService."""
+"""Unit tests for ModelConfigService."""
+
+import shutil
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import yaml
-import shutil
-from pathlib import Path
-from unittest.mock import patch, Mock, AsyncMock
 
+from src.domain.models.model_config import DefaultConfig, Model, ModelsConfig, Provider
 from src.infrastructure.config.model_config_service import ModelConfigService
-from src.domain.models.model_config import DefaultConfig, Provider, Model, ModelsConfig
-from src.providers.types import ApiProtocol, ProviderType, ModelCapabilities
+from src.providers.types import ApiProtocol, ModelCapabilities, ProviderType
 
 
 class TestModelConfigService:
@@ -17,11 +18,11 @@ class TestModelConfigService:
     @staticmethod
     def _load_repo_defaults() -> dict:
         defaults_dir = Path("config/defaults")
-        with open(defaults_dir / "provider_config.yaml", "r", encoding="utf-8") as f:
+        with open(defaults_dir / "provider_config.yaml", encoding="utf-8") as f:
             provider_data = yaml.safe_load(f) or {}
-        with open(defaults_dir / "models_catalog.yaml", "r", encoding="utf-8") as f:
+        with open(defaults_dir / "models_catalog.yaml", encoding="utf-8") as f:
             model_data = yaml.safe_load(f) or {}
-        with open(defaults_dir / "app_defaults.yaml", "r", encoding="utf-8") as f:
+        with open(defaults_dir / "app_defaults.yaml", encoding="utf-8") as f:
             app_data = yaml.safe_load(f) or {}
         return {
             "providers": provider_data.get("providers", []),
@@ -197,7 +198,9 @@ class TestModelConfigService:
             assert config.default.model == ""
             assert config.providers == []
             assert config.models == []
-            assert config.reasoning_supported_patterns == defaults.get("reasoning_supported_patterns", [])
+            assert config.reasoning_supported_patterns == defaults.get(
+                "reasoning_supported_patterns", []
+            )
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -257,7 +260,10 @@ class TestModelConfigService:
     @pytest.mark.asyncio
     async def test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing(self):
         """Builtin sync should clear invalid defaults instead of auto-selecting a replacement."""
-        test_dir = Path(".tmp") / "test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing"
+        test_dir = (
+            Path(".tmp")
+            / "test_sync_builtin_prefers_existing_enabled_model_when_default_target_missing"
+        )
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         config_path = test_dir / "models_config.yaml"
@@ -352,7 +358,9 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_layered_bootstrap_ignores_defaults_model_catalog(self, monkeypatch, temp_config_dir):
+    async def test_layered_bootstrap_ignores_defaults_model_catalog(
+        self, monkeypatch, temp_config_dir
+    ):
         """Layered runtime bootstrap should ignore tracked defaults and stay empty."""
         defaults_dir = temp_config_dir / "defaults"
         local_dir = temp_config_dir / "local"
@@ -389,9 +397,13 @@ class TestModelConfigService:
             ],
         }
         with open(defaults_dir / "provider_config.yaml", "w", encoding="utf-8") as f:
-            yaml.safe_dump({"providers": defaults_payload["providers"]}, f, allow_unicode=True, sort_keys=False)
+            yaml.safe_dump(
+                {"providers": defaults_payload["providers"]}, f, allow_unicode=True, sort_keys=False
+            )
         with open(defaults_dir / "models_catalog.yaml", "w", encoding="utf-8") as f:
-            yaml.safe_dump({"models": defaults_payload["models"]}, f, allow_unicode=True, sort_keys=False)
+            yaml.safe_dump(
+                {"models": defaults_payload["models"]}, f, allow_unicode=True, sort_keys=False
+            )
         with open(defaults_dir / "app_defaults.yaml", "w", encoding="utf-8") as f:
             yaml.safe_dump(
                 {
@@ -403,10 +415,21 @@ class TestModelConfigService:
                 sort_keys=False,
             )
 
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.config_defaults_dir", lambda: defaults_dir)
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.config_local_dir", lambda: local_dir)
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.local_keys_config_path", lambda: local_dir / "keys_config.yaml")
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.shared_keys_config_path", lambda: temp_config_dir / "shared_keys_config.yaml")
+        monkeypatch.setattr(
+            "src.infrastructure.config.model_config_service.config_defaults_dir",
+            lambda: defaults_dir,
+        )
+        monkeypatch.setattr(
+            "src.infrastructure.config.model_config_service.config_local_dir", lambda: local_dir
+        )
+        monkeypatch.setattr(
+            "src.infrastructure.config.model_config_service.local_keys_config_path",
+            lambda: local_dir / "keys_config.yaml",
+        )
+        monkeypatch.setattr(
+            "src.infrastructure.config.model_config_service.shared_keys_config_path",
+            lambda: temp_config_dir / "shared_keys_config.yaml",
+        )
 
         service = ModelConfigService()
         config = await service.load_config()
@@ -417,7 +440,9 @@ class TestModelConfigService:
         assert config.models == []
 
     @pytest.mark.asyncio
-    async def test_test_provider_connection_logs_failures(self, temp_config_dir, monkeypatch, caplog):
+    async def test_test_provider_connection_logs_failures(
+        self, temp_config_dir, monkeypatch, caplog
+    ):
         """Failed provider connection tests should be recorded in backend logs."""
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
@@ -434,7 +459,10 @@ class TestModelConfigService:
         )
         adapter = Mock()
         adapter.test_connection = AsyncMock(return_value=(False, "Connection error: broken"))
-        monkeypatch.setattr("src.infrastructure.config.model_config_service.AdapterRegistry.get_for_provider", lambda _: adapter)
+        monkeypatch.setattr(
+            "src.infrastructure.config.model_config_service.AdapterRegistry.get_for_provider",
+            lambda _: adapter,
+        )
 
         with caplog.at_level("ERROR"):
             success, message = await service.test_provider_connection(
@@ -459,7 +487,7 @@ class TestModelConfigService:
         self._write_split_config(config_path.parent, sample_model_config)
 
         # Create empty keys config
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -495,7 +523,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -507,7 +535,7 @@ class TestModelConfigService:
             "type": "builtin",
             "protocol": "openai",
             "base_url": "https://api.openai.com/v1",
-            "enabled": True
+            "enabled": True,
         }
         new_provider = Provider(**new_provider_dict)
 
@@ -525,7 +553,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -536,7 +564,7 @@ class TestModelConfigService:
             type=ProviderType.BUILTIN,
             protocol=ApiProtocol.OPENAI,
             base_url="https://test.com",
-            enabled=True
+            enabled=True,
         )
 
         with pytest.raises(ValueError, match="already exists"):
@@ -546,20 +574,22 @@ class TestModelConfigService:
     async def test_delete_provider(self, temp_config_dir, sample_model_config):
         """Test deleting a provider."""
         # Add second provider to config
-        sample_model_config["providers"].append({
-            "id": "custom-openai",
-            "name": "Custom OpenAI",
-            "type": "custom",
-            "protocol": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "enabled": True
-        })
+        sample_model_config["providers"].append(
+            {
+                "id": "custom-openai",
+                "name": "Custom OpenAI",
+                "type": "custom",
+                "protocol": "openai",
+                "base_url": "https://api.openai.com/v1",
+                "enabled": True,
+            }
+        )
 
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -574,26 +604,30 @@ class TestModelConfigService:
     async def test_delete_default_provider(self, temp_config_dir, sample_model_config):
         """Deleting a deletable default provider should clear the default selection."""
         sample_model_config["default"] = {"provider": "custom-openai", "model": "gpt-4-custom"}
-        sample_model_config["providers"].append({
-            "id": "custom-openai",
-            "name": "Custom OpenAI",
-            "type": "custom",
-            "protocol": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "enabled": True,
-        })
-        sample_model_config["models"].append({
-            "id": "gpt-4-custom",
-            "name": "GPT-4 Custom",
-            "provider_id": "custom-openai",
-            "tags": ["chat"],
-            "enabled": True,
-        })
+        sample_model_config["providers"].append(
+            {
+                "id": "custom-openai",
+                "name": "Custom OpenAI",
+                "type": "custom",
+                "protocol": "openai",
+                "base_url": "https://api.openai.com/v1",
+                "enabled": True,
+            }
+        )
+        sample_model_config["models"].append(
+            {
+                "id": "gpt-4-custom",
+                "name": "GPT-4 Custom",
+                "provider_id": "custom-openai",
+                "tags": ["chat"],
+                "enabled": True,
+            }
+        )
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -612,7 +646,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -629,7 +663,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -646,7 +680,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -663,7 +697,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -673,7 +707,7 @@ class TestModelConfigService:
             name="DeepSeek Coder",
             provider_id="deepseek",
             tags=["chat"],
-            enabled=True
+            enabled=True,
         )
 
         await service.add_model(new_model)
@@ -687,19 +721,21 @@ class TestModelConfigService:
     async def test_delete_model(self, temp_config_dir, sample_model_config):
         """Test deleting a model."""
         # Add second model
-        sample_model_config["models"].append({
-            "id": "deepseek-coder",
-            "name": "DeepSeek Coder",
-            "provider_id": "deepseek",
-            "tags": ["chat"],
-            "enabled": True
-        })
+        sample_model_config["models"].append(
+            {
+                "id": "deepseek-coder",
+                "name": "DeepSeek Coder",
+                "provider_id": "deepseek",
+                "tags": ["chat"],
+                "enabled": True,
+            }
+        )
 
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -717,7 +753,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -734,7 +770,7 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -752,11 +788,13 @@ class TestModelConfigService:
         assert disabled_model.enabled is False
 
     @pytest.mark.asyncio
-    async def test_get_model_and_provider_sync_without_default_raises_clear_error(self, temp_config_dir):
+    async def test_get_model_and_provider_sync_without_default_raises_clear_error(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
 
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
@@ -771,23 +809,23 @@ class TestModelConfigService:
         keys_path = temp_config_dir / "keys_config.yaml"
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(keys_path, 'w', encoding='utf-8') as f:
+        with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
 
         # Initially no API key
-        assert await service.has_api_key("deepseek") == False
+        assert not await service.has_api_key("deepseek")
         assert await service.get_api_key("deepseek") is None
 
         # Set API key
         await service.set_api_key("deepseek", "test_key_12345")
-        assert await service.has_api_key("deepseek") == True
+        assert await service.has_api_key("deepseek")
         assert await service.get_api_key("deepseek") == "test_key_12345"
 
         # Delete API key
         await service.delete_api_key("deepseek")
-        assert await service.has_api_key("deepseek") == False
+        assert not await service.has_api_key("deepseek")
 
     @pytest.mark.asyncio
     async def test_mask_api_key(self, temp_config_dir):
@@ -812,16 +850,19 @@ class TestModelConfigService:
         shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._write_split_config(config_path.parent, sample_model_config)
-        with open(shared_keys_path, 'w', encoding='utf-8') as f:
+        with open(shared_keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {"deepseek": {"api_key": "old_value"}}}, f)
 
-        with patch("src.infrastructure.config.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+        with patch(
+            "src.infrastructure.config.model_config_service.shared_keys_config_path",
+            return_value=shared_keys_path,
+        ):
             service = ModelConfigService(config_path, shared_keys_path)
 
             with pytest.raises(PermissionError, match="bootstrap-only"):
                 await service.set_api_key("deepseek", "new_value")
 
-        with open(shared_keys_path, 'r', encoding='utf-8') as f:
+        with open(shared_keys_path, encoding="utf-8") as f:
             shared_data = yaml.safe_load(f)
         assert shared_data["providers"]["deepseek"]["api_key"] == "old_value"
 
@@ -836,31 +877,49 @@ class TestModelConfigService:
         shared_keys_path.parent.mkdir(parents=True, exist_ok=True)
 
         shared_payload = {"providers": {"openai": {"api_key": "shared_key_value"}}}
-        with open(shared_keys_path, 'w', encoding='utf-8') as f:
+        with open(shared_keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(shared_payload, f)
 
-        with patch("src.infrastructure.config.model_config_service.config_local_dir", return_value=config_local_path), \
-                patch("src.infrastructure.config.model_config_service.config_defaults_dir", return_value=config_defaults_path), \
-                patch("src.infrastructure.config.model_config_service.local_keys_config_path", return_value=config_local_path / "keys_config.yaml"), \
-                patch("src.infrastructure.config.model_config_service.shared_keys_config_path", return_value=shared_keys_path):
+        with (
+            patch(
+                "src.infrastructure.config.model_config_service.config_local_dir",
+                return_value=config_local_path,
+            ),
+            patch(
+                "src.infrastructure.config.model_config_service.config_defaults_dir",
+                return_value=config_defaults_path,
+            ),
+            patch(
+                "src.infrastructure.config.model_config_service.local_keys_config_path",
+                return_value=config_local_path / "keys_config.yaml",
+            ),
+            patch(
+                "src.infrastructure.config.model_config_service.shared_keys_config_path",
+                return_value=shared_keys_path,
+            ),
+        ):
             service = ModelConfigService()
 
         expected_local_keys = config_local_path / "keys_config.yaml"
         assert service.keys_path == expected_local_keys
         assert expected_local_keys.exists()
 
-        with open(expected_local_keys, 'r', encoding='utf-8') as f:
+        with open(expected_local_keys, encoding="utf-8") as f:
             local_data = yaml.safe_load(f)
         assert local_data == shared_payload
 
-    def test_get_merged_capabilities_uses_local_qwen3_fallback_when_metadata_missing(self, temp_config_dir):
+    def test_get_merged_capabilities_uses_local_qwen3_fallback_when_metadata_missing(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
             yaml.safe_dump({"providers": {}}, f)
 
         service = ModelConfigService(config_path, keys_path)
-        model = Model(id="llm/qwen3-0.6b-q8_0.gguf", name="Qwen3", provider_id="local_gguf", enabled=True)
+        model = Model(
+            id="llm/qwen3-0.6b-q8_0.gguf", name="Qwen3", provider_id="local_gguf", enabled=True
+        )
         provider = Provider(
             id="local_gguf",
             name="Local GGUF",
@@ -879,7 +938,9 @@ class TestModelConfigService:
         assert merged.reasoning_controls.mode.value == "toggle"
         assert merged.reasoning_controls.param == "enable_thinking"
 
-    def test_get_merged_capabilities_explicit_model_metadata_beats_provider_defaults(self, temp_config_dir):
+    def test_get_merged_capabilities_explicit_model_metadata_beats_provider_defaults(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -921,7 +982,9 @@ class TestModelConfigService:
         assert merged.function_calling is False
         assert merged.reasoning_controls is None
 
-    def test_get_merged_capabilities_inherits_provider_reasoning_controls_from_metadata(self, temp_config_dir):
+    def test_get_merged_capabilities_inherits_provider_reasoning_controls_from_metadata(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -957,7 +1020,9 @@ class TestModelConfigService:
         assert merged.reasoning_controls.mode.value == "enum"
         assert merged.reasoning_controls.options == ["low", "medium", "high"]
 
-    def test_get_merged_capabilities_inferred_local_fallback_does_not_override_explicit_model_metadata(self, temp_config_dir):
+    def test_get_merged_capabilities_inferred_local_fallback_does_not_override_explicit_model_metadata(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -987,7 +1052,9 @@ class TestModelConfigService:
         assert merged.function_calling is False
         assert merged.reasoning_controls is None
 
-    def test_get_merged_capabilities_clears_provider_reasoning_controls_when_reasoning_disabled(self, temp_config_dir):
+    def test_get_merged_capabilities_clears_provider_reasoning_controls_when_reasoning_disabled(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         with open(keys_path, "w", encoding="utf-8") as f:
@@ -1028,7 +1095,10 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_sync_builtin_sets_provider_interleaved_false_for_model_level_providers(self):
-        test_dir = Path(".tmp") / "test_sync_builtin_sets_provider_interleaved_false_for_model_level_providers"
+        test_dir = (
+            Path(".tmp")
+            / "test_sync_builtin_sets_provider_interleaved_false_for_model_level_providers"
+        )
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         config_path = test_dir / "models_config.yaml"
@@ -1094,8 +1164,13 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_sync_builtin_preserves_explicit_model_interleaved_false_for_non_local_models(self):
-        test_dir = Path(".tmp") / "test_sync_builtin_preserves_explicit_model_interleaved_false_for_non_local_models"
+    async def test_sync_builtin_preserves_explicit_model_interleaved_false_for_non_local_models(
+        self,
+    ):
+        test_dir = (
+            Path(".tmp")
+            / "test_sync_builtin_preserves_explicit_model_interleaved_false_for_non_local_models"
+        )
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         config_path = test_dir / "models_config.yaml"
@@ -1145,7 +1220,10 @@ class TestModelConfigService:
 
     @pytest.mark.asyncio
     async def test_sync_builtin_backfills_stale_local_qwen3_function_calling_and_reasoning(self):
-        test_dir = Path(".tmp") / "test_sync_builtin_backfills_stale_local_qwen3_function_calling_and_reasoning"
+        test_dir = (
+            Path(".tmp")
+            / "test_sync_builtin_backfills_stale_local_qwen3_function_calling_and_reasoning"
+        )
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         config_path = test_dir / "models_config.yaml"
@@ -1201,18 +1279,32 @@ class TestModelConfigService:
             shutil.rmtree(test_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_get_models_enabled_only_filters_models_with_disabled_provider(self, temp_config_dir):
+    async def test_get_models_enabled_only_filters_models_with_disabled_provider(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         service = ModelConfigService(config_path, keys_path)
         config = await service.load_config()
         config.providers = [
-            Provider(id="enabled-provider", name="Enabled", base_url="https://enabled.test", enabled=True),
-            Provider(id="disabled-provider", name="Disabled", base_url="https://disabled.test", enabled=False),
+            Provider(
+                id="enabled-provider", name="Enabled", base_url="https://enabled.test", enabled=True
+            ),
+            Provider(
+                id="disabled-provider",
+                name="Disabled",
+                base_url="https://disabled.test",
+                enabled=False,
+            ),
         ]
         config.models = [
             Model(id="ready", name="Ready", provider_id="enabled-provider", enabled=True),
-            Model(id="provider-off", name="Provider Off", provider_id="disabled-provider", enabled=True),
+            Model(
+                id="provider-off",
+                name="Provider Off",
+                provider_id="disabled-provider",
+                enabled=True,
+            ),
             Model(id="model-off", name="Model Off", provider_id="enabled-provider", enabled=False),
         ]
         await service.save_config(config)
@@ -1228,8 +1320,15 @@ class TestModelConfigService:
         service = ModelConfigService(config_path, keys_path)
         config = await service.load_config()
         config.providers = [
-            Provider(id="enabled-provider", name="Enabled", base_url="https://enabled.test", enabled=True),
-            Provider(id="disabled-provider", name="Disabled", base_url="https://disabled.test", enabled=False),
+            Provider(
+                id="enabled-provider", name="Enabled", base_url="https://enabled.test", enabled=True
+            ),
+            Provider(
+                id="disabled-provider",
+                name="Disabled",
+                base_url="https://disabled.test",
+                enabled=False,
+            ),
         ]
         await service.save_config(config)
 
@@ -1238,14 +1337,18 @@ class TestModelConfigService:
         assert [provider.id for provider in providers] == ["enabled-provider"]
 
     @pytest.mark.asyncio
-    async def test_get_llm_instance_rejects_explicit_model_when_provider_disabled(self, temp_config_dir):
+    async def test_get_llm_instance_rejects_explicit_model_when_provider_disabled(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "models_config.yaml"
         keys_path = temp_config_dir / "keys_config.yaml"
         service = ModelConfigService(config_path, keys_path)
         config = ModelsConfig(
             default=DefaultConfig(provider="", model=""),
             providers=[
-                Provider(id="openai", name="OpenAI", base_url="https://api.openai.com/v1", enabled=False),
+                Provider(
+                    id="openai", name="OpenAI", base_url="https://api.openai.com/v1", enabled=False
+                ),
             ],
             models=[
                 Model(id="gpt-4", name="GPT-4", provider_id="openai", enabled=True),

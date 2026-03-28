@@ -1,21 +1,24 @@
 """Conversation storage service using Markdown files with YAML frontmatter."""
 
 import asyncio
-import frontmatter
 import json
 import os
+import re
 import shutil
+import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
-import aiofiles
-import uuid
-import re
+from typing import Any
 
-from src.providers.types import TokenUsage, CostInfo
+import aiofiles
+import frontmatter
+
+from src.domain.models.group_participant import parse_group_participant
+from src.providers.types import CostInfo, TokenUsage
+
 from .conversation_storage_paths import StoragePathResolver, build_project_root_resolver
 from .conversation_target_resolver import ConversationSessionTargetResolver
-from src.domain.models.group_participant import parse_group_participant
 
 
 class ConversationStorage:
@@ -29,7 +32,7 @@ class ConversationStorage:
     def __init__(
         self,
         conversations_dir: Path,
-        project_root_resolver: Optional[Callable[[str], Optional[str]]] = None,
+        project_root_resolver: Callable[[str], str | None] | None = None,
         assistant_service: Any = None,
         model_service: Any = None,
     ):
@@ -52,10 +55,10 @@ class ConversationStorage:
             model_service=model_service,
         )
         # Per-file locks to prevent concurrent read-modify-write corruption
-        self._file_locks: Dict[str, asyncio.Lock] = {}
+        self._file_locks: dict[str, asyncio.Lock] = {}
 
     @staticmethod
-    def _as_optional_str(value: Any) -> Optional[str]:
+    def _as_optional_str(value: Any) -> str | None:
         if isinstance(value, str):
             cleaned = value.strip()
             return cleaned if cleaned else None
@@ -84,14 +87,14 @@ class ConversationStorage:
             return default
 
     @staticmethod
-    def _as_dict(value: Any) -> Dict[str, Any]:
+    def _as_dict(value: Any) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
 
     async def _migrate_legacy_session_metadata(
         self,
         post: frontmatter.Post,
     ) -> bool:
-        metadata: Dict[str, Any] = dict(post.metadata or {})
+        metadata: dict[str, Any] = dict(post.metadata or {})
         assistant_id = self._as_optional_str(metadata.get("assistant_id"))
         model_id = self._as_optional_str(metadata.get("model_id"))
         target_type = self._as_optional_str(metadata.get("target_type"))
@@ -99,7 +102,7 @@ class ConversationStorage:
         if target_type in {"assistant", "model"}:
             return False
 
-        inferred_target_type: Optional[str] = None
+        inferred_target_type: str | None = None
         if assistant_id:
             inferred_target_type = "assistant"
         elif model_id:
@@ -114,15 +117,15 @@ class ConversationStorage:
 
     async def create_session(
         self,
-        model_id: Optional[str] = None,
-        assistant_id: Optional[str] = None,
-        target_type: Optional[str] = None,
+        model_id: str | None = None,
+        assistant_id: str | None = None,
+        target_type: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         temporary: bool = False,
-        group_assistants: Optional[List[str]] = None,
-        group_mode: Optional[str] = None,
-        group_settings: Optional[Dict[str, Any]] = None,
+        group_assistants: list[str] | None = None,
+        group_mode: str | None = None,
+        group_settings: dict[str, Any] | None = None,
     ) -> str:
         """Create a new conversation session.
 
@@ -176,7 +179,7 @@ class ConversationStorage:
             metadata["temporary"] = True
 
         if group_assistants is not None:
-            normalized_group_assistants: List[str] = []
+            normalized_group_assistants: list[str] = []
             seen_group_assistants = set()
             for assistant_id in group_assistants:
                 if not isinstance(assistant_id, str):
@@ -197,12 +200,14 @@ class ConversationStorage:
 
         post.metadata = metadata
 
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
         return session_id
 
-    async def get_session(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> Dict:
+    async def get_session(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ) -> dict:
         """Load a conversation session.
 
         Args:
@@ -232,15 +237,15 @@ class ConversationStorage:
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             content = await f.read()
 
         post = frontmatter.loads(content)
         metadata_migrated = await self._migrate_legacy_session_metadata(post)
         if metadata_migrated:
-            async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
                 await f.write(frontmatter.dumps(post))
-        metadata: Dict[str, Any] = dict(post.metadata or {})
+        metadata: dict[str, Any] = dict(post.metadata or {})
 
         # Parse messages from markdown content
         messages = self._parse_messages(post.content, session_id)
@@ -272,7 +277,7 @@ class ConversationStorage:
                 metadata["target_type"] = "model"
                 metadata.pop("assistant_id", None)
                 post.metadata = metadata
-                async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+                async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
                     await f.write(frontmatter.dumps(post))
                 target_type = "model"
                 assistant_id = None
@@ -310,8 +315,8 @@ class ConversationStorage:
             "temporary": bool(metadata.get("temporary", False)),
             "state": {
                 "messages": messages,
-                "current_step": self._as_int(metadata.get("current_step"), 0)
-            }
+                "current_step": self._as_int(metadata.get("current_step"), 0),
+            },
         }
 
         # Include group_assistants if present
@@ -329,13 +334,13 @@ class ConversationStorage:
         session_id: str,
         role: str,
         content: str,
-        attachments: Optional[List[Dict]] = None,
-        usage: Optional[TokenUsage] = None,
-        cost: Optional[CostInfo] = None,
-        sources: Optional[List[Dict]] = None,
+        attachments: list[dict] | None = None,
+        usage: TokenUsage | None = None,
+        cost: CostInfo | None = None,
+        sources: list[dict] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-        assistant_id: Optional[str] = None
+        project_id: str | None = None,
+        assistant_id: str | None = None,
     ) -> str:
         """Append a message to conversation file.
 
@@ -364,11 +369,11 @@ class ConversationStorage:
         message_id = str(uuid.uuid4())
 
         # Read existing content
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
-        metadata: Dict[str, Any] = dict(post.metadata or {})
+        metadata: dict[str, Any] = dict(post.metadata or {})
 
         # Append new message
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -383,11 +388,11 @@ class ConversationStorage:
         new_message = f"\n## {role_display} ({timestamp})\n{content}\n"
 
         # Add message_id as HTML comment
-        new_message += f"\n<!-- message_id: \"{message_id}\" -->\n"
+        new_message += f'\n<!-- message_id: "{message_id}" -->\n'
 
         # Add assistant_id as HTML comment for group chat messages
         if role == "assistant" and assistant_id:
-            new_message += f"<!-- assistant_id: \"{assistant_id}\" -->\n"
+            new_message += f'<!-- assistant_id: "{assistant_id}" -->\n'
 
         # Add attachment metadata as HTML comments (for user messages)
         if role == "user" and attachments:
@@ -435,20 +440,26 @@ class ConversationStorage:
                 metadata["total_cost"] = total_cost
 
         # Auto-generate title from first user message
-        if self._as_str(metadata.get("title")) in {"\\u65B0\\u5BF9\\u8BDD", "New Conversation", "New Chat"} and role == "user":
+        if (
+            self._as_str(metadata.get("title"))
+            in {"\\u65B0\\u5BF9\\u8BDD", "New Conversation", "New Chat"}
+            and role == "user"
+        ):
             # Clean title: remove special chars, limit length
-            clean_title = content.strip().replace('\n', ' ')[:30]
+            clean_title = content.strip().replace("\n", " ")[:30]
             metadata["title"] = clean_title + ("..." if len(content) > 30 else "")
 
         post.metadata = metadata
 
         # Write back to file
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
         return message_id
 
-    async def append_separator(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> str:
+    async def append_separator(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ) -> str:
         """
         Append a separator message to conversation.
 
@@ -468,7 +479,7 @@ class ConversationStorage:
             role="separator",
             content="--- Context cleared ---",
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
         )
 
     async def append_summary(
@@ -476,9 +487,9 @@ class ConversationStorage:
         session_id: str,
         content: str,
         compressed_count: int = 0,
-        compression_meta: Optional[Dict[str, Any]] = None,
+        compression_meta: dict[str, Any] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None
+        project_id: str | None = None,
     ) -> str:
         """
         Append a summary message to conversation.
@@ -504,27 +515,29 @@ class ConversationStorage:
 
         message_id = str(uuid.uuid4())
 
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_message = f"\n## Summary ({timestamp})\n{content}\n"
-        new_message += f"\n<!-- message_id: \"{message_id}\" -->\n"
-        merged_meta: Dict[str, Any] = {"compressed_count": compressed_count}
+        new_message += f'\n<!-- message_id: "{message_id}" -->\n'
+        merged_meta: dict[str, Any] = {"compressed_count": compressed_count}
         if compression_meta:
             merged_meta.update(compression_meta)
         new_message += f"<!-- compression_meta: {json.dumps(merged_meta)} -->\n"
 
         post.content += new_message
 
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
         return message_id
 
-    async def list_sessions(self, context_type: str = "chat", project_id: Optional[str] = None) -> List[Dict]:
+    async def list_sessions(
+        self, context_type: str = "chat", project_id: str | None = None
+    ) -> list[dict]:
         """List all conversation sessions in a specific context.
 
         Args:
@@ -556,7 +569,7 @@ class ConversationStorage:
         sessions = []
         for filepath in conversation_dir.glob("*.md"):
             try:
-                async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+                async with aiofiles.open(filepath, encoding="utf-8") as f:
                     content = await f.read()
 
                 post = frontmatter.loads(content)
@@ -566,10 +579,7 @@ class ConversationStorage:
                     continue
 
                 # Count messages
-                message_count = (
-                    post.content.count("## User") +
-                    post.content.count("## Assistant")
-                )
+                message_count = post.content.count("## User") + post.content.count("## Assistant")
 
                 # Get file modification time as updated_at
                 mtime = os.path.getmtime(filepath)
@@ -581,7 +591,7 @@ class ConversationStorage:
                     "created_at": post.metadata["created_at"],
                     "updated_at": updated_at,
                     "message_count": message_count,
-                    "folder_id": post.metadata.get("folder_id")  # Chat folder ID (optional)
+                    "folder_id": post.metadata.get("folder_id"),  # Chat folder ID (optional)
                 }
 
                 group_assistants = post.metadata.get("group_assistants")
@@ -601,7 +611,9 @@ class ConversationStorage:
         sessions.sort(key=lambda s: s["updated_at"], reverse=True)
         return sessions
 
-    async def search_sessions(self, query: str, context_type: str = "chat", project_id: Optional[str] = None, limit: int = 20) -> List[Dict]:
+    async def search_sessions(
+        self, query: str, context_type: str = "chat", project_id: str | None = None, limit: int = 20
+    ) -> list[dict]:
         """Search sessions by title and message content.
 
         Args:
@@ -622,12 +634,12 @@ class ConversationStorage:
         if not conversation_dir.exists():
             return []
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for filepath in sorted(conversation_dir.glob("*.md"), reverse=True):
             if len(results) >= limit:
                 break
             try:
-                async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+                async with aiofiles.open(filepath, encoding="utf-8") as f:
                     content = await f.read()
 
                 post = frontmatter.loads(content)
@@ -642,10 +654,7 @@ class ConversationStorage:
                 created_at = self._as_str(metadata.get("created_at"))
                 body = post.content
 
-                message_count = (
-                    body.count("## User") +
-                    body.count("## Assistant")
-                )
+                message_count = body.count("## User") + body.count("## Assistant")
 
                 # Get file modification time as updated_at
                 mtime = os.path.getmtime(filepath)
@@ -653,15 +662,17 @@ class ConversationStorage:
 
                 # Check title match
                 if query_lower in title.lower():
-                    results.append({
-                        "session_id": session_id,
-                        "title": title,
-                        "created_at": created_at,
-                        "updated_at": updated_at,
-                        "message_count": message_count,
-                        "match_type": "title",
-                        "match_context": title,
-                    })
+                    results.append(
+                        {
+                            "session_id": session_id,
+                            "title": title,
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                            "message_count": message_count,
+                            "match_type": "title",
+                            "match_context": title,
+                        }
+                    )
                     continue
 
                 # Check body content match
@@ -671,27 +682,35 @@ class ConversationStorage:
                     # Extract snippet around match (~80 chars)
                     start = max(0, idx - 30)
                     end = min(len(body), idx + len(query) + 50)
-                    snippet = body[start:end].replace('\n', ' ').strip()
+                    snippet = body[start:end].replace("\n", " ").strip()
                     if start > 0:
                         snippet = "..." + snippet
                     if end < len(body):
                         snippet = snippet + "..."
 
-                    results.append({
-                        "session_id": session_id,
-                        "title": title,
-                        "created_at": created_at,
-                        "updated_at": updated_at,
-                        "message_count": message_count,
-                        "match_type": "content",
-                        "match_context": snippet,
-                    })
+                    results.append(
+                        {
+                            "session_id": session_id,
+                            "title": title,
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                            "message_count": message_count,
+                            "match_type": "content",
+                            "match_context": snippet,
+                        }
+                    )
             except Exception:
                 continue
 
         return results
 
-    async def truncate_messages_after(self, session_id: str, keep_until_index: int, context_type: str = "chat", project_id: Optional[str] = None):
+    async def truncate_messages_after(
+        self,
+        session_id: str,
+        keep_until_index: int,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Delete all messages after specified index.
 
         Args:
@@ -710,7 +729,7 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         # Read and parse existing file
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -720,7 +739,7 @@ class ConversationStorage:
         if keep_until_index == -1:
             truncated_messages = []
         else:
-            truncated_messages = messages[:keep_until_index + 1]
+            truncated_messages = messages[: keep_until_index + 1]
 
         # Rebuild markdown content
         new_content = ""
@@ -738,7 +757,7 @@ class ConversationStorage:
 
             # Preserve message_id
             if "message_id" in msg:
-                new_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+                new_content += f'\n<!-- message_id: "{msg["message_id"]}" -->\n'
 
             # Preserve attachments (for user messages)
             if "attachments" in msg:
@@ -762,10 +781,16 @@ class ConversationStorage:
         post.metadata["current_step"] = assistant_count
 
         # Write back to file
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    async def delete_message(self, session_id: str, message_index: int, context_type: str = "chat", project_id: Optional[str] = None):
+    async def delete_message(
+        self,
+        session_id: str,
+        message_index: int,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Delete a single message at specified index.
 
         Args:
@@ -784,7 +809,7 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         # Read and parse existing file
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -792,7 +817,7 @@ class ConversationStorage:
 
         # Validate index
         if message_index < 0 or message_index >= len(messages):
-            raise IndexError(f"Message index {message_index} out of range (0-{len(messages)-1})")
+            raise IndexError(f"Message index {message_index} out of range (0-{len(messages) - 1})")
 
         # Remove the message at specified index
         del messages[message_index]
@@ -813,7 +838,7 @@ class ConversationStorage:
 
             # Preserve message_id
             if "message_id" in msg:
-                new_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+                new_content += f'\n<!-- message_id: "{msg["message_id"]}" -->\n'
 
             # Preserve attachments (for user messages)
             if "attachments" in msg:
@@ -841,10 +866,16 @@ class ConversationStorage:
             post.metadata["title"] = "New Chat"
 
         # Write back to file
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    async def delete_message_by_id(self, session_id: str, message_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def delete_message_by_id(
+        self,
+        session_id: str,
+        message_id: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Delete a single message by its ID.
 
         Args:
@@ -862,7 +893,7 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         # Read and parse existing file
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -881,7 +912,14 @@ class ConversationStorage:
         # Use the existing delete_message method
         await self.delete_message(session_id, message_index, context_type, project_id)
 
-    async def update_message_content(self, session_id: str, message_id: str, new_content: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def update_message_content(
+        self,
+        session_id: str,
+        message_id: str,
+        new_content: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Update the content of a specific message by its ID.
 
         Args:
@@ -899,7 +937,7 @@ class ConversationStorage:
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -933,7 +971,7 @@ class ConversationStorage:
             new_md_content += f"\n## {role_display} ({timestamp})\n{msg['content']}\n"
 
             if "message_id" in msg:
-                new_md_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+                new_md_content += f'\n<!-- message_id: "{msg["message_id"]}" -->\n'
 
             if "attachments" in msg:
                 for att in msg["attachments"]:
@@ -945,14 +983,18 @@ class ConversationStorage:
                 new_md_content += f"<!-- cost: {json.dumps(msg['cost'])} -->\n"
 
             if "compression_meta" in msg:
-                new_md_content += f"<!-- compression_meta: {json.dumps(msg['compression_meta'])} -->\n"
+                new_md_content += (
+                    f"<!-- compression_meta: {json.dumps(msg['compression_meta'])} -->\n"
+                )
 
         post.content = new_md_content
 
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    async def clear_all_messages(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def clear_all_messages(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ):
         """Clear all messages from the conversation.
 
         Args:
@@ -969,7 +1011,7 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         # Read and parse existing file
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -995,10 +1037,16 @@ class ConversationStorage:
         }
 
         # Write back to file
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    async def set_messages(self, session_id: str, messages: List[Dict], context_type: str = "chat", project_id: Optional[str] = None):
+    async def set_messages(
+        self,
+        session_id: str,
+        messages: list[dict],
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Set the complete message list for a session (replaces all existing messages).
 
         Args:
@@ -1016,7 +1064,7 @@ class ConversationStorage:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         # Read existing content
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -1037,7 +1085,7 @@ class ConversationStorage:
 
             # Preserve message_id if present
             if "message_id" in msg:
-                new_content += f"\n<!-- message_id: \"{msg['message_id']}\" -->\n"
+                new_content += f'\n<!-- message_id: "{msg["message_id"]}" -->\n'
 
             # Preserve attachments (for user messages)
             if "attachments" in msg:
@@ -1061,10 +1109,16 @@ class ConversationStorage:
             post.metadata["title"] = "New Chat"
 
         # Write back to file
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    async def update_session_metadata(self, session_id: str, metadata_updates: dict, context_type: str = "chat", project_id: Optional[str] = None):
+    async def update_session_metadata(
+        self,
+        session_id: str,
+        metadata_updates: dict,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Update session metadata (frontmatter).
 
         Args:
@@ -1088,7 +1142,7 @@ class ConversationStorage:
 
         async with self._file_locks[file_key]:
             # Read and parse existing file
-            async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(filepath, encoding="utf-8") as f:
                 file_content = await f.read()
 
             post = frontmatter.loads(file_content)
@@ -1098,10 +1152,12 @@ class ConversationStorage:
                 post.metadata[key] = value
 
             # Write back to file
-            async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
                 await f.write(frontmatter.dumps(post))
 
-    async def delete_session(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def delete_session(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ):
         """Delete a conversation session.
 
         Args:
@@ -1128,9 +1184,9 @@ class ConversationStorage:
         self,
         session_id: str,
         source_context_type: str = "chat",
-        source_project_id: Optional[str] = None,
+        source_project_id: str | None = None,
         target_context_type: str = "chat",
-        target_project_id: Optional[str] = None
+        target_project_id: str | None = None,
     ) -> str:
         """Move a session file between contexts (chat/projects).
 
@@ -1149,10 +1205,14 @@ class ConversationStorage:
             ValueError: If context parameters are invalid or target is same as source
             FileExistsError: If target already has a session file with same name
         """
-        if source_context_type == target_context_type and (source_project_id or None) == (target_project_id or None):
+        if source_context_type == target_context_type and (source_project_id or None) == (
+            target_project_id or None
+        ):
             raise ValueError("Target context is the same as source context")
 
-        source_path = await self._find_session_file(session_id, source_context_type, source_project_id)
+        source_path = await self._find_session_file(
+            session_id, source_context_type, source_project_id
+        )
         if not source_path:
             raise FileNotFoundError(f"Session {session_id} not found")
 
@@ -1166,7 +1226,9 @@ class ConversationStorage:
         source_compare_path = source_path.with_suffix(".compare.json")
         target_compare_path = target_path.with_suffix(".compare.json")
         if target_compare_path.exists():
-            raise FileExistsError(f"Target compare sidecar file already exists: {target_compare_path}")
+            raise FileExistsError(
+                f"Target compare sidecar file already exists: {target_compare_path}"
+            )
 
         shutil.move(str(source_path), str(target_path))
         if source_compare_path.exists():
@@ -1183,10 +1245,10 @@ class ConversationStorage:
         self,
         session_id: str,
         source_context_type: str = "chat",
-        source_project_id: Optional[str] = None,
+        source_project_id: str | None = None,
         target_context_type: str = "chat",
-        target_project_id: Optional[str] = None,
-        title_suffix: str = " (Copy)"
+        target_project_id: str | None = None,
+        title_suffix: str = " (Copy)",
     ) -> str:
         """Copy a session file to another context with a new session ID.
 
@@ -1205,14 +1267,16 @@ class ConversationStorage:
             FileNotFoundError: If session doesn't exist
             ValueError: If context parameters are invalid
         """
-        source_path = await self._find_session_file(session_id, source_context_type, source_project_id)
+        source_path = await self._find_session_file(
+            session_id, source_context_type, source_project_id
+        )
         if not source_path:
             raise FileNotFoundError(f"Session {session_id} not found")
 
         target_dir = self._get_conversation_dir(target_context_type, target_project_id)
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        async with aiofiles.open(source_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(source_path, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -1229,7 +1293,7 @@ class ConversationStorage:
         filename = f"{timestamp}_{new_session_id[:8]}.md"
         target_path = target_dir / filename
 
-        async with aiofiles.open(target_path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
         source_compare_path = source_path.with_suffix(".compare.json")
@@ -1250,7 +1314,7 @@ class ConversationStorage:
         if chat_dir.exists():
             for filepath in chat_dir.glob("*.md"):
                 try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
+                    with open(filepath, encoding="utf-8") as f:
                         post = frontmatter.load(f)
 
                     if post.metadata.get("temporary", False):
@@ -1266,20 +1330,22 @@ class ConversationStorage:
         if self._project_root_resolver:
             try:
                 import yaml
+
                 from src.core.config import settings
+
                 config_path = settings.projects_config_path
                 if config_path.exists():
-                    with open(config_path, 'r', encoding='utf-8') as f:
+                    with open(config_path, encoding="utf-8") as f:
                         data = yaml.safe_load(f)
                     if data:
-                        for proj in data.get('projects', []):
-                            root_path = proj.get('root_path')
+                        for proj in data.get("projects", []):
+                            root_path = proj.get("root_path")
                             if root_path:
                                 proj_conv_dir = Path(root_path) / ".lex_mint" / "conversations"
                                 if proj_conv_dir.exists():
                                     for filepath in proj_conv_dir.glob("*.md"):
                                         try:
-                                            with open(filepath, 'r', encoding='utf-8') as f:
+                                            with open(filepath, encoding="utf-8") as f:
                                                 post = frontmatter.load(f)
                                             if post.metadata.get("temporary", False):
                                                 filepath.unlink()
@@ -1294,7 +1360,9 @@ class ConversationStorage:
 
         return cleaned
 
-    async def convert_to_permanent(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def convert_to_permanent(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ):
         """Convert a temporary session to a permanent one.
 
         Removes the 'temporary' key from frontmatter.
@@ -1311,7 +1379,7 @@ class ConversationStorage:
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
 
         post = frontmatter.loads(file_content)
@@ -1320,11 +1388,11 @@ class ConversationStorage:
         if "temporary" in post.metadata:
             del post.metadata["temporary"]
 
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
     @staticmethod
-    def _extract_model_chat_template_overrides(model_obj: Any) -> Dict[str, Any]:
+    def _extract_model_chat_template_overrides(model_obj: Any) -> dict[str, Any]:
         """Build session param overrides from model chat_template."""
         return ConversationSessionTargetResolver.extract_model_chat_template_overrides(model_obj)
 
@@ -1333,17 +1401,17 @@ class ConversationStorage:
         session_id: str,
         *,
         target_type: str,
-        assistant_id: Optional[str] = None,
-        model_id: Optional[str] = None,
+        assistant_id: str | None = None,
+        model_id: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ):
         """Update session target to assistant or model."""
         filepath = await self._find_session_file(session_id, context_type, project_id)
         if not filepath:
             raise FileNotFoundError(f"Session {session_id} not found")
 
-        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, encoding="utf-8") as f:
             file_content = await f.read()
         post = frontmatter.loads(file_content)
 
@@ -1354,10 +1422,16 @@ class ConversationStorage:
             model_id=model_id,
         )
 
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    async def update_session_model(self, session_id: str, model_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def update_session_model(
+        self,
+        session_id: str,
+        model_id: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Wrapper for setting model target."""
         await self.update_session_target(
             session_id,
@@ -1367,7 +1441,13 @@ class ConversationStorage:
             project_id=project_id,
         )
 
-    async def update_session_assistant(self, session_id: str, assistant_id: str, context_type: str = "chat", project_id: Optional[str] = None):
+    async def update_session_assistant(
+        self,
+        session_id: str,
+        assistant_id: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Wrapper for setting assistant target."""
         await self.update_session_target(
             session_id,
@@ -1377,7 +1457,13 @@ class ConversationStorage:
             project_id=project_id,
         )
 
-    async def update_group_assistants(self, session_id: str, group_assistants: List[str], context_type: str = "chat", project_id: Optional[str] = None):
+    async def update_group_assistants(
+        self,
+        session_id: str,
+        group_assistants: list[str],
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Update the group_assistants list for a session.
 
         Args:
@@ -1390,7 +1476,7 @@ class ConversationStorage:
             FileNotFoundError: If session doesn't exist
             ValueError: If less than 2 assistants provided
         """
-        normalized_group_assistants: List[str] = []
+        normalized_group_assistants: list[str] = []
         seen_group_assistants = set()
         for participant_token in group_assistants:
             if not isinstance(participant_token, str):
@@ -1412,10 +1498,16 @@ class ConversationStorage:
             session_id=session_id,
             metadata_updates={"group_assistants": normalized_group_assistants},
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
         )
 
-    async def update_session_folder(self, session_id: str, folder_id: Optional[str], context_type: str = "chat", project_id: Optional[str] = None):
+    async def update_session_folder(
+        self,
+        session_id: str,
+        folder_id: str | None,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
         """Update session's folder assignment.
 
         Args:
@@ -1432,10 +1524,12 @@ class ConversationStorage:
             session_id=session_id,
             metadata_updates={"folder_id": folder_id},
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
         )
 
-    def _get_conversation_dir(self, context_type: str = "chat", project_id: Optional[str] = None) -> Path:
+    def _get_conversation_dir(
+        self, context_type: str = "chat", project_id: str | None = None
+    ) -> Path:
         """Get the conversation directory for a specific context.
 
         Args:
@@ -1450,7 +1544,9 @@ class ConversationStorage:
         """
         return self._path_resolver.get_conversation_dir(context_type, project_id)
 
-    async def _find_session_file(self, session_id: str, context_type: str = "chat", project_id: Optional[str] = None) -> Optional[Path]:
+    async def _find_session_file(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ) -> Path | None:
         """Find the file path for a session by its ID.
 
         Args:
@@ -1466,7 +1562,7 @@ class ConversationStorage:
         """
         return await self._path_resolver.find_session_file(session_id, context_type, project_id)
 
-    def _parse_messages(self, content: str, session_id: str) -> List[Dict]:
+    def _parse_messages(self, content: str, session_id: str) -> list[dict]:
         """Parse messages from markdown content.
 
         Args:
@@ -1477,13 +1573,18 @@ class ConversationStorage:
             List of message dicts:
             [{"role": "user/assistant", "content": "...", "message_id": "...", "attachments": [...], "usage": {...}, "cost": {...}}, ...]
         """
-        messages: List[Dict[str, Any]] = []
-        lines = content.split('\n')
-        current_message: Dict[str, Any] | None = None
+        messages: list[dict[str, Any]] = []
+        lines = content.split("\n")
+        current_message: dict[str, Any] | None = None
 
         for line in lines:
             # Detect message headers (## User/Assistant/Separator/Summary (timestamp))
-            if line.startswith("## User (") or line.startswith("## Assistant (") or line.startswith("## Separator (") or line.startswith("## Summary ("):
+            if (
+                line.startswith("## User (")
+                or line.startswith("## Assistant (")
+                or line.startswith("## Separator (")
+                or line.startswith("## Summary (")
+            ):
                 # Save previous message
                 if current_message:
                     messages.append(current_message)
@@ -1499,19 +1600,21 @@ class ConversationStorage:
                     role = "separator"
 
                 # Extract timestamp from header
-                ts_match = re.search(r'\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)', line)
+                ts_match = re.search(r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)", line)
                 created_at = ts_match.group(1) if ts_match else None
 
                 current_message = {"role": role, "content": "", "created_at": created_at}
             elif current_message is not None:
                 # Parse usage/cost/attachment/message_id HTML comments
-                usage_match = re.match(r'^<!-- usage: (.+) -->$', line.strip())
-                cost_match = re.match(r'^<!-- cost: (.+) -->$', line.strip())
-                attachment_match = re.match(r'^<!-- attachment: (.+) -->$', line.strip())
+                usage_match = re.match(r"^<!-- usage: (.+) -->$", line.strip())
+                cost_match = re.match(r"^<!-- cost: (.+) -->$", line.strip())
+                attachment_match = re.match(r"^<!-- attachment: (.+) -->$", line.strip())
                 message_id_match = re.match(r'^<!-- message_id: "(.+)" -->$', line.strip())
                 assistant_id_match = re.match(r'^<!-- assistant_id: "(.+)" -->$', line.strip())
-                sources_match = re.match(r'^<!-- sources: (.+) -->$', line.strip())
-                compression_meta_match = re.match(r'^<!-- compression_meta: (.+) -->$', line.strip())
+                sources_match = re.match(r"^<!-- sources: (.+) -->$", line.strip())
+                compression_meta_match = re.match(
+                    r"^<!-- compression_meta: (.+) -->$", line.strip()
+                )
 
                 if usage_match:
                     try:
@@ -1531,9 +1634,7 @@ class ConversationStorage:
                         if not isinstance(attachments, list):
                             attachments = []
                             current_message["attachments"] = attachments
-                        attachments.append(
-                            json.loads(attachment_match.group(1))
-                        )
+                        attachments.append(json.loads(attachment_match.group(1)))
                     except json.JSONDecodeError:
                         pass
                 elif message_id_match:
@@ -1547,7 +1648,9 @@ class ConversationStorage:
                         pass
                 elif compression_meta_match:
                     try:
-                        current_message["compression_meta"] = json.loads(compression_meta_match.group(1))
+                        current_message["compression_meta"] = json.loads(
+                            compression_meta_match.group(1)
+                        )
                     except json.JSONDecodeError:
                         pass
                 else:

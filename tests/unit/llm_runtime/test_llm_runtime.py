@@ -1,17 +1,18 @@
 """Unit tests for llm_runtime public entrypoints."""
 
-import pytest
-from unittest.mock import patch, Mock, AsyncMock, MagicMock
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.llm_runtime import (
-    call_llm,
-    call_llm_stream,
     _build_context_plan,
     _build_reasoning_decision_payload,
     _get_context_limit,
     _truncate_by_rounds,
+    call_llm,
+    call_llm_stream,
 )
 from src.providers.types import TokenUsage
 
@@ -19,8 +20,8 @@ from src.providers.types import TokenUsage
 class TestCallLLM:
     """Test cases for call_llm function."""
 
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     def test_call_llm_success(self, mock_model_service_class, mock_logger):
         """Test successful LLM call."""
         # Mock LLM response
@@ -49,9 +50,7 @@ class TestCallLLM:
         mock_logger.return_value = mock_llm_logger
 
         # Test
-        messages = [
-            {"role": "user", "content": "What is Python?"}
-        ]
+        messages = [{"role": "user", "content": "What is Python?"}]
 
         result = call_llm(messages, session_id="test-session")
 
@@ -59,8 +58,8 @@ class TestCallLLM:
         mock_llm.invoke.assert_called_once()
         mock_llm_logger.log_interaction.assert_called_once()
 
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     def test_call_llm_with_history(self, mock_model_service_class, mock_logger):
         """Test LLM call with conversation history."""
         mock_llm = Mock()
@@ -88,10 +87,10 @@ class TestCallLLM:
         messages = [
             {"role": "user", "content": "What is Python?"},
             {"role": "assistant", "content": "Python is a programming language."},
-            {"role": "user", "content": "What are its features?"}
+            {"role": "user", "content": "What are its features?"},
         ]
 
-        result = call_llm(messages)
+        call_llm(messages)
 
         # Verify that all messages were converted
         call_args = mock_llm.invoke.call_args[0][0]
@@ -100,8 +99,8 @@ class TestCallLLM:
         assert isinstance(call_args[1], AIMessage)
         assert isinstance(call_args[2], HumanMessage)
 
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     def test_call_llm_error(self, mock_model_service_class, mock_logger):
         """Test LLM call error handling."""
         mock_llm = Mock()
@@ -214,7 +213,12 @@ def test_build_context_plan_prefers_segmented_context_and_reports_history():
         context_budget_tokens=800,
     )
 
-    assert [segment.name for segment in plan.system_segments[:4]] == ["system", "summary", "memory", "rag"]
+    assert [segment.name for segment in plan.system_segments[:4]] == [
+        "system",
+        "summary",
+        "memory",
+        "rag",
+    ]
     assert plan.system_segments[0].content == "base-system"
     assert [msg["content"] for msg in plan.chat_messages] == ["hello", "hi"]
     history_report = next(segment for segment in plan.segment_reports if segment.name == "history")
@@ -257,8 +261,8 @@ class TestCallLLMStream:
     """Test cases for call_llm_stream function."""
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_success(self, mock_model_service_class, mock_logger):
         """Test successful streaming LLM call."""
         # Mock model and provider config
@@ -338,14 +342,16 @@ class TestCallLLMStream:
         assert "".join(text_chunks) == "Hello world!"
 
         # Verify usage data
-        usage_chunks = [c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"]
+        usage_chunks = [
+            c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"
+        ]
         assert len(usage_chunks) == 1
         assert usage_chunks[0]["type"] == "usage"
         assert usage_chunks[0]["usage"].total_tokens == 30
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_prefers_chunk_usage_over_merged_raw_usage(
         self, mock_model_service_class, mock_logger
     ):
@@ -387,7 +393,9 @@ class TestCallLLMStream:
             final_chunk = Mock()
             final_chunk.content = ""
             final_chunk.thinking = None
-            final_chunk.usage = TokenUsage(prompt_tokens=440, completion_tokens=95, total_tokens=535)
+            final_chunk.usage = TokenUsage(
+                prompt_tokens=440, completion_tokens=95, total_tokens=535
+            )
             final_chunk.raw = inflated_raw
             yield final_chunk
 
@@ -397,18 +405,22 @@ class TestCallLLMStream:
         mock_logger.return_value = Mock()
 
         result_chunks = []
-        async for chunk in call_llm_stream([{"role": "user", "content": "你好"}], session_id="test-session"):
+        async for chunk in call_llm_stream(
+            [{"role": "user", "content": "你好"}], session_id="test-session"
+        ):
             result_chunks.append(chunk)
 
-        usage_chunks = [c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"]
+        usage_chunks = [
+            c for c in result_chunks if isinstance(c, dict) and c.get("type") == "usage"
+        ]
         assert len(usage_chunks) == 1
         assert usage_chunks[0]["usage"].prompt_tokens == 440
         assert usage_chunks[0]["usage"].completion_tokens == 95
         assert usage_chunks[0]["usage"].total_tokens == 535
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_with_system_prompt(self, mock_model_service_class, mock_logger):
         """Test streaming with system prompt."""
         mock_model = Mock()
@@ -434,6 +446,7 @@ class TestCallLLMStream:
         async def mock_stream(llm, messages):
             # Verify system prompt was injected
             from langchain_core.messages import SystemMessage
+
             assert isinstance(messages[0], SystemMessage)
             assert messages[0].content == "You are a helpful assistant."
 
@@ -454,17 +467,14 @@ class TestCallLLMStream:
         messages = [{"role": "user", "content": "Hello"}]
 
         chunks = []
-        async for chunk in call_llm_stream(
-            messages,
-            system_prompt="You are a helpful assistant."
-        ):
+        async for chunk in call_llm_stream(messages, system_prompt="You are a helpful assistant."):
             chunks.append(chunk)
 
         assert "Response" in "".join([c for c in chunks if isinstance(c, str)])
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_with_thinking(self, mock_model_service_class, mock_logger):
         """Test streaming with thinking/reasoning mode."""
         mock_model = Mock()
@@ -515,10 +525,7 @@ class TestCallLLMStream:
         messages = [{"role": "user", "content": "Question"}]
         chunks = []
 
-        async for chunk in call_llm_stream(
-            messages,
-            reasoning_effort="medium"
-        ):
+        async for chunk in call_llm_stream(messages, reasoning_effort="medium"):
             if isinstance(chunk, str):
                 chunks.append(chunk)
 
@@ -530,9 +537,9 @@ class TestCallLLMStream:
         assert "The answer is 42." in full_response
 
     @pytest.mark.asyncio
-    @patch('src.tools.registry.get_tool_registry')
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.tools.registry.get_tool_registry")
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_forces_final_answer_after_max_tool_rounds(
         self,
         mock_model_service_class,
@@ -566,7 +573,9 @@ class TestCallLLMStream:
                 self.tool_calls = tool_calls or []
 
             def __add__(self, other):
-                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+                return _Raw(
+                    tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or [])
+                )
 
         class _Chunk:
             def __init__(self, content, tool_calls):
@@ -584,11 +593,13 @@ class TestCallLLMStream:
                 assert active_llm is mock_bound_llm
                 yield _Chunk(
                     content=f"round{idx + 1};",
-                    tool_calls=[{
-                        "name": "search_knowledge",
-                        "args": {"query": f"q{idx + 1}", "top_k": 5},
-                        "id": f"tc{idx + 1}",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "search_knowledge",
+                            "args": {"query": f"q{idx + 1}", "top_k": 5},
+                            "id": f"tc{idx + 1}",
+                        }
+                    ],
                 )
                 return
 
@@ -623,8 +634,8 @@ class TestCallLLMStream:
         assert tool_executor.call_count == 3
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_injects_read_compensation_for_evidence_requests(
         self,
         mock_model_service_class,
@@ -656,7 +667,9 @@ class TestCallLLMStream:
                 self.tool_calls = tool_calls or []
 
             def __add__(self, other):
-                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+                return _Raw(
+                    tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or [])
+                )
 
         class _Chunk:
             def __init__(self, content, tool_calls):
@@ -674,11 +687,13 @@ class TestCallLLMStream:
             if idx == 0:
                 yield _Chunk(
                     content="",
-                    tool_calls=[{
-                        "name": "search_knowledge",
-                        "args": {"query": "policy details", "top_k": 5},
-                        "id": "tc1",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "search_knowledge",
+                            "args": {"query": "policy details", "top_k": 5},
+                            "id": "tc1",
+                        }
+                    ],
                 )
                 return
             if idx == 1:
@@ -688,11 +703,13 @@ class TestCallLLMStream:
             if idx == 2:
                 yield _Chunk(
                     content="",
-                    tool_calls=[{
-                        "name": "read_knowledge",
-                        "args": {"refs": ["kb:kb_test|doc:doc_1|chunk:3"]},
-                        "id": "tc2",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "read_knowledge",
+                            "args": {"refs": ["kb:kb_test|doc:doc_1|chunk:3"]},
+                            "id": "tc2",
+                        }
+                    ],
                 )
                 return
 
@@ -725,7 +742,9 @@ class TestCallLLMStream:
         async for chunk in call_llm_stream(messages, tools=[Mock()], tool_executor=tool_executor):
             collected.append(chunk)
 
-        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        diagnostics = [
+            c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"
+        ]
         assert len(diagnostics) == 1
         assert diagnostics[0]["tool_search_count"] == 1
         assert diagnostics[0]["tool_search_unique_count"] == 1
@@ -739,8 +758,8 @@ class TestCallLLMStream:
         ]
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_injects_fallback_when_final_answer_empty(
         self,
         mock_model_service_class,
@@ -772,7 +791,9 @@ class TestCallLLMStream:
                 self.tool_calls = tool_calls or []
 
             def __add__(self, other):
-                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+                return _Raw(
+                    tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or [])
+                )
 
         class _Chunk:
             def __init__(self, content, tool_calls):
@@ -789,11 +810,13 @@ class TestCallLLMStream:
             if idx == 0:
                 yield _Chunk(
                     content="",
-                    tool_calls=[{
-                        "name": "search_knowledge",
-                        "args": {"query": "q1", "top_k": 5},
-                        "id": "tc1",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "search_knowledge",
+                            "args": {"query": "q1", "top_k": 5},
+                            "id": "tc1",
+                        }
+                    ],
                 )
                 return
             yield _Chunk(content="", tool_calls=[])
@@ -805,7 +828,9 @@ class TestCallLLMStream:
         mock_llm_logger = Mock()
         mock_logger.return_value = mock_llm_logger
 
-        tool_executor = Mock(return_value='{"ok": true, "hits": [{"filename": "doc.md", "snippet": "snippet"}]}')
+        tool_executor = Mock(
+            return_value='{"ok": true, "hits": [{"filename": "doc.md", "snippet": "snippet"}]}'
+        )
         messages = [{"role": "user", "content": "normal request"}]
         collected = []
 
@@ -813,7 +838,9 @@ class TestCallLLMStream:
             collected.append(chunk)
 
         text = "".join([c for c in collected if isinstance(c, str)])
-        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        diagnostics = [
+            c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"
+        ]
         assert "I could not finalize a complete answer from the model stream." in text
         assert len(diagnostics) == 1
         assert diagnostics[0]["tool_search_count"] == 1
@@ -821,8 +848,8 @@ class TestCallLLMStream:
         assert diagnostics[0]["tool_finalize_reason"] == "fallback_empty_answer"
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_expands_tool_round_budget_for_web_research(
         self,
         mock_model_service_class,
@@ -854,7 +881,9 @@ class TestCallLLMStream:
                 self.tool_calls = tool_calls or []
 
             def __add__(self, other):
-                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+                return _Raw(
+                    tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or [])
+                )
 
         class _Chunk:
             def __init__(self, content, tool_calls):
@@ -876,11 +905,13 @@ class TestCallLLMStream:
                 assert active_llm is mock_bound_llm
                 yield _Chunk(
                     content=f"round{idx + 1};",
-                    tool_calls=[{
-                        "name": "web_search",
-                        "args": {"query": f"q{idx + 1}"},
-                        "id": f"tc{idx + 1}",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "web_search",
+                            "args": {"query": f"q{idx + 1}"},
+                            "id": f"tc{idx + 1}",
+                        }
+                    ],
                 )
                 return
 
@@ -895,7 +926,12 @@ class TestCallLLMStream:
         mock_logger.return_value = mock_llm_logger
 
         tool_executor = Mock(return_value='{"ok": true, "results": []}')
-        messages = [{"role": "user", "content": "How many athletes were there by country at the 1928 Summer Olympics?"}]
+        messages = [
+            {
+                "role": "user",
+                "content": "How many athletes were there by country at the 1928 Summer Olympics?",
+            }
+        ]
         collected = []
 
         async for chunk in call_llm_stream(
@@ -906,7 +942,9 @@ class TestCallLLMStream:
             collected.append(chunk)
 
         text = "".join([c for c in collected if isinstance(c, str)])
-        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        diagnostics = [
+            c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"
+        ]
         assert "FINAL_ANSWER" in text
         assert stream_state["count"] == 7
         assert tool_executor.call_count == 6
@@ -914,8 +952,8 @@ class TestCallLLMStream:
         assert diagnostics[0]["max_tool_rounds"] == 6
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_injects_read_webpage_compensation_for_web_research(
         self,
         mock_model_service_class,
@@ -947,7 +985,9 @@ class TestCallLLMStream:
                 self.tool_calls = tool_calls or []
 
             def __add__(self, other):
-                return _Raw(tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or []))
+                return _Raw(
+                    tool_calls=list(self.tool_calls) + list(getattr(other, "tool_calls", []) or [])
+                )
 
         class _Chunk:
             def __init__(self, content, tool_calls):
@@ -969,11 +1009,13 @@ class TestCallLLMStream:
             if idx == 0:
                 yield _Chunk(
                     content="",
-                    tool_calls=[{
-                        "name": "web_search",
-                        "args": {"query": "Mercedes Sosa discography"},
-                        "id": "tc1",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "web_search",
+                            "args": {"query": "Mercedes Sosa discography"},
+                            "id": "tc1",
+                        }
+                    ],
                 )
                 return
             if idx == 1:
@@ -982,11 +1024,13 @@ class TestCallLLMStream:
             if idx == 2:
                 yield _Chunk(
                     content="",
-                    tool_calls=[{
-                        "name": "read_webpage",
-                        "args": {"url": "https://example.com/discography"},
-                        "id": "tc2",
-                    }],
+                    tool_calls=[
+                        {
+                            "name": "read_webpage",
+                            "args": {"url": "https://example.com/discography"},
+                            "id": "tc2",
+                        }
+                    ],
                 )
                 return
 
@@ -1013,7 +1057,12 @@ class TestCallLLMStream:
             return '{"ok": true}'
 
         tool_executor = Mock(side_effect=_tool_executor)
-        messages = [{"role": "user", "content": "How many studio albums did Mercedes Sosa release between 2000 and 2009?"}]
+        messages = [
+            {
+                "role": "user",
+                "content": "How many studio albums did Mercedes Sosa release between 2000 and 2009?",
+            }
+        ]
         collected = []
 
         async for chunk in call_llm_stream(
@@ -1023,7 +1072,9 @@ class TestCallLLMStream:
         ):
             collected.append(chunk)
 
-        diagnostics = [c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"]
+        diagnostics = [
+            c for c in collected if isinstance(c, dict) and c.get("type") == "tool_diagnostics"
+        ]
         assert len(diagnostics) == 1
         assert diagnostics[0]["web_search_count"] == 1
         assert diagnostics[0]["web_read_count"] == 1
@@ -1033,8 +1084,8 @@ class TestCallLLMStream:
         ]
 
     @pytest.mark.asyncio
-    @patch('src.llm_runtime.get_llm_logger')
-    @patch('src.llm_runtime.ModelConfigService')
+    @patch("src.llm_runtime.get_llm_logger")
+    @patch("src.llm_runtime.ModelConfigService")
     async def test_call_llm_stream_error(self, mock_model_service_class, mock_logger):
         """Test streaming error handling."""
         mock_model = Mock()

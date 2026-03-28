@@ -9,15 +9,16 @@ import hashlib
 import logging
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
+from typing import Any, cast
 
 from src.core.paths import resolve_user_data_path
-from src.infrastructure.retrieval.embedding_service import EmbeddingService
 from src.infrastructure.config.memory_config_service import MemoryConfigService
 from src.infrastructure.config.rag_config_service import RagConfigService
+from src.infrastructure.retrieval.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,10 @@ logger = logging.getLogger(__name__)
 class MemoryResult:
     id: str
     content: str
-    score: Optional[float]
-    metadata: Dict[str, Any]
+    score: float | None
+    metadata: dict[str, Any]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         data = {
             "id": self.id,
             "content": self.content,
@@ -47,9 +48,9 @@ class MemoryService:
 
     def __init__(
         self,
-        memory_config_service: Optional[MemoryConfigService] = None,
-        rag_config_service: Optional[RagConfigService] = None,
-        embedding_service: Optional[EmbeddingService] = None,
+        memory_config_service: MemoryConfigService | None = None,
+        rag_config_service: RagConfigService | None = None,
+        embedding_service: EmbeddingService | None = None,
     ):
         self.memory_config_service = memory_config_service or MemoryConfigService()
         self.rag_config_service = rag_config_service or RagConfigService()
@@ -63,11 +64,10 @@ class MemoryService:
         return re.sub(r"\s+", " ", (text or "")).strip()
 
     @staticmethod
-    def _split_candidate_units(text: str) -> List[str]:
+    def _split_candidate_units(text: str) -> list[str]:
         cleaned = (text or "").replace("\r", "\n")
         parts = re.split(r"(?<=[.!?\u3002\uff01\uff1f])\s+|\n+", cleaned)
         return [part.strip(" -\t") for part in parts if part and part.strip(" -\t")]
-
 
     @staticmethod
     def _candidate_priority(layer: str) -> int:
@@ -76,7 +76,9 @@ class MemoryService:
     @staticmethod
     def _matches_any_marker(unit: str, markers: Sequence[str]) -> bool:
         lowered = unit.lower()
-        return any(str(marker).strip().lower() in lowered for marker in markers if str(marker).strip())
+        return any(
+            str(marker).strip().lower() in lowered for marker in markers if str(marker).strip()
+        )
 
     def _matches_configured_instruction(self, unit: str) -> bool:
         markers = self.memory_config_service.config.extraction.instruction_markers
@@ -86,7 +88,7 @@ class MemoryService:
         markers = self.memory_config_service.config.extraction.fact_markers
         return self._matches_any_marker(unit, markers)
 
-    def _configured_layer_extraction_scores(self, layer: str) -> Tuple[float, float]:
+    def _configured_layer_extraction_scores(self, layer: str) -> tuple[float, float]:
         extraction_cfg = self.memory_config_service.config.extraction
         if layer == "instruction":
             return (
@@ -104,9 +106,9 @@ class MemoryService:
         self,
         *,
         layer: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         assistant_memory_enabled: bool,
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         cfg = self.memory_config_service.config
 
         if (
@@ -125,7 +127,7 @@ class MemoryService:
 
         return None, None
 
-    def _resolve_profile_id(self, profile_id: Optional[str]) -> str:
+    def _resolve_profile_id(self, profile_id: str | None) -> str:
         if profile_id:
             return profile_id
         return self.memory_config_service.config.profile_id
@@ -152,7 +154,7 @@ class MemoryService:
         )
 
     @staticmethod
-    def _build_where(filters: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _build_where(filters: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
         filters = [flt for flt in filters if flt]
         if not filters:
             return None
@@ -183,17 +185,19 @@ class MemoryService:
         return str(value)
 
     @staticmethod
-    def _safe_optional_str(value: Any) -> Optional[str]:
+    def _safe_optional_str(value: Any) -> str | None:
         if isinstance(value, str):
             cleaned = value.strip()
             return cleaned if cleaned else None
         return None
 
     @staticmethod
-    def _safe_dict(value: Any) -> Dict[str, Any]:
+    def _safe_dict(value: Any) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
 
-    def _validate_scope_layer(self, scope: str, layer: str, assistant_id: Optional[str] = None) -> None:
+    def _validate_scope_layer(
+        self, scope: str, layer: str, assistant_id: str | None = None
+    ) -> None:
         if scope not in self.VALID_SCOPES:
             raise ValueError(f"Invalid scope: {scope}")
         if scope == "assistant" and not assistant_id:
@@ -207,7 +211,7 @@ class MemoryService:
         scope: str,
         layer: str,
         content: str,
-        assistant_id: Optional[str] = None,
+        assistant_id: str | None = None,
     ) -> str:
         payload = "|".join(
             [
@@ -224,8 +228,8 @@ class MemoryService:
     def _metadata_to_result(
         memory_id: str,
         content: str,
-        metadata: Optional[Any],
-        score: Optional[float] = None,
+        metadata: Any | None,
+        score: float | None = None,
     ) -> MemoryResult:
         meta = metadata if isinstance(metadata, dict) else {}
         return MemoryResult(
@@ -254,17 +258,15 @@ class MemoryService:
     def list_memories(
         self,
         *,
-        profile_id: Optional[str] = None,
-        scope: Optional[str] = None,
-        assistant_id: Optional[str] = None,
-        layer: Optional[str] = None,
+        profile_id: str | None = None,
+        scope: str | None = None,
+        assistant_id: str | None = None,
+        layer: str | None = None,
         limit: int = 100,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         resolved_profile = self._resolve_profile_id(profile_id)
-        cfg = self.memory_config_service.config
-
-        filters: List[Dict[str, Any]] = [{"profile_id": resolved_profile}]
+        filters: list[dict[str, Any]] = [{"profile_id": resolved_profile}]
         if scope:
             if scope not in self.VALID_SCOPES:
                 raise ValueError(f"Invalid scope: {scope}")
@@ -291,7 +293,7 @@ class MemoryService:
         docs = response.get("documents") or []
         metas = response.get("metadatas") or []
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for idx, memory_id in enumerate(ids):
             content = docs[idx] if idx < len(docs) else ""
             metadata = metas[idx] if idx < len(metas) else {}
@@ -308,7 +310,7 @@ class MemoryService:
         )
         return results
 
-    def get_memory(self, memory_id: str) -> Optional[Dict[str, Any]]:
+    def get_memory(self, memory_id: str) -> dict[str, Any] | None:
         vectorstore = self._get_vectorstore()
         response = vectorstore._collection.get(ids=[memory_id], include=["documents", "metadatas"])
         ids = response.get("ids") or []
@@ -329,16 +331,16 @@ class MemoryService:
         content: str,
         scope: str,
         layer: str,
-        assistant_id: Optional[str] = None,
-        profile_id: Optional[str] = None,
+        assistant_id: str | None = None,
+        profile_id: str | None = None,
         confidence: float = 0.8,
         importance: float = 0.6,
-        source_session_id: Optional[str] = None,
-        source_message_id: Optional[str] = None,
+        source_session_id: str | None = None,
+        source_message_id: str | None = None,
         pinned: bool = False,
         is_active: bool = True,
-        memory_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        memory_id: str | None = None,
+    ) -> dict[str, Any]:
         resolved_profile = self._resolve_profile_id(profile_id)
         clean_content = self._clean_text(content)
         if not clean_content:
@@ -361,10 +363,12 @@ class MemoryService:
         existing_id = memory_id
         if not existing_id:
             existing = collection.get(
-                where=self._build_where([
-                    {"profile_id": resolved_profile},
-                    {"hash": content_hash},
-                ]),
+                where=self._build_where(
+                    [
+                        {"profile_id": resolved_profile},
+                        {"hash": content_hash},
+                    ]
+                ),
                 limit=1,
                 include=["metadatas"],
             )
@@ -396,7 +400,9 @@ class MemoryService:
                     "pinned": bool(pinned or current_meta.get("pinned", False)),
                     "created_at": current_meta.get("created_at", now),
                 }
-                collection.upsert(ids=[existing_id], documents=[clean_content], metadatas=[metadata])
+                collection.upsert(
+                    ids=[existing_id], documents=[clean_content], metadatas=[metadata]
+                )
                 return self.get_memory(existing_id) or {}
 
         final_id = memory_id or f"mem_{uuid.uuid4().hex}"
@@ -426,15 +432,15 @@ class MemoryService:
         self,
         memory_id: str,
         *,
-        content: Optional[str] = None,
-        scope: Optional[str] = None,
-        layer: Optional[str] = None,
-        assistant_id: Optional[str] = None,
-        confidence: Optional[float] = None,
-        importance: Optional[float] = None,
-        pinned: Optional[bool] = None,
-        is_active: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+        content: str | None = None,
+        scope: str | None = None,
+        layer: str | None = None,
+        assistant_id: str | None = None,
+        confidence: float | None = None,
+        importance: float | None = None,
+        pinned: bool | None = None,
+        is_active: bool | None = None,
+    ) -> dict[str, Any]:
         vectorstore = self._get_vectorstore()
         collection = vectorstore._collection
         current = collection.get(ids=[memory_id], include=["documents", "metadatas"])
@@ -473,10 +479,18 @@ class MemoryService:
             "scope": next_scope,
             "layer": next_layer,
             "assistant_id": next_assistant_id,
-            "confidence": float(confidence) if confidence is not None else self._safe_float(current_meta.get("confidence"), 0.8),
-            "importance": float(importance) if importance is not None else self._safe_float(current_meta.get("importance"), 0.6),
-            "pinned": bool(pinned) if pinned is not None else bool(current_meta.get("pinned", False)),
-            "is_active": bool(is_active) if is_active is not None else bool(current_meta.get("is_active", True)),
+            "confidence": float(confidence)
+            if confidence is not None
+            else self._safe_float(current_meta.get("confidence"), 0.8),
+            "importance": float(importance)
+            if importance is not None
+            else self._safe_float(current_meta.get("importance"), 0.6),
+            "pinned": bool(pinned)
+            if pinned is not None
+            else bool(current_meta.get("pinned", False)),
+            "is_active": bool(is_active)
+            if is_active is not None
+            else bool(current_meta.get("is_active", True)),
             "hash": next_hash,
             "updated_at": self._now_iso(),
         }
@@ -495,12 +509,12 @@ class MemoryService:
         query: str,
         profile_id: str,
         scope: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         top_k: int,
         score_threshold: float,
-        layer: Optional[str] = None,
-    ) -> List[MemoryResult]:
-        filters: List[Dict[str, Any]] = [
+        layer: str | None = None,
+    ) -> list[MemoryResult]:
+        filters: list[dict[str, Any]] = [
             {"profile_id": profile_id},
             {"scope": scope},
             {"is_active": True},
@@ -518,7 +532,7 @@ class MemoryService:
             filter=where,
         )
 
-        results: List[MemoryResult] = []
+        results: list[MemoryResult] = []
         for doc, score in docs_and_scores:
             if score < score_threshold:
                 continue
@@ -540,9 +554,13 @@ class MemoryService:
 
         return results
 
-    def _refresh_ids_from_collection(self, results: List[MemoryResult], profile_id: str) -> List[MemoryResult]:
+    def _refresh_ids_from_collection(
+        self, results: list[MemoryResult], profile_id: str
+    ) -> list[MemoryResult]:
         """Map hash-based fallback IDs back to true Chroma IDs when possible."""
-        unresolved = [item for item in results if not item.id or item.id == item.metadata.get("hash")]
+        unresolved = [
+            item for item in results if not item.id or item.id == item.metadata.get("hash")
+        ]
         if not unresolved:
             return results
 
@@ -552,10 +570,12 @@ class MemoryService:
             if not content_hash:
                 continue
             response = vectorstore._collection.get(
-                where=self._build_where([
-                    {"profile_id": profile_id},
-                    {"hash": content_hash},
-                ]),
+                where=self._build_where(
+                    [
+                        {"profile_id": profile_id},
+                        {"hash": content_hash},
+                    ]
+                ),
                 limit=1,
                 include=["metadatas"],
             )
@@ -568,13 +588,13 @@ class MemoryService:
         self,
         *,
         query: str,
-        profile_id: Optional[str] = None,
+        profile_id: str | None = None,
         scope: str,
-        assistant_id: Optional[str] = None,
-        layer: Optional[str] = None,
-        top_k: Optional[int] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        assistant_id: str | None = None,
+        layer: str | None = None,
+        top_k: int | None = None,
+        score_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         clean_query = self._clean_text(query)
         if not clean_query:
             return []
@@ -590,7 +610,9 @@ class MemoryService:
         cfg = self.memory_config_service.config
         resolved_profile = self._resolve_profile_id(profile_id)
         effective_top_k = top_k if top_k is not None else cfg.retrieval.top_k
-        effective_threshold = score_threshold if score_threshold is not None else cfg.retrieval.score_threshold
+        effective_threshold = (
+            score_threshold if score_threshold is not None else cfg.retrieval.score_threshold
+        )
 
         items = self._search_scope(
             query=clean_query,
@@ -610,13 +632,13 @@ class MemoryService:
         self,
         *,
         query: str,
-        assistant_id: Optional[str],
-        profile_id: Optional[str] = None,
+        assistant_id: str | None,
+        profile_id: str | None = None,
         include_global: bool = True,
         include_assistant: bool = True,
-        layer: Optional[str] = None,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        layer: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         clean_query = self._clean_text(query)
         if not clean_query:
             return []
@@ -628,7 +650,7 @@ class MemoryService:
         resolved_profile = self._resolve_profile_id(profile_id)
         effective_limit = limit if limit is not None else cfg.retrieval.max_injected_items
 
-        all_results: List[MemoryResult] = []
+        all_results: list[MemoryResult] = []
         if include_global and cfg.scopes.global_enabled:
             all_results.extend(
                 self._search_scope(
@@ -642,11 +664,7 @@ class MemoryService:
                 )
             )
 
-        if (
-            include_assistant
-            and cfg.scopes.assistant_enabled
-            and assistant_id
-        ):
+        if include_assistant and cfg.scopes.assistant_enabled and assistant_id:
             all_results.extend(
                 self._search_scope(
                     query=clean_query,
@@ -661,7 +679,7 @@ class MemoryService:
 
         all_results = self._refresh_ids_from_collection(all_results, resolved_profile)
 
-        dedup: Dict[str, MemoryResult] = {}
+        dedup: dict[str, MemoryResult] = {}
         for item in all_results:
             key = item.id or item.metadata.get("hash")
             if not key:
@@ -678,25 +696,25 @@ class MemoryService:
         self,
         *,
         profile_id: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         include_global: bool = True,
         include_assistant: bool = True,
         max_items: int = 15,
-    ) -> List[MemoryResult]:
+    ) -> list[MemoryResult]:
         """Load ALL active instruction-layer memories (no vector search)."""
         cfg = self.memory_config_service.config
         vectorstore = self._get_vectorstore()
 
-        all_results: List[MemoryResult] = []
+        all_results: list[MemoryResult] = []
 
-        scopes_to_query: List[Tuple[str, Optional[str]]] = []
+        scopes_to_query: list[tuple[str, str | None]] = []
         if include_global and cfg.scopes.global_enabled:
             scopes_to_query.append(("global", None))
         if include_assistant and cfg.scopes.assistant_enabled and assistant_id:
             scopes_to_query.append(("assistant", assistant_id))
 
         for scope, aid in scopes_to_query:
-            filters: List[Dict[str, Any]] = [
+            filters: list[dict[str, Any]] = [
                 {"profile_id": profile_id},
                 {"scope": scope},
                 {"layer": "instruction"},
@@ -719,9 +737,7 @@ class MemoryService:
             for idx, memory_id in enumerate(ids):
                 content = docs[idx] if idx < len(docs) else ""
                 metadata = metas[idx] if idx < len(metas) else {}
-                all_results.append(
-                    self._metadata_to_result(memory_id, content, metadata)
-                )
+                all_results.append(self._metadata_to_result(memory_id, content, metadata))
 
         return all_results[:max_items]
 
@@ -729,26 +745,24 @@ class MemoryService:
         self,
         *,
         query: str,
-        assistant_id: Optional[str],
-        profile_id: Optional[str] = None,
+        assistant_id: str | None,
+        profile_id: str | None = None,
         include_global: bool = True,
         include_assistant: bool = True,
-    ) -> Tuple[str, List[Dict[str, Any]]]:
+    ) -> tuple[str, list[dict[str, Any]]]:
         cfg = self.memory_config_service.config
         if not cfg.enabled:
             return "", []
 
         resolved_profile = self._resolve_profile_id(profile_id)
         enabled_layers = {
-            str(layer).strip().lower()
-            for layer in (cfg.enabled_layers or [])
-            if str(layer).strip()
+            str(layer).strip().lower() for layer in (cfg.enabled_layers or []) if str(layer).strip()
         }
-        lines: List[str] = []
-        sources: List[Dict[str, Any]] = []
+        lines: list[str] = []
+        sources: list[dict[str, Any]] = []
 
         # Phase 1: instruction layer - load ALL active items (always apply)
-        instructions: List[MemoryResult] = []
+        instructions: list[MemoryResult] = []
         if not enabled_layers or "instruction" in enabled_layers:
             instructions = self._load_instruction_memories(
                 profile_id=resolved_profile,
@@ -761,7 +775,7 @@ class MemoryService:
             for item in instructions:
                 content = self._clean_text(item.content)
                 if len(content) > cfg.retrieval.max_item_length:
-                    content = f"{content[:cfg.retrieval.max_item_length]}..."
+                    content = f"{content[: cfg.retrieval.max_item_length]}..."
                 lines.append(f"- {content}")
                 sources.append(
                     {
@@ -775,7 +789,7 @@ class MemoryService:
                 )
 
         # Phase 2: fact layer - vector similarity search (inject when relevant)
-        fact_results: List[Dict[str, Any]] = []
+        fact_results: list[dict[str, Any]] = []
         if not enabled_layers or "fact" in enabled_layers:
             fact_results = self.search_memories_for_scopes(
                 query=query,
@@ -793,7 +807,7 @@ class MemoryService:
             for idx, fact_item in enumerate(fact_results, start=1):
                 content = self._clean_text(str(fact_item.get("content", "")))
                 if len(content) > cfg.retrieval.max_item_length:
-                    content = f"{content[:cfg.retrieval.max_item_length]}..."
+                    content = f"{content[: cfg.retrieval.max_item_length]}..."
                 score = self._safe_float(fact_item.get("score"), 0.0)
                 lines.append(f"[{idx}] (score={score:.2f}) {content}")
                 sources.append(
@@ -813,7 +827,7 @@ class MemoryService:
         header = "Do not expose memory metadata in your answer.\n"
         return header + "\n".join(lines), sources
 
-    def extract_memory_candidates(self, text: str) -> List[Dict[str, Any]]:
+    def extract_memory_candidates(self, text: str) -> list[dict[str, Any]]:
         cfg = self.memory_config_service.config
         extraction_cfg = cfg.extraction
         if not cfg.enabled or not extraction_cfg.enabled:
@@ -824,19 +838,17 @@ class MemoryService:
             return []
 
         enabled_layers = {
-            str(layer).strip().lower()
-            for layer in (cfg.enabled_layers or [])
-            if str(layer).strip()
+            str(layer).strip().lower() for layer in (cfg.enabled_layers or []) if str(layer).strip()
         }
 
-        candidates: List[Dict[str, Any]] = []
-        seen: set[Tuple[str, str]] = set()
+        candidates: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
         for unit in self._split_candidate_units(clean_text):
             normalized_unit = self._clean_text(unit)
             if len(normalized_unit) < extraction_cfg.min_text_length:
                 continue
 
-            layer: Optional[str] = None
+            layer: str | None = None
             confidence = 0.7
             importance = 0.6
             if self._matches_configured_instruction(normalized_unit):
@@ -864,7 +876,12 @@ class MemoryService:
                 }
             )
 
-        candidates.sort(key=lambda item: (self._candidate_priority(str(item.get("layer") or "")), -float(item.get("confidence") or 0.0)))
+        candidates.sort(
+            key=lambda item: (
+                self._candidate_priority(str(item.get("layer") or "")),
+                -float(item.get("confidence") or 0.0),
+            )
+        )
         return candidates[: max(1, extraction_cfg.max_items_per_turn)]
 
     async def extract_and_persist_from_turn(
@@ -872,12 +889,12 @@ class MemoryService:
         *,
         user_message: str,
         assistant_message: str,
-        assistant_id: Optional[str],
-        profile_id: Optional[str] = None,
-        source_session_id: Optional[str] = None,
-        source_message_id: Optional[str] = None,
+        assistant_id: str | None,
+        profile_id: str | None = None,
+        source_session_id: str | None = None,
+        source_message_id: str | None = None,
         assistant_memory_enabled: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         _ = assistant_message
 
         cfg = self.memory_config_service.config
@@ -888,7 +905,7 @@ class MemoryService:
         if not candidates:
             return []
 
-        persisted: List[Dict[str, Any]] = []
+        persisted: list[dict[str, Any]] = []
         for candidate in candidates:
             layer = str(candidate.get("layer") or "fact")
             scope, target_assistant_id = self._resolve_extraction_target(

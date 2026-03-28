@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class ModelConfigRepository:
     """Owns YAML I/O, split-config assembly, and key-file persistence."""
 
-    def __init__(self, owner: "ModelConfigService"):
+    def __init__(self, owner: ModelConfigService):
         self.owner = owner
 
     @staticmethod
@@ -25,7 +25,7 @@ class ModelConfigRepository:
         if not path.exists():
             return {}
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception:
             return {}
@@ -65,7 +65,9 @@ class ModelConfigRepository:
                 if isinstance(default_config, dict)
                 else {"provider": "", "model": ""}
             ),
-            "reasoning_supported_patterns": reasoning_patterns if isinstance(reasoning_patterns, list) else [],
+            "reasoning_supported_patterns": reasoning_patterns
+            if isinstance(reasoning_patterns, list)
+            else [],
         }
 
     def load_split_config(self) -> dict[str, Any]:
@@ -187,7 +189,7 @@ class ModelConfigRepository:
     async def load_keys_config(self) -> dict[str, Any]:
         if not self.owner.keys_path.exists():
             return {"providers": {}}
-        async with aiofiles.open(self.owner.keys_path, "r", encoding="utf-8") as f:
+        async with aiofiles.open(self.owner.keys_path, encoding="utf-8") as f:
             content = await f.read()
         data = yaml.safe_load(content)
         return data if data else {"providers": {}}

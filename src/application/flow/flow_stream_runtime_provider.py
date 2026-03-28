@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.core.config import settings
+
 from .flow_stream_runtime import FlowStreamRuntime
 
 _flow_stream_runtime = FlowStreamRuntime(
@@ -15,4 +16,3 @@ _flow_stream_runtime = FlowStreamRuntime(
 def get_flow_stream_runtime() -> FlowStreamRuntime:
     """Dependency provider for in-memory FlowEvent replay runtime."""
     return _flow_stream_runtime
-

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 
 

@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
 from src.core.paths import resolve_layered_read_path
 
 
-def load_default_yaml_section(defaults_path: Optional[Path], section_name: str) -> dict[str, Any]:
+def load_default_yaml_section(defaults_path: Path | None, section_name: str) -> dict[str, Any]:
     """Load a defaults YAML section from the tracked repo config."""
     if defaults_path is None or not defaults_path.exists():
         return {}
 
-    with open(defaults_path, "r", encoding="utf-8") as f:
+    with open(defaults_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
     section = data.get(section_name, {})
@@ -25,7 +25,7 @@ def load_default_yaml_section(defaults_path: Optional[Path], section_name: str) 
 def load_layered_yaml_section(
     *,
     config_path: Path,
-    defaults_path: Optional[Path],
+    defaults_path: Path | None,
     section_name: str,
     logger: Any,
     error_label: str,
@@ -38,7 +38,7 @@ def load_layered_yaml_section(
     )
 
     try:
-        with open(resolved_path, "r", encoding="utf-8") as f:
+        with open(resolved_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         section_data = data.get(section_name, {})
         if not isinstance(section_data, dict):
@@ -57,7 +57,7 @@ def save_yaml_section_updates(
     updates: dict[str, Any],
 ) -> None:
     """Persist non-None field updates into a named YAML section."""
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
     if not isinstance(data, dict):

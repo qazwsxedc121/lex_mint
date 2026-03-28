@@ -5,14 +5,16 @@ Adapter for Zhipu GLM models via OpenAI-compatible API.
 Supports thinking mode, tool calls, tool stream, structured output,
 and image understanding through pass-through request parameters.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from .reasoning_openai import ChatReasoningOpenAI
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import LLMResponse, StreamChunk, TokenUsage
+from .reasoning_openai import ChatReasoningOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ def _response_content_to_text(content: object) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts: List[str] = []
+        parts: list[str] = []
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
@@ -34,9 +36,9 @@ def _response_content_to_text(content: object) -> str:
     return str(content or "")
 
 
-def _extract_tool_calls(payload: Any) -> List[Any]:
+def _extract_tool_calls(payload: Any) -> list[Any]:
     """Extract tool call payload from LangChain chunks/responses."""
-    tool_calls: List[Any] = []
+    tool_calls: list[Any] = []
 
     if hasattr(payload, "tool_calls") and payload.tool_calls:
         tool_calls.extend(payload.tool_calls)
@@ -66,7 +68,7 @@ class ZhipuAdapter(BaseLLMAdapter):
 
     _DEFAULT_TEST_MODEL = "glm-4.5-flash"
 
-    _CURATED_MODELS: List[Dict[str, str]] = [
+    _CURATED_MODELS: list[dict[str, str]] = [
         {"id": "glm-5", "name": "GLM-5"},
         {"id": "glm-4.7", "name": "GLM-4.7"},
         {"id": "glm-4.6", "name": "GLM-4.6"},
@@ -87,10 +89,10 @@ class ZhipuAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ) -> ChatReasoningOpenAI:
         """Create ChatReasoningOpenAI client for Zhipu OpenAI-compatible endpoint."""
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -104,8 +106,8 @@ class ZhipuAdapter(BaseLLMAdapter):
             if key in kwargs and kwargs[key] is not None:
                 llm_kwargs[key] = kwargs[key]
 
-        model_kwargs: Dict[str, Any] = {}
-        extra_body: Dict[str, Any] = {}
+        model_kwargs: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
         disable_thinking = bool(kwargs.get("disable_thinking", False))
 
         # GLM thinking mode uses `thinking.type`.
@@ -153,10 +155,7 @@ class ZhipuAdapter(BaseLLMAdapter):
         return ChatReasoningOpenAI(**llm_kwargs)
 
     async def stream(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """Stream Zhipu responses, including reasoning and tool-call chunks."""
         usage_data = None
@@ -182,10 +181,7 @@ class ZhipuAdapter(BaseLLMAdapter):
             )
 
     async def invoke(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> LLMResponse:
         """Invoke Zhipu and return normalized full response."""
         response = await llm.ainvoke(messages)
@@ -210,15 +206,11 @@ class ZhipuAdapter(BaseLLMAdapter):
         """GLM supports thinking mode via `thinking.type=enabled`."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """GLM thinking mode is toggle-based, not effort-based."""
         return {"thinking": {"type": "enabled"}}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from Zhipu /models endpoint.
 
@@ -232,8 +224,7 @@ class ZhipuAdapter(BaseLLMAdapter):
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
-                    models_url,
-                    headers={"Authorization": f"Bearer {api_key}"}
+                    models_url, headers={"Authorization": f"Bearer {api_key}"}
                 )
                 response.raise_for_status()
 
@@ -242,10 +233,12 @@ class ZhipuAdapter(BaseLLMAdapter):
                 for model in data.get("data", []):
                     model_id = model.get("id", "")
                     if model_id:
-                        models.append({
-                            "id": model_id,
-                            "name": model.get("name", model_id),
-                        })
+                        models.append(
+                            {
+                                "id": model_id,
+                                "name": model.get("name", model_id),
+                            }
+                        )
 
                 if models:
                     return sorted(models, key=lambda x: x["id"])

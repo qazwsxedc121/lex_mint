@@ -5,11 +5,10 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, cast
+from typing import Any, Literal, cast
 
 from src.application.chat.chat_runtime.settings import GroupSettingsResolver
 from src.domain.models.group_participant import parse_group_participant
-
 
 ALLOWED_OVERRIDE_KEYS = {
     "model_id",
@@ -54,11 +53,11 @@ class SessionApplicationService:
 
     @staticmethod
     def normalize_target_type(
-        target_type: Optional[str],
+        target_type: str | None,
         *,
-        assistant_id: Optional[str],
-        model_id: Optional[str],
-    ) -> Optional[str]:
+        assistant_id: str | None,
+        model_id: str | None,
+    ) -> str | None:
         if target_type is not None:
             normalized = target_type.strip().lower()
             if normalized not in {"assistant", "model"}:
@@ -73,12 +72,12 @@ class SessionApplicationService:
 
     async def normalize_and_validate_group_assistants(
         self,
-        group_assistants: Optional[List[str]],
-    ) -> Optional[List[str]]:
+        group_assistants: list[str] | None,
+    ) -> list[str] | None:
         if group_assistants is None:
             return None
 
-        normalized: List[str] = []
+        normalized: list[str] = []
         seen = set()
         for participant_token in group_assistants:
             if not isinstance(participant_token, str):
@@ -104,9 +103,9 @@ class SessionApplicationService:
 
     @staticmethod
     def normalize_and_validate_group_mode(
-        group_mode: Optional[str],
-        group_assistants: Optional[List[str]],
-    ) -> Optional[str]:
+        group_mode: str | None,
+        group_assistants: list[str] | None,
+    ) -> str | None:
         normalized_mode = GroupSettingsResolver.normalize_group_mode(
             group_mode,
             group_assistants=group_assistants,
@@ -119,8 +118,8 @@ class SessionApplicationService:
 
     @staticmethod
     def normalize_group_settings_payload(
-        group_settings: Optional[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+        group_settings: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
         if group_settings is None:
             return None
         if not isinstance(group_settings, dict):
@@ -128,7 +127,7 @@ class SessionApplicationService:
         return GroupSettingsResolver.normalize_group_settings(group_settings)
 
     @staticmethod
-    def _deep_merge_dict(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    def _deep_merge_dict(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
         merged = dict(base)
         for key, value in updates.items():
             if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -137,8 +136,8 @@ class SessionApplicationService:
                 merged[key] = value
         return merged
 
-    async def _load_assistant_config_map(self, group_assistants: List[str]) -> Dict[str, Any]:
-        assistant_config_map: Dict[str, Any] = {}
+    async def _load_assistant_config_map(self, group_assistants: list[str]) -> dict[str, Any]:
+        assistant_config_map: dict[str, Any] = {}
         for assistant_id in group_assistants:
             assistant_obj = await self._assistant_service.get_assistant(assistant_id)
             if assistant_obj:
@@ -165,22 +164,24 @@ class SessionApplicationService:
     async def create_session(
         self,
         *,
-        assistant_id: Optional[str],
-        model_id: Optional[str],
-        target_type: Optional[str],
+        assistant_id: str | None,
+        model_id: str | None,
+        target_type: str | None,
         temporary: bool,
-        group_assistants: Optional[List[str]],
-        group_mode: Optional[str],
-        group_settings: Optional[Dict[str, Any]],
+        group_assistants: list[str] | None,
+        group_mode: str | None,
+        group_settings: dict[str, Any] | None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> str:
         normalized_target_type = self.normalize_target_type(
             target_type,
             assistant_id=assistant_id,
             model_id=model_id,
         )
-        normalized_group_assistants = await self.normalize_and_validate_group_assistants(group_assistants)
+        normalized_group_assistants = await self.normalize_and_validate_group_assistants(
+            group_assistants
+        )
         normalized_group_mode = self.normalize_and_validate_group_mode(
             group_mode,
             normalized_group_assistants,
@@ -192,15 +193,15 @@ class SessionApplicationService:
         return cast(
             str,
             await self._storage.create_session(
-            model_id=model_id,
-            assistant_id=assistant_id,
-            target_type=normalized_target_type,
-            context_type=context_type,
-            project_id=project_id,
-            temporary=temporary,
-            group_assistants=normalized_group_assistants,
-            group_mode=normalized_group_mode,
-            group_settings=normalized_group_settings,
+                model_id=model_id,
+                assistant_id=assistant_id,
+                target_type=normalized_target_type,
+                context_type=context_type,
+                project_id=project_id,
+                temporary=temporary,
+                group_assistants=normalized_group_assistants,
+                group_mode=normalized_group_mode,
+                group_settings=normalized_group_settings,
             ),
         )
 
@@ -209,7 +210,7 @@ class SessionApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.delete_session(
             session_id,
@@ -222,7 +223,7 @@ class SessionApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.convert_to_permanent(
             session_id,
@@ -235,10 +236,10 @@ class SessionApplicationService:
         *,
         session_id: str,
         target_type: Literal["assistant", "model"],
-        assistant_id: Optional[str] = None,
-        model_id: Optional[str] = None,
+        assistant_id: str | None = None,
+        model_id: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.update_session_target(
             session_id,
@@ -253,9 +254,9 @@ class SessionApplicationService:
         self,
         *,
         session_id: str,
-        group_assistants: List[str],
+        group_assistants: list[str],
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         normalized = await self.normalize_and_validate_group_assistants(group_assistants)
         if normalized is None:
@@ -272,8 +273,8 @@ class SessionApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
         session = await self._storage.get_session(
             session_id,
             context_type=context_type,
@@ -283,12 +284,17 @@ class SessionApplicationService:
         if len(group_assistants) < 2:
             raise ValueError("Session is not a group chat")
 
-        group_mode = self.normalize_and_validate_group_mode(
-            session.get("group_mode"),
-            group_assistants,
-        ) or "round_robin"
+        group_mode = (
+            self.normalize_and_validate_group_mode(
+                session.get("group_mode"),
+                group_assistants,
+            )
+            or "round_robin"
+        )
         raw_group_settings = GroupSettingsResolver.normalize_group_settings(
-            session.get("group_settings") if isinstance(session.get("group_settings"), dict) else None
+            session.get("group_settings")
+            if isinstance(session.get("group_settings"), dict)
+            else None
         )
         assistant_config_map = await self._load_assistant_config_map(group_assistants)
         resolved = GroupSettingsResolver.resolve(
@@ -308,12 +314,12 @@ class SessionApplicationService:
         self,
         *,
         session_id: str,
-        group_assistants: Optional[List[str]] = None,
-        group_mode: Optional[str] = None,
-        group_settings: Optional[Dict[str, Any]] = None,
+        group_assistants: list[str] | None = None,
+        group_mode: str | None = None,
+        group_settings: dict[str, Any] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
         session = await self._storage.get_session(
             session_id,
             context_type=context_type,
@@ -321,23 +327,32 @@ class SessionApplicationService:
         )
         existing_group_assistants = session.get("group_assistants")
         if group_assistants is not None:
-            next_group_assistants = await self.normalize_and_validate_group_assistants(group_assistants)
+            next_group_assistants = await self.normalize_and_validate_group_assistants(
+                group_assistants
+            )
         else:
             next_group_assistants = existing_group_assistants
 
         if not next_group_assistants or len(next_group_assistants) < 2:
             raise ValueError("Group chat requires at least 2 unique assistants")
 
-        next_group_mode = self.normalize_and_validate_group_mode(
-            group_mode if group_mode is not None else session.get("group_mode"),
-            next_group_assistants,
-        ) or "round_robin"
+        next_group_mode = (
+            self.normalize_and_validate_group_mode(
+                group_mode if group_mode is not None else session.get("group_mode"),
+                next_group_assistants,
+            )
+            or "round_robin"
+        )
 
         existing_group_settings = GroupSettingsResolver.normalize_group_settings(
-            session.get("group_settings") if isinstance(session.get("group_settings"), dict) else None
+            session.get("group_settings")
+            if isinstance(session.get("group_settings"), dict)
+            else None
         )
         if group_settings is not None:
-            update_settings = self.normalize_group_settings_payload(group_settings) or {"version": 1}
+            update_settings = self.normalize_group_settings_payload(group_settings) or {
+                "version": 1
+            }
             next_group_settings = self._deep_merge_dict(existing_group_settings, update_settings)
         else:
             next_group_settings = existing_group_settings
@@ -374,7 +389,7 @@ class SessionApplicationService:
         session_id: str,
         title: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.update_session_metadata(
             session_id,
@@ -387,9 +402,9 @@ class SessionApplicationService:
         self,
         *,
         session_id: str,
-        overrides: Dict[str, Any],
+        overrides: dict[str, Any],
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         invalid_keys = set(overrides.keys()) - ALLOWED_OVERRIDE_KEYS
         if invalid_keys:
@@ -422,7 +437,7 @@ class SessionApplicationService:
         session_id: str,
         message_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> str:
         original_session = await self._storage.get_session(
             session_id,
@@ -438,7 +453,7 @@ class SessionApplicationService:
         if branch_index is None:
             raise ValueError(f"message_id '{message_id}' not found in session")
 
-        truncated_messages = original_messages[:branch_index + 1]
+        truncated_messages = original_messages[: branch_index + 1]
         assistant_id = original_session.get("assistant_id")
         model_id = original_session.get("model_id")
         new_session_id = await self._storage.create_session(
@@ -468,7 +483,7 @@ class SessionApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> str:
         original_session = await self._storage.get_session(
             session_id,
@@ -505,9 +520,9 @@ class SessionApplicationService:
         *,
         session_id: str,
         source_context_type: str = "chat",
-        source_project_id: Optional[str] = None,
+        source_project_id: str | None = None,
         target_context_type: str = "chat",
-        target_project_id: Optional[str] = None,
+        target_project_id: str | None = None,
     ) -> None:
         await self._storage.move_session(
             session_id,
@@ -522,9 +537,9 @@ class SessionApplicationService:
         *,
         session_id: str,
         source_context_type: str = "chat",
-        source_project_id: Optional[str] = None,
+        source_project_id: str | None = None,
         target_context_type: str = "chat",
-        target_project_id: Optional[str] = None,
+        target_project_id: str | None = None,
     ) -> str:
         new_session_id = await self._storage.copy_session(
             session_id,
@@ -540,9 +555,9 @@ class SessionApplicationService:
         self,
         *,
         session_id: str,
-        folder_id: Optional[str],
+        folder_id: str | None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.update_session_folder(
             session_id=session_id,

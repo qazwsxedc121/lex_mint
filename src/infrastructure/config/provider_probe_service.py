@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -41,7 +41,10 @@ class ProviderProbeService:
         api_key: str,
     ) -> ProviderEndpointProbeResponse:
         candidates = self._build_candidates(provider, request)
-        tasks = [self._probe_candidate(candidate, api_key=api_key, strict=request.strict) for candidate in candidates]
+        tasks = [
+            self._probe_candidate(candidate, api_key=api_key, strict=request.strict)
+            for candidate in candidates
+        ]
         results = await asyncio.gather(*tasks)
 
         recommended = self._pick_recommended_result(results, request.client_region_hint)
@@ -56,7 +59,9 @@ class ProviderProbeService:
         return ProviderEndpointProbeResponse(
             provider_id=provider.id,
             results=results,
-            recommended_endpoint_profile_id=recommended.endpoint_profile_id if recommended else None,
+            recommended_endpoint_profile_id=recommended.endpoint_profile_id
+            if recommended
+            else None,
             recommended_base_url=recommended.base_url if recommended else None,
             summary=summary,
         )
@@ -79,15 +84,22 @@ class ProviderProbeService:
                         "base_url": profile.base_url,
                         "priority": profile.priority,
                         "region_tags": profile.region_tags,
-                        "probe_method": profile.probe_method or self._PROVIDER_DEFAULT_PROBE_METHODS.get(provider.id, "openai_models"),
+                        "probe_method": profile.probe_method
+                        or self._PROVIDER_DEFAULT_PROBE_METHODS.get(provider.id, "openai_models"),
                     }
                     for profile in endpoint_profiles
                 ]
             else:
-                candidates = [self._build_custom_candidate(provider.base_url, provider.endpoint_profile_id)]
+                candidates = [
+                    self._build_custom_candidate(provider.base_url, provider.endpoint_profile_id)
+                ]
         else:
             if request.base_url_override:
-                candidates = [self._build_custom_candidate(request.base_url_override, request.endpoint_profile_id)]
+                candidates = [
+                    self._build_custom_candidate(
+                        request.base_url_override, request.endpoint_profile_id
+                    )
+                ]
             elif request.endpoint_profile_id:
                 profile = by_id.get(request.endpoint_profile_id)
                 if not profile:
@@ -99,11 +111,14 @@ class ProviderProbeService:
                         "base_url": profile.base_url,
                         "priority": profile.priority,
                         "region_tags": profile.region_tags,
-                        "probe_method": profile.probe_method or self._PROVIDER_DEFAULT_PROBE_METHODS.get(provider.id, "openai_models"),
+                        "probe_method": profile.probe_method
+                        or self._PROVIDER_DEFAULT_PROBE_METHODS.get(provider.id, "openai_models"),
                     }
                 ]
             else:
-                candidates = [self._build_custom_candidate(provider.base_url, provider.endpoint_profile_id)]
+                candidates = [
+                    self._build_custom_candidate(provider.base_url, provider.endpoint_profile_id)
+                ]
 
         deduped: list[dict[str, Any]] = []
         seen = set()
@@ -116,10 +131,12 @@ class ProviderProbeService:
         return deduped
 
     @staticmethod
-    def _build_custom_candidate(base_url: str, endpoint_profile_id: Optional[str]) -> dict[str, Any]:
+    def _build_custom_candidate(base_url: str, endpoint_profile_id: str | None) -> dict[str, Any]:
         return {
             "endpoint_profile_id": endpoint_profile_id if endpoint_profile_id else "custom",
-            "label": "Custom Endpoint" if not endpoint_profile_id else f"Profile: {endpoint_profile_id}",
+            "label": "Custom Endpoint"
+            if not endpoint_profile_id
+            else f"Profile: {endpoint_profile_id}",
             "base_url": base_url,
             "priority": 1000,
             "region_tags": [],
@@ -149,7 +166,9 @@ class ProviderProbeService:
         probe_method = str(candidate.get("probe_method", "openai_models"))
         start_time = time.perf_counter()
         if probe_method == "openai_models":
-            result = await self._probe_openai_models(base_url=base_url, api_key=api_key, strict=strict)
+            result = await self._probe_openai_models(
+                base_url=base_url, api_key=api_key, strict=strict
+            )
         else:
             result = {
                 "success": False,
@@ -241,7 +260,10 @@ class ProviderProbeService:
             }
         except httpx.ConnectError as exc:
             text = str(exc).lower()
-            if any(token in text for token in ("getaddrinfo", "name or service not known", "nodename", "dns")):
+            if any(
+                token in text
+                for token in ("getaddrinfo", "name or service not known", "nodename", "dns")
+            ):
                 classification = "network_dns"
                 message = "DNS lookup failed"
             else:
@@ -271,7 +293,7 @@ class ProviderProbeService:
     def _pick_recommended_result(
         results: list[ProviderEndpointProbeResult],
         client_region_hint: str,
-    ) -> Optional[ProviderEndpointProbeResult]:
+    ) -> ProviderEndpointProbeResult | None:
         successful = [item for item in results if item.success]
         if not successful:
             return None
@@ -286,4 +308,3 @@ class ProviderProbeService:
                 item.priority,
             ),
         )[0]
-

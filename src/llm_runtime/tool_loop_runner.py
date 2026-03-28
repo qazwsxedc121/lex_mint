@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import inspect
+import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Union
+from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
@@ -37,18 +38,18 @@ _WEB_READ_PROMPT_TEMPLATE = (
 class ToolLoopState:
     """Mutable state for multi-round tool calling."""
 
-    current_messages: List[BaseMessage]
+    current_messages: list[BaseMessage]
     tool_round: int = 0
     force_finalize_without_tools: bool = False
     evidence_intent: bool = False
     web_research_enabled: bool = False
     read_compensation_used: bool = False
     web_read_compensation_used: bool = False
-    search_queries_seen: Set[str] = field(default_factory=set)
-    read_targets_seen: Set[str] = field(default_factory=set)
-    last_search_refs: List[str] = field(default_factory=list)
-    last_web_search_urls: List[str] = field(default_factory=list)
-    evidence_rows: List[Dict[str, str]] = field(default_factory=list)
+    search_queries_seen: set[str] = field(default_factory=set)
+    read_targets_seen: set[str] = field(default_factory=set)
+    last_search_refs: list[str] = field(default_factory=list)
+    last_web_search_urls: list[str] = field(default_factory=list)
+    evidence_rows: list[dict[str, str]] = field(default_factory=list)
     tool_search_count: int = 0
     tool_search_unique_count: int = 0
     tool_search_duplicate_count: int = 0
@@ -71,12 +72,14 @@ class ToolLoopRunner:
     @staticmethod
     def resolve_max_tool_rounds(
         *,
-        tool_names: Set[str],
+        tool_names: set[str],
         latest_user_text: str,
         default_max_tool_rounds: int = 3,
     ) -> int:
         max_rounds = max(1, int(default_max_tool_rounds))
-        normalized_tool_names = {str(name or "").strip() for name in tool_names if str(name or "").strip()}
+        normalized_tool_names = {
+            str(name or "").strip() for name in tool_names if str(name or "").strip()
+        }
         if not normalized_tool_names.intersection({"web_search", "read_webpage"}):
             return max_rounds
         max_rounds = max(max_rounds, 5)
@@ -162,8 +165,8 @@ class ToolLoopRunner:
         self,
         state: ToolLoopState,
         *,
-        round_tool_calls: List[Dict[str, Any]],
-        tool_results: List[Dict[str, str]],
+        round_tool_calls: list[dict[str, Any]],
+        tool_results: list[dict[str, str]],
     ) -> None:
         progress_made = False
         evidence_count_before = len(state.evidence_rows)
@@ -171,7 +174,7 @@ class ToolLoopRunner:
         for tool_call in round_tool_calls:
             name = str(tool_call.get("name") or "")
             raw_args = tool_call.get("args")
-            args: Dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
+            args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
             if name in {"search_knowledge", "web_search"}:
                 state.tool_search_count += 1
                 if name == "web_search":
@@ -215,9 +218,9 @@ class ToolLoopRunner:
                 continue
 
             if name == "search_knowledge":
-                refs: List[str] = []
+                refs: list[str] = []
                 raw_hits = parsed.get("hits")
-                hits: List[Any] = list(raw_hits) if isinstance(raw_hits, list) else []
+                hits: list[Any] = list(raw_hits) if isinstance(raw_hits, list) else []
                 for hit in hits[:4]:
                     if not isinstance(hit, dict):
                         continue
@@ -234,9 +237,9 @@ class ToolLoopRunner:
                 continue
 
             if name == "web_search":
-                urls: List[str] = []
+                urls: list[str] = []
                 raw_results = parsed.get("results")
-                results: List[Any] = list(raw_results) if isinstance(raw_results, list) else []
+                results: list[Any] = list(raw_results) if isinstance(raw_results, list) else []
                 for item in results[:4]:
                     if not isinstance(item, dict):
                         continue
@@ -254,7 +257,7 @@ class ToolLoopRunner:
 
             if name == "read_knowledge":
                 raw_sources = parsed.get("sources")
-                sources: List[Any] = list(raw_sources) if isinstance(raw_sources, list) else []
+                sources: list[Any] = list(raw_sources) if isinstance(raw_sources, list) else []
                 for source in sources[:4]:
                     if not isinstance(source, dict):
                         continue
@@ -287,7 +290,7 @@ class ToolLoopRunner:
     def should_request_read_compensation(
         state: ToolLoopState,
         *,
-        round_tool_calls: List[Dict[str, Any]],
+        round_tool_calls: list[dict[str, Any]],
     ) -> bool:
         if state.force_finalize_without_tools:
             return False
@@ -305,7 +308,7 @@ class ToolLoopRunner:
     def should_request_web_read_compensation(
         state: ToolLoopState,
         *,
-        round_tool_calls: List[Dict[str, Any]],
+        round_tool_calls: list[dict[str, Any]],
     ) -> bool:
         if state.force_finalize_without_tools:
             return False
@@ -340,7 +343,13 @@ class ToolLoopRunner:
         normalized = " ".join((final_text or "").split())
         if not normalized:
             return True
-        if len(normalized) < 18 and normalized.lower() in {"ok", "done", "completed", "好的", "完成"}:
+        if len(normalized) < 18 and normalized.lower() in {
+            "ok",
+            "done",
+            "completed",
+            "好的",
+            "完成",
+        }:
             return True
         return False
 
@@ -358,7 +367,7 @@ class ToolLoopRunner:
         return "\n".join(lines)
 
     @staticmethod
-    def build_tool_diagnostics_event(state: ToolLoopState) -> Dict[str, Any]:
+    def build_tool_diagnostics_event(state: ToolLoopState) -> dict[str, Any]:
         return {
             "type": "tool_diagnostics",
             "tool_search_count": state.tool_search_count,
@@ -379,12 +388,12 @@ class ToolLoopRunner:
         *,
         tools_enabled: bool,
         force_finalize_without_tools: bool,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Extract normalized tool calls from a merged adapter chunk."""
         if not tools_enabled or force_finalize_without_tools or merged_chunk is None:
             return []
 
-        extracted: List[Dict[str, Any]] = []
+        extracted: list[dict[str, Any]] = []
         raw_tool_calls = getattr(merged_chunk, "tool_calls", None) or []
         for tc in raw_tool_calls:
             if isinstance(tc, dict):
@@ -409,7 +418,7 @@ class ToolLoopRunner:
     def should_finish_round(
         state: ToolLoopState,
         *,
-        round_tool_calls: List[Dict[str, Any]],
+        round_tool_calls: list[dict[str, Any]],
         tools_enabled: bool,
     ) -> bool:
         """Whether the stream loop should terminate after this pass."""
@@ -434,8 +443,8 @@ class ToolLoopRunner:
             to the next stream pass, False when normal tool execution should proceed.
         """
         if state.no_progress_rounds >= 2 and state.tool_result_count > 0:
-            ai_kwargs: Dict[str, Any] = {}
-            additional_kwargs: Dict[str, Any] = {}
+            ai_kwargs: dict[str, Any] = {}
+            additional_kwargs: dict[str, Any] = {}
             if round_reasoning:
                 additional_kwargs["reasoning_content"] = round_reasoning
             if round_reasoning_details is not None:
@@ -452,8 +461,8 @@ class ToolLoopRunner:
         if state.tool_round <= self.max_tool_rounds:
             return False
 
-        finalize_ai_kwargs: Dict[str, Any] = {}
-        finalize_additional_kwargs: Dict[str, Any] = {}
+        finalize_ai_kwargs: dict[str, Any] = {}
+        finalize_additional_kwargs: dict[str, Any] = {}
         if round_reasoning:
             finalize_additional_kwargs["reasoning_content"] = round_reasoning
         if round_reasoning_details is not None:
@@ -467,7 +476,7 @@ class ToolLoopRunner:
         return True
 
     @staticmethod
-    def build_tool_calls_event(round_tool_calls: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def build_tool_calls_event(round_tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
         """Build frontend event payload for announced tool calls."""
         return {
             "type": "tool_calls",
@@ -482,26 +491,25 @@ class ToolLoopRunner:
         }
 
     @staticmethod
-    def build_tool_results_event(tool_results: List[Dict[str, str]]) -> Dict[str, Any]:
+    def build_tool_results_event(tool_results: list[dict[str, str]]) -> dict[str, Any]:
         """Build frontend event payload for completed tool calls."""
         return {"type": "tool_results", "results": tool_results}
 
     @staticmethod
     async def execute_tool_calls(
-        round_tool_calls: List[Dict[str, Any]],
+        round_tool_calls: list[dict[str, Any]],
         *,
-        tool_executor: Optional[
-            Callable[[str, Dict[str, Any]], Union[Optional[str], Awaitable[Optional[str]]]]
-        ] = None,
-    ) -> List[Dict[str, str]]:
+        tool_executor: Callable[[str, dict[str, Any]], str | None | Awaitable[str | None]]
+        | None = None,
+    ) -> list[dict[str, str]]:
         """Execute tool calls with request-scoped executor fallback to registry."""
         from src.tools.registry import get_tool_registry
 
         registry = get_tool_registry()
-        tool_results: List[Dict[str, str]] = []
+        tool_results: list[dict[str, str]] = []
 
         for tc in round_tool_calls:
-            result: Optional[str] = None
+            result: str | None = None
             if tool_executor is not None:
                 try:
                     maybe_result = tool_executor(tc["name"], tc["args"])
@@ -530,18 +538,17 @@ class ToolLoopRunner:
         state: ToolLoopState,
         *,
         round_content: str,
-        round_tool_calls: List[Dict[str, Any]],
-        tool_results: List[Dict[str, str]],
+        round_tool_calls: list[dict[str, Any]],
+        tool_results: list[dict[str, str]],
         round_reasoning: str = "",
         round_reasoning_details: Any = None,
     ) -> None:
         """Append tool-call AI message + tool result messages for next pass."""
         ai_tool_calls = [
-            {"name": tc["name"], "args": tc["args"], "id": tc["id"]}
-            for tc in round_tool_calls
+            {"name": tc["name"], "args": tc["args"], "id": tc["id"]} for tc in round_tool_calls
         ]
-        ai_kwargs: Dict[str, Any] = {"tool_calls": ai_tool_calls}
-        additional_kwargs: Dict[str, Any] = {}
+        ai_kwargs: dict[str, Any] = {"tool_calls": ai_tool_calls}
+        additional_kwargs: dict[str, Any] = {}
         if round_reasoning:
             additional_kwargs["reasoning_content"] = round_reasoning
         if round_reasoning_details is not None:

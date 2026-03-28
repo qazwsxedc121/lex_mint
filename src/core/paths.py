@@ -9,12 +9,12 @@ Layout (desired):
 
 from __future__ import annotations
 
-from functools import lru_cache
 import os
-from pathlib import Path
 import re
 import sys
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from functools import lru_cache
+from pathlib import Path
 
 _WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -75,7 +75,7 @@ def resolve_user_data_path(path: Path | str) -> Path:
     return user_data_root() / candidate
 
 
-def configured_models_root() -> Optional[Path]:
+def configured_models_root() -> Path | None:
     configured_root = os.getenv("LEX_MINT_MODELS_ROOT", "").strip()
     if not configured_root:
         return None
@@ -157,7 +157,8 @@ def logs_dir() -> Path:
 def shared_keys_config_path() -> Path:
     return lex_mint_home_dir() / "keys_config.yaml"
 
-def first_existing(paths: Iterable[Path]) -> Optional[Path]:
+
+def first_existing(paths: Iterable[Path]) -> Path | None:
     for path in paths:
         try:
             if path.exists():
@@ -174,8 +175,8 @@ def ensure_dir(path: Path) -> None:
 def ensure_local_file(
     *,
     local_path: Path,
-    defaults_path: Optional[Path] = None,
-    initial_text: Optional[str] = None,
+    defaults_path: Path | None = None,
+    initial_text: str | None = None,
 ) -> None:
     """
     Ensure a writable local file exists.
@@ -206,7 +207,7 @@ def ensure_local_file(
 def resolve_layered_read_path(
     *,
     local_path: Path,
-    defaults_path: Optional[Path] = None,
+    defaults_path: Path | None = None,
 ) -> Path:
     """
     Pick an existing file to read, preferring local overrides.

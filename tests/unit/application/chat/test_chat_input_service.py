@@ -44,8 +44,18 @@ async def test_prepare_user_input_handles_attachments_and_append():
         raw_user_message="hello",
         expanded_user_message="hello",
         attachments=[
-            {"filename": "note.txt", "temp_path": "tmp-note", "mime_type": "text/plain", "size": 10},
-            {"filename": "photo.png", "temp_path": "tmp-photo", "mime_type": "image/png", "size": 20},
+            {
+                "filename": "note.txt",
+                "temp_path": "tmp-note",
+                "mime_type": "text/plain",
+                "size": 10,
+            },
+            {
+                "filename": "photo.png",
+                "temp_path": "tmp-photo",
+                "mime_type": "image/png",
+                "size": 20,
+            },
         ],
         skip_user_append=False,
         context_type="chat",

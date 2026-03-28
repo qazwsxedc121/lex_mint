@@ -132,7 +132,9 @@ async def test_api_main_root_and_packaged_routes(tmp_path: Path, monkeypatch):
 @pytest.mark.asyncio
 async def test_api_main_startup_event_initializes_runtime(tmp_path: Path, monkeypatch):
     api_main = _reload_api_main(monkeypatch)
-    monkeypatch.setattr(api_main.settings, "projects_config_path", tmp_path / "config" / "projects.yaml")
+    monkeypatch.setattr(
+        api_main.settings, "projects_config_path", tmp_path / "config" / "projects.yaml"
+    )
     monkeypatch.setattr(api_main.settings, "conversations_dir", tmp_path / "conversations")
     monkeypatch.setattr(api_main, "resolve_user_data_path", lambda path: tmp_path / Path(path))
 
@@ -177,18 +179,20 @@ async def test_api_main_startup_event_initializes_runtime(tmp_path: Path, monkey
                 },
             )()
 
-    import src.infrastructure.config.model_config_service as model_config_service
     import src.infrastructure.config.assistant_config_service as assistant_config_service
-    import src.infrastructure.config.prompt_template_service as prompt_template_service
     import src.infrastructure.config.folder_service as folder_service
-    import src.infrastructure.config.workflow_config_service as workflow_config_service
-    import src.infrastructure.storage.migration_service as migration_service
-    import src.infrastructure.storage.conversation_storage as conversation_storage
+    import src.infrastructure.config.model_config_service as model_config_service
+    import src.infrastructure.config.prompt_template_service as prompt_template_service
     import src.infrastructure.config.rag_config_service as rag_config_service
+    import src.infrastructure.config.workflow_config_service as workflow_config_service
+    import src.infrastructure.storage.conversation_storage as conversation_storage
+    import src.infrastructure.storage.migration_service as migration_service
 
     monkeypatch.setattr(model_config_service, "ModelConfigService", _ModelConfigService)
     monkeypatch.setattr(assistant_config_service, "AssistantConfigService", _AssistantConfigService)
-    monkeypatch.setattr(prompt_template_service, "PromptTemplateConfigService", _PromptTemplateConfigService)
+    monkeypatch.setattr(
+        prompt_template_service, "PromptTemplateConfigService", _PromptTemplateConfigService
+    )
     monkeypatch.setattr(folder_service, "FolderService", _FolderService)
     monkeypatch.setattr(workflow_config_service, "WorkflowConfigService", _WorkflowConfigService)
     monkeypatch.setattr(
@@ -213,7 +217,11 @@ def test_cli_main_runs_one_turn(monkeypatch, capsys):
     import src.main as cli_main
 
     monkeypatch.setattr(cli_main.uuid, "uuid4", lambda: "session-123")
-    monkeypatch.setattr(cli_main, "call_llm", lambda messages, session_id: f"reply:{messages[-1]['content']}:{session_id}")
+    monkeypatch.setattr(
+        cli_main,
+        "call_llm",
+        lambda messages, session_id: f"reply:{messages[-1]['content']}:{session_id}",
+    )
     answers = iter(["hello", "quit"])
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 

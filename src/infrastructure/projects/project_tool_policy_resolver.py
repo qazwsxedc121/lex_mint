@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterable, List, Optional, Set
+from collections.abc import Iterable
 
 from langchain_core.tools import BaseTool
 
@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 class ProjectToolPolicyResolver:
     """Loads project tool settings and filters request-scoped tool exposure."""
 
-    def __init__(self, *, project_service: Optional[ProjectService] = None):
+    def __init__(self, *, project_service: ProjectService | None = None):
         self.project_service = project_service or ProjectService()
 
     async def get_tool_enabled_map(
         self,
         *,
         context_type: str,
-        project_id: Optional[str],
-    ) -> Dict[str, bool]:
+        project_id: str | None,
+    ) -> dict[str, bool]:
         enabled_map = get_default_project_tool_enabled_map()
         if context_type != "project" or not project_id:
             return enabled_map
@@ -49,23 +49,27 @@ class ProjectToolPolicyResolver:
         self,
         *,
         context_type: str,
-        project_id: Optional[str],
-        candidate_tool_names: Optional[Iterable[str]] = None,
-    ) -> Set[str]:
-        enabled_map = await self.get_tool_enabled_map(context_type=context_type, project_id=project_id)
+        project_id: str | None,
+        candidate_tool_names: Iterable[str] | None = None,
+    ) -> set[str]:
+        enabled_map = await self.get_tool_enabled_map(
+            context_type=context_type, project_id=project_id
+        )
         allowed_names = {name for name, is_enabled in enabled_map.items() if is_enabled}
         if candidate_tool_names is None:
             return allowed_names
-        candidate_set = {str(name or "").strip() for name in candidate_tool_names if str(name or "").strip()}
+        candidate_set = {
+            str(name or "").strip() for name in candidate_tool_names if str(name or "").strip()
+        }
         return allowed_names.intersection(candidate_set)
 
     async def filter_tools(
         self,
         *,
-        tools: List[BaseTool],
+        tools: list[BaseTool],
         context_type: str,
-        project_id: Optional[str],
-    ) -> List[BaseTool]:
+        project_id: str | None,
+    ) -> list[BaseTool]:
         if context_type != "project" or not project_id:
             return tools
 

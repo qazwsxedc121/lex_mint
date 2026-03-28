@@ -1,12 +1,13 @@
 """Tests for project management functionality."""
 
-import pytest
 from pathlib import Path
-from src.infrastructure.config.project_service import ProjectService, ProjectConflictError
-from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
-from src.domain.models.project_config import Project, ProjectCreate
-from src.domain.models.project_config import ProjectWorkspaceItemUpsert
+
+import pytest
+
 from src.core.config import settings
+from src.domain.models.project_config import Project, ProjectWorkspaceItemUpsert
+from src.infrastructure.config.project_service import ProjectConflictError, ProjectService
+from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 
 
 @pytest.fixture
@@ -33,10 +34,10 @@ def test_project_path(tmp_path):
     """Create temporary project directory structure."""
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
-    (project_dir / "file1.txt").write_text("Test content", encoding='utf-8')
+    (project_dir / "file1.txt").write_text("Test content", encoding="utf-8")
     (project_dir / "subdir").mkdir()
-    (project_dir / "subdir" / "file2.py").write_text("print('hello')", encoding='utf-8')
-    (project_dir / ".hidden").write_text("hidden file", encoding='utf-8')
+    (project_dir / "subdir" / "file2.py").write_text("print('hello')", encoding="utf-8")
+    (project_dir / ".hidden").write_text("hidden file", encoding="utf-8")
     return project_dir
 
 
@@ -45,10 +46,8 @@ def test_project_path_2(tmp_path):
     """Create second temporary project directory."""
     project_dir = tmp_path / "test_project_2"
     project_dir.mkdir()
-    (project_dir / "readme.md").write_text("# Test", encoding='utf-8')
+    (project_dir / "readme.md").write_text("# Test", encoding="utf-8")
     return project_dir
-
-
 
 
 class TestProjectBrowseDirectoryCreation:
@@ -66,7 +65,9 @@ class TestProjectBrowseDirectoryCreation:
         assert Path(created.path).exists()
         assert Path(created.path).is_dir()
 
-    def test_create_browse_directory_rejects_path_separator(self, project_service, tmp_path, monkeypatch):
+    def test_create_browse_directory_rejects_path_separator(
+        self, project_service, tmp_path, monkeypatch
+    ):
         browse_root = tmp_path / "browse_root"
         browse_root.mkdir()
         monkeypatch.setattr(settings, "projects_browse_roots", [browse_root])
@@ -74,7 +75,9 @@ class TestProjectBrowseDirectoryCreation:
         with pytest.raises(ValueError, match="path separators"):
             project_service.create_browse_directory(str(browse_root), "foo/bar")
 
-    def test_create_browse_directory_rejects_outside_root(self, project_service, tmp_path, monkeypatch):
+    def test_create_browse_directory_rejects_outside_root(
+        self, project_service, tmp_path, monkeypatch
+    ):
         browse_root = tmp_path / "browse_root"
         outside_root = tmp_path / "outside_root"
         browse_root.mkdir()
@@ -99,6 +102,7 @@ class TestProjectBrowseDirectoryCreation:
 # Phase 2: Project CRUD Tests
 # =============================================================================
 
+
 class TestProjectServiceCRUD:
     """Tests for project CRUD operations."""
 
@@ -115,7 +119,7 @@ class TestProjectServiceCRUD:
             id="test_proj_1",
             name="Test Project",
             root_path=str(test_project_path),
-            description="Test description"
+            description="Test description",
         )
         await project_service.add_project(project)
 
@@ -130,16 +134,8 @@ class TestProjectServiceCRUD:
     async def test_get_projects(self, project_service, test_project_path, test_project_path_2):
         """Test getting all projects."""
         # Add two projects
-        project1 = Project(
-            id="proj_1",
-            name="Project 1",
-            root_path=str(test_project_path)
-        )
-        project2 = Project(
-            id="proj_2",
-            name="Project 2",
-            root_path=str(test_project_path_2)
-        )
+        project1 = Project(id="proj_1", name="Project 1", root_path=str(test_project_path))
+        project2 = Project(id="proj_2", name="Project 2", root_path=str(test_project_path_2))
         await project_service.add_project(project1)
         await project_service.add_project(project2)
 
@@ -153,11 +149,7 @@ class TestProjectServiceCRUD:
     async def test_get_project_by_id(self, project_service, test_project_path):
         """Test getting a single project by ID."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Get by ID
@@ -180,15 +172,13 @@ class TestProjectServiceCRUD:
             id="test_proj",
             name="Original Name",
             root_path=str(test_project_path),
-            description="Original description"
+            description="Original description",
         )
         await project_service.add_project(project)
 
         # Update project
         updated = await project_service.update_project(
-            "test_proj",
-            name="Updated Name",
-            description="Updated description"
+            "test_proj", name="Updated Name", description="Updated description"
         )
         assert updated is not None
         assert updated.name == "Updated Name"
@@ -201,30 +191,24 @@ class TestProjectServiceCRUD:
         assert retrieved.description == "Updated description"
 
     @pytest.mark.asyncio
-    async def test_update_project_path(self, project_service, test_project_path, test_project_path_2):
+    async def test_update_project_path(
+        self, project_service, test_project_path, test_project_path_2
+    ):
         """Test updating project root path."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Update path
         updated = await project_service.update_project(
-            "test_proj",
-            root_path=str(test_project_path_2)
+            "test_proj", root_path=str(test_project_path_2)
         )
         assert updated.root_path == str(test_project_path_2)
 
     @pytest.mark.asyncio
     async def test_update_nonexistent_project(self, project_service):
         """Test updating a project that doesn't exist."""
-        updated = await project_service.update_project(
-            "nonexistent",
-            name="New Name"
-        )
+        updated = await project_service.update_project("nonexistent", name="New Name")
         assert updated is None
 
 
@@ -406,11 +390,7 @@ class TestProjectWorkspaceStateService:
     async def test_delete_project(self, project_service, test_project_path):
         """Test deleting a project."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Delete project
@@ -431,19 +411,11 @@ class TestProjectWorkspaceStateService:
     async def test_duplicate_project_id(self, project_service, test_project_path):
         """Test that adding a project with duplicate ID raises error."""
         # Add first project
-        project1 = Project(
-            id="same_id",
-            name="Project 1",
-            root_path=str(test_project_path)
-        )
+        project1 = Project(id="same_id", name="Project 1", root_path=str(test_project_path))
         await project_service.add_project(project1)
 
         # Try to add second project with same ID
-        project2 = Project(
-            id="same_id",
-            name="Project 2",
-            root_path=str(test_project_path)
-        )
+        project2 = Project(id="same_id", name="Project 2", root_path=str(test_project_path))
         with pytest.raises(ValueError, match="already exists"):
             await project_service.add_project(project2)
 
@@ -459,6 +431,7 @@ class TestProjectWorkspaceStateService:
 # Phase 3: File Tree Tests
 # =============================================================================
 
+
 class TestProjectServiceFileTree:
     """Tests for file tree functionality."""
 
@@ -466,11 +439,7 @@ class TestProjectServiceFileTree:
     async def test_get_file_tree_root(self, project_service, test_project_path):
         """Test getting file tree from project root."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Get file tree
@@ -496,11 +465,7 @@ class TestProjectServiceFileTree:
     async def test_get_file_tree_subdirectory(self, project_service, test_project_path):
         """Test getting file tree from subdirectory."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Get file tree for subdirectory
@@ -523,11 +488,7 @@ class TestProjectServiceFileTree:
         empty_dir.mkdir()
 
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Get file tree
@@ -542,11 +503,7 @@ class TestProjectServiceFileTree:
     async def test_get_file_tree_invalid_path(self, project_service, test_project_path):
         """Test getting file tree with invalid path."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Try to get tree for nonexistent path
@@ -563,11 +520,7 @@ class TestProjectServiceFileTree:
     async def test_file_tree_excludes_hidden_files(self, project_service, test_project_path):
         """Test that hidden files (starting with .) are excluded from tree."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Get file tree
@@ -582,6 +535,7 @@ class TestProjectServiceFileTree:
 # Phase 4: File Reading Tests
 # =============================================================================
 
+
 class TestProjectServiceFileReading:
     """Tests for file reading functionality."""
 
@@ -589,11 +543,7 @@ class TestProjectServiceFileReading:
     async def test_read_text_file(self, project_service, test_project_path):
         """Test reading a text file."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Read file
@@ -611,14 +561,10 @@ class TestProjectServiceFileReading:
         """Test reading UTF-8 encoded file."""
         # Create UTF-8 file
         utf8_file = test_project_path / "utf8.txt"
-        utf8_file.write_text("Hello 世界", encoding='utf-8')
+        utf8_file.write_text("Hello 世界", encoding="utf-8")
 
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Read file
@@ -631,11 +577,7 @@ class TestProjectServiceFileReading:
     async def test_read_file_from_subdirectory(self, project_service, test_project_path):
         """Test reading file from subdirectory."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Read file from subdir
@@ -648,11 +590,7 @@ class TestProjectServiceFileReading:
     async def test_read_nonexistent_file(self, project_service, test_project_path):
         """Test reading a file that doesn't exist."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Try to read nonexistent file
@@ -665,14 +603,10 @@ class TestProjectServiceFileReading:
         # Create large file (11MB > 10MB limit)
         large_file = test_project_path / "large.txt"
         large_content = "x" * (11 * 1024 * 1024)  # 11MB
-        large_file.write_text(large_content, encoding='utf-8')
+        large_file.write_text(large_content, encoding="utf-8")
 
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Try to read large file
@@ -687,11 +621,7 @@ class TestProjectServiceFileReading:
         bin_file.write_bytes(b"\x00\x01\x02\x03")
 
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         file_content = await project_service.read_file("test_proj", "file.exe")
@@ -711,11 +641,7 @@ class TestProjectServiceFileWriting:
 
     @pytest.mark.asyncio
     async def test_write_file_with_expected_hash_success(self, project_service, test_project_path):
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         before = await project_service.read_file("test_proj", "file1.txt")
@@ -734,12 +660,10 @@ class TestProjectServiceFileWriting:
         assert reread.content_hash == updated.content_hash
 
     @pytest.mark.asyncio
-    async def test_write_file_hash_mismatch_raises_conflict(self, project_service, test_project_path):
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+    async def test_write_file_hash_mismatch_raises_conflict(
+        self, project_service, test_project_path
+    ):
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         before = await project_service.read_file("test_proj", "file1.txt")
@@ -765,11 +689,7 @@ class TestProjectServiceTextSearch:
 
     @pytest.mark.asyncio
     async def test_search_project_text_basic(self, project_service, test_project_path):
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         payload = await project_service.search_project_text("test_proj", "hello")
@@ -779,26 +699,20 @@ class TestProjectServiceTextSearch:
 
     @pytest.mark.asyncio
     async def test_search_project_text_invalid_regex(self, project_service, test_project_path):
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         with pytest.raises(ValueError, match="Invalid regex pattern"):
             await project_service.search_project_text("test_proj", "(", use_regex=True)
 
     @pytest.mark.asyncio
-    async def test_search_project_text_respects_max_results(self, project_service, test_project_path):
+    async def test_search_project_text_respects_max_results(
+        self, project_service, test_project_path
+    ):
         repeated_file = test_project_path / "repeated.txt"
         repeated_file.write_text("token\ntoken\ntoken\n", encoding="utf-8")
 
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         payload = await project_service.search_project_text("test_proj", "token", max_results=2)
@@ -806,12 +720,10 @@ class TestProjectServiceTextSearch:
         assert payload["truncated"] is True
 
     @pytest.mark.asyncio
-    async def test_search_project_text_excludes_hidden_files(self, project_service, test_project_path):
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+    async def test_search_project_text_excludes_hidden_files(
+        self, project_service, test_project_path
+    ):
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         payload = await project_service.search_project_text("test_proj", "hidden")
@@ -822,24 +734,17 @@ class TestProjectServiceTextSearch:
 # Phase 4.5: Rename Tests
 # =============================================================================
 
+
 class TestProjectServiceRename:
     """Tests for rename functionality."""
 
     @pytest.mark.asyncio
     async def test_rename_file(self, project_service, test_project_path):
         """Test renaming a file."""
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
-        result = await project_service.rename_path(
-            "test_proj",
-            "file1.txt",
-            "file1_renamed.txt"
-        )
+        result = await project_service.rename_path("test_proj", "file1.txt", "file1_renamed.txt")
 
         assert not (test_project_path / "file1.txt").exists()
         assert (test_project_path / "file1_renamed.txt").exists()
@@ -851,18 +756,10 @@ class TestProjectServiceRename:
     @pytest.mark.asyncio
     async def test_rename_directory(self, project_service, test_project_path):
         """Test renaming a directory."""
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
-        result = await project_service.rename_path(
-            "test_proj",
-            "subdir",
-            "subdir2"
-        )
+        result = await project_service.rename_path("test_proj", "subdir", "subdir2")
 
         assert not (test_project_path / "subdir").exists()
         assert (test_project_path / "subdir2").exists()
@@ -874,42 +771,28 @@ class TestProjectServiceRename:
     @pytest.mark.asyncio
     async def test_rename_rejects_existing_target(self, project_service, test_project_path):
         """Test renaming fails when target already exists."""
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         (test_project_path / "existing.txt").write_text("x", encoding="utf-8")
 
         with pytest.raises(ValueError, match="already exists"):
-            await project_service.rename_path(
-                "test_proj",
-                "file1.txt",
-                "existing.txt"
-            )
+            await project_service.rename_path("test_proj", "file1.txt", "existing.txt")
 
     @pytest.mark.asyncio
     async def test_rename_rejects_missing_parent(self, project_service, test_project_path):
         """Test renaming fails when target parent does not exist."""
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         with pytest.raises(ValueError, match="Parent directory does not exist"):
-            await project_service.rename_path(
-                "test_proj",
-                "file1.txt",
-                "missing_dir/file1.txt"
-            )
+            await project_service.rename_path("test_proj", "file1.txt", "missing_dir/file1.txt")
+
 
 # =============================================================================
 # Phase 5: Security Tests
 # =============================================================================
+
 
 class TestProjectServiceSecurity:
     """Tests for security functionality."""
@@ -918,11 +801,7 @@ class TestProjectServiceSecurity:
     async def test_path_traversal_prevention(self, project_service, test_project_path):
         """Test that path traversal attacks are blocked."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Try various path traversal attempts
@@ -941,11 +820,7 @@ class TestProjectServiceSecurity:
     async def test_hidden_file_access_denied(self, project_service, test_project_path):
         """Test that hidden files cannot be read directly."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Try to read hidden file
@@ -987,11 +862,7 @@ class TestProjectServiceSecurity:
     async def test_validate_path_success(self, project_service, test_project_path):
         """Test _validate_path with valid inputs."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Test empty path (root)
@@ -1019,14 +890,9 @@ class TestProjectServiceSecurity:
     async def test_validate_path_traversal_attack(self, project_service, test_project_path):
         """Test _validate_path blocks path traversal."""
         # Add project
-        project = Project(
-            id="test_proj",
-            name="Test Project",
-            root_path=str(test_project_path)
-        )
+        project = Project(id="test_proj", name="Test Project", root_path=str(test_project_path))
         await project_service.add_project(project)
 
         # Try path traversal
         with pytest.raises(ValueError, match="Invalid path"):
             await project_service._validate_path("test_proj", "../outside.txt")
-

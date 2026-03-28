@@ -140,7 +140,11 @@ async def test_chat_application_service_delegates_single_stream():
         )
     )
 
-    assert events == ["answer", {"type": "sources", "sources": [{"type": "memory"}]}, {"type": "usage"}]
+    assert events == [
+        "answer",
+        {"type": "sources", "sources": [{"type": "memory"}]},
+        {"type": "usage"},
+    ]
     assert len(single.process_message_stream_calls) == 1
     assert single.process_message_stream_calls[0]["user_message"] == "hello"
 
@@ -234,7 +238,11 @@ async def test_chat_application_service_auto_stream_routes_to_single_mode():
 
     events = await _collect(service.process_chat_stream(session_id="s1", user_message="hello"))
 
-    assert events == ["answer", {"type": "sources", "sources": [{"type": "memory"}]}, {"type": "usage"}]
+    assert events == [
+        "answer",
+        {"type": "sources", "sources": [{"type": "memory"}]},
+        {"type": "usage"},
+    ]
     assert len(single.process_message_stream_calls) == 1
 
 

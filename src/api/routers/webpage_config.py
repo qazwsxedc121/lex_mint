@@ -3,10 +3,11 @@ Webpage Config API Router
 
 Provides endpoints for configuring webpage fetch settings.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Optional
+
 import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from src.infrastructure.web.webpage_service import WebpageService
 
@@ -16,13 +17,14 @@ router = APIRouter(prefix="/api/webpage", tags=["webpage"])
 
 class WebpageConfigResponse(BaseModel):
     """Response model for webpage configuration."""
+
     enabled: bool
     max_urls: int
     timeout_seconds: int
     max_bytes: int
     max_content_chars: int
     user_agent: str
-    proxy: Optional[str]
+    proxy: str | None
     trust_env: bool
     diagnostics_enabled: bool
     diagnostics_timeout_seconds: float
@@ -30,16 +32,17 @@ class WebpageConfigResponse(BaseModel):
 
 class WebpageConfigUpdate(BaseModel):
     """Request model for updating webpage configuration."""
-    enabled: Optional[bool] = None
-    max_urls: Optional[int] = Field(None, ge=1, le=10)
-    timeout_seconds: Optional[int] = Field(None, ge=2, le=120)
-    max_bytes: Optional[int] = Field(None, ge=100_000, le=20_000_000)
-    max_content_chars: Optional[int] = Field(None, ge=500, le=200_000)
-    user_agent: Optional[str] = Field(None, min_length=1, max_length=300)
-    proxy: Optional[str] = None
-    trust_env: Optional[bool] = None
-    diagnostics_enabled: Optional[bool] = None
-    diagnostics_timeout_seconds: Optional[float] = Field(None, ge=0.5, le=5.0)
+
+    enabled: bool | None = None
+    max_urls: int | None = Field(None, ge=1, le=10)
+    timeout_seconds: int | None = Field(None, ge=2, le=120)
+    max_bytes: int | None = Field(None, ge=100_000, le=20_000_000)
+    max_content_chars: int | None = Field(None, ge=500, le=200_000)
+    user_agent: str | None = Field(None, min_length=1, max_length=300)
+    proxy: str | None = None
+    trust_env: bool | None = None
+    diagnostics_enabled: bool | None = None
+    diagnostics_timeout_seconds: float | None = Field(None, ge=0.5, le=5.0)
 
 
 def get_webpage_service() -> WebpageService:
@@ -48,9 +51,7 @@ def get_webpage_service() -> WebpageService:
 
 
 @router.get("/config", response_model=WebpageConfigResponse)
-async def get_config(
-    service: WebpageService = Depends(get_webpage_service)
-):
+async def get_config(service: WebpageService = Depends(get_webpage_service)):
     """Get current webpage configuration."""
     try:
         config = service.config
@@ -73,8 +74,7 @@ async def get_config(
 
 @router.put("/config")
 async def update_config(
-    updates: WebpageConfigUpdate,
-    service: WebpageService = Depends(get_webpage_service)
+    updates: WebpageConfigUpdate, service: WebpageService = Depends(get_webpage_service)
 ):
     """Update webpage configuration."""
     try:

@@ -5,18 +5,18 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.tools import BaseTool
 from pydantic import ValidationError
+
+from src.application.chat.source_context_service import SourceContextService
 from src.tools.request_scoped import (
     READ_KNOWLEDGE_TOOL,
     SEARCH_KNOWLEDGE_TOOL,
     ReadKnowledgeArgs,
     SearchKnowledgeArgs,
 )
-
-from src.application.chat.source_context_service import SourceContextService
 
 logger = logging.getLogger(__name__)
 
@@ -32,34 +32,36 @@ class RagToolService:
         self,
         *,
         assistant_id: str,
-        allowed_kb_ids: List[str],
-        runtime_model_id: Optional[str] = None,
-        rag_service: Optional[Any] = None,
-        bm25_service: Optional[Any] = None,
-        sqlite_vec_service: Optional[Any] = None,
+        allowed_kb_ids: list[str],
+        runtime_model_id: str | None = None,
+        rag_service: Any | None = None,
+        bm25_service: Any | None = None,
+        sqlite_vec_service: Any | None = None,
     ):
         from src.infrastructure.retrieval.bm25_service import Bm25Service
         from src.infrastructure.retrieval.rag_service import RagService
         from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
 
         self.assistant_id = assistant_id
-        self.allowed_kb_ids = sorted({str(kb_id).strip() for kb_id in (allowed_kb_ids or []) if str(kb_id).strip()})
+        self.allowed_kb_ids = sorted(
+            {str(kb_id).strip() for kb_id in (allowed_kb_ids or []) if str(kb_id).strip()}
+        )
         self.runtime_model_id = runtime_model_id
         self.rag_service = rag_service or RagService()
         self.bm25_service = bm25_service or Bm25Service()
         self.sqlite_vec_service = sqlite_vec_service or SqliteVecService()
         self.source_context_service = SourceContextService()
 
-        self._citation_to_ref: Dict[str, str] = {}
-        self._ref_to_citation: Dict[str, str] = {}
-        self._search_cache: Dict[str, Dict[str, Any]] = {}
+        self._citation_to_ref: dict[str, str] = {}
+        self._ref_to_citation: dict[str, str] = {}
+        self._search_cache: dict[str, dict[str, Any]] = {}
 
     @staticmethod
-    def _json(data: Dict[str, Any]) -> str:
+    def _json(data: dict[str, Any]) -> str:
         return json.dumps(data, ensure_ascii=False)
 
     def _error(self, code: str, message: str, **extra: Any) -> str:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "ok": False,
             "error": {
                 "code": code,
@@ -87,7 +89,7 @@ class RagToolService:
     def _search_cache_key(normalized_query: str, top_k: int) -> str:
         return f"{normalized_query}|k:{int(top_k)}"
 
-    def _restore_ref_maps_from_hits(self, hits: List[Dict[str, Any]]) -> None:
+    def _restore_ref_maps_from_hits(self, hits: list[dict[str, Any]]) -> None:
         self._citation_to_ref.clear()
         self._ref_to_citation.clear()
         for hit in hits:
@@ -103,7 +105,7 @@ class RagToolService:
         return f"kb:{kb_id}|doc:{doc_id}|chunk:{int(chunk_index)}"
 
     @classmethod
-    def parse_ref_id(cls, ref_id: str) -> Optional[Tuple[str, str, int]]:
+    def parse_ref_id(cls, ref_id: str) -> tuple[str, str, int] | None:
         match = cls._REF_PATTERN.match((ref_id or "").strip())
         if not match:
             return None
@@ -132,7 +134,7 @@ class RagToolService:
         if cached:
             cached_hits = list(cached.get("hits") or [])
             self._restore_ref_maps_from_hits(cached_hits)
-            payload: Dict[str, Any] = {
+            payload: dict[str, Any] = {
                 "ok": True,
                 "query_original": query_text,
                 "query_effective": cached.get("query_effective", query_text),
@@ -158,7 +160,7 @@ class RagToolService:
             logger.warning("search_knowledge failed: %s", e)
             return self._error("RETRIEVAL_FAILED", f"search failed: {e}")
 
-        hits: List[Dict[str, Any]] = []
+        hits: list[dict[str, Any]] = []
         for index, result in enumerate(results[:safe_top_k], start=1):
             ref_id = self.build_ref_id(
                 kb_id=result.kb_id,
@@ -189,7 +191,7 @@ class RagToolService:
             "query_transform_applied": diagnostics.get("query_transform_applied"),
             "rerank_applied": diagnostics.get("rerank_applied"),
         }
-        response_payload: Dict[str, Any] = {
+        response_payload: dict[str, Any] = {
             "ok": True,
             "query_original": query_text,
             "query_effective": diagnostics.get("query_effective", query_text),
@@ -212,9 +214,9 @@ class RagToolService:
 
         return self._json(response_payload)
 
-    def _resolve_refs(self, refs: List[str]) -> Tuple[List[Tuple[str, str]], List[str]]:
-        resolved: List[Tuple[str, str]] = []
-        invalid_refs: List[str] = []
+    def _resolve_refs(self, refs: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
+        resolved: list[tuple[str, str]] = []
+        invalid_refs: list[str] = []
         seen = set()
 
         for raw_ref in refs[: self._MAX_REFS]:
@@ -248,8 +250,8 @@ class RagToolService:
         doc_id: str,
         start_index: int,
         end_index: int,
-    ) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
         try:
             rows = self.bm25_service.list_document_chunks_in_range(
                 kb_id=kb_id,
@@ -278,20 +280,26 @@ class RagToolService:
         return rows
 
     @staticmethod
-    def _pick_content(rows: List[Dict[str, Any]], target_chunk_index: int, neighbor_window: int) -> str:
+    def _pick_content(
+        rows: list[dict[str, Any]], target_chunk_index: int, neighbor_window: int
+    ) -> str:
         if not rows:
             return ""
 
         sorted_rows = sorted(rows, key=lambda row: int(row.get("chunk_index", 0)))
         if neighbor_window <= 0:
             exact = next(
-                (row for row in sorted_rows if int(row.get("chunk_index", -1)) == int(target_chunk_index)),
+                (
+                    row
+                    for row in sorted_rows
+                    if int(row.get("chunk_index", -1)) == int(target_chunk_index)
+                ),
                 None,
             )
             chosen = exact or sorted_rows[0]
             return str(chosen.get("content") or "").strip()
 
-        merged_parts: List[str] = []
+        merged_parts: list[str] = []
         for row in sorted_rows:
             idx = int(row.get("chunk_index", 0))
             content = str(row.get("content") or "").strip()
@@ -303,7 +311,7 @@ class RagToolService:
     async def read_knowledge(
         self,
         *,
-        refs: List[str],
+        refs: list[str],
         max_chars: int = 6000,
         neighbor_window: int = 0,
     ) -> str:
@@ -322,9 +330,9 @@ class RagToolService:
 
         used_chars = 0
         truncated = False
-        missing_refs: List[str] = list(invalid_refs)
-        sources: List[Dict[str, Any]] = []
-        context_sources: List[Dict[str, Any]] = []
+        missing_refs: list[str] = list(invalid_refs)
+        sources: list[dict[str, Any]] = []
+        context_sources: list[dict[str, Any]] = []
         read_index = 1
 
         for citation_id, ref_id in resolved_refs:
@@ -410,7 +418,7 @@ class RagToolService:
             }
         )
 
-    def get_tools(self) -> List[BaseTool]:
+    def get_tools(self) -> list[BaseTool]:
         """Build session-scoped tool schemas for function calling."""
 
         async def _search_knowledge(
@@ -425,7 +433,7 @@ class RagToolService:
             )
 
         async def _read_knowledge(
-            refs: List[str],
+            refs: list[str],
             max_chars: int = 6000,
             neighbor_window: int = 0,
         ) -> str:
@@ -440,7 +448,7 @@ class RagToolService:
             READ_KNOWLEDGE_TOOL.build_tool(coroutine=_read_knowledge),
         ]
 
-    async def execute_tool(self, name: str, args: Dict[str, Any]) -> Optional[str]:
+    async def execute_tool(self, name: str, args: dict[str, Any]) -> str | None:
         """Execute a supported RAG tool by name. Return None if unknown."""
         try:
             if name == "search_knowledge":

@@ -1,14 +1,27 @@
 """Projects API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
 import logging
 import uuid
+
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ..dependencies import get_project_service as get_shared_project_service
-from ..dependencies import (
-    get_project_workspace_state_service as get_shared_project_workspace_state_service,
+from src.domain.models.project_config import (
+    BrowseDirectoryCreate,
+    DirectoryCreate,
+    DirectoryEntry,
+    FileContent,
+    FileCreate,
+    FileNode,
+    FileRename,
+    FileRenameResult,
+    FileWrite,
+    Project,
+    ProjectCreate,
+    ProjectSettings,
+    ProjectUpdate,
+    ProjectWorkspaceItemUpsert,
+    ProjectWorkspaceState,
 )
 from src.infrastructure.config.project_service import ProjectConflictError, ProjectService
 from src.infrastructure.projects.project_document_tool_service import (
@@ -17,24 +30,11 @@ from src.infrastructure.projects.project_document_tool_service import (
     confirm_pending_patch_apply,
 )
 from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
-from src.domain.models.project_config import (
-    Project,
-    ProjectCreate,
-    ProjectSettings,
-    ProjectUpdate,
-    FileNode,
-    FileContent,
-    FileCreate,
-    FileWrite,
-    FileRename,
-    FileRenameResult,
-    DirectoryCreate,
-    DirectoryEntry,
-    BrowseDirectoryCreate,
-    ProjectWorkspaceItemUpsert,
-    ProjectWorkspaceState,
+
+from ..dependencies import get_project_service as get_shared_project_service
+from ..dependencies import (
+    get_project_workspace_state_service as get_shared_project_workspace_state_service,
 )
-from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class ProjectChatApplyDiffResponse(BaseModel):
     content: str
 
 
-@router.get("", response_model=List[Project])
+@router.get("", response_model=list[Project])
 async def list_projects():
     """Get all projects.
 
@@ -77,7 +77,7 @@ async def list_projects():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/browse/roots", response_model=List[DirectoryEntry])
+@router.get("/browse/roots", response_model=list[DirectoryEntry])
 async def list_browse_roots():
     """List allowed root directories for server-side project selection."""
     try:
@@ -88,10 +88,8 @@ async def list_browse_roots():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/browse", response_model=List[DirectoryEntry])
-async def list_directories(
-    path: str = Query(..., description="Absolute directory path on server")
-):
+@router.get("/browse", response_model=list[DirectoryEntry])
+async def list_directories(path: str = Query(..., description="Absolute directory path on server")):
     """List child directories for a server-side path."""
     try:
         service = get_project_service()
@@ -276,7 +274,7 @@ async def add_workspace_state_item(project_id: str, item: ProjectWorkspaceItemUp
 @router.get("/{project_id}/tree", response_model=FileNode)
 async def get_file_tree(
     project_id: str,
-    path: str = Query("", description="Relative path from project root (default: root)")
+    path: str = Query("", description="Relative path from project root (default: root)"),
 ):
     """Get file tree for a project directory.
 
@@ -304,8 +302,7 @@ async def get_file_tree(
 
 @router.get("/{project_id}/files", response_model=FileContent)
 async def read_file(
-    project_id: str,
-    path: str = Query(..., description="Relative path to file from project root")
+    project_id: str, path: str = Query(..., description="Relative path to file from project root")
 ):
     """Read file content from a project.
 
@@ -332,10 +329,7 @@ async def read_file(
 
 
 @router.post("/{project_id}/files", response_model=FileContent, status_code=201)
-async def create_file(
-    project_id: str,
-    file_data: FileCreate
-):
+async def create_file(project_id: str, file_data: FileCreate):
     """Create a new file in a project.
 
     Args:
@@ -351,10 +345,7 @@ async def create_file(
     try:
         service = get_project_service()
         content = await service.create_file(
-            project_id,
-            file_data.path,
-            file_data.content,
-            file_data.encoding
+            project_id, file_data.path, file_data.content, file_data.encoding
         )
         return content
     except ValueError as e:
@@ -366,10 +357,7 @@ async def create_file(
 
 
 @router.post("/{project_id}/directories", response_model=FileNode, status_code=201)
-async def create_directory(
-    project_id: str,
-    directory_data: DirectoryCreate
-):
+async def create_directory(project_id: str, directory_data: DirectoryCreate):
     """Create a new directory in a project.
 
     Args:
@@ -384,10 +372,7 @@ async def create_directory(
     """
     try:
         service = get_project_service()
-        node = await service.create_directory(
-            project_id,
-            directory_data.path
-        )
+        node = await service.create_directory(project_id, directory_data.path)
         return node
     except ValueError as e:
         logger.error(f"Validation error creating directory: {e}")
@@ -398,10 +383,7 @@ async def create_directory(
 
 
 @router.put("/{project_id}/files", response_model=FileContent)
-async def write_file(
-    project_id: str,
-    file_data: FileWrite
-):
+async def write_file(project_id: str, file_data: FileWrite):
     """Write content to a file in a project.
 
     Args:
@@ -482,10 +464,7 @@ async def apply_chat_diff(
 
 
 @router.put("/{project_id}/paths/rename", response_model=FileRenameResult)
-async def rename_path(
-    project_id: str,
-    rename_data: FileRename
-):
+async def rename_path(project_id: str, rename_data: FileRename):
     """Rename or move a file or directory within a project.
 
     Args:
@@ -501,9 +480,7 @@ async def rename_path(
     try:
         service = get_project_service()
         result = await service.rename_path(
-            project_id,
-            rename_data.source_path,
-            rename_data.target_path
+            project_id, rename_data.source_path, rename_data.target_path
         )
         return result
     except ValueError as e:
@@ -516,8 +493,7 @@ async def rename_path(
 
 @router.delete("/{project_id}/files", status_code=204)
 async def delete_file(
-    project_id: str,
-    path: str = Query(..., description="Relative path to file from project root")
+    project_id: str, path: str = Query(..., description="Relative path to file from project root")
 ):
     """Delete a file from a project.
 
@@ -543,7 +519,7 @@ async def delete_file(
 async def delete_directory(
     project_id: str,
     path: str = Query(..., description="Relative path to directory from project root"),
-    recursive: bool = Query(False, description="Delete contents recursively")
+    recursive: bool = Query(False, description="Delete contents recursively"),
 ):
     """Delete a directory from a project.
 
@@ -570,8 +546,8 @@ async def delete_directory(
 async def search_project_files(
     project_id: str,
     query: str = Query(..., description="Search query"),
-    current_file: Optional[str] = Query(None, description="Current file path for proximity"),
-    limit: int = Query(20, ge=1, le=100, description="Max results")
+    current_file: str | None = Query(None, description="Current file path for proximity"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
 ):
     """
     Search project files with proximity-based scoring.
@@ -583,10 +559,7 @@ async def search_project_files(
     try:
         service = get_project_service()
         results = await service.search_files_with_proximity(
-            project_id=project_id,
-            query=query,
-            current_file_path=current_file,
-            limit=limit
+            project_id=project_id, query=query, current_file_path=current_file, limit=limit
         )
         return results
     except Exception as e:
@@ -600,10 +573,12 @@ async def search_project_text(
     query: str = Query(..., description="Text or regex query"),
     case_sensitive: bool = Query(False, description="Enable case-sensitive matching"),
     use_regex: bool = Query(False, description="Treat query as regex pattern"),
-    include_glob: Optional[str] = Query(None, description="Include files by glob pattern"),
-    exclude_glob: Optional[str] = Query(None, description="Exclude files by glob pattern"),
+    include_glob: str | None = Query(None, description="Include files by glob pattern"),
+    exclude_glob: str | None = Query(None, description="Exclude files by glob pattern"),
     max_results: int = Query(30, ge=1, le=200, description="Max number of matches to return"),
-    context_lines: int = Query(0, ge=0, le=3, description="Context lines before and after each match"),
+    context_lines: int = Query(
+        0, ge=0, le=3, description="Context lines before and after each match"
+    ),
     max_chars_per_line: int = Query(300, ge=80, le=1200, description="Max chars per returned line"),
 ):
     """Search text content across project files."""

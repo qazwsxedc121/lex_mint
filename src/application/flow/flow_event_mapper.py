@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
+from typing import Any
 
 from .flow_event_types import (
     ASSISTANT_MESSAGE_IDENTIFIED,
     ASSISTANT_TURN_FINISHED,
     ASSISTANT_TURN_STARTED,
-    COMPRESSION_COMPLETED,
     COMPARE_COMPLETED,
     COMPARE_MODEL_FAILED,
     COMPARE_MODEL_FINISHED,
     COMPARE_MODEL_STARTED,
+    COMPRESSION_COMPLETED,
     CONTEXT_REPORTED,
     FOLLOWUP_QUESTIONS_REPORTED,
     GROUP_ACTION_REPORTED,
@@ -26,15 +27,14 @@ from .flow_event_types import (
     STREAM_STARTED,
     TEXT_DELTA,
     TOOL_CALL_FINISHED,
-    TOOL_DIAGNOSTICS_REPORTED,
     TOOL_CALL_STARTED,
+    TOOL_DIAGNOSTICS_REPORTED,
     USAGE_REPORTED,
     USER_MESSAGE_IDENTIFIED,
 )
 from .flow_events import FlowEventStage, new_flow_event
 
-
-StreamChunk = Union[str, Mapping[str, Any]]
+StreamChunk = str | Mapping[str, Any]
 
 
 @dataclass
@@ -42,20 +42,20 @@ class FlowEventMapper:
     """Attach flow_event envelopes while enforcing known stream event contracts."""
 
     stream_id: str
-    conversation_id: Optional[str] = None
-    default_turn_id: Optional[str] = None
-    seq_provider: Optional[Callable[[], int]] = None
+    conversation_id: str | None = None
+    default_turn_id: str | None = None
+    seq_provider: Callable[[], int] | None = None
     _seq: int = 0
 
-    def to_sse_payload(self, chunk: StreamChunk) -> Dict[str, Any]:
+    def to_sse_payload(self, chunk: StreamChunk) -> dict[str, Any]:
         """Return flow_event-only payload mapped from stream chunk."""
 
         return {"flow_event": self._map_chunk_to_flow_event(chunk)}
 
-    def make_stream_started_payload(self, *, context_type: Optional[str] = None) -> Dict[str, Any]:
+    def make_stream_started_payload(self, *, context_type: str | None = None) -> dict[str, Any]:
         """Build an initial stream-start payload."""
 
-        payload: Dict[str, Any] = {}
+        payload: dict[str, Any] = {}
         if context_type:
             payload["context_type"] = context_type
         flow_event = self._create_event(
@@ -76,9 +76,9 @@ class FlowEventMapper:
         *,
         event_type: str,
         stage: FlowEventStage,
-        payload: Dict[str, Any],
-        turn_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any],
+        turn_id: str | None = None,
+    ) -> dict[str, Any]:
         event = new_flow_event(
             seq=self._next_seq(),
             stream_id=self.stream_id,
@@ -90,7 +90,7 @@ class FlowEventMapper:
         )
         return event.model_dump(exclude_none=True)
 
-    def _map_chunk_to_flow_event(self, chunk: StreamChunk) -> Dict[str, Any]:
+    def _map_chunk_to_flow_event(self, chunk: StreamChunk) -> dict[str, Any]:
         if isinstance(chunk, Mapping):
             payload = dict(chunk)
             if payload.get("done") is True:
@@ -113,7 +113,7 @@ class FlowEventMapper:
             payload={"text": str(chunk)},
         )
 
-    def _map_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+    def _map_event(self, event: dict[str, Any]) -> dict[str, Any]:
         raw_type = event.get("type")
         if isinstance(raw_type, str):
             event_type, stage, payload = self._event_type_to_flow(raw_type, event)
@@ -145,15 +145,15 @@ class FlowEventMapper:
         )
 
     @staticmethod
-    def _extract_turn_id(event: Dict[str, Any]) -> Optional[str]:
+    def _extract_turn_id(event: dict[str, Any]) -> str | None:
         turn_id = event.get("assistant_turn_id")
         if isinstance(turn_id, str) and turn_id:
             return turn_id
         return None
 
     @staticmethod
-    def _copy_selected_fields(event: Dict[str, Any], fields: Tuple[str, ...]) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    def _copy_selected_fields(event: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         for field in fields:
             if field in event:
                 payload[field] = event[field]
@@ -162,8 +162,8 @@ class FlowEventMapper:
     def _event_type_to_flow(
         self,
         event_type: str,
-        event: Dict[str, Any],
-    ) -> Tuple[str, FlowEventStage, Dict[str, Any]]:
+        event: dict[str, Any],
+    ) -> tuple[str, FlowEventStage, dict[str, Any]]:
         if event_type == "assistant_chunk":
             payload = self._copy_selected_fields(
                 event,
@@ -311,6 +311,10 @@ class FlowEventMapper:
             )
             return COMPRESSION_COMPLETED, FlowEventStage.META, payload
 
-        return STREAM_ERROR, FlowEventStage.TRANSPORT, {
-            "error": f"unsupported stream event type: {event_type}",
-        }
+        return (
+            STREAM_ERROR,
+            FlowEventStage.TRANSPORT,
+            {
+                "error": f"unsupported stream event type: {event_type}",
+            },
+        )

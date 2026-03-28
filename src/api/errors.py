@@ -7,18 +7,17 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
 from src.core.errors import (
     AppError,
-    ConflictError,
-    ExternalServiceError,
-    NotFoundError,
-    ValidationError,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def _build_error_response(status_code: int, code: str, message: str, extra: dict[str, Any] | None = None) -> JSONResponse:
+def _build_error_response(
+    status_code: int, code: str, message: str, extra: dict[str, Any] | None = None
+) -> JSONResponse:
     payload: dict[str, Any] = {
         "error": {
             "code": code,

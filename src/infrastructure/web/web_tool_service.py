@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 from urllib.parse import urlparse
-from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import BaseTool
 from pydantic import ValidationError
@@ -29,18 +29,18 @@ class WebToolService:
     def __init__(
         self,
         *,
-        search_service: Optional[Any] = None,
-        webpage_service: Optional[Any] = None,
+        search_service: Any | None = None,
+        webpage_service: Any | None = None,
     ):
         self.search_service = search_service or SearchService()
         self.webpage_service = webpage_service or WebpageService()
 
     @staticmethod
-    def _json(data: Dict[str, Any]) -> str:
+    def _json(data: dict[str, Any]) -> str:
         return json.dumps(data, ensure_ascii=False)
 
     def _error(self, code: str, message: str, **extra: Any) -> str:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "ok": False,
             "error": {
                 "code": code,
@@ -51,7 +51,7 @@ class WebToolService:
         return self._json(payload)
 
     @staticmethod
-    def _normalize_text(value: Any, *, limit: Optional[int] = None) -> str:
+    def _normalize_text(value: Any, *, limit: int | None = None) -> str:
         text = str(value or "")
         text = " ".join(text.split())
         if limit is not None and len(text) > limit:
@@ -92,9 +92,18 @@ class WebToolService:
             return self._error("SEARCH_FAILED", f"{exc}", query=query_text, page=safe_page)
 
         provider = getattr(getattr(self.search_service, "config", None), "provider", "unknown")
-        page_size = max(1, int(getattr(getattr(self.search_service, "config", None), "max_results", len(raw_results) or 1)))
+        page_size = max(
+            1,
+            int(
+                getattr(
+                    getattr(self.search_service, "config", None),
+                    "max_results",
+                    len(raw_results) or 1,
+                )
+            ),
+        )
         offset = max(0, (safe_page - 1) * page_size)
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for index, item in enumerate(raw_results, start=1):
             if hasattr(item, "model_dump"):
                 payload = item.model_dump()
@@ -122,7 +131,9 @@ class WebToolService:
                 "pagination_mode": (
                     "native"
                     if provider == "duckduckgo"
-                    else "simulated" if provider == "tavily" else "unknown"
+                    else "simulated"
+                    if provider == "tavily"
+                    else "unknown"
                 ),
                 "has_results": bool(results),
                 "total_results": len(results),
@@ -143,7 +154,9 @@ class WebToolService:
         if not url_text:
             return self._error("EMPTY_URL", "url must not be empty")
         if not self._is_supported_url(url_text):
-            return self._error("INVALID_URL", "url must be an absolute http or https URL", url=url_text)
+            return self._error(
+                "INVALID_URL", "url must be an absolute http or https URL", url=url_text
+            )
 
         try:
             result = await self.webpage_service.fetch_and_parse(url_text)
@@ -183,7 +196,7 @@ class WebToolService:
             }
         )
 
-    def get_tools(self) -> List[BaseTool]:
+    def get_tools(self) -> list[BaseTool]:
         """Build request-scoped web tools for function calling."""
 
         async def _web_search(query: str, page: int = 1) -> str:
@@ -197,7 +210,7 @@ class WebToolService:
             READ_WEBPAGE_TOOL.build_tool(coroutine=_read_webpage),
         ]
 
-    async def execute_tool(self, name: str, args: Dict[str, Any]) -> Optional[str]:
+    async def execute_tool(self, name: str, args: dict[str, Any]) -> str | None:
         """Execute a supported web tool by name. Return None if unknown."""
         try:
             if name == "web_search":

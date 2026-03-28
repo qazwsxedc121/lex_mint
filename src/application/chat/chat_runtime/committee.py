@@ -2,7 +2,8 @@
 
 import asyncio
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, cast
+from collections.abc import AsyncIterator, Callable
+from typing import Any, Optional, cast
 
 from src.application.orchestration import (
     ActorEmit,
@@ -19,15 +20,14 @@ from .base import (
     BaseChatOrchestrator,
     ChatOrchestrationCancelToken,
     ChatOrchestrationEvent,
-    ChatOrchestrationSettings,
     ChatOrchestrationRequest,
 )
 from .committee_actions import CommitteeActionExecutor, CommitteeRunContext
 from .committee_loop import CommitteeLoopContext, CommitteeLoopStateMachine
+from .committee_types import CommitteeRuntimeConfig, CommitteeRuntimeState
 from .runtime import CommitteeRuntime
 from .settings import ResolvedCommitteeSettings
 from .supervisor import CommitteeSupervisor
-from .committee_types import CommitteeRuntimeConfig, CommitteeRuntimeState
 from .terminal import build_group_done_event
 
 
@@ -40,17 +40,17 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         self,
         *,
         llm_call: Callable[..., str],
-        assistant_params_from_config: Callable[[Any], Dict[str, Any]],
-        stream_group_assistant_turn: Callable[..., AsyncIterator[Dict[str, Any]]],
+        assistant_params_from_config: Callable[[Any], dict[str, Any]],
+        stream_group_assistant_turn: Callable[..., AsyncIterator[dict[str, Any]]],
         get_message_content_by_id: Callable[..., Any],
-        build_structured_turn_summary: Callable[[str], Dict[str, Any]],
-        build_committee_turn_packet: Callable[..., Dict[str, Any]],
-        detect_group_role_drift: Callable[..., Optional[str]],
+        build_structured_turn_summary: Callable[[str], dict[str, Any]],
+        build_committee_turn_packet: Callable[..., dict[str, Any]],
+        detect_group_role_drift: Callable[..., str | None],
         build_role_retry_instruction: Callable[..., str],
-        truncate_log_text: Callable[[Optional[str], int], str],
-        log_group_trace: Callable[[str, str, Dict[str, Any]], None],
+        truncate_log_text: Callable[[str | None, int], str],
+        log_group_trace: Callable[[str, str, dict[str, Any]], None],
         group_trace_preview_chars: int = 1600,
-        orchestration_engine: Optional[OrchestrationEngine] = None,
+        orchestration_engine: OrchestrationEngine | None = None,
     ):
         self.llm_call = llm_call
         self.assistant_params_from_config = assistant_params_from_config
@@ -85,7 +85,7 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         self,
         request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
     ) -> AsyncIterator[ChatOrchestrationEvent]:
         """Mode-agnostic interface used by orchestrator callers."""
         if request.mode and request.mode != self.mode:
@@ -115,7 +115,10 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         context = RunContext(run_id=run_id, max_steps=2)
 
         async for runtime_event in self.orchestration_engine.run_stream(spec, context):
-            if runtime_event.get("type") == "node_event" and runtime_event.get("event_type") == "committee_event":
+            if (
+                runtime_event.get("type") == "node_event"
+                and runtime_event.get("event_type") == "committee_event"
+            ):
                 payload = runtime_event.get("payload") or {}
                 event = payload.get("event") if isinstance(payload, dict) else None
                 if isinstance(event, dict):
@@ -136,7 +139,7 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         *,
         execution_context: ActorExecutionContext,
         request: ChatOrchestrationRequest,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
+        cancel_token: ChatOrchestrationCancelToken | None,
     ) -> AsyncIterator[Any]:
         terminated = False
         rounds = 0
@@ -178,18 +181,18 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         *,
         session_id: str,
         raw_user_message: str,
-        group_assistants: List[str],
+        group_assistants: list[str],
         committee_settings: ResolvedCommitteeSettings,
-        assistant_name_map: Dict[str, str],
-        assistant_config_map: Dict[str, Any],
-        reasoning_effort: Optional[str],
+        assistant_name_map: dict[str, str],
+        assistant_config_map: dict[str, Any],
+        reasoning_effort: str | None,
         context_type: str,
-        project_id: Optional[str],
-        search_context: Optional[str],
-        search_sources: List[Dict[str, Any]],
-        trace_id: Optional[str] = None,
-        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        project_id: str | None,
+        search_context: str | None,
+        search_sources: list[dict[str, Any]],
+        trace_id: str | None = None,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
         participant_order = [
             assistant_id
@@ -261,7 +264,7 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
             trace_id=trace_id,
         )
 
-        supervisor_call_context: Dict[str, Any] = {"round": None}
+        supervisor_call_context: dict[str, Any] = {"round": None}
 
         async def _call_supervisor(system_prompt: str, user_prompt: str) -> str:
             assistant_params = self.assistant_params_from_config(supervisor_obj)
@@ -361,8 +364,8 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
     def _resolve_supervisor(
         self,
         *,
-        participant_order: List[str],
-        assistant_config_map: Dict[str, Any],
+        participant_order: list[str],
+        assistant_config_map: dict[str, Any],
         requested_supervisor_id: str,
     ) -> tuple[str, Any]:
         supervisor_id = requested_supervisor_id
@@ -377,11 +380,11 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
     def _log_committee_start(
         self,
         *,
-        trace_id: Optional[str],
+        trace_id: str | None,
         session_id: str,
         supervisor_id: str,
         supervisor_name: str,
-        participant_order: List[str],
+        participant_order: list[str],
         max_rounds: int,
         committee_settings: ResolvedCommitteeSettings,
         raw_user_message: str,
@@ -416,7 +419,7 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         current_round: int,
         state: CommitteeRuntimeState,
         supervisor: CommitteeSupervisor,
-        supervisor_call_context: Dict[str, Any],
+        supervisor_call_context: dict[str, Any],
         call_supervisor: Callable[[str, str], Any],
     ) -> Any:
         supervisor_call_context["round"] = current_round

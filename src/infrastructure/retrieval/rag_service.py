@@ -4,11 +4,12 @@ RAG Service
 Handles retrieval-augmented generation: query embedding, similarity search,
 result merging, and context formatting.
 """
+
 import asyncio
 import logging
-import hashlib
-from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, cast
 
 from .rag_backend_search import RagBackendSearch
 from .rag_post_processor import RagPostProcessor
@@ -19,14 +20,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RagResult:
     """A single RAG retrieval result"""
+
     content: str
     score: float
     kb_id: str
     doc_id: str
     filename: str
     chunk_index: int
-    rerank_score: Optional[float] = None
-    final_score: Optional[float] = None
+    rerank_score: float | None = None
+    final_score: float | None = None
 
     def to_dict(self):
         data = {
@@ -67,17 +69,22 @@ class RagService:
         retrieval_query_planner_service: Any = None,
     ):
         from src.infrastructure.config.rag_config_service import RagConfigService
-        from src.infrastructure.retrieval.embedding_service import EmbeddingService
-        from src.infrastructure.retrieval.rerank_service import RerankService
         from src.infrastructure.retrieval.bm25_service import Bm25Service
+        from src.infrastructure.retrieval.embedding_service import EmbeddingService
         from src.infrastructure.retrieval.query_transform_service import QueryTransformService
-        from src.infrastructure.retrieval.retrieval_query_planner_service import RetrievalQueryPlannerService
+        from src.infrastructure.retrieval.rerank_service import RerankService
+        from src.infrastructure.retrieval.retrieval_query_planner_service import (
+            RetrievalQueryPlannerService,
+        )
+
         self.rag_config_service = rag_config_service or RagConfigService()
         self.embedding_service = embedding_service or EmbeddingService()
         self.rerank_service = rerank_service or RerankService()
         self.bm25_service = bm25_service or Bm25Service()
         self.query_transform_service = query_transform_service or QueryTransformService()
-        self.retrieval_query_planner_service = retrieval_query_planner_service or RetrievalQueryPlannerService()
+        self.retrieval_query_planner_service = (
+            retrieval_query_planner_service or RetrievalQueryPlannerService()
+        )
         self.result_cls = RagResult
         self.post_processor = RagPostProcessor()
         self.backend_search = RagBackendSearch(self)
@@ -91,7 +98,7 @@ class RagService:
         return backend_search
 
     @staticmethod
-    def _result_identity(result: RagResult) -> Tuple[str, str, int, str]:
+    def _result_identity(result: RagResult) -> tuple[str, str, int, str]:
         """Stable identity key for deduplicating retrieved chunks."""
         return RagPostProcessor.result_identity(result)
 
@@ -101,23 +108,23 @@ class RagService:
         return RagPostProcessor.doc_identity(result)
 
     @staticmethod
-    def _deduplicate_results(results: List[RagResult]) -> List[RagResult]:
+    def _deduplicate_results(results: list[RagResult]) -> list[RagResult]:
         return RagPostProcessor.deduplicate_results(results)
 
     @staticmethod
-    def _apply_doc_diversity(results: List[RagResult], max_per_doc: int) -> List[RagResult]:
+    def _apply_doc_diversity(results: list[RagResult], max_per_doc: int) -> list[RagResult]:
         return RagPostProcessor.apply_doc_diversity(results, max_per_doc)
 
     @staticmethod
-    def _collapse_to_best_per_doc(results: List[RagResult]) -> List[RagResult]:
+    def _collapse_to_best_per_doc(results: list[RagResult]) -> list[RagResult]:
         return RagPostProcessor.collapse_to_best_per_doc(results)
 
     @staticmethod
-    def _long_context_reorder(results: List[RagResult]) -> List[RagResult]:
+    def _long_context_reorder(results: list[RagResult]) -> list[RagResult]:
         return RagPostProcessor.long_context_reorder(results)
 
     @staticmethod
-    def _reorder_results(results: List[RagResult], strategy: str) -> List[RagResult]:
+    def _reorder_results(results: list[RagResult], strategy: str) -> list[RagResult]:
         return RagPostProcessor.reorder_results(results, strategy)
 
     @staticmethod
@@ -146,7 +153,7 @@ class RagService:
     def _is_redundant_neighbor_content(
         *,
         candidate_text: str,
-        accepted_norm_texts: List[str],
+        accepted_norm_texts: list[str],
         coverage_threshold: float,
     ) -> bool:
         candidate_norm = RagService._normalize_overlap_text(candidate_text)
@@ -164,7 +171,10 @@ class RagService:
                 RagService._edge_overlap_chars(candidate_norm, existing),
                 RagService._edge_overlap_chars(existing, candidate_norm),
             )
-            if len(candidate_norm) >= 80 and (overlap / max(1, len(candidate_norm))) >= coverage_threshold:
+            if (
+                len(candidate_norm) >= 80
+                and (overlap / max(1, len(candidate_norm))) >= coverage_threshold
+            ):
                 return True
 
         return False
@@ -172,11 +182,11 @@ class RagService:
     def _expand_with_neighbor_chunks(
         self,
         *,
-        seeds: List[RagResult],
+        seeds: list[RagResult],
         neighbor_window: int,
         neighbor_max_total: int,
         neighbor_dedup_coverage: float,
-    ) -> Tuple[List[RagResult], Dict[str, int]]:
+    ) -> tuple[list[RagResult], dict[str, int]]:
         stats = {
             "neighbor_added_count": 0,
             "neighbor_duplicate_filtered": 0,
@@ -205,13 +215,13 @@ class RagService:
             end_index = int(seed.chunk_index) + neighbor_window
             try:
                 rows = cast(
-                    List[Dict[str, Any]],
+                    list[dict[str, Any]],
                     self.bm25_service.list_document_chunks_in_range(
-                    kb_id=seed.kb_id,
-                    doc_id=seed.doc_id,
-                    start_index=start_index,
-                    end_index=end_index,
-                    limit=max(8, (neighbor_window * 4) + 4),
+                        kb_id=seed.kb_id,
+                        doc_id=seed.doc_id,
+                        start_index=start_index,
+                        end_index=end_index,
+                        limit=max(8, (neighbor_window * 4) + 4),
                     ),
                 )
             except Exception as e:
@@ -240,7 +250,9 @@ class RagService:
 
                 candidate = RagResult(
                     content=str(row.get("content") or ""),
-                    score=max(0.0, float(seed.score) - (0.0001 * abs(row_index - int(seed.chunk_index)))),
+                    score=max(
+                        0.0, float(seed.score) - (0.0001 * abs(row_index - int(seed.chunk_index)))
+                    ),
                     kb_id=str(row.get("kb_id") or seed.kb_id),
                     doc_id=str(row.get("doc_id") or seed.doc_id),
                     filename=str(row.get("filename") or seed.filename),
@@ -268,7 +280,7 @@ class RagService:
         return accepted, stats
 
     @staticmethod
-    def _compute_query_quality_score(diagnostics: Dict[str, Any]) -> float:
+    def _compute_query_quality_score(diagnostics: dict[str, Any]) -> float:
         """Heuristic retrieval quality score for CRAG-style query routing."""
         top_k = max(1, int(diagnostics.get("top_k", 1) or 1))
         selected_count = max(0, int(diagnostics.get("selected_count", 0) or 0))
@@ -280,8 +292,8 @@ class RagService:
 
     @staticmethod
     def _select_better_branch(
-        rewritten: Tuple[List[RagResult], Dict[str, Any]],
-        original: Tuple[List[RagResult], Dict[str, Any]],
+        rewritten: tuple[list[RagResult], dict[str, Any]],
+        original: tuple[list[RagResult], dict[str, Any]],
     ) -> str:
         """Choose branch by retrieval quality; ties prefer original for safety."""
         _, rew_diag = rewritten
@@ -304,13 +316,13 @@ class RagService:
     @staticmethod
     def _fuse_results_rrf(
         *,
-        vector_results: List[RagResult],
-        bm25_results: List[RagResult],
+        vector_results: list[RagResult],
+        bm25_results: list[RagResult],
         vector_weight: float,
         bm25_weight: float,
         rrf_k: int,
         fusion_top_k: int,
-    ) -> List[RagResult]:
+    ) -> list[RagResult]:
         rrf_k = max(1, int(rrf_k))
         fusion_top_k = max(1, int(fusion_top_k))
         vector_weight = max(0.0, float(vector_weight))
@@ -318,9 +330,9 @@ class RagService:
         if vector_weight <= 0 and bm25_weight <= 0:
             vector_weight, bm25_weight = 1.0, 1.0
 
-        fused: Dict[Tuple[str, str, int, str], Dict[str, Any]] = {}
+        fused: dict[tuple[str, str, int, str], dict[str, Any]] = {}
 
-        def _merge_channel(items: List[RagResult], weight: float) -> None:
+        def _merge_channel(items: list[RagResult], weight: float) -> None:
             if weight <= 0:
                 return
             for rank, item in enumerate(items, start=1):
@@ -337,7 +349,7 @@ class RagService:
         _merge_channel(vector_results, vector_weight)
         _merge_channel(bm25_results, bm25_weight)
 
-        merged: List[RagResult] = []
+        merged: list[RagResult] = []
         for row in fused.values():
             base: RagResult = row["item"]
             merged.append(
@@ -355,7 +367,7 @@ class RagService:
         return merged[:fusion_top_k]
 
     @staticmethod
-    def build_rag_diagnostics_source(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+    def build_rag_diagnostics_source(diagnostics: dict[str, Any]) -> dict[str, Any]:
         """Convert diagnostics into a source payload that can be stored and rendered."""
         raw_count = int(diagnostics.get("raw_count", 0) or 0)
         deduped_count = int(diagnostics.get("deduped_count", 0) or 0)
@@ -363,7 +375,9 @@ class RagService:
         selected_count = int(diagnostics.get("selected_count", 0) or 0)
         top_k = int(diagnostics.get("top_k", selected_count) or selected_count)
         recall_k = int(diagnostics.get("recall_k", top_k) or top_k)
-        reorder_strategy = str(diagnostics.get("reorder_strategy", "long_context") or "long_context")
+        reorder_strategy = str(
+            diagnostics.get("reorder_strategy", "long_context") or "long_context"
+        )
         max_per_doc = int(diagnostics.get("max_per_doc", 0) or 0)
         context_neighbor_window = int(diagnostics.get("context_neighbor_window", 0) or 0)
         context_neighbor_max_total = int(diagnostics.get("context_neighbor_max_total", 0) or 0)
@@ -400,8 +414,12 @@ class RagService:
         query_transform_model_id = str(diagnostics.get("query_transform_model_id", "") or "")
         query_original = str(diagnostics.get("query_original", "") or "")
         query_effective = str(diagnostics.get("query_effective", "") or "")
-        query_transform_guard_blocked = bool(diagnostics.get("query_transform_guard_blocked", False))
-        query_transform_guard_reason = str(diagnostics.get("query_transform_guard_reason", "") or "")
+        query_transform_guard_blocked = bool(
+            diagnostics.get("query_transform_guard_blocked", False)
+        )
+        query_transform_guard_reason = str(
+            diagnostics.get("query_transform_guard_reason", "") or ""
+        )
         query_transform_crag_enabled = bool(diagnostics.get("query_transform_crag_enabled", False))
         query_transform_crag_quality_score = float(
             diagnostics.get("query_transform_crag_quality_score", 0.0) or 0.0
@@ -409,9 +427,13 @@ class RagService:
         query_transform_crag_quality_label = str(
             diagnostics.get("query_transform_crag_quality_label", "") or ""
         )
-        query_transform_crag_decision = str(diagnostics.get("query_transform_crag_decision", "") or "")
+        query_transform_crag_decision = str(
+            diagnostics.get("query_transform_crag_decision", "") or ""
+        )
         retrieval_queries = diagnostics.get("retrieval_queries", []) or []
-        retrieval_query_count = int(diagnostics.get("retrieval_query_count", len(retrieval_queries)) or 0)
+        retrieval_query_count = int(
+            diagnostics.get("retrieval_query_count", len(retrieval_queries)) or 0
+        )
         retrieval_query_planner_enabled = bool(
             diagnostics.get("retrieval_query_planner_enabled", False)
         )
@@ -503,7 +525,9 @@ class RagService:
             "rerank_model": rerank_model,
             "tool_search_count": int(diagnostics.get("tool_search_count", 0) or 0),
             "tool_search_unique_count": int(diagnostics.get("tool_search_unique_count", 0) or 0),
-            "tool_search_duplicate_count": int(diagnostics.get("tool_search_duplicate_count", 0) or 0),
+            "tool_search_duplicate_count": int(
+                diagnostics.get("tool_search_duplicate_count", 0) or 0
+            ),
             "tool_read_count": int(diagnostics.get("tool_read_count", 0) or 0),
             "tool_finalize_reason": str(
                 diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
@@ -514,14 +538,14 @@ class RagService:
         self,
         *,
         query: str,
-        candidates: List[RagResult],
+        candidates: list[RagResult],
         rerank_enabled: bool,
         rerank_model: str,
         rerank_base_url: str,
         rerank_api_key: str,
         rerank_timeout_seconds: int,
         rerank_weight: float,
-    ) -> Tuple[List[RagResult], bool]:
+    ) -> tuple[list[RagResult], bool]:
         ranked = list(candidates)
         for item in ranked:
             item.final_score = item.score
@@ -566,11 +590,11 @@ class RagService:
     async def retrieve(
         self,
         query: str,
-        kb_ids: List[str],
-        top_k: Optional[int] = None,
-        score_threshold: Optional[float] = None,
-        runtime_model_id: Optional[str] = None,
-    ) -> List[RagResult]:
+        kb_ids: list[str],
+        top_k: int | None = None,
+        score_threshold: float | None = None,
+        runtime_model_id: str | None = None,
+    ) -> list[RagResult]:
         results, _ = await self.retrieve_with_diagnostics(
             query=query,
             kb_ids=kb_ids,
@@ -583,14 +607,14 @@ class RagService:
     async def retrieve_with_diagnostics(
         self,
         query: str,
-        kb_ids: List[str],
-        top_k: Optional[int] = None,
-        score_threshold: Optional[float] = None,
-        runtime_model_id: Optional[str] = None,
+        kb_ids: list[str],
+        top_k: int | None = None,
+        score_threshold: float | None = None,
+        runtime_model_id: str | None = None,
         _skip_query_transform: bool = False,
         _skip_crag_gate: bool = False,
         _benchmark_strict: bool = False,
-    ) -> Tuple[List[RagResult], Dict[str, Any]]:
+    ) -> tuple[list[RagResult], dict[str, Any]]:
         """
         Retrieve relevant chunks from knowledge bases.
 
@@ -607,9 +631,15 @@ class RagService:
 
         config = self.rag_config_service.config
         effective_top_k = max(1, int(top_k or config.retrieval.top_k))
-        effective_threshold = score_threshold if score_threshold is not None else config.retrieval.score_threshold
-        configured_recall_k = int(getattr(config.retrieval, "recall_k", effective_top_k) or effective_top_k)
-        retrieval_mode = str(getattr(config.retrieval, "retrieval_mode", "vector") or "vector").lower()
+        effective_threshold = (
+            score_threshold if score_threshold is not None else config.retrieval.score_threshold
+        )
+        configured_recall_k = int(
+            getattr(config.retrieval, "recall_k", effective_top_k) or effective_top_k
+        )
+        retrieval_mode = str(
+            getattr(config.retrieval, "retrieval_mode", "vector") or "vector"
+        ).lower()
         if retrieval_mode not in {"vector", "bm25", "hybrid"}:
             retrieval_mode = "vector"
         vector_recall_k = int(
@@ -639,12 +669,16 @@ class RagService:
         vector_weight = float(getattr(config.retrieval, "vector_weight", 1.0) or 0.0)
         bm25_weight = float(getattr(config.retrieval, "bm25_weight", 1.0) or 0.0)
         configured_max_per_doc = int(getattr(config.retrieval, "max_per_doc", 0) or 0)
-        reorder_strategy = str(getattr(config.retrieval, "reorder_strategy", "long_context") or "long_context").lower()
+        reorder_strategy = str(
+            getattr(config.retrieval, "reorder_strategy", "long_context") or "long_context"
+        ).lower()
         if reorder_strategy not in {"none", "long_context"}:
             reorder_strategy = "long_context"
         context_neighbor_window = int(getattr(config.retrieval, "context_neighbor_window", 0) or 0)
         context_neighbor_window = max(0, min(10, context_neighbor_window))
-        context_neighbor_max_total = int(getattr(config.retrieval, "context_neighbor_max_total", 0) or 0)
+        context_neighbor_max_total = int(
+            getattr(config.retrieval, "context_neighbor_max_total", 0) or 0
+        )
         context_neighbor_max_total = max(0, min(200, context_neighbor_max_total))
         context_neighbor_dedup_coverage = float(
             getattr(config.retrieval, "context_neighbor_dedup_coverage", 0.9) or 0.9
@@ -659,9 +693,7 @@ class RagService:
         retrieval_query_planner_max_queries = int(
             getattr(config.retrieval, "retrieval_query_planner_max_queries", 3) or 3
         )
-        retrieval_query_planner_max_queries = max(
-            1, min(8, retrieval_query_planner_max_queries)
-        )
+        retrieval_query_planner_max_queries = max(1, min(8, retrieval_query_planner_max_queries))
         retrieval_query_planner_timeout_seconds = int(
             getattr(config.retrieval, "retrieval_query_planner_timeout_seconds", 4) or 4
         )
@@ -669,10 +701,14 @@ class RagService:
             1, min(30, retrieval_query_planner_timeout_seconds)
         )
         query_transform_enabled = bool(getattr(config.retrieval, "query_transform_enabled", False))
-        query_transform_mode = str(getattr(config.retrieval, "query_transform_mode", "none") or "none").lower()
+        query_transform_mode = str(
+            getattr(config.retrieval, "query_transform_mode", "none") or "none"
+        ).lower()
         if query_transform_mode not in {"none", "rewrite"}:
             query_transform_mode = "none"
-        query_transform_model_id = str(getattr(config.retrieval, "query_transform_model_id", "auto") or "auto")
+        query_transform_model_id = str(
+            getattr(config.retrieval, "query_transform_model_id", "auto") or "auto"
+        )
         query_transform_timeout_seconds = int(
             getattr(config.retrieval, "query_transform_timeout_seconds", 4) or 4
         )
@@ -692,8 +728,12 @@ class RagService:
         query_transform_crag_upper_threshold = float(
             getattr(config.retrieval, "query_transform_crag_upper_threshold", 0.75) or 0.75
         )
-        query_transform_crag_lower_threshold = max(0.0, min(1.0, query_transform_crag_lower_threshold))
-        query_transform_crag_upper_threshold = max(0.0, min(1.0, query_transform_crag_upper_threshold))
+        query_transform_crag_lower_threshold = max(
+            0.0, min(1.0, query_transform_crag_lower_threshold)
+        )
+        query_transform_crag_upper_threshold = max(
+            0.0, min(1.0, query_transform_crag_upper_threshold)
+        )
         if query_transform_crag_lower_threshold >= query_transform_crag_upper_threshold:
             query_transform_crag_lower_threshold = 0.35
             query_transform_crag_upper_threshold = 0.75
@@ -725,7 +765,9 @@ class RagService:
             context_neighbor_window = 0
             context_neighbor_max_total = 0
 
-        vector_backend = str(getattr(config.storage, "vector_store_backend", "chroma") or "chroma").lower()
+        vector_backend = str(
+            getattr(config.storage, "vector_store_backend", "chroma") or "chroma"
+        ).lower()
         if vector_backend not in {"chroma", "sqlite_vec"}:
             vector_backend = "chroma"
         original_query = (query or "").strip()
@@ -737,7 +779,9 @@ class RagService:
         if query_transform_enabled and query_transform_mode != "none" and original_query:
             query_transform_service = getattr(self, "query_transform_service", None)
             if query_transform_service is None:
-                from src.infrastructure.retrieval.query_transform_service import QueryTransformService
+                from src.infrastructure.retrieval.query_transform_service import (
+                    QueryTransformService,
+                )
 
                 query_transform_service = QueryTransformService()
                 self.query_transform_service = query_transform_service
@@ -756,12 +800,18 @@ class RagService:
                 query_transform_applied = bool(transform_result.applied)
                 query_transform_mode = transform_result.mode
                 query_transform_resolved_model = transform_result.resolved_model_id
-                query_transform_guard_blocked = bool(getattr(transform_result, "guard_blocked", False))
-                query_transform_guard_reason = str(getattr(transform_result, "guard_reason", "") or "")
+                query_transform_guard_blocked = bool(
+                    getattr(transform_result, "guard_blocked", False)
+                )
+                query_transform_guard_reason = str(
+                    getattr(transform_result, "guard_reason", "") or ""
+                )
             except Exception as e:
-                logger.warning("Query transform failed in RagService; fallback to original query: %s", e)
+                logger.warning(
+                    "Query transform failed in RagService; fallback to original query: %s", e
+                )
 
-        retrieval_queries: List[str] = [effective_query] if effective_query else []
+        retrieval_queries: list[str] = [effective_query] if effective_query else []
         retrieval_query_planner_applied = False
         retrieval_query_planner_fallback = False
         retrieval_query_planner_reason = "disabled"
@@ -770,7 +820,9 @@ class RagService:
             retrieval_query_planner_reason = "ok"
             planner_service = getattr(self, "retrieval_query_planner_service", None)
             if planner_service is None:
-                from src.infrastructure.retrieval.retrieval_query_planner_service import RetrievalQueryPlannerService
+                from src.infrastructure.retrieval.retrieval_query_planner_service import (
+                    RetrievalQueryPlannerService,
+                )
 
                 planner_service = RetrievalQueryPlannerService()
                 self.retrieval_query_planner_service = planner_service
@@ -805,7 +857,7 @@ class RagService:
             retrieval_query_planner_reason = "empty_query"
 
         # Final sanitization to guarantee at least one retrieval query when possible.
-        dedup_queries: List[str] = []
+        dedup_queries: list[str] = []
         seen_query_keys = set()
         for candidate in retrieval_queries:
             normalized = " ".join(str(candidate or "").split()).strip()
@@ -825,10 +877,7 @@ class RagService:
         if len(short_original_query) > 120:
             short_original_query = f"{short_original_query[:120]}..."
         planner_query_preview = " | ".join(
-            [
-                item if len(item) <= 80 else f"{item[:80]}..."
-                for item in retrieval_queries[:3]
-            ]
+            [item if len(item) <= 80 else f"{item[:80]}..." for item in retrieval_queries[:3]]
         )
         embedding_cfg = config.embedding
         base_url = (embedding_cfg.api_base_url or "").split("?", 1)[0]
@@ -874,14 +923,14 @@ class RagService:
         )
 
         kb_service = KnowledgeBaseService()
-        vector_results: List[RagResult] = []
-        bm25_results: List[RagResult] = []
+        vector_results: list[RagResult] = []
+        bm25_results: list[RagResult] = []
         searched_kb_count = 0
         kb_lookup_tasks = [kb_service.get_knowledge_base(kb_id) for kb_id in kb_ids]
         kb_lookup_results = await asyncio.gather(*kb_lookup_tasks, return_exceptions=True)
 
-        enabled_kbs: List[Tuple[str, Any]] = []
-        for kb_id, kb_lookup in zip(kb_ids, kb_lookup_results):
+        enabled_kbs: list[tuple[str, Any]] = []
+        for kb_id, kb_lookup in zip(kb_ids, kb_lookup_results, strict=True):
             if isinstance(kb_lookup, BaseException):
                 logger.warning(f"RAG lookup failed for KB {kb_id}: {kb_lookup}")
                 continue
@@ -899,9 +948,13 @@ class RagService:
             searched_kb_count += 1
             enabled_kbs.append((kb_id, kb))
 
-        query_embedding_cache: Dict[Tuple[str, str], Sequence[float]] = {}
-        if enabled_kbs and retrieval_mode in {"vector", "hybrid"} and vector_backend == "sqlite_vec":
-            model_cache_targets: Dict[str, Optional[str]] = {}
+        query_embedding_cache: dict[tuple[str, str], Sequence[float]] = {}
+        if (
+            enabled_kbs
+            and retrieval_mode in {"vector", "hybrid"}
+            and vector_backend == "sqlite_vec"
+        ):
+            model_cache_targets: dict[str, str | None] = {}
             for _, kb in enabled_kbs:
                 override_model = getattr(kb, "embedding_model", None)
                 cache_key = (str(override_model).strip() if override_model else "") or "__default__"
@@ -918,8 +971,8 @@ class RagService:
                                 override_model or "default",
                             )
                             continue
-                        query_embedding_cache[(retrieval_query, cache_key)] = embedding_fn.embed_query(
-                            retrieval_query
+                        query_embedding_cache[(retrieval_query, cache_key)] = (
+                            embedding_fn.embed_query(retrieval_query)
                         )
                     except Exception as e:
                         logger.warning(
@@ -929,18 +982,20 @@ class RagService:
                             e,
                         )
 
-        async def _retrieve_single_kb(kb_id: str, kb: Any) -> Tuple[List[RagResult], List[RagResult]]:
-            local_vector_results: List[RagResult] = []
-            local_bm25_results: List[RagResult] = []
+        async def _retrieve_single_kb(
+            kb_id: str, kb: Any
+        ) -> tuple[list[RagResult], list[RagResult]]:
+            local_vector_results: list[RagResult] = []
+            local_bm25_results: list[RagResult] = []
             total_query_count = max(1, len(retrieval_queries))
             for query_index, retrieval_query in enumerate(retrieval_queries, start=1):
-                channel_jobs: List[Tuple[str, Any]] = []
+                channel_jobs: list[tuple[str, Any]] = []
                 query_preview = retrieval_query.replace("\n", " ")
                 if len(query_preview) > 80:
                     query_preview = f"{query_preview[:80]}..."
 
                 if retrieval_mode in {"vector", "hybrid"}:
-                    vector_kwargs: Dict[str, Any] = {
+                    vector_kwargs: dict[str, Any] = {
                         "kb_id": kb_id,
                         "query": retrieval_query,
                         "top_k": vector_recall_k,
@@ -948,11 +1003,15 @@ class RagService:
                         "override_model": kb.embedding_model,
                     }
                     if vector_backend == "sqlite_vec":
-                        cache_key = (str(kb.embedding_model).strip() if kb.embedding_model else "") or "__default__"
+                        cache_key = (
+                            str(kb.embedding_model).strip() if kb.embedding_model else ""
+                        ) or "__default__"
                         cached_embedding = query_embedding_cache.get((retrieval_query, cache_key))
                         if cached_embedding is not None:
                             vector_kwargs["query_embedding"] = cached_embedding
-                    channel_jobs.append(("vector", asyncio.to_thread(self._search_collection, **vector_kwargs)))
+                    channel_jobs.append(
+                        ("vector", asyncio.to_thread(self._search_collection, **vector_kwargs))
+                    )
 
                 if retrieval_mode in {"bm25", "hybrid"}:
                     channel_jobs.append(
@@ -975,7 +1034,7 @@ class RagService:
                     *(job for _, job in channel_jobs),
                     return_exceptions=True,
                 )
-                for (channel, _), payload in zip(channel_jobs, channel_results):
+                for (channel, _), payload in zip(channel_jobs, channel_results, strict=True):
                     if isinstance(payload, BaseException):
                         logger.warning(
                             "RAG %s search failed for KB %s query[%d/%d]='%s': %s",
@@ -1038,11 +1097,13 @@ class RagService:
 
         kb_retrieval_tasks = [_retrieve_single_kb(kb_id, kb) for kb_id, kb in enabled_kbs]
         kb_retrieval_results = await asyncio.gather(*kb_retrieval_tasks, return_exceptions=True)
-        for (kb_id, _), result in zip(enabled_kbs, kb_retrieval_results):
+        for (kb_id, _), result in zip(enabled_kbs, kb_retrieval_results, strict=True):
             if isinstance(result, BaseException):
                 logger.warning(f"RAG search failed for KB {kb_id}: {result}")
                 continue
-            kb_vector_results, kb_bm25_results = cast(Tuple[List[RagResult], List[RagResult]], result)
+            kb_vector_results, kb_bm25_results = cast(
+                tuple[list[RagResult], list[RagResult]], result
+            )
             vector_results.extend(kb_vector_results)
             bm25_results.extend(kb_bm25_results)
 
@@ -1094,9 +1155,7 @@ class RagService:
         reordered_seed_results = self._reorder_results(selected_results, reorder_strategy)
         seed_keys = {self._result_identity(item) for item in selected_results}
         neighbor_results = [
-            item
-            for item in expanded_results
-            if self._result_identity(item) not in seed_keys
+            item for item in expanded_results if self._result_identity(item) not in seed_keys
         ]
         # Keep retrieval ranking anchored on seed hits; neighbors are context-only append.
         reordered_results = self._deduplicate_results(reordered_seed_results + neighbor_results)
@@ -1107,7 +1166,7 @@ class RagService:
             ),
             default=0.0,
         )
-        diagnostics: Dict[str, Any] = {
+        diagnostics: dict[str, Any] = {
             "raw_count": len(vector_results) + len(bm25_results),
             "vector_raw_count": len(vector_results),
             "bm25_raw_count": len(bm25_results),
@@ -1212,7 +1271,9 @@ class RagService:
                 winner = self._select_better_branch(rewritten_branch, original_branch)
                 if quality_label == "incorrect" and winner == "rewrite":
                     # Low-confidence rewrite can still win by retrieval signals.
-                    final_diagnostics["query_transform_crag_decision"] = "keep_rewrite_low_confidence"
+                    final_diagnostics["query_transform_crag_decision"] = (
+                        "keep_rewrite_low_confidence"
+                    )
                 elif winner == "original":
                     final_results, original_diag = original_branch
                     final_diagnostics = dict(original_diag)
@@ -1312,15 +1373,15 @@ class RagService:
         query: str,
         top_k: int,
         score_threshold: float,
-        override_model: Optional[str] = None,
-        query_embedding: Optional[Sequence[float]] = None,
-    ) -> List[RagResult]:
+        override_model: str | None = None,
+        query_embedding: Sequence[float] | None = None,
+    ) -> list[RagResult]:
         backend = str(
             getattr(self.rag_config_service.config.storage, "vector_store_backend", "chroma")
             or "chroma"
         ).lower()
         if backend == "sqlite_vec":
-            sqlite_kwargs: Dict[str, Any] = {
+            sqlite_kwargs: dict[str, Any] = {
                 "kb_id": kb_id,
                 "query": query,
                 "top_k": top_k,
@@ -1344,10 +1405,10 @@ class RagService:
         query: str,
         top_k: int,
         score_threshold: float,
-        override_model: Optional[str] = None,
-    ) -> List[RagResult]:
+        override_model: str | None = None,
+    ) -> list[RagResult]:
         return cast(
-            List[RagResult],
+            list[RagResult],
             self._get_backend_search().search_collection_chroma(
                 kb_id,
                 query,
@@ -1363,11 +1424,11 @@ class RagService:
         query: str,
         top_k: int,
         score_threshold: float,
-        override_model: Optional[str] = None,
-        query_embedding: Optional[Sequence[float]] = None,
-    ) -> List[RagResult]:
+        override_model: str | None = None,
+        query_embedding: Sequence[float] | None = None,
+    ) -> list[RagResult]:
         return cast(
-            List[RagResult],
+            list[RagResult],
             self._get_backend_search().search_collection_sqlite_vec(
                 kb_id,
                 query,
@@ -1385,9 +1446,9 @@ class RagService:
         query: str,
         top_k: int,
         min_term_coverage: float,
-    ) -> List[RagResult]:
+    ) -> list[RagResult]:
         return cast(
-            List[RagResult],
+            list[RagResult],
             self._get_backend_search().search_bm25_collection(
                 kb_id=kb_id,
                 query=query,
@@ -1397,7 +1458,7 @@ class RagService:
         )
 
     @staticmethod
-    def build_rag_context(query: str, results: List[RagResult]) -> str:
+    def build_rag_context(query: str, results: list[RagResult]) -> str:
         """
         Format RAG results as context string for injection into system prompt.
 
@@ -1421,14 +1482,16 @@ class RagService:
             if left_norm in right_norm:
                 return right_text
 
-            overlap = RagService._edge_overlap_chars(left_text, right_text, min_overlap=3, max_overlap=2000)
+            overlap = RagService._edge_overlap_chars(
+                left_text, right_text, min_overlap=3, max_overlap=2000
+            )
             overlap_ratio = overlap / max(1, min(len(left_text), len(right_text)))
             if overlap > 0 and (overlap >= 20 or overlap_ratio >= 0.25):
                 return left_text + right_text[overlap:]
             return f"{left_text}\n\n{right_text}"
 
-        def _build_stitched_segments(items: List[RagResult]) -> List[Dict[str, Any]]:
-            groups: Dict[str, Dict[str, Any]] = {}
+        def _build_stitched_segments(items: list[RagResult]) -> list[dict[str, Any]]:
+            groups: dict[str, dict[str, Any]] = {}
             for rank, item in enumerate(items):
                 key = RagService._doc_identity(item)
                 entry = groups.get(key)
@@ -1444,10 +1507,10 @@ class RagService:
                 entry["items"].append(item)
 
             ordered_groups = sorted(groups.values(), key=lambda row: int(row.get("first_rank", 0)))
-            segments: List[Dict[str, Any]] = []
+            segments: list[dict[str, Any]] = []
             for group in ordered_groups:
                 doc_items = sorted(
-                    list(group.get("items", [])),
+                    group.get("items", []),
                     key=lambda item: int(item.chunk_index),
                 )
                 if not doc_items:

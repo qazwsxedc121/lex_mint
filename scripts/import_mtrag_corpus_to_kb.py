@@ -10,9 +10,9 @@ import re
 import sys
 import time
 import zipfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Set
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -20,9 +20,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts.adapters.mtrag_adapter import sanitize_doc_id, to_mtrag_filename
 from src.domain.models.knowledge_base import KnowledgeBase, KnowledgeBaseDocument
+from src.infrastructure.config.rag_config_service import RagConfigService
 from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
-from src.infrastructure.config.rag_config_service import RagConfigService
 
 
 @dataclass
@@ -42,7 +42,7 @@ class ImportOutcome:
     doc_id: str
     ok: bool
     error: str = ""
-    doc: Optional[KnowledgeBaseDocument] = None
+    doc: KnowledgeBaseDocument | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,12 +64,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--create-kb-if-missing", action="store_true", help="Create KB if missing.")
     parser.add_argument("--max-docs", type=int, default=None, help="Optional cap for this run.")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent processing workers.")
-    parser.add_argument("--skip-existing", action="store_true", default=True, help="Skip already imported docs.")
+    parser.add_argument(
+        "--skip-existing", action="store_true", default=True, help="Skip already imported docs."
+    )
     parser.add_argument("--allow-api-embedding", action="store_true", help="Allow API embeddings.")
-    parser.add_argument("--allow-cpu-embedding", action="store_true", help="Allow non-GPU local embedding.")
+    parser.add_argument(
+        "--allow-cpu-embedding", action="store_true", help="Allow non-GPU local embedding."
+    )
     parser.add_argument("--continue-on-error", action="store_true", help="Continue after errors.")
     parser.add_argument("--progress-every", type=int, default=100, help="Progress log interval.")
-    parser.add_argument("--metadata-flush-size", type=int, default=50, help="Flush metadata every N docs.")
+    parser.add_argument(
+        "--metadata-flush-size", type=int, default=50, help="Flush metadata every N docs."
+    )
     parser.add_argument("--dry-run", action="store_true", help="Plan only.")
     return parser.parse_args()
 
@@ -102,7 +108,7 @@ def _check_embedding_runtime(*, allow_api_embedding: bool, allow_cpu_embedding: 
         n_gpu_layers = int(cfg.local_gguf_n_gpu_layers or 0)
         print(f"[embed] local_gguf_model_path={cfg.local_gguf_model_path}")
         print(f"[embed] local_gguf_n_gpu_layers={n_gpu_layers}")
-        gpu_offload_supported: Optional[bool] = None
+        gpu_offload_supported: bool | None = None
         try:
             import llama_cpp
 
@@ -130,9 +136,9 @@ def _iter_corpus_records(
     corpus_zip: Path,
     *,
     domain: str,
-    max_docs: Optional[int],
-    allowed_ids: Optional[Set[str]] = None,
-) -> Iterator[Dict[str, str]]:
+    max_docs: int | None,
+    allowed_ids: set[str] | None = None,
+) -> Iterator[dict[str, str]]:
     emitted = 0
     safe_limit = None if max_docs is None else max(1, int(max_docs))
     with zipfile.ZipFile(corpus_zip, "r") as zf:
@@ -182,7 +188,7 @@ async def _import_record(
     processor: DocumentProcessingService,
     kb_id: str,
     kb_snapshot: KnowledgeBase,
-    record: Dict[str, str],
+    record: dict[str, str],
 ) -> ImportOutcome:
     doc_id = record["doc_id"]
     filename = record["filename"]
@@ -230,7 +236,7 @@ async def _main() -> None:
     )
     if not corpus_zip.exists():
         raise RuntimeError(f"Corpus zip not found: {corpus_zip}")
-    allowed_ids: Optional[Set[str]] = None
+    allowed_ids: set[str] | None = None
     if args.ids_file is not None:
         if not args.ids_file.exists():
             raise RuntimeError(f"ids file not found: {args.ids_file}")
@@ -262,7 +268,7 @@ async def _main() -> None:
     print(f"[run] domain={domain} workers={workers} metadata_flush_size={metadata_flush_size}")
 
     processor_pool = [DocumentProcessingService() for _ in range(workers)]
-    existing_doc_ids: Set[str] = set()
+    existing_doc_ids: set[str] = set()
     if args.skip_existing:
         existing = await kb_service.get_documents(args.kb_id)
         existing_doc_ids = {str(item.id) for item in existing}
@@ -271,7 +277,7 @@ async def _main() -> None:
     stats = ImportStats()
     pending: set[asyncio.Task[ImportOutcome]] = set()
     worker_cursor = 0
-    ready_doc_buffer: List[KnowledgeBaseDocument] = []
+    ready_doc_buffer: list[KnowledgeBaseDocument] = []
     started_at = time.perf_counter()
 
     async def _flush_ready_docs(*, force: bool = False) -> None:

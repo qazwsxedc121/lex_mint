@@ -171,8 +171,12 @@ def test_build_memory_context_respects_enabled_layers(memory_service, monkeypatc
             }
         ]
 
-    monkeypatch.setattr(memory_service, "_load_instruction_memories", fake_load_instruction_memories)
-    monkeypatch.setattr(memory_service, "search_memories_for_scopes", fake_search_memories_for_scopes)
+    monkeypatch.setattr(
+        memory_service, "_load_instruction_memories", fake_load_instruction_memories
+    )
+    monkeypatch.setattr(
+        memory_service, "search_memories_for_scopes", fake_search_memories_for_scopes
+    )
 
     context, sources = memory_service.build_memory_context(
         query="How should you reply?",

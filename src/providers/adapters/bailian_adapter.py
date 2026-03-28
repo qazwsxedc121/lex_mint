@@ -5,15 +5,17 @@ Adapter for Qwen models via DashScope's OpenAI-compatible API.
 Supports thinking mode, web search, tool calls, and streaming
 through pass-through request parameters.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
+from ..base import BaseLLMAdapter
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .reasoning_openai import ChatReasoningOpenAI
 from .utils import extract_tool_calls
-from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class BailianAdapter(BaseLLMAdapter):
 
     _DEFAULT_TEST_MODEL = "qwen-plus"
 
-    _CURATED_MODELS: List[Dict[str, str]] = [
+    _CURATED_MODELS: list[dict[str, str]] = [
         {"id": "qwen3-max", "name": "Qwen3 Max"},
         {"id": "qwen-max", "name": "Qwen Max"},
         {"id": "qwen3-coder-plus", "name": "Qwen3 Coder Plus"},
@@ -57,11 +59,11 @@ class BailianAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        thinking_budget: Optional[int] = None,
-        **kwargs
+        thinking_budget: int | None = None,
+        **kwargs,
     ) -> ChatReasoningOpenAI:
         """Create ChatReasoningOpenAI client for DashScope OpenAI-compatible endpoint."""
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -75,8 +77,8 @@ class BailianAdapter(BaseLLMAdapter):
             if key in kwargs and kwargs[key] is not None:
                 llm_kwargs[key] = kwargs[key]
 
-        model_kwargs: Dict[str, Any] = {}
-        extra_body: Dict[str, Any] = {}
+        model_kwargs: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
         disable_thinking = bool(kwargs.get("disable_thinking", False))
 
         # DashScope thinking mode.
@@ -91,7 +93,9 @@ class BailianAdapter(BaseLLMAdapter):
                 extra_body["thinking_budget"] = budget
                 logger.info(f"Bailian always-thinking model {model}, budget={budget}")
             else:
-                logger.info(f"Bailian disable_thinking requested for always-thinking model {model}, ignoring")
+                logger.info(
+                    f"Bailian disable_thinking requested for always-thinking model {model}, ignoring"
+                )
         elif disable_thinking:
             extra_body["enable_thinking"] = False
             logger.info(f"Bailian thinking mode disabled for {model}")
@@ -142,10 +146,7 @@ class BailianAdapter(BaseLLMAdapter):
         return ChatReasoningOpenAI(**llm_kwargs)
 
     async def stream(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """Stream DashScope responses, including reasoning and tool-call chunks."""
         usage_data = None
@@ -172,10 +173,7 @@ class BailianAdapter(BaseLLMAdapter):
             )
 
     async def invoke(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> LLMResponse:
         """Invoke DashScope and return normalized full response."""
         response = await llm.ainvoke(messages)
@@ -203,7 +201,7 @@ class BailianAdapter(BaseLLMAdapter):
         """Qwen3 hybrid thinking models support enable_thinking."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         DashScope thinking mode uses enable_thinking + thinking_budget.
 
@@ -229,11 +227,7 @@ class BailianAdapter(BaseLLMAdapter):
             "thinking_budget": budget,
         }
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from DashScope /models endpoint.
 
@@ -247,8 +241,7 @@ class BailianAdapter(BaseLLMAdapter):
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
-                    models_url,
-                    headers={"Authorization": f"Bearer {api_key}"}
+                    models_url, headers={"Authorization": f"Bearer {api_key}"}
                 )
                 response.raise_for_status()
 
@@ -257,10 +250,12 @@ class BailianAdapter(BaseLLMAdapter):
                 for model in data.get("data", []):
                     model_id = model.get("id", "")
                     if model_id:
-                        models.append({
-                            "id": model_id,
-                            "name": model.get("name", model_id),
-                        })
+                        models.append(
+                            {
+                                "id": model_id,
+                                "name": model.get("name", model_id),
+                            }
+                        )
 
                 if models:
                     return sorted(models, key=lambda x: x["id"])

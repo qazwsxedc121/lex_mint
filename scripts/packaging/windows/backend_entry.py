@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
-from dotenv import load_dotenv
 import uvicorn
+from dotenv import load_dotenv
 
 
 def _runtime_root() -> Path:

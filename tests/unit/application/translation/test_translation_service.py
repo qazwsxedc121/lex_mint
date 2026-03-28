@@ -1,8 +1,8 @@
 """Unit tests for TranslationService language routing helpers."""
 
-from src.infrastructure.llm.language_detection_service import LanguageDetectionService
-from src.infrastructure.config.translation_config_service import TranslationConfig
 from src.application.translation.translation_service import TranslationService
+from src.infrastructure.config.translation_config_service import TranslationConfig
+from src.infrastructure.llm.language_detection_service import LanguageDetectionService
 
 
 def _build_config(
@@ -40,10 +40,8 @@ def test_detect_language_returns_en_for_english_text():
 
 def test_detect_language_returns_zh_for_chinese_text():
     detected, _, _ = LanguageDetectionService.detect_language(
-        (
-            "\u8fd9\u662f\u4e00\u6bb5\u9700\u8981\u8bc6\u522b\u8bed\u8a00"
-            "\u7684\u4e2d\u6587\u5185\u5bb9\u3002"
-        )
+        "\u8fd9\u662f\u4e00\u6bb5\u9700\u8981\u8bc6\u522b\u8bed\u8a00"
+        "\u7684\u4e2d\u6587\u5185\u5bb9\u3002"
     )
     assert LanguageDetectionService.normalize_language_hint(detected) == "zh"
 

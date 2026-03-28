@@ -6,7 +6,8 @@ import asyncio
 import logging
 import re
 import uuid
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
 
@@ -27,14 +28,16 @@ class CommitteeTurnExecutor:
         pricing_service: Any,
         memory_service: Any,
         file_service: Any,
-        assistant_params_from_config: Callable[[Any], Dict[str, Any]],
-        build_group_history_hint: Callable[[List[Dict[str, Any]], str, Dict[str, str]], str],
-        build_group_identity_prompt: Callable[[str, str, List[str], Dict[str, str]], str],
-        build_group_instruction_prompt: Callable[[Optional[str], Optional[Dict[str, Any]]], Optional[str]],
-        build_rag_context_and_sources: Callable[..., Awaitable[Tuple[Optional[str], List[Dict[str, Any]]]]],
-        truncate_log_text: Callable[[Optional[str], int], str],
-        build_messages_preview_for_log: Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]],
-        log_group_trace: Callable[[str, str, Dict[str, Any]], None],
+        assistant_params_from_config: Callable[[Any], dict[str, Any]],
+        build_group_history_hint: Callable[[list[dict[str, Any]], str, dict[str, str]], str],
+        build_group_identity_prompt: Callable[[str, str, list[str], dict[str, str]], str],
+        build_group_instruction_prompt: Callable[[str | None, dict[str, Any] | None], str | None],
+        build_rag_context_and_sources: Callable[
+            ..., Awaitable[tuple[str | None, list[dict[str, Any]]]]
+        ],
+        truncate_log_text: Callable[[str | None, int], str],
+        build_messages_preview_for_log: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+        log_group_trace: Callable[[str, str, dict[str, Any]], None],
         group_trace_preview_chars: int = 1600,
     ):
         self.storage = storage
@@ -65,9 +68,9 @@ class CommitteeTurnExecutor:
         )
 
     @staticmethod
-    def extract_bullet_items(text: str, *, limit: int = 5) -> List[str]:
+    def extract_bullet_items(text: str, *, limit: int = 5) -> list[str]:
         """Extract concise bullet-like items from free-form text."""
-        items: List[str] = []
+        items: list[str] = []
         seen = set()
         for raw_line in (text or "").splitlines():
             line = raw_line.strip()
@@ -95,15 +98,15 @@ class CommitteeTurnExecutor:
     def extract_keyword_sentences(
         text: str,
         *,
-        keywords: List[str],
+        keywords: list[str],
         limit: int = 4,
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract short sentences containing any keyword."""
         if not text:
             return []
         normalized = re.sub(r"\s+", " ", text)
         sentences = re.split(r"(?<=[.!?。！？])\s+", normalized)
-        results: List[str] = []
+        results: list[str] = []
         seen = set()
         for sentence in sentences:
             s = sentence.strip()
@@ -122,7 +125,7 @@ class CommitteeTurnExecutor:
         return results
 
     @staticmethod
-    def build_structured_turn_summary(content: str) -> Dict[str, Any]:
+    def build_structured_turn_summary(content: str) -> dict[str, Any]:
         """Build lightweight structured summary from assistant natural-language output."""
         key_points = CommitteeTurnExecutor.extract_bullet_items(content, limit=5)
         if not key_points:
@@ -183,12 +186,12 @@ class CommitteeTurnExecutor:
         *,
         state: CommitteeRuntimeState,
         target_assistant_id: str,
-        assistant_name_map: Dict[str, str],
-        instruction: Optional[str],
-    ) -> Dict[str, Any]:
+        assistant_name_map: dict[str, str],
+        instruction: str | None,
+    ) -> dict[str, Any]:
         """Build structured per-turn packet used as internal context for committee members."""
         recent_turns = state.turns[-6:]
-        shared_turns: List[Dict[str, Any]] = []
+        shared_turns: list[dict[str, Any]] = []
         for turn in recent_turns:
             shared_turns.append(
                 {
@@ -226,7 +229,8 @@ class CommitteeTurnExecutor:
                 "recent_self_summaries": self_summaries,
             },
             "task": {
-                "instruction": instruction or "Provide your best contribution for the user request.",
+                "instruction": instruction
+                or "Provide your best contribution for the user request.",
             },
             "constraints": {
                 "output_mode": "natural_language",
@@ -246,14 +250,14 @@ class CommitteeTurnExecutor:
         content: str,
         expected_assistant_id: str,
         expected_assistant_name: str,
-        participant_name_map: Dict[str, str],
-    ) -> Optional[str]:
+        participant_name_map: dict[str, str],
+    ) -> str | None:
         """Detect obvious cases where a speaker claims another participant identity."""
         head = (content or "")[:200]
         if not head:
             return None
 
-        participant_tokens: Dict[str, set] = {}
+        participant_tokens: dict[str, set] = {}
         for participant_id, participant_name in participant_name_map.items():
             participant_tokens[participant_id] = {
                 CommitteeTurnExecutor.normalize_identity_token(participant_id),
@@ -274,7 +278,9 @@ class CommitteeTurnExecutor:
         for pattern in patterns:
             match = re.search(pattern, head, re.IGNORECASE)
             if match:
-                candidate_token = CommitteeTurnExecutor.normalize_identity_token(match.group(1).strip())
+                candidate_token = CommitteeTurnExecutor.normalize_identity_token(
+                    match.group(1).strip()
+                )
                 if not candidate_token:
                     continue
                 if candidate_token in expected_tokens:
@@ -287,7 +293,7 @@ class CommitteeTurnExecutor:
     @staticmethod
     def build_role_retry_instruction(
         *,
-        base_instruction: Optional[str],
+        base_instruction: str | None,
         expected_assistant_name: str,
     ) -> str:
         correction = (
@@ -304,9 +310,9 @@ class CommitteeTurnExecutor:
         self,
         *,
         session_id: str,
-        message_id: Optional[str],
+        message_id: str | None,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> str:
         """Read one message content from session state by message_id."""
         if not message_id:
@@ -328,20 +334,20 @@ class CommitteeTurnExecutor:
         session_id: str,
         assistant_id: str,
         assistant_obj: Any,
-        group_assistants: List[str],
-        assistant_name_map: Dict[str, str],
+        group_assistants: list[str],
+        assistant_name_map: dict[str, str],
         raw_user_message: str,
-        reasoning_effort: Optional[str],
+        reasoning_effort: str | None,
         context_type: str,
-        project_id: Optional[str],
-        search_context: Optional[str],
-        search_sources: List[Dict[str, Any]],
-        instruction: Optional[str] = None,
-        committee_turn_packet: Optional[Dict[str, Any]] = None,
-        trace_id: Optional[str] = None,
-        trace_round: Optional[int] = None,
-        trace_mode: Optional[str] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        project_id: str | None,
+        search_context: str | None,
+        search_sources: list[dict[str, Any]],
+        instruction: str | None = None,
+        committee_turn_packet: dict[str, Any] | None = None,
+        trace_id: str | None = None,
+        trace_round: int | None = None,
+        trace_mode: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Execute one assistant turn in group mode and stream structured events."""
         assistant_turn_id = str(uuid.uuid4())
         turn_context = await self._context_builder.build(
@@ -378,7 +384,9 @@ class CommitteeTurnExecutor:
                     "assistant_name": turn_context.assistant_name,
                     "assistant_turn_id": assistant_turn_id,
                     "model_id": turn_context.model_id,
-                    "instruction": self.truncate_log_text(instruction, self.group_trace_preview_chars),
+                    "instruction": self.truncate_log_text(
+                        instruction, self.group_trace_preview_chars
+                    ),
                     "identity_prompt": self.truncate_log_text(
                         turn_context.identity_prompt, self.group_trace_preview_chars
                     ),
@@ -453,7 +461,9 @@ class CommitteeTurnExecutor:
                     "response_preview": self.truncate_log_text(
                         stream_state.full_response, self.group_trace_preview_chars
                     ),
-                    "usage": stream_state.usage_data.model_dump() if stream_state.usage_data else None,
+                    "usage": stream_state.usage_data.model_dump()
+                    if stream_state.usage_data
+                    else None,
                     "cost": stream_state.cost_data.model_dump() if stream_state.cost_data else None,
                 },
             )

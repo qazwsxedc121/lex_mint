@@ -3,26 +3,26 @@ Title Generation Service
 
 Automatically generates conversation titles using a small LLM model.
 """
+
 import asyncio
 import logging
-from pathlib import Path
-from typing import Dict, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
-from src.infrastructure.storage.conversation_storage import ConversationStorage
+from src.core.paths import (
+    config_defaults_dir,
+    config_local_dir,
+    ensure_local_file,
+)
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.yaml_config_utils import (
     load_default_yaml_section,
     load_layered_yaml_section,
     save_yaml_section_updates,
 )
-from src.core.paths import (
-    config_defaults_dir,
-    config_local_dir,
-    ensure_local_file,
-)
+from src.infrastructure.storage.conversation_storage import ConversationStorage
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ def _response_content_to_text(content: object) -> str:
 @dataclass
 class TitleGenerationConfig:
     """Configuration for title generation"""
+
     enabled: bool
     trigger_threshold: int
     model_id: str
@@ -58,9 +59,9 @@ class TitleGenerationConfig:
 class TitleGenerationService:
     """Service for automatic title generation"""
 
-    def __init__(self, storage: ConversationStorage, config_path: Optional[str] = None):
+    def __init__(self, storage: ConversationStorage, config_path: str | None = None):
         self.storage = storage
-        self.defaults_path: Optional[Path] = config_defaults_dir() / "title_generation_config.yaml"
+        self.defaults_path: Path | None = config_defaults_dir() / "title_generation_config.yaml"
 
         if config_path is None:
             self.config_path = config_local_dir() / "title_generation_config.yaml"
@@ -70,43 +71,53 @@ class TitleGenerationService:
         ensure_local_file(
             local_path=self.config_path,
             defaults_path=self.defaults_path,
-            initial_text=yaml.safe_dump({"title_generation": {}}, allow_unicode=True, sort_keys=False),
+            initial_text=yaml.safe_dump(
+                {"title_generation": {}}, allow_unicode=True, sort_keys=False
+            ),
         )
         self.config = self._load_config()
 
-    def _load_default_section(self) -> Dict:
+    def _load_default_section(self) -> dict:
         """Load fallback defaults from the repo default config file."""
-        return load_default_yaml_section(self.defaults_path, 'title_generation')
+        return load_default_yaml_section(self.defaults_path, "title_generation")
 
     def _load_config(self) -> TitleGenerationConfig:
         """Load configuration from YAML file"""
         default_config, config_data = load_layered_yaml_section(
             config_path=self.config_path,
             defaults_path=self.defaults_path,
-            section_name='title_generation',
+            section_name="title_generation",
             logger=logger,
-            error_label='title generation config',
+            error_label="title generation config",
         )
 
         return TitleGenerationConfig(
-            enabled=config_data.get('enabled', default_config.get('enabled', True)),
-            trigger_threshold=config_data.get('trigger_threshold', default_config.get('trigger_threshold', 1)),
-            model_id=config_data.get('model_id', default_config.get('model_id', '')),
-            prompt_template=config_data.get('prompt_template', default_config.get('prompt_template', '')),
-            max_context_rounds=config_data.get('max_context_rounds', default_config.get('max_context_rounds', 3)),
-            timeout_seconds=config_data.get('timeout_seconds', default_config.get('timeout_seconds', 10)),
+            enabled=config_data.get("enabled", default_config.get("enabled", True)),
+            trigger_threshold=config_data.get(
+                "trigger_threshold", default_config.get("trigger_threshold", 1)
+            ),
+            model_id=config_data.get("model_id", default_config.get("model_id", "")),
+            prompt_template=config_data.get(
+                "prompt_template", default_config.get("prompt_template", "")
+            ),
+            max_context_rounds=config_data.get(
+                "max_context_rounds", default_config.get("max_context_rounds", 3)
+            ),
+            timeout_seconds=config_data.get(
+                "timeout_seconds", default_config.get("timeout_seconds", 10)
+            ),
         )
 
     def reload_config(self):
         """Reload configuration from file"""
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict):
+    def save_config(self, updates: dict):
         """Save updated configuration to file"""
         try:
             save_yaml_section_updates(
                 config_path=self.config_path,
-                section_name='title_generation',
+                section_name="title_generation",
                 updates=updates,
             )
             self.reload_config()
@@ -145,7 +156,7 @@ class TitleGenerationService:
 
         return conversation_rounds >= self.config.trigger_threshold
 
-    async def generate_title_async(self, session_id: str) -> Optional[str]:
+    async def generate_title_async(self, session_id: str) -> str | None:
         """
         Generate title asynchronously in background
 
@@ -164,7 +175,7 @@ class TitleGenerationService:
                 logger.error(f"[TitleGen] Session {session_id} not found")
                 return None
 
-            messages = session['state']['messages']
+            messages = session["state"]["messages"]
             if not messages:
                 logger.error(f"[TitleGen] No messages in session {session_id}")
                 return None
@@ -176,11 +187,11 @@ class TitleGenerationService:
             # Build conversation text
             conversation_lines = []
             for msg in recent_messages:
-                role = msg.get('type', msg.get('role', 'unknown'))
-                content = msg.get('content', '')
-                if role == 'human':
+                role = msg.get("type", msg.get("role", "unknown"))
+                content = msg.get("content", "")
+                if role == "human":
                     conversation_lines.append(f"User: {content}")
-                elif role == 'assistant':
+                elif role == "assistant":
                     conversation_lines.append(f"Assistant: {content}")
 
             conversation_text = "\n".join(conversation_lines)
@@ -195,8 +206,7 @@ class TitleGenerationService:
             # Call model with timeout
             logger.info(f"[TitleGen] Calling model {self.config.model_id}")
             response = await asyncio.wait_for(
-                model_instance.ainvoke(prompt),
-                timeout=self.config.timeout_seconds
+                model_instance.ainvoke(prompt), timeout=self.config.timeout_seconds
             )
 
             # Extract and clean title
@@ -219,7 +229,7 @@ class TitleGenerationService:
             logger.info(f"[TitleGen] Generated title: {title}")
 
             # Update session metadata
-            await self.storage.update_session_metadata(session_id, {'title': title})
+            await self.storage.update_session_metadata(session_id, {"title": title})
 
             logger.info(f"[TitleGen] Title updated successfully for session {session_id}")
             return title

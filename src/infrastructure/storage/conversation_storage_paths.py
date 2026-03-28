@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 import frontmatter
 
@@ -14,12 +14,14 @@ class StoragePathResolver:
     def __init__(
         self,
         conversations_dir: Path,
-        project_root_resolver: Optional[Callable[[str], Optional[str]]] = None,
+        project_root_resolver: Callable[[str], str | None] | None = None,
     ):
         self.conversations_dir = Path(conversations_dir)
         self.project_root_resolver = project_root_resolver
 
-    def get_conversation_dir(self, context_type: str = "chat", project_id: Optional[str] = None) -> Path:
+    def get_conversation_dir(
+        self, context_type: str = "chat", project_id: str | None = None
+    ) -> Path:
         if context_type not in ["chat", "project"]:
             raise ValueError(f"Invalid context_type: {context_type}. Must be 'chat' or 'project'")
 
@@ -37,21 +39,23 @@ class StoragePathResolver:
             root_path = self.project_root_resolver(project_id)
             if root_path:
                 return Path(root_path) / ".lex_mint" / "conversations"
-        raise ValueError(f"Project '{project_id}' not found or project root resolver not configured")
+        raise ValueError(
+            f"Project '{project_id}' not found or project root resolver not configured"
+        )
 
     async def find_session_file(
         self,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Optional[Path]:
+        project_id: str | None = None,
+    ) -> Path | None:
         search_dir = self.get_conversation_dir(context_type, project_id)
         if not search_dir.exists():
             return None
 
         for filepath in search_dir.glob(f"*_{session_id[:8]}.md"):
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     post = frontmatter.load(f)
                 if post.metadata.get("session_id") == session_id:
                     return filepath
@@ -60,7 +64,7 @@ class StoragePathResolver:
 
         for filepath in search_dir.glob("*.md"):
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     post = frontmatter.load(f)
                 if post.metadata.get("session_id") == session_id:
                     return filepath
@@ -70,10 +74,10 @@ class StoragePathResolver:
         return None
 
 
-def build_project_root_resolver(project_service: object) -> Callable[[str], Optional[str]]:
+def build_project_root_resolver(project_service: object) -> Callable[[str], str | None]:
     """Build a sync project root resolver from ProjectService-like objects."""
 
-    def resolve_project_root(project_id: str) -> Optional[str]:
+    def resolve_project_root(project_id: str) -> str | None:
         resolver = getattr(project_service, "resolve_project_root", None)
         if callable(resolver):
             resolved_path = resolver(project_id)

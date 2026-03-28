@@ -1,9 +1,10 @@
 """
 Prompt template management API endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+
 import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.domain.models.prompt_template import (
     PromptTemplate,
@@ -19,15 +20,16 @@ def get_prompt_template_service() -> PromptTemplateConfigService:
     return PromptTemplateConfigService()
 
 
-@router.get("", response_model=List[PromptTemplate])
-async def list_prompt_templates(service: PromptTemplateConfigService = Depends(get_prompt_template_service)):
+@router.get("", response_model=list[PromptTemplate])
+async def list_prompt_templates(
+    service: PromptTemplateConfigService = Depends(get_prompt_template_service),
+):
     return await service.get_templates()
 
 
 @router.get("/{template_id}", response_model=PromptTemplate)
 async def get_prompt_template(
-    template_id: str,
-    service: PromptTemplateConfigService = Depends(get_prompt_template_service)
+    template_id: str, service: PromptTemplateConfigService = Depends(get_prompt_template_service)
 ):
     template = await service.get_template(template_id)
     if not template:
@@ -38,7 +40,7 @@ async def get_prompt_template(
 @router.post("", status_code=201)
 async def create_prompt_template(
     template_data: PromptTemplateCreate,
-    service: PromptTemplateConfigService = Depends(get_prompt_template_service)
+    service: PromptTemplateConfigService = Depends(get_prompt_template_service),
 ):
     try:
         template_id = template_data.id or str(uuid.uuid4())
@@ -55,7 +57,7 @@ async def create_prompt_template(
 async def update_prompt_template(
     template_id: str,
     template_update: PromptTemplateUpdate,
-    service: PromptTemplateConfigService = Depends(get_prompt_template_service)
+    service: PromptTemplateConfigService = Depends(get_prompt_template_service),
 ):
     try:
         existing = await service.get_template(template_id)
@@ -76,8 +78,7 @@ async def update_prompt_template(
 
 @router.delete("/{template_id}")
 async def delete_prompt_template(
-    template_id: str,
-    service: PromptTemplateConfigService = Depends(get_prompt_template_service)
+    template_id: str, service: PromptTemplateConfigService = Depends(get_prompt_template_service)
 ):
     try:
         await service.delete_template(template_id)

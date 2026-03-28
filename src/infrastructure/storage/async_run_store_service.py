@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import List, Optional
 
 import aiofiles
 
-from src.domain.models.async_run import AsyncRunRecord, RunKind, RunStatus
 from src.core.paths import data_state_dir
+from src.domain.models.async_run import AsyncRunRecord, RunKind, RunStatus
 
 
 class AsyncRunStoreService:
@@ -19,7 +18,7 @@ class AsyncRunStoreService:
     _lock = asyncio.Lock()
     _replace_retry_delays = (0.02, 0.05, 0.1)
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, base_dir: Path | None = None):
         self.base_dir = Path(base_dir or (data_state_dir() / "async_runs"))
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -36,13 +35,13 @@ class AsyncRunStoreService:
                 await f.write(json.dumps(payload, ensure_ascii=False, indent=2))
             await self._replace_with_retry(temp_path, path)
 
-    async def get_run(self, run_id: str) -> Optional[AsyncRunRecord]:
+    async def get_run(self, run_id: str) -> AsyncRunRecord | None:
         """Return one run by id."""
         path = self._path_for_run(run_id)
         async with self._lock:
             if not path.exists():
                 return None
-            async with aiofiles.open(path, "r", encoding="utf-8") as f:
+            async with aiofiles.open(path, encoding="utf-8") as f:
                 content = await f.read()
             if not content.strip():
                 return None
@@ -53,16 +52,16 @@ class AsyncRunStoreService:
         self,
         *,
         limit: int = 50,
-        kind: Optional[RunKind] = None,
-        status: Optional[RunStatus] = None,
-        context_type: Optional[str] = None,
-        project_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        workflow_id: Optional[str] = None,
-    ) -> List[AsyncRunRecord]:
+        kind: RunKind | None = None,
+        status: RunStatus | None = None,
+        context_type: str | None = None,
+        project_id: str | None = None,
+        session_id: str | None = None,
+        workflow_id: str | None = None,
+    ) -> list[AsyncRunRecord]:
         """List runs ordered by updated_at descending."""
         safe_limit = max(1, min(int(limit), 200))
-        records: List[AsyncRunRecord] = []
+        records: list[AsyncRunRecord] = []
         async with self._lock:
             for path in sorted(
                 self.base_dir.glob("run_*.json"),
@@ -70,7 +69,7 @@ class AsyncRunStoreService:
                 reverse=True,
             ):
                 try:
-                    async with aiofiles.open(path, "r", encoding="utf-8") as f:
+                    async with aiofiles.open(path, encoding="utf-8") as f:
                         content = await f.read()
                     if not content.strip():
                         continue
@@ -97,7 +96,7 @@ class AsyncRunStoreService:
         return records
 
     async def _replace_with_retry(self, src: Path, dst: Path) -> None:
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         for delay in self._replace_retry_delays:
             try:
                 src.replace(dst)

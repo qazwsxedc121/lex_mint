@@ -12,10 +12,22 @@ select = [
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
 ]
-ignore = []
+ignore = [
+    "E501",  # Let `ruff format` handle line wrapping where possible.
+]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"run_server_debug.py" = ["E402"]
+"scripts/*.py" = ["E402"]
+"src/api/main.py" = ["E402"]
+"src/api/routers/*.py" = ["B008", "B904"]
+"src/infrastructure/config/project_service.py" = ["B904"]
+"src/infrastructure/files/file_service.py" = ["B904"]
+"src/infrastructure/projects/project_document_tool_service.py" = ["B904"]
+"src/infrastructure/retrieval/embedding_service.py" = ["B904"]
+"src/main.py" = ["E402"]
+"test_title_generation.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.12"

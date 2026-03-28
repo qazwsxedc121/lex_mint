@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import yaml
 
-from src.providers import AdapterRegistry, CallMode, ApiProtocol, ProviderType
-from src.providers.types import ProviderConfig
-
 from src.domain.models.model_config import ModelsConfig, Provider
+from src.providers import AdapterRegistry, ApiProtocol, CallMode, ProviderType
+from src.providers.types import ProviderConfig
 
 if TYPE_CHECKING:
     from .model_config_service import ModelConfigService
@@ -19,14 +18,14 @@ if TYPE_CHECKING:
 class ModelRuntimeService:
     """Owns provider runtime policy and LLM adapter construction."""
 
-    def __init__(self, owner: "ModelConfigService"):
+    def __init__(self, owner: ModelConfigService):
         self.owner = owner
 
-    def get_api_key_sync(self, provider_id: str) -> Optional[str]:
+    def get_api_key_sync(self, provider_id: str) -> str | None:
         if not self.owner.keys_path.exists():
             return None
         try:
-            with open(self.owner.keys_path, 'r', encoding='utf-8') as f:
+            with open(self.owner.keys_path, encoding="utf-8") as f:
                 keys_data = yaml.safe_load(f)
         except Exception:
             return None
@@ -44,7 +43,9 @@ class ModelRuntimeService:
         return None
 
     def provider_requires_api_key(self, provider: Provider | ProviderConfig) -> bool:
-        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        provider_cfg = (
+            provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        )
         sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
         return sdk_type not in {"ollama", "lmstudio", "local_gguf"}
 
@@ -83,7 +84,9 @@ class ModelRuntimeService:
         if configured_mode != CallMode.AUTO:
             return configured_mode
 
-        provider_cfg = provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        provider_cfg = (
+            provider if isinstance(provider, ProviderConfig) else self.to_provider_config(provider)
+        )
         sdk_type = AdapterRegistry.resolve_sdk_type_for_provider(provider_cfg)
         if sdk_type in {"anthropic", "gemini", "ollama", "lmstudio", "local_gguf"}:
             return CallMode.NATIVE
@@ -106,15 +109,23 @@ class ModelRuntimeService:
         return ProviderConfig(
             id=provider.id,
             name=provider.name,
-            type=provider.type if hasattr(provider, 'type') and provider.type else ProviderType.BUILTIN,
-            protocol=provider.protocol if hasattr(provider, 'protocol') and provider.protocol else ApiProtocol.OPENAI,
-            call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
+            type=provider.type
+            if hasattr(provider, "type") and provider.type
+            else ProviderType.BUILTIN,
+            protocol=provider.protocol
+            if hasattr(provider, "protocol") and provider.protocol
+            else ApiProtocol.OPENAI,
+            call_mode=provider.call_mode
+            if hasattr(provider, "call_mode") and provider.call_mode
+            else CallMode.AUTO,
             base_url=provider.base_url,
             endpoint_profile_id=provider.endpoint_profile_id,
             enabled=provider.enabled,
             default_capabilities=provider.default_capabilities,
-            sdk_class=provider.sdk_class if hasattr(provider, 'sdk_class') else None,
-            endpoint_profiles=provider.endpoint_profiles if hasattr(provider, 'endpoint_profiles') else [],
+            sdk_class=provider.sdk_class if hasattr(provider, "sdk_class") else None,
+            endpoint_profiles=provider.endpoint_profiles
+            if hasattr(provider, "endpoint_profiles")
+            else [],
         )
 
     def get_adapter_for_provider(self, provider: Provider):
@@ -122,20 +133,22 @@ class ModelRuntimeService:
 
     def get_llm_instance(
         self,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
         *,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        frequency_penalty: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        frequency_penalty: float | None = None,
+        presence_penalty: float | None = None,
         disable_thinking: bool = False,
     ) -> Any:
         config = ModelsConfig(**self.owner._load_split_config())
-        model, provider, requested_model_id, using_default_model = self.owner._resolve_model_and_provider_from_config(
-            config,
-            model_id,
+        model, provider, requested_model_id, using_default_model = (
+            self.owner._resolve_model_and_provider_from_config(
+                config,
+                model_id,
+            )
         )
         self.owner._ensure_model_is_enabled(
             model=model,
@@ -146,10 +159,14 @@ class ModelRuntimeService:
 
         adapter = self.get_adapter_for_provider(provider)
         resolved_call_mode = self.resolve_effective_call_mode(provider)
-        effective_call_mode = resolved_call_mode.value if isinstance(resolved_call_mode, CallMode) else str(resolved_call_mode)
+        effective_call_mode = (
+            resolved_call_mode.value
+            if isinstance(resolved_call_mode, CallMode)
+            else str(resolved_call_mode)
+        )
         capabilities = self.owner.get_merged_capabilities(model, provider)
 
-        create_kwargs: Dict[str, Any] = {
+        create_kwargs: dict[str, Any] = {
             "model": model.id,
             "base_url": provider.base_url,
             "api_key": self.resolve_provider_api_key_sync(provider),

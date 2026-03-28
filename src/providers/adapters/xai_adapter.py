@@ -3,13 +3,16 @@ xAI (Grok) SDK Adapter
 
 Adapter for xAI Grok API with Live Search and reasoning support.
 """
+
 import importlib
 import logging
-from typing import AsyncIterator, List, Dict, Any
+from collections.abc import AsyncIterator
+from typing import Any
+
 from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ def _response_content_to_text(content: object) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts: List[str] = []
+        parts: list[str] = []
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
@@ -49,7 +52,7 @@ class XAIAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Create a ChatXAI instance.
@@ -67,7 +70,7 @@ class XAIAdapter(BaseLLMAdapter):
             ChatXAI instance
         """
         xai_module = importlib.import_module("langchain_xai")
-        chat_xai_cls = getattr(xai_module, "ChatXAI")
+        chat_xai_cls = xai_module.ChatXAI
 
         llm_kwargs = {
             "model": model,
@@ -97,10 +100,7 @@ class XAIAdapter(BaseLLMAdapter):
         return chat_xai_cls(**llm_kwargs)
 
     async def stream(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from xAI Grok.
@@ -123,8 +123,8 @@ class XAIAdapter(BaseLLMAdapter):
             thinking = ""
 
             # Grok returns reasoning_content in additional_kwargs
-            if hasattr(chunk, 'additional_kwargs'):
-                thinking = chunk.additional_kwargs.get('reasoning_content', '')
+            if hasattr(chunk, "additional_kwargs"):
+                thinking = chunk.additional_kwargs.get("reasoning_content", "")
 
             # Extract usage from chunk (usually only in final chunk)
             extracted = TokenUsage.extract_from_chunk(chunk)
@@ -139,12 +139,7 @@ class XAIAdapter(BaseLLMAdapter):
                 raw=chunk,
             )
 
-    async def invoke(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm, messages: list[BaseMessage], **kwargs) -> LLMResponse:
         """
         Invoke xAI Grok and get complete response.
 
@@ -159,12 +154,12 @@ class XAIAdapter(BaseLLMAdapter):
         response = await llm.ainvoke(messages)
 
         thinking = ""
-        if hasattr(response, 'additional_kwargs'):
-            thinking = response.additional_kwargs.get('reasoning_content', '')
+        if hasattr(response, "additional_kwargs"):
+            thinking = response.additional_kwargs.get("reasoning_content", "")
 
         usage = None
-        if hasattr(response, 'response_metadata'):
-            raw_usage = response.response_metadata.get('usage')
+        if hasattr(response, "response_metadata"):
+            raw_usage = response.response_metadata.get("usage")
             usage = TokenUsage.from_dict(raw_usage)
 
         return LLMResponse(
@@ -178,7 +173,7 @@ class XAIAdapter(BaseLLMAdapter):
         """xAI Grok supports thinking mode."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Get parameters for Grok thinking mode.
 
@@ -186,11 +181,7 @@ class XAIAdapter(BaseLLMAdapter):
         """
         return {}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         xAI doesn't support model listing API.
 

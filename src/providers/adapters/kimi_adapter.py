@@ -4,15 +4,17 @@ Moonshot (Kimi) OpenAI-Compatible Adapter.
 Adapter for Kimi models via Moonshot's OpenAI-compatible API.
 Includes K2.5-specific thinking and parameter normalization rules.
 """
+
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from .reasoning_openai import ChatReasoningOpenAI, inject_tool_call_reasoning_content
-from .utils import extract_tool_calls
 from ..base import BaseLLMAdapter
 from ..types import LLMResponse, StreamChunk, TokenUsage
+from .reasoning_openai import ChatReasoningOpenAI, inject_tool_call_reasoning_content
+from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ def _response_content_to_text(content: object) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts: List[str] = []
+        parts: list[str] = []
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
@@ -52,10 +54,10 @@ class KimiAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ) -> "ChatKimiOpenAI":
         """Create ChatReasoningOpenAI client for Kimi endpoint."""
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -68,8 +70,8 @@ class KimiAdapter(BaseLLMAdapter):
             if key in kwargs and kwargs[key] is not None:
                 llm_kwargs[key] = kwargs[key]
 
-        model_kwargs: Dict[str, Any] = {}
-        extra_body: Dict[str, Any] = {}
+        model_kwargs: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
 
         disable_thinking = bool(kwargs.get("disable_thinking", False))
         is_k2_5_model = self._is_k2_5_model(model)
@@ -164,10 +166,7 @@ class KimiAdapter(BaseLLMAdapter):
         return llm
 
     async def stream(
-        self,
-        llm: "ChatKimiOpenAI",
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: "ChatKimiOpenAI", messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """Stream Kimi responses, including reasoning and tool-call chunks."""
         usage_data = None
@@ -192,10 +191,7 @@ class KimiAdapter(BaseLLMAdapter):
             )
 
     async def invoke(
-        self,
-        llm: "ChatKimiOpenAI",
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: "ChatKimiOpenAI", messages: list[BaseMessage], **kwargs
     ) -> LLMResponse:
         """Invoke Kimi and return normalized full response."""
         response = await llm.ainvoke(messages)
@@ -220,15 +216,11 @@ class KimiAdapter(BaseLLMAdapter):
         """Kimi supports thinking mode on compatible models."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """Kimi thinking mode is toggle-based, not effort-based."""
         return {"thinking": {"type": "enabled"}}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from Kimi /models endpoint.
 
@@ -254,10 +246,12 @@ class KimiAdapter(BaseLLMAdapter):
                     model_id = model.get("id", "")
                     if not model_id:
                         continue
-                    models.append({
-                        "id": model_id,
-                        "name": model.get("name", model_id),
-                    })
+                    models.append(
+                        {
+                            "id": model_id,
+                            "name": model.get("name", model_id),
+                        }
+                    )
 
                 return sorted(models, key=lambda x: x["id"])
         except Exception as e:
@@ -265,10 +259,7 @@ class KimiAdapter(BaseLLMAdapter):
             return []
 
     async def test_connection(
-        self,
-        base_url: str,
-        api_key: str,
-        model_id: Optional[str] = None
+        self, base_url: str, api_key: str, model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test Kimi connection via model-list endpoint.

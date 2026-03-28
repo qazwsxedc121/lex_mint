@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional, Type, Union
+from collections.abc import Mapping
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,8 +18,8 @@ class _EventBase(BaseModel):
 class AssistantStartEvent(_EventBase):
     type: str = "assistant_start"
     assistant_id: str
-    assistant_turn_id: Optional[str] = None
-    name: Optional[str] = None
+    assistant_turn_id: str | None = None
+    name: str | None = None
 
 
 class AssistantChunkEvent(_EventBase):
@@ -39,16 +40,16 @@ class GroupRoundStartEvent(_EventBase):
     type: str = "group_round_start"
     round: int
     max_rounds: int
-    supervisor_id: Optional[str] = None
-    supervisor_name: Optional[str] = None
+    supervisor_id: str | None = None
+    supervisor_name: str | None = None
 
 
 class GroupActionEvent(_EventBase):
     type: str = "group_action"
     round: int
     action: str
-    supervisor_id: Optional[str] = None
-    supervisor_name: Optional[str] = None
+    supervisor_id: str | None = None
+    supervisor_name: str | None = None
 
 
 class GroupDoneEvent(_EventBase):
@@ -71,10 +72,10 @@ class SourcesEvent(_EventBase):
 class ContextInfoEvent(_EventBase):
     type: str = "context_info"
     context_budget: int
-    context_window: Optional[int] = None
-    estimated_prompt_tokens: Optional[int] = None
-    remaining_tokens: Optional[int] = None
-    segments: Optional[Any] = None
+    context_window: int | None = None
+    estimated_prompt_tokens: int | None = None
+    remaining_tokens: int | None = None
+    segments: Any | None = None
 
 
 class ThinkingDurationEvent(_EventBase):
@@ -94,16 +95,16 @@ class ToolResultsEvent(_EventBase):
 
 class ToolDiagnosticsEvent(_EventBase):
     type: str = "tool_diagnostics"
-    tool_search_count: Optional[int] = None
-    tool_search_unique_count: Optional[int] = None
-    tool_search_duplicate_count: Optional[int] = None
-    tool_read_count: Optional[int] = None
-    tool_read_duplicate_count: Optional[int] = None
-    web_search_count: Optional[int] = None
-    web_read_count: Optional[int] = None
-    no_progress_rounds: Optional[int] = None
-    max_tool_rounds: Optional[int] = None
-    tool_finalize_reason: Optional[str] = None
+    tool_search_count: int | None = None
+    tool_search_unique_count: int | None = None
+    tool_search_duplicate_count: int | None = None
+    tool_read_count: int | None = None
+    tool_read_duplicate_count: int | None = None
+    web_search_count: int | None = None
+    web_read_count: int | None = None
+    no_progress_rounds: int | None = None
+    max_tool_rounds: int | None = None
+    tool_finalize_reason: str | None = None
 
 
 class ModelStartEvent(_EventBase):
@@ -121,23 +122,23 @@ class ModelChunkEvent(_EventBase):
 class ModelDoneEvent(_EventBase):
     type: str = "model_done"
     model_id: str
-    model_name: Optional[str] = None
+    model_name: str | None = None
     content: str
 
 
 class ModelErrorEvent(_EventBase):
     type: str = "model_error"
     model_id: str
-    model_name: Optional[str] = None
+    model_name: str | None = None
     error: str
 
 
 class CompareCompleteEvent(_EventBase):
     type: str = "compare_complete"
-    model_results: Dict[str, Any]
+    model_results: dict[str, Any]
 
 
-OrchestrationEventModel = Union[
+OrchestrationEventModel = (
     AssistantStartEvent,
     AssistantChunkEvent,
     AssistantDoneEvent,
@@ -157,10 +158,10 @@ OrchestrationEventModel = Union[
     ModelDoneEvent,
     ModelErrorEvent,
     CompareCompleteEvent,
-]
+)
 
 
-_EVENT_MODEL_BY_TYPE: Dict[str, Type[_EventBase]] = {
+_EVENT_MODEL_BY_TYPE: dict[str, type[_EventBase]] = {
     "assistant_start": AssistantStartEvent,
     "assistant_chunk": AssistantChunkEvent,
     "assistant_done": AssistantDoneEvent,
@@ -183,7 +184,7 @@ _EVENT_MODEL_BY_TYPE: Dict[str, Type[_EventBase]] = {
 }
 
 
-def normalize_orchestration_event(event: Union[_EventBase, Mapping[str, Any]]) -> Dict[str, Any]:
+def normalize_orchestration_event(event: _EventBase | Mapping[str, Any]) -> dict[str, Any]:
     """Validate and normalize one event into plain dict payload."""
     if isinstance(event, _EventBase):
         return event.model_dump(exclude_none=True)

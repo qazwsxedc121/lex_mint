@@ -3,31 +3,32 @@
 
 提供商和模型配置的 CRUD 操作
 """
+
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Any, List, Optional
 
 from src.domain.models.model_config import (
-    Provider,
-    Model,
     DefaultConfig,
+    Model,
+    ModelTestRequest,
+    Provider,
     ProviderCreate,
-    ProviderUpdate,
-    ProviderApiKeyUpdate,
-    ProviderTestRequest,
-    ProviderTestStoredRequest,
-    ProviderTestResponse,
     ProviderEndpointProbeRequest,
     ProviderEndpointProbeResponse,
     ProviderEndpointProfilesResponse,
-    ModelTestRequest,
+    ProviderTestRequest,
+    ProviderTestResponse,
+    ProviderTestStoredRequest,
+    ProviderUpdate,
 )
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.provider_probe_service import ProviderProbeService
 from src.providers import (
     BUILTIN_PROVIDERS,
-    ModelCapabilities,
     EndpointProfile,
+    ModelCapabilities,
     get_builtin_provider,
 )
 from src.providers.model_capability_rules import apply_model_capability_hints
@@ -46,8 +47,10 @@ def get_model_service() -> ModelConfigService:
 # NOTE: Static routes must be defined BEFORE parameterized routes
 # Otherwise /providers/builtin would match /providers/{provider_id}
 
+
 class BuiltinProviderInfo(BaseModel):
     """内置 Provider 信息响应"""
+
     id: str
     name: str
     protocol: str
@@ -55,19 +58,20 @@ class BuiltinProviderInfo(BaseModel):
     sdk_class: str
     supports_model_list: bool
     default_capabilities: ModelCapabilities
-    endpoint_profiles: List[EndpointProfile] = Field(default_factory=list)
-    default_endpoint_profile_id: Optional[str] = None
+    endpoint_profiles: list[EndpointProfile] = Field(default_factory=list)
+    default_endpoint_profile_id: str | None = None
 
 
 class ModelInfo(BaseModel):
     """模型信息（含可选的能力和标签）"""
+
     id: str
     name: str
-    capabilities: Optional[dict] = None
-    tags: Optional[List[str]] = None
+    capabilities: dict | None = None
+    tags: list[str] | None = None
 
 
-@router.get("/providers/builtin", response_model=List[BuiltinProviderInfo])
+@router.get("/providers/builtin", response_model=list[BuiltinProviderInfo])
 async def get_builtin_providers():
     """
     获取所有内置 Provider 定义
@@ -75,18 +79,20 @@ async def get_builtin_providers():
     Returns pre-configured provider definitions with default settings and models.
     """
     result = []
-    for provider_id, definition in BUILTIN_PROVIDERS.items():
-        result.append(BuiltinProviderInfo(
-            id=definition.id,
-            name=definition.name,
-            protocol=definition.protocol.value,
-            base_url=definition.base_url,
-            sdk_class=definition.sdk_class,
-            supports_model_list=definition.supports_model_list,
-            default_capabilities=definition.default_capabilities,
-            endpoint_profiles=definition.endpoint_profiles,
-            default_endpoint_profile_id=definition.default_endpoint_profile_id,
-        ))
+    for _, definition in BUILTIN_PROVIDERS.items():
+        result.append(
+            BuiltinProviderInfo(
+                id=definition.id,
+                name=definition.name,
+                protocol=definition.protocol.value,
+                base_url=definition.base_url,
+                sdk_class=definition.sdk_class,
+                supports_model_list=definition.supports_model_list,
+                default_capabilities=definition.default_capabilities,
+                endpoint_profiles=definition.endpoint_profiles,
+                default_endpoint_profile_id=definition.default_endpoint_profile_id,
+            )
+        )
     return result
 
 
@@ -100,10 +106,7 @@ async def get_builtin_provider_info(provider_id: str):
     """
     definition = get_builtin_provider(provider_id)
     if not definition:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Builtin provider '{provider_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Builtin provider '{provider_id}' not found")
 
     return BuiltinProviderInfo(
         id=definition.id,
@@ -118,7 +121,7 @@ async def get_builtin_provider_info(provider_id: str):
     )
 
 
-@router.get("/providers", response_model=List[Provider])
+@router.get("/providers", response_model=list[Provider])
 async def list_providers(
     enabled_only: bool = False,
     service: ModelConfigService = Depends(get_model_service),
@@ -131,7 +134,7 @@ async def list_providers(
 async def get_provider(
     provider_id: str,
     include_masked_key: bool = False,
-    service: ModelConfigService = Depends(get_model_service)
+    service: ModelConfigService = Depends(get_model_service),
 ):
     """
     获取指定提供商详情
@@ -148,15 +151,14 @@ async def get_provider(
 
 @router.post("/providers", status_code=201)
 async def create_provider(
-    provider_data: ProviderCreate,
-    service: ModelConfigService = Depends(get_model_service)
+    provider_data: ProviderCreate, service: ModelConfigService = Depends(get_model_service)
 ):
     """创建新提供商（包含 API 密钥）"""
     try:
         if provider_data.type == ProviderType.BUILTIN:
             raise HTTPException(
                 status_code=400,
-                detail="Built-in providers are preloaded. Use create provider for custom providers only."
+                detail="Built-in providers are preloaded. Use create provider for custom providers only.",
             )
 
         # 创建 Provider 对象（不包含 api_key）
@@ -185,7 +187,7 @@ async def create_provider(
 async def update_provider(
     provider_id: str,
     provider_update: ProviderUpdate,
-    service: ModelConfigService = Depends(get_model_service)
+    service: ModelConfigService = Depends(get_model_service),
 ):
     """
     更新提供商信息（包括可选的API密钥）
@@ -201,21 +203,24 @@ async def update_provider(
         # 合并更新（只更新提供的字段）
         updated_data = existing.model_dump()
         if provider_update.name is not None:
-            updated_data['name'] = provider_update.name
+            updated_data["name"] = provider_update.name
         if provider_update.protocol is not None:
-            updated_data['protocol'] = provider_update.protocol
+            updated_data["protocol"] = provider_update.protocol
         if provider_update.call_mode is not None:
-            updated_data['call_mode'] = provider_update.call_mode
+            updated_data["call_mode"] = provider_update.call_mode
         if provider_update.base_url is not None:
-            updated_data['base_url'] = provider_update.base_url
+            updated_data["base_url"] = provider_update.base_url
             resolved_profile_id = service.resolve_endpoint_profile_id_for_base_url(
                 existing,
                 provider_update.base_url,
             )
-            updated_data['endpoint_profile_id'] = resolved_profile_id or "custom"
+            updated_data["endpoint_profile_id"] = resolved_profile_id or "custom"
         if provider_update.endpoint_profile_id is not None:
             resolved_base_url = None
-            if provider_update.endpoint_profile_id and provider_update.endpoint_profile_id != "custom":
+            if (
+                provider_update.endpoint_profile_id
+                and provider_update.endpoint_profile_id != "custom"
+            ):
                 resolved_base_url = service.resolve_endpoint_profile_base_url(
                     existing,
                     provider_update.endpoint_profile_id,
@@ -225,20 +230,20 @@ async def update_provider(
                         status_code=400,
                         detail=f"Unknown endpoint profile '{provider_update.endpoint_profile_id}' for provider '{provider_id}'",
                     )
-            updated_data['endpoint_profile_id'] = provider_update.endpoint_profile_id
+            updated_data["endpoint_profile_id"] = provider_update.endpoint_profile_id
             if resolved_base_url:
-                updated_data['base_url'] = resolved_base_url
+                updated_data["base_url"] = resolved_base_url
         if provider_update.enabled is not None:
-            updated_data['enabled'] = provider_update.enabled
+            updated_data["enabled"] = provider_update.enabled
         if provider_update.default_capabilities is not None:
-            updated_data['default_capabilities'] = provider_update.default_capabilities
+            updated_data["default_capabilities"] = provider_update.default_capabilities
         if provider_update.auto_append_path is not None:
-            updated_data['auto_append_path'] = provider_update.auto_append_path
+            updated_data["auto_append_path"] = provider_update.auto_append_path
 
         # 创建更新后的 Provider 对象（不包含api_key，因为它不在Provider的配置中）
-        updated_data.pop('api_key', None)
-        updated_data.pop('has_api_key', None)
-        updated_data.pop('requires_api_key', None)
+        updated_data.pop("api_key", None)
+        updated_data.pop("has_api_key", None)
+        updated_data.pop("requires_api_key", None)
         updated_provider = Provider(**updated_data)
         await service.update_provider(provider_id, updated_provider)
 
@@ -319,8 +324,7 @@ async def probe_provider_endpoints(
 
 @router.delete("/providers/{provider_id}")
 async def delete_provider(
-    provider_id: str,
-    service: ModelConfigService = Depends(get_model_service)
+    provider_id: str, service: ModelConfigService = Depends(get_model_service)
 ):
     """删除提供商（级联删除关联模型和 API 密钥）"""
     try:
@@ -334,8 +338,7 @@ async def delete_provider(
 
 @router.post("/providers/test", response_model=ProviderTestResponse)
 async def test_provider_connection(
-    test_request: ProviderTestRequest,
-    service: ModelConfigService = Depends(get_model_service)
+    test_request: ProviderTestRequest, service: ModelConfigService = Depends(get_model_service)
 ):
     """测试提供商连接是否有效（使用提供的API Key）"""
     provider = None
@@ -354,41 +357,38 @@ async def test_provider_connection(
 @router.post("/providers/test-stored", response_model=ProviderTestResponse)
 async def test_provider_stored_connection(
     test_request: ProviderTestStoredRequest,
-    service: ModelConfigService = Depends(get_model_service)
+    service: ModelConfigService = Depends(get_model_service),
 ):
     """测试提供商连接是否有效（使用已存储的API Key）"""
     # 获取提供商配置
     provider = await service.get_provider(test_request.provider_id)
     if not provider:
         return ProviderTestResponse(
-            success=False,
-            message=f"Provider '{test_request.provider_id}' not found"
+            success=False, message=f"Provider '{test_request.provider_id}' not found"
         )
 
     # 获取已存储的API Key
     api_key = await service.get_api_key(test_request.provider_id)
     if not api_key and service.provider_requires_api_key(provider):
-        return ProviderTestResponse(
-            success=False,
-            message="No API key found for this provider"
-        )
+        return ProviderTestResponse(success=False, message="No API key found for this provider")
 
     success, message = await service.test_provider_connection(
         base_url=test_request.base_url,
         api_key=api_key or "",
         model_id=test_request.model_id,
-        provider=provider
+        provider=provider,
     )
     return ProviderTestResponse(success=success, message=message)
 
 
 # ==================== 模型管理 ====================
 
-@router.get("/list", response_model=List[Model])
+
+@router.get("/list", response_model=list[Model])
 async def list_models(
-    provider_id: Optional[str] = None,
+    provider_id: str | None = None,
     enabled_only: bool = False,
-    service: ModelConfigService = Depends(get_model_service)
+    service: ModelConfigService = Depends(get_model_service),
 ):
     """
     获取模型列表
@@ -400,10 +400,7 @@ async def list_models(
 
 
 @router.get("/list/{model_id:path}", response_model=Model)
-async def get_model(
-    model_id: str,
-    service: ModelConfigService = Depends(get_model_service)
-):
+async def get_model(model_id: str, service: ModelConfigService = Depends(get_model_service)):
     """获取指定模型详情"""
     model = await service.get_model(model_id)
     if not model:
@@ -412,10 +409,7 @@ async def get_model(
 
 
 @router.post("/list", status_code=201)
-async def create_model(
-    model: Model,
-    service: ModelConfigService = Depends(get_model_service)
-):
+async def create_model(model: Model, service: ModelConfigService = Depends(get_model_service)):
     """创建新模型"""
     try:
         await service.add_model(model)
@@ -426,9 +420,7 @@ async def create_model(
 
 @router.put("/list/{model_id:path}")
 async def update_model(
-    model_id: str,
-    model: Model,
-    service: ModelConfigService = Depends(get_model_service)
+    model_id: str, model: Model, service: ModelConfigService = Depends(get_model_service)
 ):
     """更新模型信息"""
     try:
@@ -441,10 +433,7 @@ async def update_model(
 
 
 @router.delete("/list/{model_id:path}")
-async def delete_model(
-    model_id: str,
-    service: ModelConfigService = Depends(get_model_service)
-):
+async def delete_model(model_id: str, service: ModelConfigService = Depends(get_model_service)):
     """删除模型"""
     try:
         await service.delete_model(model_id)
@@ -455,8 +444,7 @@ async def delete_model(
 
 @router.post("/test-connection", response_model=ProviderTestResponse)
 async def test_model_connection(
-    test_request: ModelTestRequest,
-    service: ModelConfigService = Depends(get_model_service)
+    test_request: ModelTestRequest, service: ModelConfigService = Depends(get_model_service)
 ):
     """
     测试模型连接是否有效
@@ -466,21 +454,17 @@ async def test_model_connection(
     model_id = test_request.model_id
 
     # Parse composite model ID (provider_id:model_id)
-    if ':' not in model_id:
+    if ":" not in model_id:
         return ProviderTestResponse(
-            success=False,
-            message="Invalid model_id format. Expected format: provider_id:model_id"
+            success=False, message="Invalid model_id format. Expected format: provider_id:model_id"
         )
 
-    provider_id, simple_model_id = model_id.split(':', 1)
+    provider_id, simple_model_id = model_id.split(":", 1)
 
     # Get provider configuration
     provider = await service.get_provider(provider_id)
     if not provider:
-        return ProviderTestResponse(
-            success=False,
-            message=f"Provider '{provider_id}' not found"
-        )
+        return ProviderTestResponse(success=False, message=f"Provider '{provider_id}' not found")
 
     # Get model configuration
     models = await service.get_models(provider_id)
@@ -488,29 +472,26 @@ async def test_model_connection(
     if not model:
         return ProviderTestResponse(
             success=False,
-            message=f"Model '{simple_model_id}' not found in provider '{provider_id}'"
+            message=f"Model '{simple_model_id}' not found in provider '{provider_id}'",
         )
 
     # Get API key
     api_key = await service.get_api_key(provider_id)
     if not api_key:
         return ProviderTestResponse(
-            success=False,
-            message=f"No API key configured for provider '{provider_id}'"
+            success=False, message=f"No API key configured for provider '{provider_id}'"
         )
 
     # Test connection
     success, message = await service.test_provider_connection(
-        base_url=provider.base_url,
-        api_key=api_key,
-        model_id=simple_model_id,
-        provider=provider
+        base_url=provider.base_url, api_key=api_key, model_id=simple_model_id, provider=provider
     )
 
     return ProviderTestResponse(success=success, message=message)
 
 
 # ==================== 默认配置 ====================
+
 
 @router.get("/default", response_model=DefaultConfig)
 async def get_default_config(service: ModelConfigService = Depends(get_model_service)):
@@ -520,9 +501,7 @@ async def get_default_config(service: ModelConfigService = Depends(get_model_ser
 
 @router.put("/default")
 async def set_default_config(
-    provider_id: str,
-    model_id: str,
-    service: ModelConfigService = Depends(get_model_service)
+    provider_id: str, model_id: str, service: ModelConfigService = Depends(get_model_service)
 ):
     """设置默认模型"""
     try:
@@ -534,9 +513,10 @@ async def set_default_config(
 
 # ==================== Reasoning 配置 ====================
 
-@router.get("/reasoning-patterns", response_model=List[str])
+
+@router.get("/reasoning-patterns", response_model=list[str])
 async def get_reasoning_supported_patterns(
-    service: ModelConfigService = Depends(get_model_service)
+    service: ModelConfigService = Depends(get_model_service),
 ):
     """获取支持 reasoning effort 参数的模型名称模式列表"""
     return await service.get_reasoning_supported_patterns()
@@ -544,17 +524,18 @@ async def get_reasoning_supported_patterns(
 
 # ==================== Provider 抽象层 API (其他端点) ====================
 
+
 class CapabilitiesResponse(BaseModel):
     """模型能力响应"""
+
     model_id: str
     provider_id: str
     capabilities: ModelCapabilities
 
 
-@router.post("/providers/{provider_id}/fetch-models", response_model=List[ModelInfo])
+@router.post("/providers/{provider_id}/fetch-models", response_model=list[ModelInfo])
 async def fetch_provider_models(
-    provider_id: str,
-    service: ModelConfigService = Depends(get_model_service)
+    provider_id: str, service: ModelConfigService = Depends(get_model_service)
 ):
     """
     从 Provider API 获取可用模型列表
@@ -573,14 +554,12 @@ async def fetch_provider_models(
     # Check if provider supports model listing
     builtin = get_builtin_provider(provider_id)
     supports_list = (
-        builtin.supports_model_list if builtin
-        else getattr(provider, 'supports_model_list', False)
+        builtin.supports_model_list if builtin else getattr(provider, "supports_model_list", False)
     )
 
     if not supports_list:
         raise HTTPException(
-            status_code=400,
-            detail=f"Provider '{provider_id}' does not support model listing"
+            status_code=400, detail=f"Provider '{provider_id}' does not support model listing"
         )
 
     # Get API key (optional - some providers like OpenRouter have public model lists)
@@ -593,9 +572,9 @@ async def fetch_provider_models(
         if not models and not api_key and service.provider_requires_api_key(provider):
             raise HTTPException(
                 status_code=400,
-                detail=f"No models found. Try configuring an API key for provider '{provider_id}'"
+                detail=f"No models found. Try configuring an API key for provider '{provider_id}'",
             )
-        model_infos: List[ModelInfo] = []
+        model_infos: list[ModelInfo] = []
         for m in models:
             raw_capabilities: Any = m.get("capabilities")
             capabilities = raw_capabilities if isinstance(raw_capabilities, dict) else None
@@ -606,7 +585,7 @@ async def fetch_provider_models(
             )
 
             raw_tags: Any = m.get("tags")
-            tags: Optional[List[str]]
+            tags: list[str] | None
             if isinstance(raw_tags, list):
                 tags = [str(tag) for tag in raw_tags]
             elif isinstance(raw_tags, str):
@@ -626,16 +605,12 @@ async def fetch_provider_models(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch models: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch models: {str(e)}")
 
 
 @router.get("/capabilities/{model_id:path}", response_model=CapabilitiesResponse)
 async def get_model_capabilities(
-    model_id: str,
-    service: ModelConfigService = Depends(get_model_service)
+    model_id: str, service: ModelConfigService = Depends(get_model_service)
 ):
     """
     获取模型的能力配置
@@ -652,10 +627,7 @@ async def get_model_capabilities(
 
     provider = await service.get_provider(model.provider_id)
     if not provider:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Provider '{model.provider_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Provider '{model.provider_id}' not found")
 
     capabilities = service.get_merged_capabilities(model, provider)
 
@@ -666,7 +638,7 @@ async def get_model_capabilities(
     )
 
 
-@router.get("/protocols", response_model=List[dict])
+@router.get("/protocols", response_model=list[dict])
 async def get_available_protocols():
     """
     获取可用的 API 协议类型
@@ -674,10 +646,30 @@ async def get_available_protocols():
     Returns list of supported API protocols for custom providers.
     """
     return [
-        {"id": ApiProtocol.OPENAI.value, "name": "OpenAI Compatible", "description": "OpenAI and compatible APIs"},
-        {"id": ApiProtocol.ANTHROPIC.value, "name": "Anthropic", "description": "Anthropic Claude API"},
-        {"id": ApiProtocol.GEMINI.value, "name": "Google Gemini", "description": "Google Gemini API"},
+        {
+            "id": ApiProtocol.OPENAI.value,
+            "name": "OpenAI Compatible",
+            "description": "OpenAI and compatible APIs",
+        },
+        {
+            "id": ApiProtocol.ANTHROPIC.value,
+            "name": "Anthropic",
+            "description": "Anthropic Claude API",
+        },
+        {
+            "id": ApiProtocol.GEMINI.value,
+            "name": "Google Gemini",
+            "description": "Google Gemini API",
+        },
         {"id": ApiProtocol.OLLAMA.value, "name": "Ollama", "description": "Ollama local models"},
-        {"id": ApiProtocol.LMSTUDIO.value, "name": "LM Studio", "description": "LM Studio native local server API"},
-        {"id": ApiProtocol.LOCAL_GGUF.value, "name": "Local GGUF", "description": "Direct local GGUF inference"},
+        {
+            "id": ApiProtocol.LMSTUDIO.value,
+            "name": "LM Studio",
+            "description": "LM Studio native local server API",
+        },
+        {
+            "id": ApiProtocol.LOCAL_GGUF.value,
+            "name": "Local GGUF",
+            "description": "Direct local GGUF inference",
+        },
     ]

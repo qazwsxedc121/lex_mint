@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List, Sequence, Tuple
-import time
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 
@@ -30,13 +31,13 @@ from src.providers.types import TokenUsage
 @dataclass
 class CallResult:
     content: str
-    usage: Dict[str, int] | None
+    usage: dict[str, int] | None
     prompt: str
     duration_ms: int
 
 
-def _build_synthetic_conversation(rounds: int = 16) -> List[Dict[str, str]]:
-    messages: List[Dict[str, str]] = []
+def _build_synthetic_conversation(rounds: int = 16) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
 
     fixed_facts = [
         "Project root: /Users/xiaocanguo/GitHub/lex_mint",
@@ -69,7 +70,7 @@ def _build_synthetic_conversation(rounds: int = 16) -> List[Dict[str, str]]:
     return messages
 
 
-def _usage_to_dict(usage: TokenUsage | None) -> Dict[str, int] | None:
+def _usage_to_dict(usage: TokenUsage | None) -> dict[str, int] | None:
     if usage is None:
         return None
     return {
@@ -79,7 +80,7 @@ def _usage_to_dict(usage: TokenUsage | None) -> Dict[str, int] | None:
     }
 
 
-def _sum_usage(usages: Sequence[Dict[str, int] | None]) -> Dict[str, int]:
+def _sum_usage(usages: Sequence[dict[str, int] | None]) -> dict[str, int]:
     total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     for usage in usages:
         if not usage:
@@ -140,15 +141,15 @@ def _build_report_markdown(
     two_tokens_out: int,
     single_cov: float,
     two_cov: float,
-    single_usage: Dict[str, int] | None,
-    two_usage: Dict[str, int],
+    single_usage: dict[str, int] | None,
+    two_usage: dict[str, int],
     single_duration_ms: int,
     two_duration_ms: int,
     map_duration_ms: int,
     reduce_duration_ms: int,
 ) -> str:
-    single_ratio = (single_tokens_out / max(1, single_tokens_in))
-    two_ratio = (two_tokens_out / max(1, single_tokens_in))
+    single_ratio = single_tokens_out / max(1, single_tokens_in)
+    two_ratio = two_tokens_out / max(1, single_tokens_in)
     lines = [
         "# Compression Comparison Report",
         "",
@@ -191,9 +192,11 @@ async def main() -> None:
     model_id = _resolve_benchmark_model_id(config.model_id)
     temperature = float(config.temperature)
     timeout_seconds = int(config.timeout_seconds)
-    output_language_code, output_language_meta = compression_service._resolve_output_language_for_messages(
-        messages,
-        config,
+    output_language_code, output_language_meta = (
+        compression_service._resolve_output_language_for_messages(
+            messages,
+            config,
+        )
     )
 
     # Force chunking for comparison (independent from runtime strategy).
@@ -253,7 +256,7 @@ async def main() -> None:
         target_tokens=eval_chunk_target_tokens,
         overlap_messages=eval_chunk_overlap_messages,
     )
-    map_results: List[Dict[str, Any]] = []
+    map_results: list[dict[str, Any]] = []
     for idx, chunk in enumerate(chunks, start=1):
         formatted_chunk = compression_service._format_messages(chunk)
         chunk_prompt = compression_service._build_compression_prompt(
@@ -342,7 +345,9 @@ async def main() -> None:
 
     # Persist outputs
     (out_dir / "one_pass_summary.md").write_text(one_pass.content + "\n", encoding="utf-8")
-    (out_dir / "two_stage_final_summary.md").write_text(reduce_result.content + "\n", encoding="utf-8")
+    (out_dir / "two_stage_final_summary.md").write_text(
+        reduce_result.content + "\n", encoding="utf-8"
+    )
 
     intermediate_lines = ["# Two-stage Intermediate Summaries", ""]
     for item in map_results:
@@ -353,7 +358,9 @@ async def main() -> None:
         intermediate_lines.append("")
         intermediate_lines.append(item["summary"])
         intermediate_lines.append("")
-    (out_dir / "two_stage_intermediate.md").write_text("\n".join(intermediate_lines), encoding="utf-8")
+    (out_dir / "two_stage_intermediate.md").write_text(
+        "\n".join(intermediate_lines), encoding="utf-8"
+    )
 
     (out_dir / "raw_results.json").write_text(
         json.dumps(

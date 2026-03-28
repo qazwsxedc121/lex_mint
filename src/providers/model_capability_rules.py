@@ -7,7 +7,7 @@ time, primarily local GGUF discovery.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 def normalize_model_id(model_id: str) -> str:
@@ -20,7 +20,7 @@ def normalize_model_id(model_id: str) -> str:
     return normalized.split(":", 1)[0]
 
 
-def _normalize_provider_id(provider_id: Optional[str]) -> str:
+def _normalize_provider_id(provider_id: str | None) -> str:
     return str(provider_id or "").strip().lower()
 
 
@@ -40,8 +40,8 @@ def _is_kimi_k2_family_model(normalized_model_id: str, normalized_provider_id: s
 
 def infer_capability_overrides(
     model_id: str,
-    provider_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    provider_id: str | None = None,
+) -> dict[str, Any]:
     """Return sparse fallback capability overrides.
 
     These overrides are intentionally minimal and should only cover dynamic
@@ -83,8 +83,8 @@ def infer_capability_overrides(
 
 def infer_requires_interleaved_thinking(
     model_id: str,
-    provider_id: Optional[str] = None,
-) -> Optional[bool]:
+    provider_id: str | None = None,
+) -> bool | None:
     overrides = infer_capability_overrides(model_id, provider_id=provider_id)
     value = overrides.get("requires_interleaved_thinking")
     return value if isinstance(value, bool) else None
@@ -92,8 +92,8 @@ def infer_requires_interleaved_thinking(
 
 def infer_reasoning_support(
     model_id: str,
-    provider_id: Optional[str] = None,
-) -> Optional[bool]:
+    provider_id: str | None = None,
+) -> bool | None:
     overrides = infer_capability_overrides(model_id, provider_id=provider_id)
     value = overrides.get("reasoning")
     return value if isinstance(value, bool) else None
@@ -101,8 +101,8 @@ def infer_reasoning_support(
 
 def infer_function_calling_support(
     model_id: str,
-    provider_id: Optional[str] = None,
-) -> Optional[bool]:
+    provider_id: str | None = None,
+) -> bool | None:
     overrides = infer_capability_overrides(model_id, provider_id=provider_id)
     value = overrides.get("function_calling")
     return value if isinstance(value, bool) else None
@@ -110,8 +110,8 @@ def infer_function_calling_support(
 
 def infer_reasoning_controls(
     model_id: str,
-    provider_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    provider_id: str | None = None,
+) -> dict[str, Any] | None:
     overrides = infer_capability_overrides(model_id, provider_id=provider_id)
     value = overrides.get("reasoning_controls")
     return value if isinstance(value, dict) else None
@@ -119,11 +119,11 @@ def infer_reasoning_controls(
 
 def apply_model_capability_hints(
     model_id: str,
-    capabilities: Optional[Dict[str, Any]],
+    capabilities: dict[str, Any] | None,
     *,
-    provider_defaults: Optional[Dict[str, Any]] = None,
-    provider_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    provider_defaults: dict[str, Any] | None = None,
+    provider_id: str | None = None,
+) -> dict[str, Any] | None:
     """Apply sparse fallback hints without overriding explicit capability metadata."""
     overrides = infer_capability_overrides(model_id, provider_id=provider_id)
     if not overrides:
@@ -146,11 +146,11 @@ def apply_model_capability_hints(
 
 def apply_interleaved_hint_to_capabilities(
     model_id: str,
-    capabilities: Optional[Dict[str, Any]],
+    capabilities: dict[str, Any] | None,
     *,
-    provider_defaults: Optional[Dict[str, Any]] = None,
-    provider_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    provider_defaults: dict[str, Any] | None = None,
+    provider_id: str | None = None,
+) -> dict[str, Any] | None:
     """Backward-compatible alias for older call sites."""
     return apply_model_capability_hints(
         model_id,

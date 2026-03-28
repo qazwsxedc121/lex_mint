@@ -35,7 +35,9 @@ def test_unknown_or_non_local_models_do_not_get_fallback_overrides():
 
 
 def test_qwen35_local_model_does_not_match_qwen3_fallback():
-    assert infer_capability_overrides("llm/qwen3.5-7b-instruct.gguf", provider_id="local_gguf") == {}
+    assert (
+        infer_capability_overrides("llm/qwen3.5-7b-instruct.gguf", provider_id="local_gguf") == {}
+    )
     assert infer_capability_overrides("llm/qwen35-7b-instruct.gguf", provider_id="local_gguf") == {}
 
 

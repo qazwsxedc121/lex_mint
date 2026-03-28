@@ -3,14 +3,15 @@ Pricing Service for LLM Token Cost Calculation
 
 Provides pricing configuration and cost calculation for different LLM providers and models.
 """
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, cast
+from typing import Any, cast
 
 import yaml
 
-from src.providers.types import TokenUsage, CostInfo
 from src.core.paths import config_defaults_dir, config_local_dir, resolve_layered_read_path
+from src.providers.types import CostInfo, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class PricingService:
     """Service for calculating LLM token costs."""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         """
         Initialize pricing service.
 
@@ -29,9 +30,9 @@ class PricingService:
         if config_path is None:
             config_path = config_local_dir() / "pricing_config.yaml"
         self.config_path = config_path
-        self._pricing_cache: Optional[Dict[str, Any]] = None
+        self._pricing_cache: dict[str, Any] | None = None
 
-    def _load_pricing(self) -> Dict[str, Any]:
+    def _load_pricing(self) -> dict[str, Any]:
         """Load pricing configuration from yaml file."""
         if self._pricing_cache is not None:
             return self._pricing_cache
@@ -41,7 +42,7 @@ class PricingService:
                 local_path=self.config_path,
                 defaults_path=self.defaults_path,
             )
-            with open(read_path, 'r', encoding='utf-8') as f:
+            with open(read_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 self._pricing_cache = data.get("pricing", {})
         except Exception as e:
@@ -50,11 +51,7 @@ class PricingService:
 
         return self._pricing_cache or {}
 
-    def get_pricing(
-        self,
-        provider_id: str,
-        model_id: str
-    ) -> Dict[str, float]:
+    def get_pricing(self, provider_id: str, model_id: str) -> dict[str, float]:
         """
         Get pricing for a specific provider/model combination.
 
@@ -70,33 +67,22 @@ class PricingService:
         # Get provider pricing
         provider_pricing = pricing.get(provider_id, {})
         if not isinstance(provider_pricing, dict):
-            return {
-                "input_price_per_1m": 0.0,
-                "output_price_per_1m": 0.0
-            }
+            return {"input_price_per_1m": 0.0, "output_price_per_1m": 0.0}
 
         # Try specific model first
         model_pricing = provider_pricing.get(model_id)
         if isinstance(model_pricing, dict):
-            return cast(Dict[str, float], model_pricing)
+            return cast(dict[str, float], model_pricing)
 
         # Fall back to default for provider
         default_pricing = provider_pricing.get("default")
         if isinstance(default_pricing, dict):
-            return cast(Dict[str, float], default_pricing)
+            return cast(dict[str, float], default_pricing)
 
         # No pricing info available
-        return {
-            "input_price_per_1m": 0.0,
-            "output_price_per_1m": 0.0
-        }
+        return {"input_price_per_1m": 0.0, "output_price_per_1m": 0.0}
 
-    def calculate_cost(
-        self,
-        provider_id: str,
-        model_id: str,
-        usage: Optional[TokenUsage]
-    ) -> CostInfo:
+    def calculate_cost(self, provider_id: str, model_id: str, usage: TokenUsage | None) -> CostInfo:
         """
         Calculate cost for a given token usage.
 
@@ -125,7 +111,7 @@ class PricingService:
             input_cost=round(input_cost, 8),
             output_cost=round(output_cost, 8),
             total_cost=round(total_cost, 8),
-            currency="USD"
+            currency="USD",
         )
 
     def clear_cache(self):

@@ -1,7 +1,8 @@
 """Round-robin orchestration loop over group participants."""
 
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, Optional
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 
 from src.application.orchestration import (
     ActorEmit,
@@ -32,8 +33,8 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
     def __init__(
         self,
         *,
-        stream_group_assistant_turn: Callable[..., AsyncIterator[Dict[str, Any]]],
-        orchestration_engine: Optional[OrchestrationEngine] = None,
+        stream_group_assistant_turn: Callable[..., AsyncIterator[dict[str, Any]]],
+        orchestration_engine: OrchestrationEngine | None = None,
     ):
         self.stream_group_assistant_turn = stream_group_assistant_turn
         self.orchestration_engine = orchestration_engine or OrchestrationEngine()
@@ -42,7 +43,7 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
         self,
         request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
     ) -> AsyncIterator[ChatOrchestrationEvent]:
         if request.mode and request.mode != self.mode:
             raise ValueError(f"RoundRobinOrchestrator only supports mode={self.mode}")
@@ -71,7 +72,10 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
         context = RunContext(run_id=run_id, max_steps=2)
 
         async for runtime_event in self.orchestration_engine.run_stream(spec, context):
-            if runtime_event.get("type") == "node_event" and runtime_event.get("event_type") == "round_robin_event":
+            if (
+                runtime_event.get("type") == "node_event"
+                and runtime_event.get("event_type") == "round_robin_event"
+            ):
                 payload = runtime_event.get("payload") or {}
                 event = payload.get("event") if isinstance(payload, dict) else None
                 if isinstance(event, dict):
@@ -81,7 +85,10 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
                 yield self.normalize_event(
                     build_group_done_event(
                         mode=self.mode,
-                        reason=str(runtime_event.get("terminal_reason") or cancellation_reason(cancel_token)),
+                        reason=str(
+                            runtime_event.get("terminal_reason")
+                            or cancellation_reason(cancel_token)
+                        ),
                         rounds=0,
                     )
                 )
@@ -92,9 +99,13 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
         *,
         execution_context: ActorExecutionContext,
         request: ChatOrchestrationRequest,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
+        cancel_token: ChatOrchestrationCancelToken | None,
     ) -> AsyncIterator[Any]:
-        settings = request.settings if isinstance(request.settings, RoundRobinSettings) else RoundRobinSettings()
+        settings = (
+            request.settings
+            if isinstance(request.settings, RoundRobinSettings)
+            else RoundRobinSettings()
+        )
 
         participant_order = [
             assistant_id

@@ -3,36 +3,10 @@ Model configuration management service.
 
 Handles loading, saving, and managing LLM provider and model settings.
 """
-import yaml
-import aiofiles
+
 import logging
 from pathlib import Path
-from datetime import datetime
-from typing import List, Optional, Tuple, Any, Dict
-from urllib.parse import urlparse
-from langchain_openai import ChatOpenAI
-
-from src.domain.models.model_config import (
-    Provider,
-    Model,
-    DefaultConfig,
-    ModelsConfig,
-)
-from src.providers import (
-    AdapterRegistry,
-    ModelCapabilities,
-    EndpointProfile,
-    ReasoningControls,
-    CallMode,
-    ProviderType,
-    ApiProtocol,
-    get_builtin_provider,
-    get_all_builtin_providers,
-)
-from src.providers.types import ProviderConfig
-from src.providers.model_capability_rules import infer_capability_overrides
-from .model_config_repository import ModelConfigRepository
-from .model_runtime_service import ModelRuntimeService
+from typing import Any
 
 from src.core.paths import (
     config_defaults_dir,
@@ -40,6 +14,26 @@ from src.core.paths import (
     local_keys_config_path,
     shared_keys_config_path,
 )
+from src.domain.models.model_config import (
+    DefaultConfig,
+    Model,
+    ModelsConfig,
+    Provider,
+)
+from src.providers import (
+    AdapterRegistry,
+    CallMode,
+    EndpointProfile,
+    ModelCapabilities,
+    ReasoningControls,
+    get_all_builtin_providers,
+    get_builtin_provider,
+)
+from src.providers.model_capability_rules import infer_capability_overrides
+from src.providers.types import ProviderConfig
+
+from .model_config_repository import ModelConfigRepository
+from .model_runtime_service import ModelRuntimeService
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +48,7 @@ class ModelConfigService:
     }
     _MODEL_LEVEL_INTERLEAVED_PROVIDERS = {"deepseek", "kimi"}
 
-    def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None, keys_path: Path | None = None):
         """
         Initialize the configuration service.
 
@@ -66,7 +60,7 @@ class ModelConfigService:
         self.defaults_provider_path: Path = defaults_dir / "provider_config.yaml"
         self.defaults_catalog_path: Path = defaults_dir / "models_catalog.yaml"
         self.defaults_app_path: Path = defaults_dir / "app_defaults.yaml"
-        self._defaults_config_cache: Optional[dict[str, Any]] = None
+        self._defaults_config_cache: dict[str, Any] | None = None
         self._layered_models = config_path is None
         self._layered_keys = keys_path is None
 
@@ -127,6 +121,7 @@ class ModelConfigService:
         if not default_payload["provider"] or not default_payload["model"]:
             raise ValueError("No default model configured. Add a provider and model first.")
         return f"{default_payload['provider']}:{default_payload['model']}"
+
     @staticmethod
     def _load_yaml_dict(path: Path) -> dict[str, Any]:
         return ModelConfigRepository.load_yaml_dict(path)
@@ -144,7 +139,12 @@ class ModelConfigService:
         catalog_data: dict[str, Any],
         app_data: dict[str, Any],
     ) -> dict[str, Any]:
-        return ModelConfigRepository.assemble_aggregate_config(ModelConfigRepository.__new__(ModelConfigRepository), provider_data, catalog_data, app_data)
+        return ModelConfigRepository.assemble_aggregate_config(
+            ModelConfigRepository.__new__(ModelConfigRepository),
+            provider_data,
+            catalog_data,
+            app_data,
+        )
 
     def _load_split_config(self) -> dict[str, Any]:
         return self._get_repository().load_split_config()
@@ -209,8 +209,7 @@ class ModelConfigService:
             "supports_model_list": definition.supports_model_list,
             "sdk_class": definition.sdk_class,
             "endpoint_profiles": [
-                profile.model_dump(mode="json")
-                for profile in definition.endpoint_profiles
+                profile.model_dump(mode="json") for profile in definition.endpoint_profiles
             ],
         }
 
@@ -220,7 +219,7 @@ class ModelConfigService:
         provider_id: str,
         model_id: str,
         model_name: str,
-        capabilities: Optional[ModelCapabilities],
+        capabilities: ModelCapabilities | None,
         enabled: bool,
     ) -> dict[str, Any]:
         tags = self._derive_tags_for_model(model_id=model_id, capabilities=capabilities)
@@ -259,8 +258,8 @@ class ModelConfigService:
         self,
         *,
         model_id: str,
-        capabilities: Optional[ModelCapabilities],
-        fallback_group: Optional[str] = None,
+        capabilities: ModelCapabilities | None,
+        fallback_group: str | None = None,
     ) -> list[str]:
         """Infer useful tags for built-in and migrated models."""
         tags: list[str] = []
@@ -337,25 +336,21 @@ class ModelConfigService:
         default_model = normalized_default["model"]
 
         existing_providers = {
-            p.get("id"): p
-            for p in providers
-            if isinstance(p, dict) and p.get("id")
+            p.get("id"): p for p in providers if isinstance(p, dict) and p.get("id")
         }
 
         for definition in get_all_builtin_providers().values():
             provider_entry = existing_providers.get(definition.id)
-            if not (
-                isinstance(provider_entry, dict)
-                and provider_entry.get("type") == "builtin"
-            ):
+            if not (isinstance(provider_entry, dict) and provider_entry.get("type") == "builtin"):
                 continue
 
             current_base_url = _normalize_url(provider_entry.get("base_url"))
-            for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
-                if (
-                    current_base_url == _normalize_url(legacy_url)
-                    and _normalize_url(definition.base_url) == _normalize_url(target_url)
-                ):
+            for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(
+                definition.id, {}
+            ).items():
+                if current_base_url == _normalize_url(legacy_url) and _normalize_url(
+                    definition.base_url
+                ) == _normalize_url(target_url):
                     provider_entry["base_url"] = target_url
                     current_base_url = _normalize_url(target_url)
                     changed = True
@@ -367,17 +362,19 @@ class ModelConfigService:
                 provider_entry["sdk_class"] = definition.sdk_class
                 changed = True
             profile_payload = [
-                profile.model_dump(mode="json")
-                for profile in definition.endpoint_profiles
+                profile.model_dump(mode="json") for profile in definition.endpoint_profiles
             ]
             if provider_entry.get("endpoint_profiles") != profile_payload:
                 provider_entry["endpoint_profiles"] = profile_payload
                 changed = True
             if not provider_entry.get("endpoint_profile_id"):
-                resolved_profile = self._resolve_endpoint_profile_id_by_url(
-                    definition.endpoint_profiles,
-                    str(provider_entry.get("base_url", "")),
-                ) or definition.default_endpoint_profile_id
+                resolved_profile = (
+                    self._resolve_endpoint_profile_id_by_url(
+                        definition.endpoint_profiles,
+                        str(provider_entry.get("base_url", "")),
+                    )
+                    or definition.default_endpoint_profile_id
+                )
                 if resolved_profile:
                     provider_entry["endpoint_profile_id"] = resolved_profile
                     changed = True
@@ -448,16 +445,24 @@ class ModelConfigService:
             if not isinstance(model_caps, dict):
                 continue
 
-            if inferred.get("function_calling") is True and model_caps.get("function_calling") is False:
+            if (
+                inferred.get("function_calling") is True
+                and model_caps.get("function_calling") is False
+            ):
                 model_caps["function_calling"] = True
                 changed = True
             if inferred.get("reasoning") is True and model_caps.get("reasoning") is False:
                 model_caps["reasoning"] = True
                 changed = True
-            if inferred.get("requires_interleaved_thinking") is True and model_caps.get("requires_interleaved_thinking") is False:
+            if (
+                inferred.get("requires_interleaved_thinking") is True
+                and model_caps.get("requires_interleaved_thinking") is False
+            ):
                 model_caps["requires_interleaved_thinking"] = True
                 changed = True
-            if inferred.get("reasoning_controls") and not isinstance(model_caps.get("reasoning_controls"), dict):
+            if inferred.get("reasoning_controls") and not isinstance(
+                model_caps.get("reasoning_controls"), dict
+            ):
                 model_caps["reasoning_controls"] = inferred["reasoning_controls"]
                 changed = True
 
@@ -474,7 +479,7 @@ class ModelConfigService:
 
     async def save_config(self, config: ModelsConfig):
         """Persist aggregated model/provider/default config into split local files."""
-        data = config.model_dump(mode='json')
+        data = config.model_dump(mode="json")
         provider_data, catalog_data, app_data = self._split_aggregate_config(data)
         self._write_yaml_dict(self.provider_config_path, provider_data)
         self._write_yaml_dict(self.models_catalog_path, catalog_data)
@@ -498,7 +503,7 @@ class ModelConfigService:
         cls,
         endpoint_profiles: list[EndpointProfile],
         base_url: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         normalized_base = cls._normalize_url(base_url)
         for profile in endpoint_profiles:
             if cls._normalize_url(profile.base_url) == normalized_base:
@@ -519,7 +524,7 @@ class ModelConfigService:
     def _assert_keys_path_writable(self) -> None:
         self._get_repository().assert_keys_path_writable()
 
-    async def get_api_key(self, provider_id: str) -> Optional[str]:
+    async def get_api_key(self, provider_id: str) -> str | None:
         """
         Get the API key for a provider.
 
@@ -589,15 +594,19 @@ class ModelConfigService:
         return bool(getattr(provider, "enabled", False))
 
     @classmethod
-    def _is_model_effectively_enabled(cls, model: Model, provider: Optional[Provider]) -> bool:
-        return provider is not None and bool(getattr(model, "enabled", False)) and cls._is_provider_enabled(provider)
+    def _is_model_effectively_enabled(cls, model: Model, provider: Provider | None) -> bool:
+        return (
+            provider is not None
+            and bool(getattr(model, "enabled", False))
+            and cls._is_provider_enabled(provider)
+        )
 
     @classmethod
     def _resolve_model_and_provider_from_config(
         cls,
         config: ModelsConfig,
-        model_id: Optional[str] = None,
-    ) -> Tuple[Model, Provider, str, bool]:
+        model_id: str | None = None,
+    ) -> tuple[Model, Provider, str, bool]:
         requested_model_id = model_id
         using_default_model = requested_model_id is None
         if requested_model_id is None:
@@ -637,12 +646,14 @@ class ModelConfigService:
             f"Provider '{provider.id}' is disabled, so model '{requested_model_id}' is unavailable"
         )
 
-    async def require_enabled_model(self, model_id: Optional[str] = None) -> Tuple[Model, Provider]:
+    async def require_enabled_model(self, model_id: str | None = None) -> tuple[Model, Provider]:
         """Resolve a model/provider pair and ensure both are enabled."""
         config = await self.load_config()
-        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
-            config,
-            model_id,
+        model, provider, requested_model_id, using_default_model = (
+            self._resolve_model_and_provider_from_config(
+                config,
+                model_id,
+            )
         )
         self._ensure_model_is_enabled(
             model=model,
@@ -652,7 +663,7 @@ class ModelConfigService:
         )
         return model, provider
 
-    async def get_providers(self, enabled_only: bool = False) -> List[Provider]:
+    async def get_providers(self, enabled_only: bool = False) -> list[Provider]:
         """Get all providers, including has_api_key metadata."""
         config = await self.load_config()
         providers_with_keys = []
@@ -662,15 +673,17 @@ class ModelConfigService:
             requires_key = self.provider_requires_api_key(provider)
             # Attach runtime-only key metadata to the returned provider object.
             provider_dict = provider.model_dump()
-            provider_dict['has_api_key'] = has_key
-            provider_dict['requires_api_key'] = requires_key
+            provider_dict["has_api_key"] = has_key
+            provider_dict["requires_api_key"] = requires_key
             provider_obj = Provider(**provider_dict)
             if enabled_only and not self._is_provider_enabled(provider_obj):
                 continue
             providers_with_keys.append(provider_obj)
         return providers_with_keys
 
-    async def get_provider(self, provider_id: str, include_masked_key: bool = False) -> Optional[Provider]:
+    async def get_provider(
+        self, provider_id: str, include_masked_key: bool = False
+    ) -> Provider | None:
         """
         Get a provider by ID.
 
@@ -686,14 +699,14 @@ class ModelConfigService:
                 # Attach runtime-only key metadata.
                 has_key = await self.has_api_key(provider_id)
                 requires_key = self.provider_requires_api_key(provider)
-                provider_dict['has_api_key'] = has_key
-                provider_dict['requires_api_key'] = requires_key
+                provider_dict["has_api_key"] = has_key
+                provider_dict["requires_api_key"] = requires_key
 
                 # Add a masked key preview when requested.
                 if include_masked_key and has_key:
                     api_key = await self.get_api_key(provider_id)
                     if api_key:
-                        provider_dict['api_key'] = self._mask_api_key(api_key)
+                        provider_dict["api_key"] = self._mask_api_key(api_key)
 
                 return Provider(**provider_dict)
         return None
@@ -707,14 +720,18 @@ class ModelConfigService:
             return list(provider.endpoint_profiles)
         return []
 
-    def resolve_endpoint_profile_base_url(self, provider: Provider, endpoint_profile_id: str) -> Optional[str]:
+    def resolve_endpoint_profile_base_url(
+        self, provider: Provider, endpoint_profile_id: str
+    ) -> str | None:
         """Resolve the base URL for a given endpoint profile id."""
         for profile in self.get_endpoint_profiles_for_provider(provider):
             if profile.id == endpoint_profile_id:
                 return profile.base_url
         return None
 
-    def resolve_endpoint_profile_id_for_base_url(self, provider: Provider, base_url: str) -> Optional[str]:
+    def resolve_endpoint_profile_id_for_base_url(
+        self, provider: Provider, base_url: str
+    ) -> str | None:
         """Resolve endpoint profile id by matching base URL."""
         return self._resolve_endpoint_profile_id_by_url(
             self.get_endpoint_profiles_for_provider(provider),
@@ -725,7 +742,7 @@ class ModelConfigService:
         self,
         provider: Provider,
         client_region_hint: str = "unknown",
-    ) -> Optional[str]:
+    ) -> str | None:
         """Recommend endpoint profile by region hint + profile priority."""
         profiles = self.get_endpoint_profiles_for_provider(provider)
         if not profiles:
@@ -765,7 +782,7 @@ class ModelConfigService:
             raise ValueError(f"Provider with id '{provider.id}' already exists")
 
         # Remove transient fields so they are not persisted to config.
-        provider_dict = provider.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
+        provider_dict = provider.model_dump(exclude={"api_key", "has_api_key", "requires_api_key"})
         config.providers.append(Provider(**provider_dict))
         await self.save_config(config)
 
@@ -780,7 +797,9 @@ class ModelConfigService:
 
         for i, provider in enumerate(config.providers):
             if provider.id == provider_id:
-                updated_dict = updated.model_dump(exclude={'api_key', 'has_api_key', 'requires_api_key'})
+                updated_dict = updated.model_dump(
+                    exclude={"api_key", "has_api_key", "requires_api_key"}
+                )
                 config.providers[i] = Provider(**updated_dict)
                 if config.default.provider == provider_id and (
                     config.providers[i].id != provider_id or not bool(config.providers[i].enabled)
@@ -790,6 +809,7 @@ class ModelConfigService:
                 return
 
         raise ValueError(f"Provider with id '{provider_id}' not found")
+
     async def delete_provider(self, provider_id: str):
         """
         Delete a provider and all models under it.
@@ -812,9 +832,12 @@ class ModelConfigService:
             raise ValueError(f"Provider with id '{provider_id}' not found")
 
         await self.save_config(config)
+
     # ==================== Model Management ====================
 
-    async def get_models(self, provider_id: Optional[str] = None, enabled_only: bool = False) -> List[Model]:
+    async def get_models(
+        self, provider_id: str | None = None, enabled_only: bool = False
+    ) -> list[Model]:
         """
         Get models, optionally filtered by provider.
 
@@ -828,12 +851,13 @@ class ModelConfigService:
             models = [m for m in models if m.provider_id == provider_id]
         if enabled_only:
             models = [
-                model for model in models
+                model
+                for model in models
                 if self._is_model_effectively_enabled(model, providers_by_id.get(model.provider_id))
             ]
         return models
 
-    async def get_model(self, model_id: str) -> Optional[Model]:
+    async def get_model(self, model_id: str) -> Model | None:
         """
         Get a model by ID.
 
@@ -847,8 +871,8 @@ class ModelConfigService:
         provider_id = None
         simple_model_id = None
 
-        if ':' in model_id:
-            potential_provider, potential_model = model_id.split(':', 1)
+        if ":" in model_id:
+            potential_provider, potential_model = model_id.split(":", 1)
             # Treat the prefix as a provider ID only when it matches a known provider.
             if any(p.id == potential_provider for p in config.providers):
                 is_composite = True
@@ -878,8 +902,7 @@ class ModelConfigService:
         config = await self.load_config()
 
         # Ensure the composite key (provider_id + model_id) is unique.
-        if any(m.id == model.id and m.provider_id == model.provider_id
-               for m in config.models):
+        if any(m.id == model.id and m.provider_id == model.provider_id for m in config.models):
             raise ValueError(
                 f"Model '{model.id}' already exists for provider '{model.provider_id}'"
             )
@@ -907,8 +930,8 @@ class ModelConfigService:
         provider_id = None
         simple_model_id = None
 
-        if ':' in model_id:
-            potential_provider, potential_model = model_id.split(':', 1)
+        if ":" in model_id:
+            potential_provider, potential_model = model_id.split(":", 1)
             if any(p.id == potential_provider for p in config.providers):
                 is_composite = True
                 provider_id = potential_provider
@@ -948,6 +971,7 @@ class ModelConfigService:
                     return
 
         raise ValueError(f"Model with id '{model_id}' not found")
+
     async def delete_model(self, model_id: str):
         """
         Delete a model.
@@ -964,8 +988,8 @@ class ModelConfigService:
         provider_id = None
         simple_model_id = None
 
-        if ':' in model_id:
-            potential_provider, potential_model = model_id.split(':', 1)
+        if ":" in model_id:
+            potential_provider, potential_model = model_id.split(":", 1)
             if any(p.id == potential_provider for p in config.providers):
                 is_composite = True
                 provider_id = potential_provider
@@ -974,21 +998,17 @@ class ModelConfigService:
         if is_composite:
             composite_default = f"{config.default.provider}:{config.default.model}"
             deleting_default = model_id == composite_default or (
-                simple_model_id == config.default.model
-                and provider_id == config.default.provider
+                simple_model_id == config.default.model and provider_id == config.default.provider
             )
             original_count = len(config.models)
             config.models = [
-                m for m in config.models
+                m
+                for m in config.models
                 if not (m.id == simple_model_id and m.provider_id == provider_id)
             ]
         else:
-            deleting_default = (
-                config.default.model == model_id
-                and any(
-                    m.id == model_id and m.provider_id == config.default.provider
-                    for m in config.models
-                )
+            deleting_default = config.default.model == model_id and any(
+                m.id == model_id and m.provider_id == config.default.provider for m in config.models
             )
             original_count = len(config.models)
             config.models = [m for m in config.models if m.id != model_id]
@@ -1000,6 +1020,7 @@ class ModelConfigService:
             config.default = DefaultConfig(**self._empty_default_payload())
 
         await self.save_config(config)
+
     # ==================== Default Configuration ====================
 
     async def get_default_config(self) -> DefaultConfig:
@@ -1052,8 +1073,8 @@ class ModelConfigService:
         self,
         base_url: str,
         api_key: str,
-        model_id: Optional[str] = None,
-        provider: Optional[Provider] = None
+        model_id: str | None = None,
+        provider: Provider | None = None,
     ) -> tuple[bool, str]:
         """
         Test connectivity for a provider endpoint.
@@ -1074,7 +1095,9 @@ class ModelConfigService:
                 name=provider.name,
                 type=provider.type,
                 protocol=provider.protocol,
-                call_mode=provider.call_mode if hasattr(provider, 'call_mode') and provider.call_mode else CallMode.AUTO,
+                call_mode=provider.call_mode
+                if hasattr(provider, "call_mode") and provider.call_mode
+                else CallMode.AUTO,
                 base_url=base_url,
                 endpoint_profile_id=provider.endpoint_profile_id,
                 endpoint_profiles=provider.endpoint_profiles,
@@ -1112,18 +1135,17 @@ class ModelConfigService:
 
     # ==================== Provider Abstraction Support ====================
 
-    def get_model_and_provider_sync(
-        self,
-        model_id: Optional[str] = None
-    ) -> Tuple[Model, Provider]:
+    def get_model_and_provider_sync(self, model_id: str | None = None) -> tuple[Model, Provider]:
         """
         Synchronously load a model and provider pair.
         """
         config = ModelsConfig(**self._load_split_config())
 
-        model, provider, requested_model_id, using_default_model = self._resolve_model_and_provider_from_config(
-            config,
-            model_id,
+        model, provider, requested_model_id, using_default_model = (
+            self._resolve_model_and_provider_from_config(
+                config,
+                model_id,
+            )
         )
         self._ensure_model_is_enabled(
             model=model,
@@ -1135,7 +1157,7 @@ class ModelConfigService:
         return model, provider
 
     @staticmethod
-    def _find_model_in_config(config: ModelsConfig, model_id: str) -> Optional[Model]:
+    def _find_model_in_config(config: ModelsConfig, model_id: str) -> Model | None:
         if ":" in model_id:
             provider_id, simple_model_id = model_id.split(":", 1)
             return next(
@@ -1151,9 +1173,9 @@ class ModelConfigService:
     @staticmethod
     def _find_single_enabled_model_and_provider(
         config: ModelsConfig,
-    ) -> Optional[Tuple[Model, Provider]]:
+    ) -> tuple[Model, Provider] | None:
         providers_by_id = {p.id: p for p in config.providers}
-        candidates: List[Tuple[Model, Provider]] = []
+        candidates: list[tuple[Model, Provider]] = []
         for model in config.models:
             provider = providers_by_id.get(model.provider_id)
             if provider is None:
@@ -1164,11 +1186,7 @@ class ModelConfigService:
             return candidates[0]
         return None
 
-    def get_merged_capabilities(
-        self,
-        model: Model,
-        provider: Provider
-    ) -> ModelCapabilities:
+    def get_merged_capabilities(self, model: Model, provider: Provider) -> ModelCapabilities:
         """
         Get the merged capability configuration for a model.
 
@@ -1213,14 +1231,16 @@ class ModelConfigService:
                     model.capabilities.model_dump(exclude_unset=True).keys()
                 )
 
-            filtered_inferred_overrides: Dict[str, Any] = {
+            filtered_inferred_overrides: dict[str, Any] = {
                 key: value
                 for key, value in inferred_overrides.items()
                 if key not in explicit_capability_fields
             }
             inferred_reasoning_controls = filtered_inferred_overrides.get("reasoning_controls")
             if isinstance(inferred_reasoning_controls, dict):
-                filtered_inferred_overrides["reasoning_controls"] = ReasoningControls(**inferred_reasoning_controls)
+                filtered_inferred_overrides["reasoning_controls"] = ReasoningControls(
+                    **inferred_reasoning_controls
+                )
             if filtered_inferred_overrides:
                 base_caps = base_caps.model_copy(update=filtered_inferred_overrides)
 
@@ -1229,7 +1249,7 @@ class ModelConfigService:
 
         return base_caps
 
-    def get_api_key_sync(self, provider_id: str) -> Optional[str]:
+    def get_api_key_sync(self, provider_id: str) -> str | None:
         return self._get_runtime().get_api_key_sync(provider_id)
 
     def provider_requires_api_key(self, provider: Provider | ProviderConfig) -> bool:
@@ -1258,14 +1278,14 @@ class ModelConfigService:
 
     def get_llm_instance(
         self,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
         *,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        frequency_penalty: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        frequency_penalty: float | None = None,
+        presence_penalty: float | None = None,
         disable_thinking: bool = False,
     ) -> Any:
         return self._get_runtime().get_llm_instance(

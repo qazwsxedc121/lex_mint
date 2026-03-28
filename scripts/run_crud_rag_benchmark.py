@@ -7,9 +7,10 @@ import argparse
 import json
 import subprocess
 import sys
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 import yaml
 
@@ -24,11 +25,11 @@ from scripts.adapters.crud_rag_adapter import (  # noqa: E402
 )
 
 
-def _split_csv(value: str) -> List[str]:
+def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in str(value or "").split(",") if item.strip()]
 
 
-def _load_config(path: Path) -> Dict[str, Any]:
+def _load_config(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -116,7 +117,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _resolve_list(cli_value: str | None, config_value: Any, default: Sequence[str]) -> List[str]:
+def _resolve_list(cli_value: str | None, config_value: Any, default: Sequence[str]) -> list[str]:
     if cli_value is not None:
         return _split_csv(cli_value)
     if isinstance(config_value, list):
@@ -174,7 +175,9 @@ def main() -> None:
         args.bm25_min_term_coverage,
         config.get("bm25_min_term_coverage"),
     )
-    runtime_model_id = args.runtime_model_id or str(config.get("runtime_model_id") or "").strip() or None
+    runtime_model_id = (
+        args.runtime_model_id or str(config.get("runtime_model_id") or "").strip() or None
+    )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = args.output_dir or Path("data/benchmarks") / f"{benchmark_name}_{timestamp}"
@@ -197,7 +200,7 @@ def main() -> None:
     )
 
     rag_eval_output_dir = output_dir / "rag_eval"
-    run_command: List[str] = [
+    run_command: list[str] = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "run_rag_eval.py"),
         "--dataset",
@@ -250,4 +253,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

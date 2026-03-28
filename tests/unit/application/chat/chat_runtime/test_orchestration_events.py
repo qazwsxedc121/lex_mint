@@ -1,6 +1,7 @@
 """Unit tests for orchestration event schema validation."""
 
 import pytest
+from pydantic import ValidationError
 
 from src.application.chat.chat_runtime.events import normalize_orchestration_event
 
@@ -43,5 +44,5 @@ def test_normalize_event_rejects_unknown_type():
 
 
 def test_normalize_event_rejects_missing_required_fields():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         normalize_orchestration_event({"type": "model_done", "model_id": "m1"})

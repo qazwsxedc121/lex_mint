@@ -3,17 +3,18 @@ Follow-up Questions API Router
 
 Provides endpoints for configuring follow-up question generation.
 """
-from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel, Field
-from typing import List, Optional
+
 import logging
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
 from src.application.chat.followup_service import FollowupService
+from src.core.config import settings
 from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/followup", tags=["followup"])
@@ -26,6 +27,7 @@ def get_storage() -> ConversationStorage:
 # Pydantic models
 class FollowupConfigResponse(BaseModel):
     """Response model for follow-up configuration"""
+
     enabled: bool
     count: int
     model_id: str
@@ -36,12 +38,13 @@ class FollowupConfigResponse(BaseModel):
 
 class FollowupConfigUpdate(BaseModel):
     """Request model for updating follow-up configuration"""
-    enabled: Optional[bool] = None
-    count: Optional[int] = Field(None, ge=0, le=5)
-    model_id: Optional[str] = None
-    max_context_rounds: Optional[int] = Field(None, ge=1, le=10)
-    timeout_seconds: Optional[int] = Field(None, ge=5, le=60)
-    prompt_template: Optional[str] = None
+
+    enabled: bool | None = None
+    count: int | None = Field(None, ge=0, le=5)
+    model_id: str | None = None
+    max_context_rounds: int | None = Field(None, ge=1, le=10)
+    timeout_seconds: int | None = Field(None, ge=5, le=60)
+    prompt_template: str | None = None
 
 
 # Dependency: Get followup service instance
@@ -52,9 +55,7 @@ def get_followup_service() -> FollowupService:
 
 # Endpoints
 @router.get("/config", response_model=FollowupConfigResponse)
-async def get_config(
-    service: FollowupService = Depends(get_followup_service)
-):
+async def get_config(service: FollowupService = Depends(get_followup_service)):
     """Get current follow-up configuration"""
     try:
         config = service.config
@@ -64,7 +65,7 @@ async def get_config(
             model_id=config.model_id,
             max_context_rounds=config.max_context_rounds,
             timeout_seconds=config.timeout_seconds,
-            prompt_template=config.prompt_template
+            prompt_template=config.prompt_template,
         )
     except Exception as e:
         logger.error(f"Failed to get followup config: {e}")
@@ -73,8 +74,7 @@ async def get_config(
 
 @router.put("/config")
 async def update_config(
-    updates: FollowupConfigUpdate,
-    service: FollowupService = Depends(get_followup_service)
+    updates: FollowupConfigUpdate, service: FollowupService = Depends(get_followup_service)
 ):
     """Update follow-up configuration"""
     try:
@@ -99,14 +99,16 @@ async def update_config(
 async def generate_followups(
     session_id: str = Query(..., description="Session ID"),
     context_type: str = Query("chat", description="Session context"),
-    project_id: Optional[str] = Query(None, description="Project ID"),
+    project_id: str | None = Query(None, description="Project ID"),
     service: FollowupService = Depends(get_followup_service),
     storage: ConversationStorage = Depends(get_storage),
 ):
     """Generate follow-up questions for an existing session on demand."""
     try:
-        session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
-        messages = session['state']['messages']
+        session = await storage.get_session(
+            session_id, context_type=context_type, project_id=project_id
+        )
+        messages = session["state"]["messages"]
         if not messages:
             return {"questions": []}
 

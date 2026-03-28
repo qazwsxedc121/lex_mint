@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-import os
 from pathlib import Path
-import sys
 from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
@@ -46,7 +46,9 @@ class SpaRequestHandler(SimpleHTTPRequestHandler):
         try:
             requested_resolved = requested.resolve()
             root_resolved = Path(self.directory).resolve()  # type: ignore[arg-type]
-            within_root = requested_resolved == root_resolved or root_resolved in requested_resolved.parents
+            within_root = (
+                requested_resolved == root_resolved or root_resolved in requested_resolved.parents
+            )
         except OSError:
             within_root = False
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -69,15 +69,17 @@ class _BasicConfig:
 class _SaveableService:
     def __init__(self):
         self.config = _BasicConfig()
-        self.saved: Dict[str, Any] | None = None
+        self.saved: dict[str, Any] | None = None
 
-    def save_config(self, updates: Dict[str, Any]) -> None:
+    def save_config(self, updates: dict[str, Any]) -> None:
         self.saved = updates
 
 
 class _AssistantService:
     def __init__(self):
-        self.assistant = Assistant(id="writer", name="Writer", model_id="openai:gpt", system_prompt="helpful")
+        self.assistant = Assistant(
+            id="writer", name="Writer", model_id="openai:gpt", system_prompt="helpful"
+        )
         self.calls: list[tuple[str, Any]] = []
         self.fail_with: Exception | None = None
 
@@ -159,7 +161,9 @@ class _FolderStorage:
             {"session_id": "s2", "folder_id": None},
         ]
 
-    async def update_session_folder(self, session_id: str, folder_id: str | None, context_type: str = "chat"):
+    async def update_session_folder(
+        self, session_id: str, folder_id: str | None, context_type: str = "chat"
+    ):
         _ = folder_id, context_type
         self.updated.append(session_id)
 
@@ -191,7 +195,7 @@ class _PromptTemplateService:
 
 
 class _FollowupService(_SaveableService):
-    async def generate_followups_async(self, messages: List[dict[str, Any]]):
+    async def generate_followups_async(self, messages: list[dict[str, Any]]):
         assert messages
         return ["next question"]
 
@@ -263,26 +267,32 @@ async def test_misc_config_routers_and_tool_catalog(monkeypatch):
     webpage_service = _SaveableService()
     webpage_config = await webpage_router.get_config(service=webpage_service)
     assert webpage_config.max_urls == 3
-    assert (await webpage_router.update_config(
-        updates=webpage_router.WebpageConfigUpdate(max_urls=4),
-        service=webpage_service,
-    ))["message"] == "Configuration updated successfully"
+    assert (
+        await webpage_router.update_config(
+            updates=webpage_router.WebpageConfigUpdate(max_urls=4),
+            service=webpage_service,
+        )
+    )["message"] == "Configuration updated successfully"
 
     translation_service = _SaveableService()
     translation_config = await translation_router.get_config(service=translation_service)
     assert translation_config.target_language == "en"
-    assert (await translation_router.update_config(
-        updates=translation_router.TranslationConfigUpdate(provider="local_gguf"),
-        service=translation_service,
-    ))["message"] == "Configuration updated successfully"
+    assert (
+        await translation_router.update_config(
+            updates=translation_router.TranslationConfigUpdate(provider="local_gguf"),
+            service=translation_service,
+        )
+    )["message"] == "Configuration updated successfully"
 
     tts_service = _SaveableService()
     tts_config = await tts_router.get_config(service=tts_service)
     assert tts_config.voice == "en-US"
-    assert (await tts_router.update_config(
-        updates=tts_router.TTSConfigUpdate(voice="en-GB"),
-        service=tts_service,
-    ))["message"] == "Configuration updated successfully"
+    assert (
+        await tts_router.update_config(
+            updates=tts_router.TTSConfigUpdate(voice="en-GB"),
+            service=tts_service,
+        )
+    )["message"] == "Configuration updated successfully"
     monkeypatch.setattr(
         tts_router.edge_tts,
         "list_voices",
@@ -294,13 +304,17 @@ async def test_misc_config_routers_and_tool_catalog(monkeypatch):
     file_reference_service = _SaveableService()
     file_reference_config = await file_reference_router.get_config(service=file_reference_service)
     assert file_reference_config.total_budget_chars == 10000
-    assert (await file_reference_router.update_config(
-        updates=file_reference_router.FileReferenceConfigUpdate(total_budget_chars=5000),
-        service=file_reference_service,
-    ))["message"] == "Configuration updated successfully"
+    assert (
+        await file_reference_router.update_config(
+            updates=file_reference_router.FileReferenceConfigUpdate(total_budget_chars=5000),
+            service=file_reference_service,
+        )
+    )["message"] == "Configuration updated successfully"
 
     tool_catalog = ToolCatalogResponse(groups=[], tools=[])
-    monkeypatch.setattr(tools_router.ToolCatalogService, "build_catalog", staticmethod(lambda: tool_catalog))
+    monkeypatch.setattr(
+        tools_router.ToolCatalogService, "build_catalog", staticmethod(lambda: tool_catalog)
+    )
     assert await tools_router.get_tool_catalog() == tool_catalog
 
 
@@ -309,10 +323,12 @@ async def test_followup_title_folder_and_prompt_template_routes(monkeypatch):
     followup_service = _FollowupService()
     followup_config = await followup_router.get_config(service=followup_service)
     assert followup_config.count == 3
-    assert (await followup_router.update_config(
-        updates=followup_router.FollowupConfigUpdate(count=2),
-        service=followup_service,
-    ))["message"] == "Configuration updated successfully"
+    assert (
+        await followup_router.update_config(
+            updates=followup_router.FollowupConfigUpdate(count=2),
+            service=followup_service,
+        )
+    )["message"] == "Configuration updated successfully"
     generated = await followup_router.generate_followups(
         session_id="session-1",
         service=followup_service,
@@ -323,10 +339,12 @@ async def test_followup_title_folder_and_prompt_template_routes(monkeypatch):
     title_service = _TitleService()
     title_config = await title_router.get_config(service=title_service)
     assert title_config.trigger_threshold == 2
-    assert (await title_router.update_config(
-        updates=title_router.TitleGenerationConfigUpdate(trigger_threshold=3),
-        service=title_service,
-    ))["message"] == "Configuration updated successfully"
+    assert (
+        await title_router.update_config(
+            updates=title_router.TitleGenerationConfigUpdate(trigger_threshold=3),
+            service=title_service,
+        )
+    )["message"] == "Configuration updated successfully"
     title_generated = await title_router.generate_title(
         request=title_router.ManualGenerateRequest(session_id="session-1"),
         service=title_service,
@@ -354,7 +372,9 @@ async def test_followup_title_folder_and_prompt_template_routes(monkeypatch):
         service=folder_service,
     )
     assert reordered_folder.order == 2
-    await folders_router.delete_folder(folder_id="f1", service=folder_service, storage=folder_storage)
+    await folders_router.delete_folder(
+        folder_id="f1", service=folder_service, storage=folder_storage
+    )
     assert folder_storage.updated == ["s1"]
 
     template_service = _PromptTemplateService()
@@ -373,7 +393,9 @@ async def test_followup_title_folder_and_prompt_template_routes(monkeypatch):
         service=template_service,
     )
     assert updated_template["message"] == "Template updated successfully"
-    deleted_template = await templates_router.delete_prompt_template("tmpl-1", service=template_service)
+    deleted_template = await templates_router.delete_prompt_template(
+        "tmpl-1", service=template_service
+    )
     assert deleted_template["message"] == "Template deleted successfully"
 
 

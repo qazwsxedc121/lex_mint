@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 DEFAULT_TASKS: tuple[str, ...] = (
     "questanswer_1doc",
@@ -43,12 +44,12 @@ def _extract_anchor(text: Any) -> str:
     return anchor.lower()
 
 
-def load_crud_split_dataset(dataset_path: Path) -> Dict[str, List[Dict[str, Any]]]:
+def load_crud_split_dataset(dataset_path: Path) -> dict[str, list[dict[str, Any]]]:
     raw = json.loads(dataset_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("CRUD split dataset must be a JSON object keyed by task name.")
 
-    normalized: Dict[str, List[Dict[str, Any]]] = {}
+    normalized: dict[str, list[dict[str, Any]]] = {}
     for task_name, rows in raw.items():
         if not isinstance(rows, list):
             continue
@@ -58,13 +59,13 @@ def load_crud_split_dataset(dataset_path: Path) -> Dict[str, List[Dict[str, Any]
 
 def build_rag_eval_dataset_from_crud(
     *,
-    crud_data: Dict[str, List[Dict[str, Any]]],
+    crud_data: dict[str, list[dict[str, Any]]],
     kb_ids: Sequence[str],
     tasks: Sequence[str],
     per_task_max: int,
     top_k: int,
     dataset_name: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if not kb_ids:
         raise ValueError("kb_ids cannot be empty.")
 
@@ -72,7 +73,7 @@ def build_rag_eval_dataset_from_crud(
     if not normalized_kb_ids:
         raise ValueError("kb_ids cannot be empty after normalization.")
 
-    cases: List[Dict[str, Any]] = []
+    cases: list[dict[str, Any]] = []
     safe_top_k = max(1, int(top_k))
     safe_per_task_max = max(1, int(per_task_max))
 
@@ -87,7 +88,7 @@ def build_rag_eval_dataset_from_crud(
                 continue
 
             source_id = _clean_text(row.get("ID") or f"{task_name}_{index:05d}")
-            keywords: List[str] = []
+            keywords: list[str] = []
 
             event_anchor = _extract_anchor(row.get("event"))
             if event_anchor:
@@ -129,4 +130,3 @@ def build_rag_eval_dataset_from_crud(
         "default_kb_ids": normalized_kb_ids,
         "cases": cases,
     }
-

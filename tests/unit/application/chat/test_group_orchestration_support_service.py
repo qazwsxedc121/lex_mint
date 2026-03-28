@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace
 
+from src.application.chat.chat_runtime import CommitteeOrchestrator, RoundRobinOrchestrator
 from src.application.chat.group_orchestration_support_service import (
     GroupOrchestrationSupportService,
 )
-from src.application.chat.chat_runtime import CommitteeOrchestrator, RoundRobinOrchestrator
 
 
 def _build_service() -> GroupOrchestrationSupportService:
@@ -38,10 +38,13 @@ def test_build_group_identity_prompt_marks_current_participant():
 
 
 def test_build_group_instruction_prompt_includes_packet_json():
-    prompt = GroupOrchestrationSupportService.build_group_instruction_prompt(
-        instruction="Focus on trade-offs.",
-        structured_packet={"identity": {"assistant_id": "assistant-2"}},
-    ) or ""
+    prompt = (
+        GroupOrchestrationSupportService.build_group_instruction_prompt(
+            instruction="Focus on trade-offs.",
+            structured_packet={"identity": {"assistant_id": "assistant-2"}},
+        )
+        or ""
+    )
 
     assert "Committee instruction:" in prompt
     assert "Focus on trade-offs." in prompt

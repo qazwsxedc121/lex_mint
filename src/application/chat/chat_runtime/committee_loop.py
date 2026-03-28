@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
+from typing import Any
 
 from .base import ChatOrchestrationCancelToken
 from .committee_types import CommitteeDecision, CommitteeRuntimeState
 from .runtime import CommitteeRuntime
 
-
 DecideRoundFn = Callable[[int, CommitteeRuntimeState], Awaitable[CommitteeDecision]]
-ExecuteActionFn = Callable[[CommitteeDecision, int], AsyncIterator[Dict[str, Any]]]
-BuildCancelledFn = Callable[..., Dict[str, Any]]
+ExecuteActionFn = Callable[[CommitteeDecision, int], AsyncIterator[dict[str, Any]]]
+BuildCancelledFn = Callable[..., dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -23,8 +23,8 @@ class CommitteeLoopContext:
     max_rounds: int
     supervisor_id: str
     supervisor_name: str
-    assistant_name_map: Dict[str, str]
-    trace_id: Optional[str] = None
+    assistant_name_map: dict[str, str]
+    trace_id: str | None = None
 
 
 class CommitteeLoopStateMachine:
@@ -33,8 +33,8 @@ class CommitteeLoopStateMachine:
     def __init__(
         self,
         *,
-        log_group_trace: Callable[[str, str, Dict[str, Any]], None],
-        truncate_log_text: Callable[[Optional[str], int], str],
+        log_group_trace: Callable[[str, str, dict[str, Any]], None],
+        truncate_log_text: Callable[[str | None, int], str],
     ):
         self.log_group_trace = log_group_trace
         self.truncate_log_text = truncate_log_text
@@ -45,11 +45,11 @@ class CommitteeLoopStateMachine:
         runtime: CommitteeRuntime,
         state: CommitteeRuntimeState,
         context: CommitteeLoopContext,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
+        cancel_token: ChatOrchestrationCancelToken | None,
         decide_round: DecideRoundFn,
         execute_action: ExecuteActionFn,
         build_cancelled_event: BuildCancelledFn,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         """Run committee rounds until terminated, canceled, or round-limit reached."""
         while runtime.has_remaining_rounds(state):
             if self.is_cancelled(cancel_token):
@@ -97,13 +97,13 @@ class CommitteeLoopStateMachine:
                 return
 
     @staticmethod
-    def is_cancelled(cancel_token: Optional[ChatOrchestrationCancelToken]) -> bool:
+    def is_cancelled(cancel_token: ChatOrchestrationCancelToken | None) -> bool:
         return bool(cancel_token and cancel_token.is_cancelled)
 
     def _log_round_state(
         self,
         *,
-        trace_id: Optional[str],
+        trace_id: str | None,
         current_round: int,
         state: CommitteeRuntimeState,
     ) -> None:
@@ -136,8 +136,8 @@ class CommitteeLoopStateMachine:
         context: CommitteeLoopContext,
         decision: CommitteeDecision,
         current_round: int,
-    ) -> Dict[str, Any]:
-        action_event: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        action_event: dict[str, Any] = {
             "type": "group_action",
             "mode": context.mode,
             "round": current_round,

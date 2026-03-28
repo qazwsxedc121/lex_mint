@@ -6,7 +6,8 @@ import asyncio
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, cast
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, cast
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from langchain_core.utils.function_calling import convert_to_openai_tool
@@ -17,6 +18,7 @@ from ..types import LLMResponse, StreamChunk
 if TYPE_CHECKING:
     from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
 else:
+
     class LocalLlamaCppService:
         pass
 
@@ -26,9 +28,12 @@ def _get_local_llama_cpp_service_class():
     if service_cls is not None:
         return service_cls
 
-    from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService as imported_service_cls
+    from src.infrastructure.llm.local_llama_cpp_service import (
+        LocalLlamaCppService as imported_service_cls,
+    )
 
     return imported_service_cls
+
 
 logger = logging.getLogger(__name__)
 _SENTINEL = object()
@@ -46,13 +51,13 @@ class LocalGgufChatModel:
         *,
         model_id: str,
         temperature: float,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        frequency_penalty: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        frequency_penalty: float | None = None,
+        presence_penalty: float | None = None,
         disable_thinking: bool = False,
-        bound_tools: Optional[List[Dict[str, Any]]] = None,
+        bound_tools: list[dict[str, Any]] | None = None,
     ):
         self._service = service
         self.model_id = model_id
@@ -69,7 +74,7 @@ class LocalGgufChatModel:
             "disable_thinking": disable_thinking,
         }
 
-    def _merged_params(self, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _merged_params(self, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
         params = dict(self._defaults)
         if overrides:
             params.update({k: v for k, v in overrides.items() if v is not None})
@@ -77,7 +82,7 @@ class LocalGgufChatModel:
             params["max_tokens"] = 2048
         return params
 
-    def bind_tools(self, _tools: List[Any]):
+    def bind_tools(self, _tools: list[Any]):
         max_tokens = cast(int | None, self._defaults.get("max_tokens"))
         top_k = cast(int | None, self._defaults.get("top_k"))
         return LocalGgufChatModel(
@@ -93,14 +98,14 @@ class LocalGgufChatModel:
             bound_tools=[convert_to_openai_tool(tool) for tool in _tools],
         )
 
-    def invoke(self, messages: List[BaseMessage], **kwargs) -> AIMessage:
+    def invoke(self, messages: list[BaseMessage], **kwargs) -> AIMessage:
         content = self._service.complete_messages(messages, **self._merged_params(kwargs))
         return AIMessage(content=content)
 
-    async def ainvoke(self, messages: List[BaseMessage], **kwargs) -> AIMessage:
+    async def ainvoke(self, messages: list[BaseMessage], **kwargs) -> AIMessage:
         return await asyncio.to_thread(self.invoke, messages, **kwargs)
 
-    async def astream(self, messages: List[BaseMessage], **kwargs) -> AsyncIterator[AIMessageChunk]:
+    async def astream(self, messages: list[BaseMessage], **kwargs) -> AsyncIterator[AIMessageChunk]:
         iterator = self._service.stream_messages(messages, **self._merged_params(kwargs))
         while True:
             token = await asyncio.to_thread(next, iterator, _SENTINEL)
@@ -119,12 +124,12 @@ class LocalGgufAdapter(BaseLLMAdapter):
         text: str,
         *,
         disable_thinking: bool,
-    ) -> tuple[str, str, List[Dict[str, Any]]]:
+    ) -> tuple[str, str, list[dict[str, Any]]]:
         raw_text = str(text or "")
         thinking_parts = [match.group(1).strip() for match in _THINK_TAG_REGEX.finditer(raw_text)]
         without_thinking = _THINK_TAG_REGEX.sub("", raw_text)
 
-        tool_calls: List[Dict[str, Any]] = []
+        tool_calls: list[dict[str, Any]] = []
         for index, match in enumerate(_TOOL_CALL_REGEX.finditer(without_thinking), start=1):
             payload = match.group(1).strip()
             if not payload:
@@ -168,12 +173,12 @@ class LocalGgufAdapter(BaseLLMAdapter):
         *,
         content: str,
         thinking: str,
-        tool_calls: List[Dict[str, Any]],
+        tool_calls: list[dict[str, Any]],
     ) -> AIMessageChunk:
         additional_kwargs = {"reasoning_content": thinking} if thinking else {}
         return AIMessageChunk(
             content=content,
-            tool_calls=cast(List[ToolCall], tool_calls),
+            tool_calls=cast(list[ToolCall], tool_calls),
             additional_kwargs=additional_kwargs,
         )
 
@@ -181,8 +186,8 @@ class LocalGgufAdapter(BaseLLMAdapter):
     def _complete_with_bound_tools(
         cls,
         llm: LocalGgufChatModel,
-        messages: List[BaseMessage],
-        params: Dict[str, Any],
+        messages: list[BaseMessage],
+        params: dict[str, Any],
     ) -> LLMResponse:
         request_params = dict(params)
         disable_thinking = bool(request_params.pop("disable_thinking", False))
@@ -244,7 +249,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
     async def stream(
         self,
         llm: LocalGgufChatModel,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         if llm._bound_tools:
@@ -267,7 +272,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
     async def invoke(
         self,
         llm: LocalGgufChatModel,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> LLMResponse:
         if llm._bound_tools:
@@ -280,7 +285,9 @@ class LocalGgufAdapter(BaseLLMAdapter):
         response = await llm.ainvoke(messages, **kwargs)
         return LLMResponse(
             content=str(response.content or ""),
-            thinking=str(getattr(response, "additional_kwargs", {}).get("reasoning_content", "") or ""),
+            thinking=str(
+                getattr(response, "additional_kwargs", {}).get("reasoning_content", "") or ""
+            ),
             tool_calls=list(getattr(response, "tool_calls", []) or []),
             raw=response,
         )
@@ -289,7 +296,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
         self,
         base_url: str,
         api_key: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         del base_url, api_key
         from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models
 
@@ -299,7 +306,7 @@ class LocalGgufAdapter(BaseLLMAdapter):
         self,
         base_url: str,
         api_key: str,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
     ) -> tuple[bool, str]:
         del base_url, api_key
         from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models

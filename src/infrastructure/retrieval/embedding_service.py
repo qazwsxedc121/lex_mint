@@ -4,17 +4,19 @@ Embedding Service
 Provides abstraction over API-based and local embedding models.
 Uses LangChain Embeddings interface.
 """
+
+import importlib
 import logging
 import math
-import importlib
-from threading import Lock
 from pathlib import Path
-from typing import Any, Optional
+from threading import Lock
+from typing import Any
+
 from pydantic import SecretStr
 
-from src.infrastructure.config.rag_config_service import RagConfigService
-from src.infrastructure.config.model_config_service import ModelConfigService
 from src.core.paths import repo_root
+from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.config.rag_config_service import RagConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +168,7 @@ class EmbeddingService:
         self.rag_config_service = RagConfigService()
         self.model_config_service = ModelConfigService()
 
-    def get_embedding_function(self, override_model: Optional[str] = None):
+    def get_embedding_function(self, override_model: str | None = None):
         """
         Get the appropriate embedding function based on config.
 
@@ -190,15 +192,17 @@ class EmbeddingService:
             )
         else:
             model = override_model or config.api_model
-            return self._get_api_embeddings(model, config.api_base_url, config.api_key, config.batch_size)
+            return self._get_api_embeddings(
+                model, config.api_base_url, config.api_key, config.batch_size
+            )
 
-    def _get_provider_base_url_sync(self, provider_id: str) -> Optional[str]:
+    def _get_provider_base_url_sync(self, provider_id: str) -> str | None:
         """Read provider base_url from the aggregated split model/provider config."""
         try:
             data = self.model_config_service._load_split_config()
-            for provider in data.get('providers', []):
-                if provider.get('id') == provider_id:
-                    base_url = provider.get('base_url')
+            for provider in data.get("providers", []):
+                if provider.get("id") == provider_id:
+                    base_url = provider.get("base_url")
                     if isinstance(base_url, str):
                         return base_url
         except Exception as e:
@@ -210,7 +214,7 @@ class EmbeddingService:
         model_id: str,
         config_base_url: str = "",
         config_api_key: str = "",
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
     ):
         """
         Get API-based embeddings using OpenAI-compatible endpoint.
@@ -250,7 +254,11 @@ class EmbeddingService:
             model_name = model_id
 
         # Try RAG config api_key first, then fall back to provider api_key
-        api_key = config_api_key if config_api_key else self.model_config_service.get_api_key_sync(provider_id)
+        api_key = (
+            config_api_key
+            if config_api_key
+            else self.model_config_service.get_api_key_sync(provider_id)
+        )
         if not api_key:
             raise ValueError(
                 f"No API key configured. Set the embedding API key in RAG Settings, "
@@ -258,7 +266,9 @@ class EmbeddingService:
             )
 
         # Try RAG config base_url first, then fall back to provider base_url
-        base_url = config_base_url if config_base_url else self._get_provider_base_url_sync(provider_id)
+        base_url = (
+            config_base_url if config_base_url else self._get_provider_base_url_sync(provider_id)
+        )
 
         resolved_kwargs: dict[str, Any] = {
             "model": model_name,
@@ -282,7 +292,7 @@ class EmbeddingService:
         """
         try:
             module = importlib.import_module("langchain_community.embeddings")
-            HuggingFaceEmbeddings = getattr(module, "HuggingFaceEmbeddings")
+            HuggingFaceEmbeddings = module.HuggingFaceEmbeddings
         except ImportError:
             raise ImportError(
                 "sentence-transformers is required for local embeddings. "

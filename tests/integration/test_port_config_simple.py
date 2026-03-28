@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -23,6 +22,7 @@ def test_config_requires_api_port(monkeypatch):
     monkeypatch.delenv("API_PORT", raising=False)
 
     from src.core.config import Settings
+
     assert Settings.model_fields["api_port"].is_required()
     print("[OK] API_PORT is required")
 
@@ -34,6 +34,7 @@ def test_config_env_override(monkeypatch):
     test_port = 9999
     monkeypatch.setenv("API_PORT", str(test_port))
     from src.core.config import Settings
+
     settings = Settings(api_port=test_port)
 
     assert settings.api_port == test_port, f"Expected {test_port}, got {settings.api_port}"
@@ -52,18 +53,20 @@ def test_dotenv_loading():
     # Read API_PORT from .env
     with open(env_file) as f:
         for line in f:
-            if line.startswith('API_PORT='):
-                port_from_file = line.split('=')[1].strip()
+            if line.startswith("API_PORT="):
+                port_from_file = line.split("=")[1].strip()
                 print(f"[INFO] Found API_PORT={port_from_file} in .env")
 
                 # Verify it matches config
                 from dotenv import load_dotenv
+
                 load_dotenv()
 
-                port_from_env = os.environ.get('API_PORT')
-                assert port_from_env == port_from_file, \
+                port_from_env = os.environ.get("API_PORT")
+                assert port_from_env == port_from_file, (
                     f"Mismatch: .env has {port_from_file}, env has {port_from_env}"
-                print(f"[OK] .env file loaded correctly")
+                )
+                print("[OK] .env file loaded correctly")
                 return
 
     print("[SKIP] No API_PORT in .env file")

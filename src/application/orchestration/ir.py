@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 from .context_manager import ContextManager
 
@@ -20,21 +21,21 @@ class ActorEmit:
     """One runtime event emitted by an actor while a node is running."""
 
     event_type: str
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ActorResult:
     """Terminal signal for one node execution attempt."""
 
-    next_node_id: Optional[str] = None
-    branch: Optional[str] = None
-    terminal_status: Optional[TerminalStatus] = None
-    terminal_reason: Optional[str] = None
-    payload: Dict[str, Any] = field(default_factory=dict)
+    next_node_id: str | None = None
+    branch: str | None = None
+    terminal_status: TerminalStatus | None = None
+    terminal_reason: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
-ActorSignal = Union[ActorEmit, ActorResult]
+ActorSignal = ActorEmit | ActorResult
 
 
 @dataclass
@@ -44,10 +45,10 @@ class ActorExecutionContext:
     run_id: str
     node_id: str
     actor_id: str
-    run_context: "RunContext"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    run_context: RunContext
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    async def read_context(self, *, namespace: str = "default") -> Dict[str, Any]:
+    async def read_context(self, *, namespace: str = "default") -> dict[str, Any]:
         manager = self.run_context.context_manager
         if manager is None:
             return {}
@@ -60,9 +61,9 @@ class ActorExecutionContext:
     async def write_context(
         self,
         *,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         namespace: str = "default",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         manager = self.run_context.context_manager
         if manager is None:
             return dict(payload)
@@ -76,9 +77,9 @@ class ActorExecutionContext:
     async def patch_context(
         self,
         *,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         namespace: str = "default",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         manager = self.run_context.context_manager
         if manager is None:
             return dict(payload)
@@ -110,7 +111,7 @@ class RetryPolicy:
     backoff_ms: int = 0
     max_backoff_ms: int = 5000
     retry_only_if_no_events: bool = False
-    is_retryable: Optional[Callable[[Exception], bool]] = None
+    is_retryable: Callable[[Exception], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -119,9 +120,9 @@ class NodeSpec:
 
     node_id: str
     actor: ActorRef
-    timeout_ms: Optional[int] = None
+    timeout_ms: int | None = None
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -130,7 +131,7 @@ class EdgeSpec:
 
     source_id: str
     target_id: str
-    branch: Optional[str] = None
+    branch: str | None = None
 
 
 @dataclass(frozen=True)
@@ -139,9 +140,9 @@ class RunSpec:
 
     run_id: str
     entry_node_id: str
-    nodes: Tuple[NodeSpec, ...]
-    edges: Tuple[EdgeSpec, ...] = ()
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    nodes: tuple[NodeSpec, ...]
+    edges: tuple[EdgeSpec, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -149,14 +150,14 @@ class RunContext:
     """Per-run execution controls and metadata."""
 
     run_id: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    trace_id: Optional[str] = None
-    timeout_ms: Optional[int] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    trace_id: str | None = None
+    timeout_ms: int | None = None
     max_steps: int = 100
-    cancel_event: Optional[Any] = None
+    cancel_event: Any | None = None
     cancel_reason: str = "cancelled"
-    context_manager: Optional[ContextManager] = None
-    run_store: Optional["RunStore"] = None
+    context_manager: ContextManager | None = None
+    run_store: RunStore | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
@@ -179,7 +180,7 @@ def validate_run_spec(spec: RunSpec) -> None:
     if spec.entry_node_id not in node_map:
         raise ValueError(f"RunSpec entry node '{spec.entry_node_id}' does not exist")
 
-    adjacency: Dict[str, List[str]] = {node.node_id: [] for node in spec.nodes}
+    adjacency: dict[str, list[str]] = {node.node_id: [] for node in spec.nodes}
     for edge in spec.edges:
         if edge.source_id not in node_map:
             raise ValueError(f"Edge source '{edge.source_id}' does not exist")

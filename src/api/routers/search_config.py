@@ -3,10 +3,11 @@ Search Config API Router
 
 Provides endpoints for configuring web search provider settings.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Optional
+
 import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from src.infrastructure.web.search_service import SearchService
 
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 
 class SearchConfigResponse(BaseModel):
     """Response model for search configuration"""
+
     provider: str
     max_results: int
     timeout_seconds: int
@@ -23,33 +25,34 @@ class SearchConfigResponse(BaseModel):
 
 class SearchConfigUpdate(BaseModel):
     """Request model for updating search configuration"""
-    provider: Optional[str] = None
-    max_results: Optional[int] = Field(None, ge=1, le=20)
-    timeout_seconds: Optional[int] = Field(None, ge=5, le=60)
+
+    provider: str | None = None
+    max_results: int | None = Field(None, ge=1, le=20)
+    timeout_seconds: int | None = Field(None, ge=5, le=60)
 
 
 def get_search_service() -> SearchService:
     """Dependency injection for SearchService."""
     return SearchService()
 
-def _validate_provider(provider: Optional[str]) -> None:
+
+def _validate_provider(provider: str | None) -> None:
     if provider is None:
         return
     allowed = {"duckduckgo", "tavily"}
     if provider not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
+
 @router.get("/config", response_model=SearchConfigResponse)
-async def get_config(
-    service: SearchService = Depends(get_search_service)
-):
+async def get_config(service: SearchService = Depends(get_search_service)):
     """Get current search configuration"""
     try:
         config = service.config
         return SearchConfigResponse(
             provider=config.provider,
             max_results=config.max_results,
-            timeout_seconds=config.timeout_seconds
+            timeout_seconds=config.timeout_seconds,
         )
     except Exception as e:
         logger.error(f"Failed to get search config: {e}")
@@ -58,8 +61,7 @@ async def get_config(
 
 @router.put("/config")
 async def update_config(
-    updates: SearchConfigUpdate,
-    service: SearchService = Depends(get_search_service)
+    updates: SearchConfigUpdate, service: SearchService = Depends(get_search_service)
 ):
     """Update search configuration"""
     try:

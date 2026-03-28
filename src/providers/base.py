@@ -3,11 +3,14 @@ Base LLM Adapter
 
 Abstract base class for LLM provider adapters.
 """
+
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, List, Dict, Any, Optional
+from collections.abc import AsyncIterator
+from typing import Any
+
 from langchain_core.messages import BaseMessage
 
-from .types import StreamChunk, LLMResponse, ProviderConfig, ModelConfig, ModelCapabilities
+from .types import LLMResponse, StreamChunk
 
 
 class BaseLLMAdapter(ABC):
@@ -31,7 +34,7 @@ class BaseLLMAdapter(ABC):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Any:
         """
         Create an LLM instance for this adapter.
@@ -51,12 +54,7 @@ class BaseLLMAdapter(ABC):
         pass
 
     @abstractmethod
-    def stream(
-        self,
-        llm: Any,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> AsyncIterator[StreamChunk]:
+    def stream(self, llm: Any, messages: list[BaseMessage], **kwargs) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from the LLM.
 
@@ -71,12 +69,7 @@ class BaseLLMAdapter(ABC):
         pass
 
     @abstractmethod
-    async def invoke(
-        self,
-        llm: Any,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm: Any, messages: list[BaseMessage], **kwargs) -> LLMResponse:
         """
         Invoke the LLM and get a complete response.
 
@@ -99,7 +92,7 @@ class BaseLLMAdapter(ABC):
         """
         return False
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Get parameters to enable thinking mode.
 
@@ -111,11 +104,7 @@ class BaseLLMAdapter(ABC):
         """
         return {}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from the provider's API.
 
@@ -129,10 +118,7 @@ class BaseLLMAdapter(ABC):
         return []
 
     async def test_connection(
-        self,
-        base_url: str,
-        api_key: str,
-        model_id: Optional[str] = None
+        self, base_url: str, api_key: str, model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test connection to the provider.
@@ -158,6 +144,7 @@ class BaseLLMAdapter(ABC):
                 disable_thinking=True,
             )
             from langchain_core.messages import HumanMessage
+
             response = await self.invoke(llm, [HumanMessage(content="hi")])
             if response and (response.content or response.thinking):
                 return True, "Connection successful"

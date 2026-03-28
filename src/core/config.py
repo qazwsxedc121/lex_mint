@@ -1,9 +1,9 @@
 """Configuration management using pydantic-settings."""
 
 import os
-from pathlib import Path
 import re
-from typing import TYPE_CHECKING, List
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,7 +13,7 @@ from .paths import attachments_dir, conversations_dir, data_state_dir, user_data
 _WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
-def _default_cors_origins() -> List[str]:
+def _default_cors_origins() -> list[str]:
     """Build sane CORS defaults without hardcoded project port literals."""
     frontend_port = os.getenv("FRONTEND_PORT", "").strip()
     origins = [
@@ -52,17 +52,36 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 10
 
     # Project Configuration
-    projects_config_path: Path = Field(default_factory=lambda: data_state_dir() / "projects_config.yaml")
-    projects_browse_roots: List[Path] = [Path(".")]
+    projects_config_path: Path = Field(
+        default_factory=lambda: data_state_dir() / "projects_config.yaml"
+    )
+    projects_browse_roots: list[Path] = [Path(".")]
     max_file_read_size_mb: int = 10
-    allowed_file_extensions: List[str] = [
-        ".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx",
-        ".json", ".yaml", ".yml", ".html", ".css", ".xml",
-        ".java", ".c", ".cpp", ".h", ".go", ".rs", ".sql"
+    allowed_file_extensions: list[str] = [
+        ".txt",
+        ".md",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".html",
+        ".css",
+        ".xml",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".go",
+        ".rs",
+        ".sql",
     ]
 
     # CORS Configuration
-    cors_origins: List[str] = Field(default_factory=_default_cors_origins)
+    cors_origins: list[str] = Field(default_factory=_default_cors_origins)
 
     # Logging
     log_level: str = "INFO"

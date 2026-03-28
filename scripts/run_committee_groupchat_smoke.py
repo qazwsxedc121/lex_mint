@@ -17,7 +17,7 @@ import sys
 from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -34,7 +34,7 @@ def _ascii_safe(value: str) -> str:
     return text.encode("ascii", "ignore").decode("ascii")
 
 
-def _choose_assistants(assistants: List[Dict[str, Any]]) -> List[str]:
+def _choose_assistants(assistants: list[dict[str, Any]]) -> list[str]:
     enabled_ids = [a.get("id") for a in assistants if a.get("enabled")]
     if "general-assistant" in enabled_ids and "creative-writer" in enabled_ids:
         return ["general-assistant", "creative-writer"]
@@ -51,13 +51,13 @@ class TurnTranscript:
     chunk_count: int = 0
 
 
-def run_smoke(message: str) -> Dict[str, Any]:
+def run_smoke(message: str) -> dict[str, Any]:
     logging.disable(logging.CRITICAL)
 
     original_print = builtins.print
     builtins.print = lambda *args, **kwargs: None
 
-    session_id: Optional[str] = None
+    session_id: str | None = None
     try:
         with TestClient(app) as client:
             assistants_resp = client.get("/api/assistants")
@@ -77,8 +77,8 @@ def run_smoke(message: str) -> Dict[str, Any]:
             create_resp.raise_for_status()
             session_id = create_resp.json()["session_id"]
 
-            events: List[Dict[str, Any]] = []
-            turns: "OrderedDict[str, TurnTranscript]" = OrderedDict()
+            events: list[dict[str, Any]] = []
+            turns: OrderedDict[str, TurnTranscript] = OrderedDict()
 
             with client.stream(
                 "POST",
@@ -127,10 +127,10 @@ def run_smoke(message: str) -> Dict[str, Any]:
         builtins.print = original_print
 
     event_counts: Counter = Counter()
-    compact_sequence: List[str] = []
-    action_events: List[Dict[str, Any]] = []
-    group_done: Optional[Dict[str, Any]] = None
-    first_error: Optional[Dict[str, Any]] = None
+    compact_sequence: list[str] = []
+    action_events: list[dict[str, Any]] = []
+    group_done: dict[str, Any] | None = None
+    first_error: dict[str, Any] | None = None
 
     interesting_types = {
         "user_message_id",

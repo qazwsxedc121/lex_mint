@@ -46,6 +46,12 @@ def test_build_catalog_groups_tools_in_ui_order():
         "read_webpage",
     ]
     assert catalog.groups[0].title_i18n_key == "workspace.settings.toolGroups.builtin.title"
-    assert catalog.groups[0].description_i18n_key == "workspace.settings.toolGroups.builtin.description"
+    assert (
+        catalog.groups[0].description_i18n_key
+        == "workspace.settings.toolGroups.builtin.description"
+    )
     assert catalog.tools[0].title_i18n_key == "workspace.settings.tools.get_current_time.title"
-    assert catalog.tools[0].description_i18n_key == "workspace.settings.tools.get_current_time.description"
+    assert (
+        catalog.tools[0].description_i18n_key
+        == "workspace.settings.tools.get_current_time.description"
+    )

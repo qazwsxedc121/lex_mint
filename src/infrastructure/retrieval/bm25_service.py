@@ -3,15 +3,16 @@ BM25 Service
 
 Maintains a lightweight SQLite FTS5 index for lexical retrieval.
 """
+
 from __future__ import annotations
 
-import logging
 import importlib
+import logging
 import re
 import sqlite3
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.core.paths import resolve_user_data_path
 
@@ -20,13 +21,14 @@ logger = logging.getLogger(__name__)
 
 class Bm25Service:
     """Service for chunk-level BM25 indexing and retrieval."""
+
     _punct_only_re = re.compile(r"[\W_]+")
     _cjk_re = re.compile(r"[\u3400-\u9fff]")
     _english_token_re = re.compile(r"[a-z0-9]+(?:['-][a-z0-9]+)?")
     # Keep disabled by default; lexical score remains standard BM25 unless explicitly tuned.
     _english_soft_coverage_weight = 0.0
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         if db_path is None:
             from src.infrastructure.config.rag_config_service import RagConfigService
 
@@ -76,13 +78,13 @@ class Bm25Service:
             conn.commit()
 
     @staticmethod
-    def _fallback_tokenize(text: str) -> List[str]:
+    def _fallback_tokenize(text: str) -> list[str]:
         # Keep English words and single CJK chars as a safe fallback.
         pattern = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]")
         return pattern.findall(text.lower())
 
     @classmethod
-    def _tokenize_english_text(cls, text: str) -> List[str]:
+    def _tokenize_english_text(cls, text: str) -> list[str]:
         raw = (text or "").strip().lower()
         if not raw:
             return []
@@ -93,14 +95,16 @@ class Bm25Service:
         return bool(cls._cjk_re.search(text or ""))
 
     @classmethod
-    def tokenize_text(cls, text: str) -> List[str]:
+    def tokenize_text(cls, text: str) -> list[str]:
         raw = (text or "").strip()
         if not raw:
             return []
         if cls._looks_cjk_text(raw):
             try:
                 jieba = importlib.import_module("jieba")
-                tokens = [tok.strip().lower() for tok in jieba.lcut_for_search(raw) if tok and tok.strip()]
+                tokens = [
+                    tok.strip().lower() for tok in jieba.lcut_for_search(raw) if tok and tok.strip()
+                ]
             except Exception:
                 tokens = cls._fallback_tokenize(raw)
         else:
@@ -108,7 +112,7 @@ class Bm25Service:
             if not tokens:
                 tokens = cls._fallback_tokenize(raw)
 
-        cleaned: List[str] = []
+        cleaned: list[str] = []
         for tok in tokens:
             if not tok:
                 continue
@@ -126,17 +130,17 @@ class Bm25Service:
         tokens = cls.tokenize_text(query)
         if not tokens:
             return ""
-        escaped = [f"\"{tok.replace('\"', '\"\"')}\"" for tok in tokens]
+        escaped = ['"' + tok.replace('"', '""') + '"' for tok in tokens]
         return " OR ".join(escaped)
 
     @classmethod
-    def _significant_query_terms(cls, query: str) -> List[str]:
+    def _significant_query_terms(cls, query: str) -> list[str]:
         tokens = cls.tokenize_text(query)
         if not tokens:
             return []
 
         seen = set()
-        terms: List[str] = []
+        terms: list[str] = []
         for tok in tokens:
             if tok in seen:
                 continue
@@ -148,7 +152,7 @@ class Bm25Service:
             return terms
 
         # Fallback for short-token queries so filtering does not hide all results.
-        short_terms: List[str] = []
+        short_terms: list[str] = []
         for tok in tokens:
             if not tok or tok in short_terms:
                 continue
@@ -156,7 +160,7 @@ class Bm25Service:
         return short_terms
 
     @staticmethod
-    def _calculate_term_coverage(query_terms: List[str], tokenized_text: str) -> tuple[float, int]:
+    def _calculate_term_coverage(query_terms: list[str], tokenized_text: str) -> tuple[float, int]:
         if not query_terms:
             return 1.0, 0
         if not tokenized_text:
@@ -175,7 +179,7 @@ class Bm25Service:
         kb_id: str,
         doc_id: str,
         filename: str,
-        chunks: List[Dict[str, Any]],
+        chunks: list[dict[str, Any]],
     ) -> None:
         """Upsert one document's chunk rows and refresh its FTS rows."""
         if not chunks:
@@ -191,9 +195,9 @@ class Bm25Service:
                 ).fetchall()
                 existing_ids = [str(item["chunk_id"]) for item in existing_rows]
 
-                current_ids: List[str] = []
-                chunk_rows: List[tuple[object, ...]] = []
-                fts_rows: List[tuple[str, str]] = []
+                current_ids: list[str] = []
+                chunk_rows: list[tuple[object, ...]] = []
+                fts_rows: list[tuple[str, str]] = []
                 for row in chunks:
                     chunk_id = str(row.get("chunk_id") or "")
                     if not chunk_id:
@@ -240,7 +244,9 @@ class Bm25Service:
                     return
 
                 current_id_set = set(current_ids)
-                stale_ids = [chunk_id for chunk_id in existing_ids if chunk_id not in current_id_set]
+                stale_ids = [
+                    chunk_id for chunk_id in existing_ids if chunk_id not in current_id_set
+                ]
                 if stale_ids:
                     placeholders = ",".join("?" for _ in stale_ids)
                     cursor.execute(
@@ -272,10 +278,14 @@ class Bm25Service:
                 (kb_id, doc_id),
             ).fetchall()
             chunk_ids = [str(item["chunk_id"]) for item in rows]
-            cursor.execute("DELETE FROM rag_bm25_chunks WHERE kb_id = ? AND doc_id = ?", (kb_id, doc_id))
+            cursor.execute(
+                "DELETE FROM rag_bm25_chunks WHERE kb_id = ? AND doc_id = ?", (kb_id, doc_id)
+            )
             if chunk_ids:
                 placeholders = ",".join("?" for _ in chunk_ids)
-                cursor.execute(f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})", chunk_ids)
+                cursor.execute(
+                    f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})", chunk_ids
+                )
             conn.commit()
 
     def delete_kb_chunks(self, *, kb_id: str) -> None:
@@ -289,7 +299,9 @@ class Bm25Service:
             cursor.execute("DELETE FROM rag_bm25_chunks WHERE kb_id = ?", (kb_id,))
             if chunk_ids:
                 placeholders = ",".join("?" for _ in chunk_ids)
-                cursor.execute(f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})", chunk_ids)
+                cursor.execute(
+                    f"DELETE FROM rag_bm25_fts WHERE chunk_id IN ({placeholders})", chunk_ids
+                )
             conn.commit()
 
     def search(
@@ -299,7 +311,7 @@ class Bm25Service:
         query: str,
         top_k: int,
         min_term_coverage: float = 0.0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         match_expr = self._build_match_expression(query)
         if not match_expr:
             return []
@@ -344,7 +356,7 @@ class Bm25Service:
         if not rows:
             return []
 
-        filtered_rows: List[tuple[sqlite3.Row, float, int]] = []
+        filtered_rows: list[tuple[sqlite3.Row, float, int]] = []
         if safe_min_term_coverage > 0:
             for row in rows:
                 coverage, matched_count = self._calculate_term_coverage(
@@ -379,7 +391,7 @@ class Bm25Service:
 
         coverage_weight = self._english_soft_coverage_weight if use_soft_coverage_rerank else 0.0
         bm25_weight = 1.0 - coverage_weight
-        scored_rows: List[tuple[sqlite3.Row, float, int, float]] = []
+        scored_rows: list[tuple[sqlite3.Row, float, int, float]] = []
         for index, (row, coverage, matched_count) in enumerate(filtered_rows):
             score = (bm25_weight * float(normalized[index])) + (coverage_weight * float(coverage))
             scored_rows.append((row, coverage, matched_count, score))
@@ -395,7 +407,7 @@ class Bm25Service:
         )
         scored_rows = scored_rows[:safe_top_k]
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for row, coverage, matched_count, score in scored_rows:
             items.append(
                 {
@@ -421,7 +433,7 @@ class Bm25Service:
         start_index: int,
         end_index: int,
         limit: int = 256,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List chunks for one document within an inclusive chunk index range."""
         safe_start = max(0, int(start_index))
         safe_end = max(safe_start, int(end_index))
@@ -439,7 +451,7 @@ class Bm25Service:
                 (kb_id, doc_id, safe_start, safe_end, safe_limit),
             ).fetchall()
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -452,5 +464,3 @@ class Bm25Service:
                 }
             )
         return items
-
-

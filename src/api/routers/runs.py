@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.domain.models.async_run import AsyncRunListResponse, AsyncRunRecord, RunKind, RunStatus
 from src.application.flow.async_run_provider import get_async_run_service, get_async_run_store
 from src.application.flow.async_run_service import AsyncRunService
-from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_types import REPLAY_FINISHED, RESUME_STARTED
 from src.application.flow.flow_events import FlowEventStage
@@ -23,6 +21,8 @@ from src.application.flow.flow_stream_runtime import (
     FlowStreamRuntime,
 )
 from src.application.flow.flow_stream_runtime_provider import get_flow_stream_runtime
+from src.domain.models.async_run import AsyncRunListResponse, AsyncRunRecord, RunKind, RunStatus
+from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -31,14 +31,14 @@ class CreateRunRequest(BaseModel):
     """Create one async run."""
 
     kind: RunKind
-    workflow_id: Optional[str] = None
-    inputs: Dict[str, Any] = Field(default_factory=dict)
-    session_id: Optional[str] = None
+    workflow_id: str | None = None
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    session_id: str | None = None
     context_type: Literal["workflow", "chat", "project"] = "workflow"
-    project_id: Optional[str] = None
+    project_id: str | None = None
     stream_mode: Literal["default", "editor_rewrite"] = "default"
-    artifact_target_path: Optional[str] = None
-    write_mode: Optional[Literal["none", "create", "overwrite"]] = None
+    artifact_target_path: str | None = None
+    write_mode: Literal["none", "create", "overwrite"] | None = None
 
 
 class ResumeRunStreamRequest(BaseModel):
@@ -50,10 +50,10 @@ class ResumeRunStreamRequest(BaseModel):
 class ResumeRunRequest(BaseModel):
     """Resume one workflow run execution."""
 
-    checkpoint_id: Optional[str] = None
+    checkpoint_id: str | None = None
 
 
-def _is_terminal_payload(payload: Dict[str, Any]) -> bool:
+def _is_terminal_payload(payload: dict[str, Any]) -> bool:
     flow_event = payload.get("flow_event")
     if isinstance(flow_event, dict):
         event_type = flow_event.get("event_type")
@@ -96,12 +96,12 @@ async def create_run(
 @router.get("", response_model=AsyncRunListResponse)
 async def list_runs(
     limit: int = Query(default=50, ge=1, le=200),
-    kind: Optional[RunKind] = Query(default=None),
-    status: Optional[RunStatus] = Query(default=None),
-    context_type: Optional[str] = Query(default=None),
-    project_id: Optional[str] = Query(default=None),
-    session_id: Optional[str] = Query(default=None),
-    workflow_id: Optional[str] = Query(default=None),
+    kind: RunKind | None = Query(default=None),
+    status: RunStatus | None = Query(default=None),
+    context_type: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    session_id: str | None = Query(default=None),
+    workflow_id: str | None = Query(default=None),
     store: AsyncRunStoreService = Depends(get_async_run_store),
     service: AsyncRunService = Depends(get_async_run_service),
 ):
@@ -196,7 +196,9 @@ async def stream_run(
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
             )
-        raise HTTPException(status_code=404, detail={"code": "stream_not_found", "message": "stream not found"})
+        raise HTTPException(
+            status_code=404, detail={"code": "stream_not_found", "message": "stream not found"}
+        )
 
     replay_payloads = list(state.events)
     subscriber_id, queue = runtime.subscribe(run.stream_id)
@@ -246,16 +248,24 @@ async def resume_run_stream(
             project_id=run.project_id,
         )
     except FlowStreamNotFoundError:
-        raise HTTPException(status_code=404, detail={"code": "stream_not_found", "message": "stream not found"})
+        raise HTTPException(
+            status_code=404, detail={"code": "stream_not_found", "message": "stream not found"}
+        )
     except FlowReplayCursorGoneError:
         raise HTTPException(
             status_code=410,
-            detail={"code": "replay_cursor_gone", "message": "last_event_id is outside replay window"},
+            detail={
+                "code": "replay_cursor_gone",
+                "message": "last_event_id is outside replay window",
+            },
         )
     except FlowStreamContextMismatchError:
         raise HTTPException(
             status_code=409,
-            detail={"code": "stream_context_mismatch", "message": "stream context does not match request"},
+            detail={
+                "code": "stream_context_mismatch",
+                "message": "stream context does not match request",
+            },
         )
 
     async def event_generator():

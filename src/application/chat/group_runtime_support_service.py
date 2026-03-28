@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
-from src.domain.models.group_participant import parse_group_participant
 from src.application.chat.chat_runtime import GroupSettingsResolver
 from src.application.chat.service_contracts import AssistantLike
+from src.domain.models.group_participant import parse_group_participant
 
 
 @dataclass
@@ -17,16 +18,16 @@ class _RuntimeAssistant:
     model_id: str
     icon: str
     description: str
-    system_prompt: Optional[str]
-    temperature: Optional[float]
-    max_tokens: Optional[int]
-    top_p: Optional[float]
-    top_k: Optional[int]
-    frequency_penalty: Optional[float]
-    presence_penalty: Optional[float]
-    max_rounds: Optional[int]
+    system_prompt: str | None
+    temperature: float | None
+    max_tokens: int | None
+    top_p: float | None
+    top_k: int | None
+    frequency_penalty: float | None
+    presence_penalty: float | None
+    max_rounds: int | None
     memory_enabled: bool
-    knowledge_base_ids: Optional[List[str]]
+    knowledge_base_ids: list[str] | None
     enabled: bool
 
 
@@ -34,7 +35,7 @@ class GroupRuntimeSupportService:
     """Resolve group participants and settings for runtime orchestration."""
 
     @staticmethod
-    def _extract_model_template_params(model_obj: Any) -> Dict[str, Any]:
+    def _extract_model_template_params(model_obj: Any) -> dict[str, Any]:
         template = getattr(model_obj, "chat_template", None)
         if not template:
             return {}
@@ -56,7 +57,7 @@ class GroupRuntimeSupportService:
     async def build_group_runtime_assistant(
         self,
         participant_token: str,
-    ) -> Optional[Tuple[str, AssistantLike, str]]:
+    ) -> tuple[str, AssistantLike, str] | None:
         """Resolve assistant/model participant token to runtime assistant object."""
         try:
             participant = parse_group_participant(participant_token)
@@ -106,11 +107,11 @@ class GroupRuntimeSupportService:
     def resolve_group_settings(
         self,
         *,
-        group_mode: Optional[str],
-        group_assistants: List[str],
-        group_settings: Optional[Dict[str, Any]],
-        assistant_config_map: Dict[str, AssistantLike],
-        resolve_round_policy: Optional[Callable[..., Dict[str, int]]] = None,
+        group_mode: str | None,
+        group_assistants: list[str],
+        group_settings: dict[str, Any] | None,
+        assistant_config_map: dict[str, AssistantLike],
+        resolve_round_policy: Callable[..., dict[str, int]] | None = None,
     ) -> Any:
         """Resolve runtime group settings with backward-compatible defaults."""
         return GroupSettingsResolver.resolve(

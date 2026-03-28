@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-import sqlite3
-import threading
-from typing import Dict, List, Optional
 
 from src.core.paths import data_state_dir
 
@@ -26,17 +25,17 @@ class RunStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def get_checkpoint(self, *, run_id: str, checkpoint_id: str) -> Optional[RunCheckpoint]:
+    async def get_checkpoint(self, *, run_id: str, checkpoint_id: str) -> RunCheckpoint | None:
         """Fetch one checkpoint by id within one run."""
         raise NotImplementedError
 
     @abstractmethod
-    async def get_latest_checkpoint(self, *, run_id: str) -> Optional[RunCheckpoint]:
+    async def get_latest_checkpoint(self, *, run_id: str) -> RunCheckpoint | None:
         """Fetch the most recent checkpoint for one run."""
         raise NotImplementedError
 
     @abstractmethod
-    async def list_checkpoints(self, *, run_id: str, limit: int = 200) -> List[RunCheckpoint]:
+    async def list_checkpoints(self, *, run_id: str, limit: int = 200) -> list[RunCheckpoint]:
         """List checkpoints by sequence ascending."""
         raise NotImplementedError
 
@@ -50,8 +49,8 @@ class InMemoryRunStore(RunStore):
     """In-memory checkpoint store for tests/local runtime."""
 
     def __init__(self):
-        self._by_run: Dict[str, List[RunCheckpoint]] = {}
-        self._by_id: Dict[str, Dict[str, RunCheckpoint]] = {}
+        self._by_run: dict[str, list[RunCheckpoint]] = {}
+        self._by_id: dict[str, dict[str, RunCheckpoint]] = {}
         self._lock = asyncio.Lock()
 
     async def append_checkpoint(self, checkpoint: RunCheckpoint) -> None:
@@ -59,18 +58,18 @@ class InMemoryRunStore(RunStore):
             self._by_run.setdefault(checkpoint.run_id, []).append(checkpoint)
             self._by_id.setdefault(checkpoint.run_id, {})[checkpoint.checkpoint_id] = checkpoint
 
-    async def get_checkpoint(self, *, run_id: str, checkpoint_id: str) -> Optional[RunCheckpoint]:
+    async def get_checkpoint(self, *, run_id: str, checkpoint_id: str) -> RunCheckpoint | None:
         async with self._lock:
             return self._by_id.get(run_id, {}).get(checkpoint_id)
 
-    async def get_latest_checkpoint(self, *, run_id: str) -> Optional[RunCheckpoint]:
+    async def get_latest_checkpoint(self, *, run_id: str) -> RunCheckpoint | None:
         async with self._lock:
             checkpoints = self._by_run.get(run_id, [])
             if not checkpoints:
                 return None
             return checkpoints[-1]
 
-    async def list_checkpoints(self, *, run_id: str, limit: int = 200) -> List[RunCheckpoint]:
+    async def list_checkpoints(self, *, run_id: str, limit: int = 200) -> list[RunCheckpoint]:
         safe_limit = max(1, int(limit))
         async with self._lock:
             checkpoints = self._by_run.get(run_id, [])
@@ -85,8 +84,10 @@ class InMemoryRunStore(RunStore):
 class SqliteRunStore(RunStore):
     """SQLite-backed checkpoint store for runtime recovery."""
 
-    def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = Path(db_path or (data_state_dir() / "orchestration" / "runtime_checkpoints.sqlite3"))
+    def __init__(self, db_path: Path | None = None):
+        self.db_path = Path(
+            db_path or (data_state_dir() / "orchestration" / "runtime_checkpoints.sqlite3")
+        )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._ensure_schema()
@@ -175,14 +176,14 @@ class SqliteRunStore(RunStore):
                 )
                 conn.commit()
 
-    async def get_checkpoint(self, *, run_id: str, checkpoint_id: str) -> Optional[RunCheckpoint]:
+    async def get_checkpoint(self, *, run_id: str, checkpoint_id: str) -> RunCheckpoint | None:
         return await asyncio.to_thread(
             self._get_checkpoint_sync,
             run_id,
             checkpoint_id,
         )
 
-    def _get_checkpoint_sync(self, run_id: str, checkpoint_id: str) -> Optional[RunCheckpoint]:
+    def _get_checkpoint_sync(self, run_id: str, checkpoint_id: str) -> RunCheckpoint | None:
         with self._lock:
             with self._connect() as conn:
                 row = conn.execute(
@@ -195,10 +196,10 @@ class SqliteRunStore(RunStore):
                 ).fetchone()
         return self._row_to_checkpoint(row) if row else None
 
-    async def get_latest_checkpoint(self, *, run_id: str) -> Optional[RunCheckpoint]:
+    async def get_latest_checkpoint(self, *, run_id: str) -> RunCheckpoint | None:
         return await asyncio.to_thread(self._get_latest_checkpoint_sync, run_id)
 
-    def _get_latest_checkpoint_sync(self, run_id: str) -> Optional[RunCheckpoint]:
+    def _get_latest_checkpoint_sync(self, run_id: str) -> RunCheckpoint | None:
         with self._lock:
             with self._connect() as conn:
                 row = conn.execute(
@@ -212,11 +213,11 @@ class SqliteRunStore(RunStore):
                 ).fetchone()
         return self._row_to_checkpoint(row) if row else None
 
-    async def list_checkpoints(self, *, run_id: str, limit: int = 200) -> List[RunCheckpoint]:
+    async def list_checkpoints(self, *, run_id: str, limit: int = 200) -> list[RunCheckpoint]:
         safe_limit = max(1, int(limit))
         return await asyncio.to_thread(self._list_checkpoints_sync, run_id, safe_limit)
 
-    def _list_checkpoints_sync(self, run_id: str, limit: int) -> List[RunCheckpoint]:
+    def _list_checkpoints_sync(self, run_id: str, limit: int) -> list[RunCheckpoint]:
         with self._lock:
             with self._connect() as conn:
                 rows = conn.execute(

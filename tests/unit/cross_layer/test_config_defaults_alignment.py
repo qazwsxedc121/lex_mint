@@ -1,4 +1,4 @@
-﻿"""Regression tests for config services that should follow defaults YAML."""
+"""Regression tests for config services that should follow defaults YAML."""
 
 import asyncio
 from pathlib import Path
@@ -6,15 +6,15 @@ from unittest.mock import Mock
 
 import yaml
 
-from src.infrastructure.config.assistant_config_service import AssistantConfigService
-from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.application.chat.followup_service import FollowupService
 from src.application.chat.title_generation_service import TitleGenerationService
+from src.infrastructure.compression.compression_config_service import CompressionConfigService
+from src.infrastructure.config.assistant_config_service import AssistantConfigService
 from src.infrastructure.config.translation_config_service import TranslationConfigService
 
 
 def _load_defaults(filename: str, section: str) -> dict:
-    with open(Path("config/defaults") / filename, "r", encoding="utf-8") as f:
+    with open(Path("config/defaults") / filename, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return data.get(section, {})
 
@@ -71,4 +71,3 @@ def test_assistant_config_service_uses_empty_defaults_yaml(tmp_path):
 
     assert config.default == ""
     assert config.assistants == []
-

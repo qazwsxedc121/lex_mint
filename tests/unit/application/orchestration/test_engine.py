@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 
@@ -34,8 +34,12 @@ async def test_engine_runs_graph_and_emits_terminal_reason():
         run_id="run-1",
         entry_node_id="start",
         nodes=(
-            NodeSpec(node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)),
-            NodeSpec(node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)),
+            NodeSpec(
+                node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)
+            ),
+            NodeSpec(
+                node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)
+            ),
         ),
         edges=(EdgeSpec(source_id="start", target_id="end"),),
     )
@@ -44,7 +48,14 @@ async def test_engine_runs_graph_and_emits_terminal_reason():
     events = [event async for event in engine.run_stream(spec)]
 
     event_types = [event["type"] for event in events]
-    assert event_types == ["started", "node_started", "node_finished", "node_started", "node_finished", "completed"]
+    assert event_types == [
+        "started",
+        "node_started",
+        "node_finished",
+        "node_started",
+        "node_finished",
+        "completed",
+    ]
     assert events[-1]["terminal_reason"] == "done"
 
 
@@ -53,9 +64,15 @@ def test_validate_run_spec_rejects_unreachable_nodes():
         run_id="run-graph",
         entry_node_id="start",
         nodes=(
-            NodeSpec(node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)),
-            NodeSpec(node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)),
-            NodeSpec(node_id="orphan", actor=ActorRef(actor_id="orphan", kind="test", handler=_end_actor)),
+            NodeSpec(
+                node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)
+            ),
+            NodeSpec(
+                node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)
+            ),
+            NodeSpec(
+                node_id="orphan", actor=ActorRef(actor_id="orphan", kind="test", handler=_end_actor)
+            ),
         ),
         edges=(EdgeSpec(source_id="start", target_id="end"),),
     )
@@ -79,14 +96,18 @@ async def test_engine_allows_static_cycle_graphs_bounded_by_terminal_signal():
         run_id="run-loop",
         entry_node_id="loop",
         nodes=(
-            NodeSpec(node_id="loop", actor=ActorRef(actor_id="loop", kind="test", handler=loop_actor)),
+            NodeSpec(
+                node_id="loop", actor=ActorRef(actor_id="loop", kind="test", handler=loop_actor)
+            ),
         ),
         edges=(EdgeSpec(source_id="loop", target_id="loop"),),
     )
     validate_run_spec(spec)
 
     engine = OrchestrationEngine()
-    events = [event async for event in engine.run_stream(spec, RunContext(run_id="run-loop", max_steps=5))]
+    events = [
+        event async for event in engine.run_stream(spec, RunContext(run_id="run-loop", max_steps=5))
+    ]
 
     assert state["calls"] == 3
     assert events[-1]["type"] == "completed"
@@ -174,7 +195,9 @@ async def test_engine_stops_when_cancelled():
         ),
     )
     engine = OrchestrationEngine()
-    context = RunContext(run_id="run-cancel", cancel_event=cancel_event, cancel_reason="user cancelled")
+    context = RunContext(
+        run_id="run-cancel", cancel_event=cancel_event, cancel_reason="user cancelled"
+    )
 
     events = [event async for event in engine.run_stream(spec, context)]
 
@@ -189,8 +212,12 @@ async def test_engine_persists_checkpoints_for_lifecycle_events():
         run_id="run-with-checkpoints",
         entry_node_id="start",
         nodes=(
-            NodeSpec(node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)),
-            NodeSpec(node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)),
+            NodeSpec(
+                node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=_start_actor)
+            ),
+            NodeSpec(
+                node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=_end_actor)
+            ),
         ),
         edges=(EdgeSpec(source_id="start", target_id="end"),),
     )
@@ -202,7 +229,11 @@ async def test_engine_persists_checkpoints_for_lifecycle_events():
     assert len(checkpoints) >= 6
     assert checkpoints[0].event_type == "started"
     assert checkpoints[-1].event_type == "completed"
-    assert all("checkpoint_id" in event for event in events if event["type"] in {"started", "node_started", "node_finished", "completed"})
+    assert all(
+        "checkpoint_id" in event
+        for event in events
+        if event["type"] in {"started", "node_started", "node_finished", "completed"}
+    )
 
 
 @pytest.mark.asyncio
@@ -221,7 +252,9 @@ async def test_engine_resume_from_node_finished_checkpoint():
         run_id="run-resume",
         entry_node_id="start",
         nodes=(
-            NodeSpec(node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=start_actor)),
+            NodeSpec(
+                node_id="start", actor=ActorRef(actor_id="start", kind="test", handler=start_actor)
+            ),
             NodeSpec(node_id="end", actor=ActorRef(actor_id="end", kind="test", handler=end_actor)),
         ),
         edges=(EdgeSpec(source_id="start", target_id="end"),),
@@ -232,12 +265,14 @@ async def test_engine_resume_from_node_finished_checkpoint():
     _ = [event async for event in engine.run_stream(spec)]
     checkpoints = await store.list_checkpoints(run_id="run-resume")
     start_finished = next(
-        item for item in checkpoints
+        item
+        for item in checkpoints
         if item.event_type == "node_finished" and item.node_id == "start"
     )
 
     resumed_events = [
-        event async for event in engine.resume_stream(
+        event
+        async for event in engine.resume_stream(
             spec,
             from_checkpoint_id=start_finished.checkpoint_id,
         )

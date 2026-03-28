@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Optional, cast
+from typing import Any, cast
 
 
 def _default_compression_service_factory(storage: Any) -> Any:
@@ -33,7 +34,7 @@ class ChatSessionCommandService:
         session_id: str,
         keep_until_index: int,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.truncate_messages_after(
             session_id,
@@ -46,10 +47,10 @@ class ChatSessionCommandService:
         self,
         *,
         session_id: str,
-        message_index: Optional[int] = None,
-        message_id: Optional[str] = None,
+        message_index: int | None = None,
+        message_id: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         if message_id:
             await self._storage.delete_message_by_id(
@@ -77,7 +78,7 @@ class ChatSessionCommandService:
         message_id: str,
         content: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.update_message_content(
             session_id,
@@ -92,14 +93,14 @@ class ChatSessionCommandService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> str:
         return cast(
             str,
             await self._storage.append_separator(
-            session_id,
-            context_type=context_type,
-            project_id=project_id,
+                session_id,
+                context_type=context_type,
+                project_id=project_id,
             ),
         )
 
@@ -108,7 +109,7 @@ class ChatSessionCommandService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._storage.clear_all_messages(
             session_id,
@@ -121,7 +122,7 @@ class ChatSessionCommandService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> AsyncIterator[Any]:
         compression_service = self._compression_service_factory(self._storage)
         async for chunk in compression_service.compress_context_stream(

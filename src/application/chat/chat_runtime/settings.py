@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from .policy import CommitteePolicy
 
-
-ResolveRoundPolicy = Callable[..., Dict[str, int]]
+ResolveRoundPolicy = Callable[..., dict[str, int]]
 
 
 @dataclass(frozen=True)
@@ -23,11 +23,11 @@ class ResolvedCommitteeSettings:
     role_retry_limit: int
     allow_parallel_speak: bool = True
     allow_finish: bool = True
-    supervisor_system_prompt_template: Optional[str] = None
-    summary_instruction_template: Optional[str] = None
-    fallback_notes: List[str] = field(default_factory=list)
+    supervisor_system_prompt_template: str | None = None
+    summary_instruction_template: str | None = None
+    fallback_notes: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize resolved committee settings for API/debug responses."""
         return {
             "supervisor_id": self.supervisor_id,
@@ -55,13 +55,13 @@ class ResolvedGroupSettings:
     """Resolved group-level settings for one session execution."""
 
     group_mode: str
-    group_assistants: List[str]
-    group_settings: Dict[str, Any]
-    committee: Optional[ResolvedCommitteeSettings] = None
+    group_assistants: list[str]
+    group_settings: dict[str, Any]
+    committee: ResolvedCommitteeSettings | None = None
 
-    def to_effective_dict(self) -> Dict[str, Any]:
+    def to_effective_dict(self) -> dict[str, Any]:
         """Serialize effective group settings for API responses."""
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "group_mode": self.group_mode,
             "group_assistants": list(self.group_assistants),
         }
@@ -80,10 +80,10 @@ class GroupSettingsResolver:
 
     @staticmethod
     def normalize_group_mode(
-        group_mode: Optional[str],
+        group_mode: str | None,
         *,
-        group_assistants: Optional[List[str]],
-    ) -> Optional[str]:
+        group_assistants: list[str] | None,
+    ) -> str | None:
         """Normalize group mode while keeping backward-compatible defaults."""
         if group_mode is None:
             return "round_robin" if group_assistants else None
@@ -96,21 +96,21 @@ class GroupSettingsResolver:
         return normalized
 
     @staticmethod
-    def normalize_group_settings(raw_group_settings: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def normalize_group_settings(raw_group_settings: dict[str, Any] | None) -> dict[str, Any]:
         """Normalize user-provided group settings into a stable schema."""
         payload = raw_group_settings if isinstance(raw_group_settings, dict) else {}
-        result: Dict[str, Any] = {"version": 1}
+        result: dict[str, Any] = {"version": 1}
 
         committee_raw = payload.get("committee")
         if isinstance(committee_raw, dict):
-            committee: Dict[str, Any] = {}
+            committee: dict[str, Any] = {}
 
             supervisor_id = committee_raw.get("supervisor_id")
             if isinstance(supervisor_id, str) and supervisor_id.strip():
                 committee["supervisor_id"] = supervisor_id.strip()
 
             policy_raw = committee_raw.get("policy")
-            policy: Dict[str, Any] = {}
+            policy: dict[str, Any] = {}
             if isinstance(policy_raw, dict):
                 for key in (
                     "max_rounds",
@@ -126,7 +126,7 @@ class GroupSettingsResolver:
                 committee["policy"] = policy
 
             actions_raw = committee_raw.get("actions")
-            actions: Dict[str, Any] = {}
+            actions: dict[str, Any] = {}
             if isinstance(actions_raw, dict):
                 for key in ("allow_parallel_speak", "allow_finish"):
                     value = actions_raw.get(key)
@@ -136,7 +136,7 @@ class GroupSettingsResolver:
                 committee["actions"] = actions
 
             prompting_raw = committee_raw.get("prompting")
-            prompting: Dict[str, Any] = {}
+            prompting: dict[str, Any] = {}
             if isinstance(prompting_raw, dict):
                 for key in ("supervisor_system_prompt_template", "summary_instruction_template"):
                     value = prompting_raw.get(key)
@@ -159,11 +159,11 @@ class GroupSettingsResolver:
     def resolve(
         cls,
         *,
-        group_mode: Optional[str],
-        group_assistants: List[str],
-        group_settings: Optional[Dict[str, Any]],
-        assistant_config_map: Dict[str, Any],
-        resolve_round_policy: Optional[ResolveRoundPolicy] = None,
+        group_mode: str | None,
+        group_assistants: list[str],
+        group_settings: dict[str, Any] | None,
+        assistant_config_map: dict[str, Any],
+        resolve_round_policy: ResolveRoundPolicy | None = None,
     ) -> ResolvedGroupSettings:
         """Resolve effective runtime settings for one group chat session."""
         normalized_mode = cls.normalize_group_mode(group_mode, group_assistants=group_assistants)
@@ -171,7 +171,7 @@ class GroupSettingsResolver:
             normalized_mode = "round_robin" if group_assistants else "round_robin"
 
         normalized_settings = cls.normalize_group_settings(group_settings)
-        committee_settings: Optional[ResolvedCommitteeSettings] = None
+        committee_settings: ResolvedCommitteeSettings | None = None
         if normalized_mode == "committee":
             committee_settings = cls.resolve_committee_settings(
                 group_assistants=group_assistants,
@@ -191,16 +191,18 @@ class GroupSettingsResolver:
     def resolve_committee_settings(
         cls,
         *,
-        group_assistants: List[str],
-        group_settings: Dict[str, Any],
-        assistant_config_map: Dict[str, Any],
-        resolve_round_policy: Optional[ResolveRoundPolicy] = None,
+        group_assistants: list[str],
+        group_settings: dict[str, Any],
+        assistant_config_map: dict[str, Any],
+        resolve_round_policy: ResolveRoundPolicy | None = None,
     ) -> ResolvedCommitteeSettings:
         """Resolve committee policy, actions, and prompt templates with defaults."""
         if not group_assistants:
             raise ValueError("group_assistants cannot be empty when resolving committee settings")
 
-        committee_raw = group_settings.get("committee", {}) if isinstance(group_settings, dict) else {}
+        committee_raw = (
+            group_settings.get("committee", {}) if isinstance(group_settings, dict) else {}
+        )
         if not isinstance(committee_raw, dict):
             committee_raw = {}
         policy_raw = committee_raw.get("policy", {})
@@ -213,14 +215,18 @@ class GroupSettingsResolver:
         if not isinstance(prompting_raw, dict):
             prompting_raw = {}
 
-        fallback_notes: List[str] = []
+        fallback_notes: list[str] = []
 
         configured_supervisor_id = committee_raw.get("supervisor_id")
         if isinstance(configured_supervisor_id, str):
             configured_supervisor_id = configured_supervisor_id.strip()
         else:
             configured_supervisor_id = ""
-        supervisor_id = configured_supervisor_id if configured_supervisor_id in group_assistants else group_assistants[0]
+        supervisor_id = (
+            configured_supervisor_id
+            if configured_supervisor_id in group_assistants
+            else group_assistants[0]
+        )
         if configured_supervisor_id and configured_supervisor_id != supervisor_id:
             fallback_notes.append("supervisor_not_in_participants")
 
@@ -279,7 +285,10 @@ class GroupSettingsResolver:
             fallback_notes.append("invalid_allow_finish")
 
         supervisor_prompt_template = prompting_raw.get("supervisor_system_prompt_template")
-        if not isinstance(supervisor_prompt_template, str) or not supervisor_prompt_template.strip():
+        if (
+            not isinstance(supervisor_prompt_template, str)
+            or not supervisor_prompt_template.strip()
+        ):
             supervisor_prompt_template = None
 
         summary_prompt_template = prompting_raw.get("summary_instruction_template")
@@ -301,7 +310,7 @@ class GroupSettingsResolver:
         )
 
     @staticmethod
-    def _coerce_int(value: Any) -> Optional[int]:
+    def _coerce_int(value: Any) -> int | None:
         if value is None or value is True or value is False:
             return None
         try:

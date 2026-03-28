@@ -239,7 +239,9 @@ async def test_test_connection_accepts_downloaded_model(monkeypatch):
     )
 
     adapter = LmStudioAdapter()
-    success, message = await adapter.test_connection("http://localhost:1234", "", model_id="qwen3-30b")
+    success, message = await adapter.test_connection(
+        "http://localhost:1234", "", model_id="qwen3-30b"
+    )
 
     assert success is True
     assert "Connected to LM Studio" in message

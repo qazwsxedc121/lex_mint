@@ -50,29 +50,43 @@ def test_dependency_getters_cache_instances(monkeypatch):
     monkeypatch.setattr(
         dependencies,
         "settings",
-        SimpleNamespace(conversations_dir="/tmp/conversations", attachments_dir="/tmp/attachments", max_file_size_mb=16),
+        SimpleNamespace(
+            conversations_dir="/tmp/conversations",
+            attachments_dir="/tmp/attachments",
+            max_file_size_mb=16,
+        ),
     )
-    monkeypatch.setattr(dependencies, "ModelConfigService", lambda: model_calls.append("model") or "model-service")
+    monkeypatch.setattr(
+        dependencies, "ModelConfigService", lambda: model_calls.append("model") or "model-service"
+    )
     monkeypatch.setattr(
         dependencies,
         "AssistantConfigService",
         lambda **kwargs: assistant_calls.append(kwargs) or {"assistant": kwargs},
     )
-    monkeypatch.setattr(dependencies, "ProjectService", lambda: project_calls.append("project") or "project-service")
+    monkeypatch.setattr(
+        dependencies, "ProjectService", lambda: project_calls.append("project") or "project-service"
+    )
     monkeypatch.setattr(
         dependencies,
         "ProjectWorkspaceStateService",
-        lambda project_service: workspace_calls.append(project_service) or {"workspace": project_service},
+        lambda project_service: (
+            workspace_calls.append(project_service) or {"workspace": project_service}
+        ),
     )
     monkeypatch.setattr(
         dependencies,
         "create_storage_with_project_resolver",
-        lambda conversations_dir, **kwargs: storage_calls.append((conversations_dir, kwargs)) or {"storage": kwargs},
+        lambda conversations_dir, **kwargs: (
+            storage_calls.append((conversations_dir, kwargs)) or {"storage": kwargs}
+        ),
     )
     monkeypatch.setattr(
         dependencies,
         "FileService",
-        lambda attachments_dir, max_size: file_calls.append((attachments_dir, max_size)) or {"file": (attachments_dir, max_size)},
+        lambda attachments_dir, max_size: (
+            file_calls.append((attachments_dir, max_size)) or {"file": (attachments_dir, max_size)}
+        ),
     )
     monkeypatch.setattr(dependencies, "SessionApplicationDeps", lambda **kwargs: kwargs)
     monkeypatch.setattr(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 import pytest
 from fastapi import HTTPException
@@ -14,8 +14,8 @@ from src.api.routers import workflows as workflows_router
 from src.application.flow.flow_stream_runtime import FlowStreamRuntime
 
 
-async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]:
-    payloads: List[Dict[str, Any]] = []
+async def _collect_sse_payloads(streaming_response: Any) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
     async for chunk in streaming_response.body_iterator:
         text = chunk.decode("utf-8") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
         for line in text.splitlines():
@@ -25,7 +25,7 @@ async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]
     return payloads
 
 
-def _assert_flow_event_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _assert_flow_event_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     assert set(payload.keys()) == {"flow_event"}
     flow_event = payload["flow_event"]
     assert isinstance(flow_event, dict)
@@ -39,7 +39,7 @@ def _assert_flow_event_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
     return flow_event
 
 
-def _assert_seq_strictly_increasing(events: List[Dict[str, Any]]) -> None:
+def _assert_seq_strictly_increasing(events: list[dict[str, Any]]) -> None:
     seqs = [event["seq"] for event in events]
     assert seqs == sorted(seqs)
     assert len(seqs) == len(set(seqs))
@@ -64,7 +64,10 @@ class _FakeChatAgent:
     async def process_message_stream(self, *_args, **_kwargs):
         yield "hello"
         yield " world"
-        yield {"type": "usage", "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}}
+        yield {
+            "type": "usage",
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        }
 
     async def process_compare_stream(self, *_args, **_kwargs):
         yield {"type": "model_start", "model_id": "m1", "model_name": "Model-1"}
@@ -102,7 +105,9 @@ async def test_chat_stream_contract_flow_event_only():
     agent = _FakeChatAgent()
     request = chat_router.ChatRequest(session_id="session-1", message="hi")
 
-    response = await chat_router.chat_stream(request=request, agent=cast(Any, agent), runtime=runtime)
+    response = await chat_router.chat_stream(
+        request=request, agent=cast(Any, agent), runtime=runtime
+    )
     payloads = await _collect_sse_payloads(response)
     events = [_assert_flow_event_envelope(payload) for payload in payloads]
     _assert_seq_strictly_increasing(events)
@@ -221,14 +226,21 @@ async def test_chat_compress_unknown_event_maps_to_stream_error_and_stops(monkey
 
     event_types = [event["event_type"] for event in events]
     assert event_types == ["stream_started", "stream_error"]
-    assert events[1]["payload"]["error"] == "unsupported compression stream event type: unknown_event"
+    assert (
+        events[1]["payload"]["error"] == "unsupported compression stream event type: unknown_event"
+    )
 
 
 @pytest.mark.asyncio
 async def test_translate_contract_flow_event_only(monkeypatch):
     class _FakeTranslationService:
         async def translate_stream(self, **_kwargs):
-            yield {"type": "language_detected", "language": "en", "confidence": 0.99, "detector": "test"}
+            yield {
+                "type": "language_detected",
+                "language": "en",
+                "confidence": 0.99,
+                "detector": "test",
+            }
             yield "ni hao"
             yield {
                 "type": "translation_complete",
@@ -237,7 +249,10 @@ async def test_translate_contract_flow_event_only(monkeypatch):
                 "effective_target_language": "zh",
             }
 
-    monkeypatch.setattr("src.application.translation.translation_service.TranslationService", _FakeTranslationService)
+    monkeypatch.setattr(
+        "src.application.translation.translation_service.TranslationService",
+        _FakeTranslationService,
+    )
 
     request = translation_router.TranslateRequest(text="hello", target_language="zh")
     response = await translation_router.translate_text(request)
@@ -269,7 +284,7 @@ class _FakeWorkflowConfigService:
 
 class _FakeWorkflowExecutionService:
     def __init__(self):
-        self.calls: List[Dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
     async def execute_stream(self, workflow, inputs, **kwargs):
         self.calls.append({"workflow": workflow, "inputs": inputs, **kwargs})

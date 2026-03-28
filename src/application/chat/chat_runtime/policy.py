@@ -1,14 +1,12 @@
 """Policy helpers for committee orchestration limits and depth gates."""
 
-from typing import Dict, Optional
-
 
 class CommitteePolicy:
     """Pure policy helpers so orchestration logic can stay focused on control flow."""
 
     @staticmethod
     def resolve_group_round_limit(
-        raw_limit: Optional[int],
+        raw_limit: int | None,
         *,
         fallback: int = 3,
         hard_cap: int = 6,
@@ -28,10 +26,10 @@ class CommitteePolicy:
 
     @staticmethod
     def resolve_committee_round_policy(
-        raw_limit: Optional[int],
+        raw_limit: int | None,
         *,
         participant_count: int,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Derive round/depth policy for committee mode to avoid premature convergence."""
         member_count = max(participant_count - 1, 0)
         min_member_turns_before_finish = 2 if member_count >= 2 else 1
@@ -49,4 +47,3 @@ class CommitteePolicy:
             "min_member_turns_before_finish": min_member_turns_before_finish,
             "min_total_rounds_before_finish": min_total_rounds_before_finish,
         }
-

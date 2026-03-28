@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any
 
 from .base import ChatOrchestrationCancelToken
 from .committee_types import CommitteeDecision, CommitteeRuntimeState, CommitteeTurnRecord
@@ -20,19 +21,19 @@ class CommitteeRunContext:
 
     session_id: str
     raw_user_message: str
-    group_assistants: List[str]
+    group_assistants: list[str]
     supervisor_id: str
     supervisor_name: str
     supervisor_obj: Any
-    assistant_name_map: Dict[str, str]
-    assistant_config_map: Dict[str, Any]
-    reasoning_effort: Optional[str]
+    assistant_name_map: dict[str, str]
+    assistant_config_map: dict[str, Any]
+    reasoning_effort: str | None
     context_type: str
-    project_id: Optional[str]
-    search_context: Optional[str]
-    search_sources: List[Dict[str, Any]]
+    project_id: str | None
+    search_context: str | None
+    search_sources: list[dict[str, Any]]
     committee_settings: ResolvedCommitteeSettings
-    trace_id: Optional[str] = None
+    trace_id: str | None = None
 
 
 class CommitteeActionExecutor:
@@ -42,14 +43,14 @@ class CommitteeActionExecutor:
         self,
         *,
         mode: str,
-        stream_group_assistant_turn: Callable[..., AsyncIterator[Dict[str, Any]]],
+        stream_group_assistant_turn: Callable[..., AsyncIterator[dict[str, Any]]],
         get_message_content_by_id: Callable[..., Any],
-        build_structured_turn_summary: Callable[[str], Dict[str, Any]],
-        build_committee_turn_packet: Callable[..., Dict[str, Any]],
-        detect_group_role_drift: Callable[..., Optional[str]],
+        build_structured_turn_summary: Callable[[str], dict[str, Any]],
+        build_committee_turn_packet: Callable[..., dict[str, Any]],
+        detect_group_role_drift: Callable[..., str | None],
         build_role_retry_instruction: Callable[..., str],
-        truncate_log_text: Callable[[Optional[str], int], str],
-        log_group_trace: Callable[[str, str, Dict[str, Any]], None],
+        truncate_log_text: Callable[[str | None, int], str],
+        log_group_trace: Callable[[str, str, dict[str, Any]], None],
         group_trace_preview_chars: int = 1600,
     ):
         self.mode = mode
@@ -72,8 +73,8 @@ class CommitteeActionExecutor:
         runtime: CommitteeRuntime,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        cancel_token: ChatOrchestrationCancelToken | None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Dispatch action to the matching handler."""
         if decision.action == "finish":
             async for event in self._handle_finish_action(
@@ -118,9 +119,9 @@ class CommitteeActionExecutor:
         state: CommitteeRuntimeState,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
-        draft_summary: Optional[str] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        cancel_token: ChatOrchestrationCancelToken | None,
+        draft_summary: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Stream final supervisor synthesis and emit canonical group_done event."""
         if self.is_cancelled(cancel_token):
             yield self.build_cancelled_event(state=state, cancel_token=cancel_token)
@@ -175,8 +176,8 @@ class CommitteeActionExecutor:
         self,
         *,
         state: CommitteeRuntimeState,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
-    ) -> Dict[str, Any]:
+        cancel_token: ChatOrchestrationCancelToken | None,
+    ) -> dict[str, Any]:
         """Build canonical cancellation terminal event."""
         return build_group_done_event(
             mode=self.mode,
@@ -185,7 +186,7 @@ class CommitteeActionExecutor:
         )
 
     @staticmethod
-    def is_cancelled(cancel_token: Optional[ChatOrchestrationCancelToken]) -> bool:
+    def is_cancelled(cancel_token: ChatOrchestrationCancelToken | None) -> bool:
         return bool(cancel_token and cancel_token.is_cancelled)
 
     async def _handle_finish_action(
@@ -196,8 +197,8 @@ class CommitteeActionExecutor:
         state: CommitteeRuntimeState,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        cancel_token: ChatOrchestrationCancelToken | None,
+    ) -> AsyncIterator[dict[str, Any]]:
         finish_reason = decision.reason or "supervisor_finish"
         async for event in self.stream_supervisor_summary(
             finish_reason=finish_reason,
@@ -219,8 +220,8 @@ class CommitteeActionExecutor:
         runtime: CommitteeRuntime,
         supervisor: CommitteeSupervisor,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        cancel_token: ChatOrchestrationCancelToken | None,
+    ) -> AsyncIterator[dict[str, Any]]:
         if self.is_cancelled(cancel_token):
             yield self.build_cancelled_event(state=state, cancel_token=cancel_token)
             return
@@ -260,8 +261,8 @@ class CommitteeActionExecutor:
             return
 
         event_queue: asyncio.Queue = asyncio.Queue()
-        parallel_message_ids: Dict[str, Optional[str]] = {}
-        parallel_errors: List[Dict[str, Any]] = []
+        parallel_message_ids: dict[str, str | None] = {}
+        parallel_errors: list[dict[str, Any]] = []
 
         async def _run_parallel_target(target_id: str) -> None:
             target_obj = run_context.assistant_config_map[target_id]
@@ -314,8 +315,7 @@ class CommitteeActionExecutor:
                 await event_queue.put({"kind": "done", "assistant_id": target_id})
 
         tasks = [
-            asyncio.create_task(_run_parallel_target(target_id))
-            for target_id in parallel_targets
+            asyncio.create_task(_run_parallel_target(target_id)) for target_id in parallel_targets
         ]
         completed_targets = 0
         while completed_targets < len(tasks):
@@ -391,8 +391,8 @@ class CommitteeActionExecutor:
         state: CommitteeRuntimeState,
         runtime: CommitteeRuntime,
         run_context: CommitteeRunContext,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        cancel_token: ChatOrchestrationCancelToken | None,
+    ) -> AsyncIterator[dict[str, Any]]:
         if self.is_cancelled(cancel_token):
             yield self.build_cancelled_event(state=state, cancel_token=cancel_token)
             return
@@ -414,7 +414,7 @@ class CommitteeActionExecutor:
             )
             return
 
-        target_message_id: Optional[str] = None
+        target_message_id: str | None = None
         content = ""
         role_retry_limit = run_context.committee_settings.role_retry_limit
         turn_instruction = decision.instruction
@@ -467,7 +467,9 @@ class CommitteeActionExecutor:
             if drift_reason and attempt < role_retry_limit:
                 turn_instruction = self.build_role_retry_instruction(
                     base_instruction=decision.instruction,
-                    expected_assistant_name=run_context.assistant_name_map.get(target_id, target_id),
+                    expected_assistant_name=run_context.assistant_name_map.get(
+                        target_id, target_id
+                    ),
                 )
                 yield {
                     "type": "group_action",
@@ -487,7 +489,9 @@ class CommitteeActionExecutor:
                         {
                             "round": current_round,
                             "assistant_id": target_id,
-                            "assistant_name": run_context.assistant_name_map.get(target_id, target_id),
+                            "assistant_name": run_context.assistant_name_map.get(
+                                target_id, target_id
+                            ),
                             "reason": drift_reason,
                             "previous_response_preview": self.truncate_log_text(
                                 content, self.group_trace_preview_chars
@@ -522,11 +526,11 @@ class CommitteeActionExecutor:
         *,
         state: CommitteeRuntimeState,
         session_id: str,
-        message_id: Optional[str],
+        message_id: str | None,
         assistant_id: str,
         assistant_name: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
         runtime: CommitteeRuntime,
     ) -> None:
         content = await self.get_message_content_by_id(

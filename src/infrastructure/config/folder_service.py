@@ -3,11 +3,12 @@ Chat folder management service
 
 Handles loading, saving, and managing chat folder configurations
 """
-import yaml
-import aiofiles
+
 import uuid
 from pathlib import Path
-from typing import List, Optional
+
+import aiofiles
+import yaml
 from pydantic import BaseModel
 
 from src.core.paths import (
@@ -19,6 +20,7 @@ from src.core.paths import (
 
 class Folder(BaseModel):
     """Folder model"""
+
     id: str
     name: str
     order: int
@@ -26,20 +28,21 @@ class Folder(BaseModel):
 
 class FoldersConfig(BaseModel):
     """Folders configuration model"""
-    folders: List[Folder]
+
+    folders: list[Folder]
 
 
 class FolderService:
     """Chat folder management service"""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         """
         Initialize folder service
 
         Args:
             config_path: Configuration file path, defaults to config/local/chat_folders.yaml
         """
-        self.defaults_path: Optional[Path] = None
+        self.defaults_path: Path | None = None
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "chat_folders.yaml"
@@ -72,21 +75,17 @@ class FolderService:
 
     async def _load_config(self) -> FoldersConfig:
         """Load configuration from file"""
-        async with aiofiles.open(self.config_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(self.config_path, encoding="utf-8") as f:
             content = await f.read()
             data = yaml.safe_load(content) or {}
             return FoldersConfig(**data)
 
     async def _save_config(self, config: FoldersConfig):
         """Save configuration to file"""
-        async with aiofiles.open(self.config_path, 'w', encoding='utf-8') as f:
-            await f.write(yaml.safe_dump(
-                config.model_dump(),
-                allow_unicode=True,
-                sort_keys=False
-            ))
+        async with aiofiles.open(self.config_path, "w", encoding="utf-8") as f:
+            await f.write(yaml.safe_dump(config.model_dump(), allow_unicode=True, sort_keys=False))
 
-    async def list_folders(self) -> List[Folder]:
+    async def list_folders(self) -> list[Folder]:
         """
         List all folders ordered by order field
 
@@ -96,7 +95,7 @@ class FolderService:
         config = await self._load_config()
         return sorted(config.folders, key=lambda f: f.order)
 
-    async def get_folder(self, folder_id: str) -> Optional[Folder]:
+    async def get_folder(self, folder_id: str) -> Folder | None:
         """
         Get a specific folder by ID
 
@@ -131,11 +130,7 @@ class FolderService:
         next_order = len(config.folders)
 
         # Create folder
-        new_folder = Folder(
-            id=folder_id,
-            name=name,
-            order=next_order
-        )
+        new_folder = Folder(id=folder_id, name=name, order=next_order)
 
         config.folders.append(new_folder)
         await self._save_config(config)
@@ -226,7 +221,9 @@ class FolderService:
 
         # Validate new_order
         if new_order < 0 or new_order >= len(config.folders):
-            raise ValueError(f"Invalid order: {new_order}. Must be between 0 and {len(config.folders) - 1}")
+            raise ValueError(
+                f"Invalid order: {new_order}. Must be between 0 and {len(config.folders) - 1}"
+            )
 
         old_order = folder.order
 

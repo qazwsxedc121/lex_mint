@@ -1,7 +1,8 @@
-﻿"""Unit tests for AssistantConfigService empty-config behavior."""
+"""Unit tests for AssistantConfigService empty-config behavior."""
+
+from unittest.mock import AsyncMock, Mock
 
 import pytest
-from unittest.mock import AsyncMock, Mock
 
 from src.domain.models.assistant_config import Assistant
 from src.infrastructure.config.assistant_config_service import AssistantConfigService
@@ -19,7 +20,9 @@ class TestAssistantConfigService:
         assert config.assistants == []
 
     @pytest.mark.asyncio
-    async def test_get_default_assistant_without_configured_default_raises_clear_error(self, temp_config_dir):
+    async def test_get_default_assistant_without_configured_default_raises_clear_error(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "assistants_config.yaml"
         service = AssistantConfigService(config_path=config_path)
 
@@ -49,13 +52,17 @@ class TestAssistantConfigService:
         assert updated.assistants == []
 
     @pytest.mark.asyncio
-    async def test_get_assistants_enabled_only_filters_disabled_and_unavailable_bindings(self, temp_config_dir):
+    async def test_get_assistants_enabled_only_filters_disabled_and_unavailable_bindings(
+        self, temp_config_dir
+    ):
         config_path = temp_config_dir / "assistants_config.yaml"
         model_service = Mock()
 
         async def _require_enabled_model(model_id=None):
             if model_id == "deepseek:deepseek-chat":
-                return Mock(id="deepseek-chat", provider_id="deepseek"), Mock(id="deepseek", enabled=True)
+                return Mock(id="deepseek-chat", provider_id="deepseek"), Mock(
+                    id="deepseek", enabled=True
+                )
             raise ValueError(f"Model '{model_id}' is disabled")
 
         model_service.require_enabled_model = AsyncMock(side_effect=_require_enabled_model)
@@ -63,7 +70,9 @@ class TestAssistantConfigService:
         config = await service.load_config()
         config.assistants = [
             Assistant(id="ready", name="Ready", model_id="deepseek:deepseek-chat", enabled=True),
-            Assistant(id="disabled", name="Disabled", model_id="deepseek:deepseek-chat", enabled=False),
+            Assistant(
+                id="disabled", name="Disabled", model_id="deepseek:deepseek-chat", enabled=False
+            ),
             Assistant(id="broken", name="Broken", model_id="openai:gpt-4", enabled=True),
         ]
         await service.save_config(config)
@@ -91,7 +100,9 @@ class TestAssistantConfigService:
     async def test_get_default_assistant_rejects_unavailable_model_binding(self, temp_config_dir):
         config_path = temp_config_dir / "assistants_config.yaml"
         model_service = Mock()
-        model_service.require_enabled_model = AsyncMock(side_effect=ValueError("Model 'openai:gpt-4' is disabled"))
+        model_service.require_enabled_model = AsyncMock(
+            side_effect=ValueError("Model 'openai:gpt-4' is disabled")
+        )
         service = AssistantConfigService(config_path=config_path, model_service=model_service)
         config = await service.load_config()
         config.default = "writer"

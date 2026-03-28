@@ -7,24 +7,25 @@ import argparse
 import json
 from pathlib import Path
 from statistics import mean
-from typing import Dict, Tuple
 
 import yaml
 
 
-def _load_reference(path: Path, model_key: str) -> Dict[str, float]:
+def _load_reference(path: Path, model_key: str) -> dict[str, float]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    models = (((data.get("reference") or {}).get("models")) or {})
+    models = ((data.get("reference") or {}).get("models")) or {}
     if model_key not in models:
-        raise KeyError(f"Unknown baseline model '{model_key}'. Available: {', '.join(sorted(models))}")
+        raise KeyError(
+            f"Unknown baseline model '{model_key}'. Available: {', '.join(sorted(models))}"
+        )
     task_scores = (models[model_key].get("task_ragquesteval_recall")) or {}
     if not task_scores:
         raise ValueError(f"No task_ragquesteval_recall found for '{model_key}'.")
     return {str(k): float(v) for k, v in task_scores.items()}
 
 
-def _extract_task_scores(payload: Dict[str, object]) -> Dict[str, float]:
-    scores: Dict[str, float] = {}
+def _extract_task_scores(payload: dict[str, object]) -> dict[str, float]:
+    scores: dict[str, float] = {}
     task_metrics = payload.get("task_metrics")
     if isinstance(task_metrics, dict):
         for task, metrics in task_metrics.items():
@@ -52,7 +53,9 @@ def _extract_task_scores(payload: Dict[str, object]) -> Dict[str, float]:
     return scores
 
 
-def _compute(candidate: Dict[str, float], reference: Dict[str, float]) -> Tuple[Dict[str, object], Dict[str, object]]:
+def _compute(
+    candidate: dict[str, float], reference: dict[str, float]
+) -> tuple[dict[str, object], dict[str, object]]:
     common_tasks = sorted(set(candidate).intersection(reference))
     if not common_tasks:
         raise ValueError("No overlapping tasks between candidate result and reference baseline.")
@@ -86,7 +89,9 @@ def _compute(candidate: Dict[str, float], reference: Dict[str, float]) -> Tuple[
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare CRUD E2E result against reference baselines.")
+    parser = argparse.ArgumentParser(
+        description="Compare CRUD E2E result against reference baselines."
+    )
     parser.add_argument("--result", type=Path, required=True, help="Path to local E2E result JSON.")
     parser.add_argument(
         "--reference",

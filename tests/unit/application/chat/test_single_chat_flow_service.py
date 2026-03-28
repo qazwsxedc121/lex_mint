@@ -217,8 +217,12 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
             return [SimpleNamespace(name="simple_calculator")]
 
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
-    monkeypatch.setattr(project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", _FakeKnowledgeResolver)
-    monkeypatch.setattr(project_tool_policy_resolver, "ProjectToolPolicyResolver", _FakePolicyResolver)
+    monkeypatch.setattr(
+        project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", _FakeKnowledgeResolver
+    )
+    monkeypatch.setattr(
+        project_tool_policy_resolver, "ProjectToolPolicyResolver", _FakePolicyResolver
+    )
     monkeypatch.setattr(web_tool_service, "WebToolService", _FakeWebToolService)
     monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
 
@@ -280,7 +284,9 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
     )
     service = SingleChatFlowService(deps)
 
-    monkeypatch.setattr(service, "_maybe_auto_compress", lambda **kwargs: _return_async((kwargs["messages"], None)))
+    monkeypatch.setattr(
+        service, "_maybe_auto_compress", lambda **kwargs: _return_async((kwargs["messages"], None))
+    )
     monkeypatch.setattr(service, "_should_prefer_web_tools", lambda **_kwargs: _return_async(True))
 
     runtime = await service._prepare_runtime(
@@ -421,7 +427,14 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
     )
 
     assert loop_state == {"stream_calls": 2, "execute_calls": 1}
-    assert {"type": "context_info", "context_budget": 100, "context_window": 128, "estimated_prompt_tokens": 4, "remaining_tokens": 96, "segments": []} in events
+    assert {
+        "type": "context_info",
+        "context_budget": 100,
+        "context_window": 128,
+        "estimated_prompt_tokens": 4,
+        "remaining_tokens": 96,
+        "segments": [],
+    } in events
     assert "round-1" in events
     assert "round-2" in events
     assert any(isinstance(event, dict) and event.get("type") == "tool_calls" for event in events)

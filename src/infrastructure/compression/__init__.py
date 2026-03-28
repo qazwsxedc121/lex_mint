@@ -1,6 +1,10 @@
 """Compression-related infrastructure modules."""
 
-from .compression_config_service import CompressionConfig, CompressionConfigService, DEFAULT_PROMPT_TEMPLATE
+from .compression_config_service import (
+    DEFAULT_PROMPT_TEMPLATE,
+    CompressionConfig,
+    CompressionConfigService,
+)
 from .compression_service import CompressionService
 
 __all__ = [
@@ -9,4 +13,3 @@ __all__ = [
     "DEFAULT_PROMPT_TEMPLATE",
     "CompressionService",
 ]
-

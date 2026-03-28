@@ -4,20 +4,20 @@ import asyncio
 import json
 import logging
 import uuid
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form, Query
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
 
 from src.application.chat import ChatApplicationService
-
-from ..dependencies import get_chat_application_service as get_shared_chat_application_service
-from ..dependencies import get_file_service as get_shared_file_service
-
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_mapper import FlowEventMapper
-from src.application.flow.flow_event_types import REPLAY_FINISHED, RESUME_STARTED, TERMINAL_EVENT_TYPES
+from src.application.flow.flow_event_types import (
+    REPLAY_FINISHED,
+    RESUME_STARTED,
+    TERMINAL_EVENT_TYPES,
+)
 from src.application.flow.flow_events import FlowEventStage
 from src.application.flow.flow_stream_runtime import (
     FlowReplayCursorGoneError,
@@ -26,8 +26,11 @@ from src.application.flow.flow_stream_runtime import (
     FlowStreamRuntime,
 )
 from src.application.flow.flow_stream_runtime_provider import get_flow_stream_runtime
-from src.infrastructure.files.file_service import FileService
 from src.domain.models.search import SearchSource
+from src.infrastructure.files.file_service import FileService
+
+from ..dependencies import get_chat_application_service as get_shared_chat_application_service
+from ..dependencies import get_file_service as get_shared_file_service
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,7 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 class FileAttachment(BaseModel):
     """File attachment metadata."""
+
     filename: str
     size: int
     mime_type: str
@@ -43,79 +47,93 @@ class FileAttachment(BaseModel):
 
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
+
     session_id: str
     message: str
-    attachments: Optional[List[Dict[str, Any]]] = None  # List of {filename, size, mime_type, temp_path}
-    file_references: Optional[List[Dict[str, str]]] = None  # List of {path, project_id} for @file references
-    truncate_after_index: Optional[int] = None  # 截断索引，删除此索引之后的消息
+    attachments: list[dict[str, Any]] | None = (
+        None  # List of {filename, size, mime_type, temp_path}
+    )
+    file_references: list[dict[str, str]] | None = (
+        None  # List of {path, project_id} for @file references
+    )
+    truncate_after_index: int | None = None  # 截断索引，删除此索引之后的消息
     skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
-    reasoning_effort: Optional[str] = None  # Reasoning effort: "low", "medium", "high"
+    reasoning_effort: str | None = None  # Reasoning effort: "low", "medium", "high"
     context_type: str = "chat"  # Context type: "chat" or "project"
-    project_id: Optional[str] = None  # Project ID (required when context_type="project")
-    active_file_path: Optional[str] = None  # Active file path for project chat document tools
-    active_file_hash: Optional[str] = None  # Optional client-side content hash for active file
+    project_id: str | None = None  # Project ID (required when context_type="project")
+    active_file_path: str | None = None  # Active file path for project chat document tools
+    active_file_hash: str | None = None  # Optional client-side content hash for active file
     use_web_search: bool = False  # Whether to use web search for this message
-    search_query: Optional[str] = None  # Optional explicit search query
+    search_query: str | None = None  # Optional explicit search query
 
 
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
+
     session_id: str
     response: str
-    sources: Optional[List[SearchSource]] = None
+    sources: list[SearchSource] | None = None
 
 
 class DeleteMessageRequest(BaseModel):
     """Request model for delete message endpoint."""
+
     session_id: str
-    message_index: Optional[int] = None
-    message_id: Optional[str] = None
+    message_index: int | None = None
+    message_id: str | None = None
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
 
 class InsertSeparatorRequest(BaseModel):
     """Request model for insert separator endpoint."""
+
     session_id: str
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
 
 class ClearMessagesRequest(BaseModel):
     """Request model for clear all messages endpoint."""
+
     session_id: str
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
 
 class UpdateMessageRequest(BaseModel):
     """Request model for update message content endpoint."""
+
     session_id: str
     message_id: str
     content: str
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
 
 class CompressContextRequest(BaseModel):
     """Request model for compress context endpoint."""
+
     session_id: str
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
 
 class CompareRequest(BaseModel):
     """Request model for compare endpoint."""
+
     session_id: str
     message: str
-    model_ids: List[str]  # composite IDs like "deepseek:deepseek-chat"
-    attachments: Optional[List[Dict[str, Any]]] = None
-    reasoning_effort: Optional[str] = None
+    model_ids: list[str]  # composite IDs like "deepseek:deepseek-chat"
+    attachments: list[dict[str, Any]] | None = None
+    reasoning_effort: str | None = None
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
     use_web_search: bool = False
-    search_query: Optional[str] = None
-    file_references: Optional[List[Dict[str, str]]] = None  # List of {path, project_id} for @file references
+    search_query: str | None = None
+    file_references: list[dict[str, str]] | None = (
+        None  # List of {path, project_id} for @file references
+    )
 
 
 class ResumeStreamRequest(BaseModel):
@@ -125,7 +143,7 @@ class ResumeStreamRequest(BaseModel):
     stream_id: str
     last_event_id: str
     context_type: str = "chat"
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
 
 def get_chat_application_service() -> ChatApplicationService:
@@ -138,7 +156,7 @@ def get_file_service() -> FileService:
     return get_shared_file_service()
 
 
-def _is_terminal_payload(payload: Dict[str, Any]) -> bool:
+def _is_terminal_payload(payload: dict[str, Any]) -> bool:
     flow_event = payload.get("flow_event")
     if isinstance(flow_event, dict):
         if flow_event.get("event_type") in TERMINAL_EVENT_TYPES:
@@ -226,8 +244,7 @@ async def _run_chat_stream_producer(
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
-    request: ChatRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    request: ChatRequest, agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Send a message and receive AI response.
 
@@ -248,15 +265,17 @@ async def chat(
 
     # 使用 print 强制输出，绕过日志系统
     print("=" * 80)
-    print(f"📨 收到聊天请求")
+    print("📨 收到聊天请求")
     print(f"   Session ID: {request.session_id[:16]}...")
     print(f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
     print("=" * 80)
 
     logger.info("=" * 80)
-    logger.info(f"📨 收到聊天请求")
+    logger.info("📨 收到聊天请求")
     logger.info(f"   Session ID: {request.session_id[:16]}...")
-    logger.info(f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
+    logger.info(
+        f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}"
+    )
     logger.info("=" * 80)
 
     try:
@@ -285,7 +304,7 @@ async def chat(
         logger.info(f"   AI 回复: {response[:100]}{'...' if len(response) > 100 else ''}")
         logger.info("=" * 80)
 
-        response_sources: Optional[List[SearchSource]] = None
+        response_sources: list[SearchSource] | None = None
         if sources:
             response_sources = []
             for source in sources:
@@ -293,8 +312,10 @@ async def chat(
                     response_sources.append(SearchSource.model_validate(source))
                 except Exception:
                     continue
-        return ChatResponse(session_id=request.session_id, response=response, sources=response_sources)
-    except FileNotFoundError as e:
+        return ChatResponse(
+            session_id=request.session_id, response=response, sources=response_sources
+        )
+    except FileNotFoundError:
         print(f"❌ 会话未找到: {request.session_id}")
         logger.error(f"❌ 会话未找到: {request.session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
@@ -332,15 +353,17 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     print("=" * 80)
-    print(f"📨 收到流式聊天请求")
+    print("📨 收到流式聊天请求")
     print(f"   Session ID: {request.session_id[:16]}...")
     print(f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
     print("=" * 80)
 
     logger.info("=" * 80)
-    logger.info(f"📨 收到流式聊天请求")
+    logger.info("📨 收到流式聊天请求")
     logger.info(f"   Session ID: {request.session_id[:16]}...")
-    logger.info(f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
+    logger.info(
+        f"   用户消息: {request.message[:100]}{'...' if len(request.message) > 100 else ''}"
+    )
     logger.info("=" * 80)
 
     stream_id = str(uuid.uuid4())
@@ -382,7 +405,7 @@ async def chat_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲
-        }
+        },
     )
 
 
@@ -404,16 +427,24 @@ async def resume_chat_stream(
             project_id=request.project_id,
         )
     except FlowStreamNotFoundError:
-        raise HTTPException(status_code=404, detail={"code": "stream_not_found", "message": "stream not found"})
+        raise HTTPException(
+            status_code=404, detail={"code": "stream_not_found", "message": "stream not found"}
+        )
     except FlowReplayCursorGoneError:
         raise HTTPException(
             status_code=410,
-            detail={"code": "replay_cursor_gone", "message": "last_event_id is outside replay window"},
+            detail={
+                "code": "replay_cursor_gone",
+                "message": "last_event_id is outside replay window",
+            },
         )
     except FlowStreamContextMismatchError:
         raise HTTPException(
             status_code=409,
-            detail={"code": "stream_context_mismatch", "message": "stream context does not match request"},
+            detail={
+                "code": "stream_context_mismatch",
+                "message": "stream context does not match request",
+            },
         )
 
     async def event_generator():
@@ -474,7 +505,7 @@ async def resume_chat_stream(
 async def upload_file(
     session_id: str = Form(...),
     file: UploadFile = File(...),
-    file_service: FileService = Depends(get_file_service)
+    file_service: FileService = Depends(get_file_service),
 ):
     """Upload a text file attachment.
 
@@ -515,8 +546,8 @@ async def download_attachment(
     message_index: int,
     filename: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    file_service: FileService = Depends(get_file_service)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    file_service: FileService = Depends(get_file_service),
 ):
     """Download a file attachment.
 
@@ -539,7 +570,9 @@ async def download_attachment(
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    logger.info(f"File download request: session={session_id[:16]}..., index={message_index}, file={filename}")
+    logger.info(
+        f"File download request: session={session_id[:16]}..., index={message_index}, file={filename}"
+    )
 
     # Get file path
     filepath = file_service.get_file_path(session_id, message_index, filename)
@@ -554,17 +587,13 @@ async def download_attachment(
         logger.error(f"Path traversal attempt detected: {filepath}")
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return FileResponse(
-        filepath,
-        media_type="application/octet-stream",
-        filename=filename
-    )
+    return FileResponse(filepath, media_type="application/octet-stream", filename=filename)
 
 
 @router.delete("/chat/message")
 async def delete_message(
     request: DeleteMessageRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service),
 ):
     """Delete a single message from conversation.
 
@@ -585,13 +614,15 @@ async def delete_message(
 
     # Prefer message_id if provided, fallback to message_index
     if request.message_id:
-        logger.info(f"Delete message request: session={request.session_id[:16]}..., message_id={request.message_id}")
+        logger.info(
+            f"Delete message request: session={request.session_id[:16]}..., message_id={request.message_id}"
+        )
         try:
             await agent.delete_message(
                 session_id=request.session_id,
                 message_id=request.message_id,
                 context_type=request.context_type,
-                project_id=request.project_id
+                project_id=request.project_id,
             )
             return {"success": True, "message": "Message deleted"}
         except FileNotFoundError:
@@ -602,13 +633,15 @@ async def delete_message(
             logger.error(f"Delete message error: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
     elif request.message_index is not None:
-        logger.info(f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}")
+        logger.info(
+            f"Delete message request: session={request.session_id[:16]}..., index={request.message_index}"
+        )
         try:
             await agent.delete_message(
                 session_id=request.session_id,
                 message_index=request.message_index,
                 context_type=request.context_type,
-                project_id=request.project_id
+                project_id=request.project_id,
             )
             return {"success": True, "message": "Message deleted"}
         except FileNotFoundError:
@@ -621,26 +654,30 @@ async def delete_message(
             logger.error(f"Delete message error: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
     else:
-        raise HTTPException(status_code=400, detail="Either message_id or message_index must be provided")
+        raise HTTPException(
+            status_code=400, detail="Either message_id or message_index must be provided"
+        )
 
 
 @router.put("/chat/message")
 async def update_message(
     request: UpdateMessageRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service),
 ):
     """Update the content of a specific message."""
     if request.context_type == "project" and not request.project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    logger.info(f"Update message request: session={request.session_id[:16]}..., message_id={request.message_id}")
+    logger.info(
+        f"Update message request: session={request.session_id[:16]}..., message_id={request.message_id}"
+    )
     try:
         await agent.update_message_content(
             session_id=request.session_id,
             message_id=request.message_id,
             content=request.content,
             context_type=request.context_type,
-            project_id=request.project_id
+            project_id=request.project_id,
         )
         return {"success": True, "message": "Message updated"}
     except FileNotFoundError:
@@ -655,7 +692,7 @@ async def update_message(
 @router.post("/chat/separator")
 async def insert_separator(
     request: InsertSeparatorRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service),
 ):
     """
     Insert a context separator into conversation.
@@ -682,7 +719,7 @@ async def insert_separator(
         message_id = await agent.append_separator(
             session_id=request.session_id,
             context_type=request.context_type,
-            project_id=request.project_id
+            project_id=request.project_id,
         )
         return {"success": True, "message_id": message_id}
     except FileNotFoundError:
@@ -697,7 +734,7 @@ async def insert_separator(
 @router.post("/chat/clear")
 async def clear_all_messages(
     request: ClearMessagesRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service),
 ):
     """
     Clear all messages from the conversation.
@@ -723,7 +760,7 @@ async def clear_all_messages(
         await agent.clear_all_messages(
             session_id=request.session_id,
             context_type=request.context_type,
-            project_id=request.project_id
+            project_id=request.project_id,
         )
         return {"success": True, "message": "All messages cleared"}
     except FileNotFoundError:
@@ -738,7 +775,7 @@ async def clear_all_messages(
 @router.post("/chat/compress")
 async def compress_context(
     request: CompressContextRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    agent: ChatApplicationService = Depends(get_chat_application_service),
 ):
     """Compress conversation context by summarizing messages via LLM.
 
@@ -807,14 +844,13 @@ async def compress_context(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
 @router.post("/chat/compare")
 async def chat_compare(
-    request: CompareRequest,
-    agent: ChatApplicationService = Depends(get_chat_application_service)
+    request: CompareRequest, agent: ChatApplicationService = Depends(get_chat_application_service)
 ):
     """Stream compare responses from multiple models.
 
@@ -836,9 +872,13 @@ async def chat_compare(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     if len(request.model_ids) < 2:
-        raise HTTPException(status_code=400, detail="At least 2 model_ids are required for comparison")
+        raise HTTPException(
+            status_code=400, detail="At least 2 model_ids are required for comparison"
+        )
 
-    logger.info(f"Compare request: session={request.session_id[:16]}..., models={request.model_ids}")
+    logger.info(
+        f"Compare request: session={request.session_id[:16]}..., models={request.model_ids}"
+    )
     mapper = FlowEventMapper(
         stream_id=str(uuid.uuid4()),
         conversation_id=request.session_id,
@@ -886,5 +926,5 @@ async def chat_compare(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )

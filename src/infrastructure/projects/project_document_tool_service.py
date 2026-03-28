@@ -12,10 +12,13 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ValidationError
+
+from src.core.config import settings
+from src.infrastructure.config.project_service import ProjectService
 from src.tools.request_scoped import (
     APPLY_DIFF_CURRENT_DOCUMENT_TOOL,
     APPLY_DIFF_PROJECT_DOCUMENT_TOOL,
@@ -28,9 +31,6 @@ from src.tools.request_scoped import (
     ReadProjectDocumentArgs,
     SearchProjectTextArgs,
 )
-
-from src.core.config import settings
-from src.infrastructure.config.project_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class ConfirmPendingPatchArgs(BaseModel):
 
     session_id: str = Field(..., min_length=1)
     pending_patch_id: str = Field(..., min_length=1)
-    expected_hash: Optional[str] = Field(default=None, min_length=16, max_length=128)
+    expected_hash: str | None = Field(default=None, min_length=16, max_length=128)
 
 
 @dataclass
@@ -84,7 +84,7 @@ class PendingPatchStore:
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._patches: Dict[str, PendingPatch] = {}
+        self._patches: dict[str, PendingPatch] = {}
 
     def _cleanup_locked(self, now_ts: float) -> None:
         expired_ids = [pid for pid, patch in self._patches.items() if patch.is_expired(now_ts)]
@@ -97,7 +97,7 @@ class PendingPatchStore:
             self._cleanup_locked(now_ts)
             self._patches[patch.patch_id] = patch
 
-    def pop_valid(self, patch_id: str) -> Optional[PendingPatch]:
+    def pop_valid(self, patch_id: str) -> PendingPatch | None:
         now_ts = time.time()
         with self._lock:
             self._cleanup_locked(now_ts)
@@ -110,7 +110,7 @@ class PendingPatchStore:
             self._patches.pop(patch_id, None)
             return patch
 
-    def peek_valid(self, patch_id: str) -> Optional[PendingPatch]:
+    def peek_valid(self, patch_id: str) -> PendingPatch | None:
         now_ts = time.time()
         with self._lock:
             self._cleanup_locked(now_ts)
@@ -119,7 +119,7 @@ class PendingPatchStore:
                 return None
             return patch
 
-    def peek_with_status(self, patch_id: str) -> Tuple[Optional[PendingPatch], str]:
+    def peek_with_status(self, patch_id: str) -> tuple[PendingPatch | None, str]:
         """Peek patch with status: valid, expired, or missing."""
         now_ts = time.time()
         with self._lock:
@@ -151,25 +151,25 @@ class ParsedHunk:
     old_count: int
     new_start: int
     new_count: int
-    lines: List[Tuple[str, str]]
+    lines: list[tuple[str, str]]
 
 
 @dataclass
 class ParsedUnifiedDiff:
     """Parsed single-file unified diff."""
 
-    old_path: Optional[str]
-    new_path: Optional[str]
-    hunks: List[ParsedHunk]
+    old_path: str | None
+    new_path: str | None
+    hunks: list[ParsedHunk]
     additions: int
     deletions: int
 
 
 def _parse_unified_diff(unified_diff: str) -> ParsedUnifiedDiff:
     lines = unified_diff.splitlines()
-    old_path: Optional[str] = None
-    new_path: Optional[str] = None
-    hunks: List[ParsedHunk] = []
+    old_path: str | None = None
+    new_path: str | None = None
+    hunks: list[ParsedHunk] = []
     additions = 0
     deletions = 0
     idx = 0
@@ -197,7 +197,7 @@ def _parse_unified_diff(unified_diff: str) -> ParsedUnifiedDiff:
             new_count = int(match.group(4) or "1")
             idx += 1
 
-            hunk_lines: List[Tuple[str, str]] = []
+            hunk_lines: list[tuple[str, str]] = []
             while idx < len(lines):
                 hline = lines[idx]
                 if hline.startswith("@@"):
@@ -293,7 +293,7 @@ def _detect_newline_style(content: str) -> str:
     return "\n"
 
 
-def _hunk_matches_at(source_lines: List[str], start: int, hunk: ParsedHunk) -> bool:
+def _hunk_matches_at(source_lines: list[str], start: int, hunk: ParsedHunk) -> bool:
     cursor = start
     for prefix, text in hunk.lines:
         if prefix == "+":
@@ -304,7 +304,9 @@ def _hunk_matches_at(source_lines: List[str], start: int, hunk: ParsedHunk) -> b
     return True
 
 
-def _resolve_hunk_start(source_lines: List[str], cursor: int, expected_start: int, hunk: ParsedHunk) -> int:
+def _resolve_hunk_start(
+    source_lines: list[str], cursor: int, expected_start: int, hunk: ParsedHunk
+) -> int:
     if expected_start < cursor:
         raise ProjectDocumentToolError(
             "PATCH_APPLY_FAILED",
@@ -325,7 +327,7 @@ def _resolve_hunk_start(source_lines: List[str], cursor: int, expected_start: in
             f"Context mismatch near line {expected_start + 1}",
         )
 
-    matches: List[int] = []
+    matches: list[int] = []
     for candidate in range(cursor, max_start + 1):
         if _hunk_matches_at(source_lines, candidate, hunk):
             matches.append(candidate)
@@ -351,7 +353,7 @@ def _resolve_hunk_start(source_lines: List[str], cursor: int, expected_start: in
 def _apply_parsed_diff(content: str, parsed: ParsedUnifiedDiff) -> str:
     source_lines = content.splitlines(keepends=True)
     newline = _detect_newline_style(content)
-    result: List[str] = []
+    result: list[str] = []
     cursor = 0
 
     for hunk in parsed.hunks:
@@ -396,11 +398,11 @@ class ProjectDocumentToolService:
         *,
         project_id: str,
         session_id: str,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
-        project_service: Optional[ProjectService] = None,
-        pending_store: Optional[PendingPatchStore] = None,
-        pending_ttl_seconds: Optional[int] = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
+        project_service: ProjectService | None = None,
+        pending_store: PendingPatchStore | None = None,
+        pending_ttl_seconds: int | None = None,
     ) -> None:
         self.project_id = project_id
         self.session_id = session_id
@@ -414,11 +416,11 @@ class ProjectDocumentToolService:
         self.pending_ttl_seconds = max(60, int(configured_ttl))
 
     @staticmethod
-    def _json(data: Dict[str, Any]) -> str:
+    def _json(data: dict[str, Any]) -> str:
         return json.dumps(data, ensure_ascii=False)
 
     def _error(self, code: str, message: str, **extra: Any) -> str:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "ok": False,
             "error": {
                 "code": code,
@@ -428,23 +430,27 @@ class ProjectDocumentToolService:
         payload.update(extra)
         return self._json(payload)
 
-    def get_tools(self) -> List[BaseTool]:
+    def get_tools(self) -> list[BaseTool]:
         """Build project-document tools for LLM function calling."""
-        tools: List[BaseTool] = [
+        tools: list[BaseTool] = [
             READ_PROJECT_DOCUMENT_TOOL.build_tool(coroutine=self.read_project_document),
             APPLY_DIFF_PROJECT_DOCUMENT_TOOL.build_tool(coroutine=self.apply_diff_project_document),
         ]
 
         if self.active_file_path:
-            tools.extend([
-                READ_CURRENT_DOCUMENT_TOOL.build_tool(coroutine=self.read_current_document),
-                APPLY_DIFF_CURRENT_DOCUMENT_TOOL.build_tool(coroutine=self.apply_diff_current_document),
-            ])
+            tools.extend(
+                [
+                    READ_CURRENT_DOCUMENT_TOOL.build_tool(coroutine=self.read_current_document),
+                    APPLY_DIFF_CURRENT_DOCUMENT_TOOL.build_tool(
+                        coroutine=self.apply_diff_current_document
+                    ),
+                ]
+            )
 
         tools.append(SEARCH_PROJECT_TEXT_TOOL.build_tool(coroutine=self.search_project_text))
         return tools
 
-    async def execute_tool(self, name: str, args: Dict[str, Any]) -> Optional[str]:
+    async def execute_tool(self, name: str, args: dict[str, Any]) -> str | None:
         """Request-scoped executor contract used by tool loop."""
         try:
             if name == "read_project_document":
@@ -518,12 +524,12 @@ class ProjectDocumentToolService:
             raise ProjectDocumentToolError("INVALID_ARGUMENT", "file_path is required")
         return normalized
 
-    async def _read_project_file(self, file_path: str) -> Tuple[str, str]:
+    async def _read_project_file(self, file_path: str) -> tuple[str, str]:
         normalized_file_path = self._normalize_required_file_path(file_path)
         file_data = await self.project_service.read_file(self.project_id, normalized_file_path)
         return file_data.content or "", file_data.encoding
 
-    async def _read_active_file(self) -> Tuple[str, str]:
+    async def _read_active_file(self) -> tuple[str, str]:
         active_file_path = self._require_active_file_path()
         file_data = await self.project_service.read_file(self.project_id, active_file_path)
         return file_data.content or "", file_data.encoding
@@ -533,11 +539,11 @@ class ProjectDocumentToolService:
         *,
         file_path: str,
         content: str,
-        start_line: Optional[int],
-        end_line: Optional[int],
+        start_line: int | None,
+        end_line: int | None,
         max_chars: int,
-        client_hash: Optional[str],
-    ) -> Dict[str, Any]:
+        client_hash: str | None,
+    ) -> dict[str, Any]:
         all_lines = content.splitlines()
         line_count = len(all_lines)
 
@@ -591,8 +597,8 @@ class ProjectDocumentToolService:
 
     async def read_current_document(
         self,
-        start_line: Optional[int] = None,
-        end_line: Optional[int] = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
         max_chars: int = 12000,
     ) -> str:
         """Read current active file content (optionally by line range)."""
@@ -633,8 +639,8 @@ class ProjectDocumentToolService:
         self,
         *,
         file_path: str,
-        start_line: Optional[int] = None,
-        end_line: Optional[int] = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
         max_chars: int = 12000,
     ) -> str:
         """Read any project file content by file path."""
@@ -683,7 +689,7 @@ class ProjectDocumentToolService:
         mode: str,
         hash_mismatch_message: str,
         target_mismatch_message: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if not dry_run:
             raise ProjectDocumentToolError(
                 "CONFIRMATION_REQUIRED",
@@ -766,7 +772,7 @@ class ProjectDocumentToolService:
         query: str,
         use_regex: bool,
         case_sensitive: bool,
-        regex: Optional[re.Pattern[str]],
+        regex: re.Pattern[str] | None,
     ) -> bool:
         if use_regex:
             assert regex is not None
@@ -780,8 +786,8 @@ class ProjectDocumentToolService:
         query: str,
         case_sensitive: bool = False,
         use_regex: bool = False,
-        include_glob: Optional[str] = None,
-        exclude_glob: Optional[str] = None,
+        include_glob: str | None = None,
+        exclude_glob: str | None = None,
         max_results: int = 30,
         context_lines: int = 0,
         max_chars_per_line: int = 300,
@@ -789,7 +795,9 @@ class ProjectDocumentToolService:
         """Search text in project files and return compact structured matches."""
         project = await self.project_service.get_project(self.project_id)
         if project is None:
-            raise ProjectDocumentToolError("PROJECT_NOT_FOUND", f"Project not found: {self.project_id}")
+            raise ProjectDocumentToolError(
+                "PROJECT_NOT_FOUND", f"Project not found: {self.project_id}"
+            )
 
         root_path = Path(project.root_path)
         if not root_path.exists() or not root_path.is_dir():
@@ -798,7 +806,7 @@ class ProjectDocumentToolService:
                 f"Project root is not a directory: {project.root_path}",
             )
 
-        regex: Optional[re.Pattern[str]] = None
+        regex: re.Pattern[str] | None = None
         if use_regex:
             flags = 0 if case_sensitive else re.IGNORECASE
             try:
@@ -807,7 +815,7 @@ class ProjectDocumentToolService:
                 raise ProjectDocumentToolError("INVALID_ARGUMENT", f"Invalid regex pattern: {e}")
 
         max_file_bytes = settings.max_file_read_size_mb * 1024 * 1024
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         scanned_files = 0
         skipped_binary_files = 0
         skipped_large_files = 0
@@ -868,8 +876,7 @@ class ProjectDocumentToolService:
                         "line_number": idx + 1,
                         "line_text": self._trim_line(line, max_chars_per_line),
                         "context_before": [
-                            self._trim_line(lines[i], max_chars_per_line)
-                            for i in range(start, idx)
+                            self._trim_line(lines[i], max_chars_per_line) for i in range(start, idx)
                         ],
                         "context_after": [
                             self._trim_line(lines[i], max_chars_per_line)
@@ -909,10 +916,10 @@ async def confirm_pending_patch_apply(
     project_id: str,
     session_id: str,
     pending_patch_id: str,
-    expected_hash: Optional[str] = None,
-    project_service: Optional[ProjectService] = None,
-    pending_store: Optional[PendingPatchStore] = None,
-) -> Dict[str, Any]:
+    expected_hash: str | None = None,
+    project_service: ProjectService | None = None,
+    pending_store: PendingPatchStore | None = None,
+) -> dict[str, Any]:
     """Apply one pending patch after explicit user confirmation."""
     store = pending_store or _pending_patch_store
     service = project_service or ProjectService()

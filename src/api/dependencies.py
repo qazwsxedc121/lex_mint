@@ -2,33 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from src.core.config import settings
 from src.application.chat import (
     ChatApplicationService,
-    SessionApplicationService,
     SessionApplicationDeps,
+    SessionApplicationService,
     build_default_chat_application_service,
 )
+from src.core.config import settings
 from src.infrastructure.config.assistant_config_service import AssistantConfigService
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.files.file_service import FileService
+from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.infrastructure.projects.project_workspace_state_service import ProjectWorkspaceStateService
 
-_model_service: Optional[ModelConfigService] = None
-_assistant_service: Optional[AssistantConfigService] = None
-_project_service: Optional[ProjectService] = None
-_project_workspace_state_service: Optional[ProjectWorkspaceStateService] = None
-_storage: Optional[ConversationStorage] = None
-_file_service: Optional[FileService] = None
-_chat_application_service: Optional[ChatApplicationService] = None
-_session_application_service: Optional[SessionApplicationService] = None
+_model_service: ModelConfigService | None = None
+_assistant_service: AssistantConfigService | None = None
+_project_service: ProjectService | None = None
+_project_workspace_state_service: ProjectWorkspaceStateService | None = None
+_storage: ConversationStorage | None = None
+_file_service: FileService | None = None
+_chat_application_service: ChatApplicationService | None = None
+_session_application_service: SessionApplicationService | None = None
 
 
 def get_model_service() -> ModelConfigService:

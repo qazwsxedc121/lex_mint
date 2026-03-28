@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from html import escape
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class SourceContextService:
@@ -25,8 +25,8 @@ class SourceContextService:
         return f"{text[:max_chars]}..."
 
     @staticmethod
-    def _build_diagnostics_body(source: Dict[str, Any]) -> str:
-        parts: List[str] = []
+    def _build_diagnostics_body(source: dict[str, Any]) -> str:
+        parts: list[str] = []
         snippet = str(source.get("snippet") or "").strip()
         if snippet:
             parts.append(f"summary: {snippet}")
@@ -44,7 +44,7 @@ class SourceContextService:
             "tool_read_count",
             "tool_finalize_reason",
         ]
-        metrics: List[str] = []
+        metrics: list[str] = []
         for key in fields:
             if key not in source:
                 continue
@@ -57,7 +57,7 @@ class SourceContextService:
 
         return "\n".join(parts)
 
-    def _build_source_body(self, source: Dict[str, Any], max_chars_per_source: int) -> str:
+    def _build_source_body(self, source: dict[str, Any], max_chars_per_source: int) -> str:
         source_type = str(source.get("type") or "").strip().lower()
         if source_type == "rag_diagnostics":
             body = self._build_diagnostics_body(source)
@@ -68,7 +68,7 @@ class SourceContextService:
             if value:
                 return self._truncate_text(value, max_chars_per_source)
 
-        fallback_parts: List[str] = []
+        fallback_parts: list[str] = []
         title = str(source.get("title") or "").strip()
         url = str(source.get("url") or "").strip()
         if title:
@@ -81,7 +81,7 @@ class SourceContextService:
     def build_source_tags(
         self,
         query: str,
-        sources: List[Dict[str, Any]],
+        sources: list[dict[str, Any]],
         max_sources: int = 20,
         max_chars_per_source: int = 1200,
     ) -> str:
@@ -91,16 +91,18 @@ class SourceContextService:
             return ""
 
         limited_sources = list(sources)[: max(1, int(max_sources or 20))]
-        tags: List[str] = []
+        tags: list[str] = []
         for index, source in enumerate(limited_sources, start=1):
             if not isinstance(source, dict):
                 continue
 
-            body = self._build_source_body(source, max_chars_per_source=max(120, max_chars_per_source))
+            body = self._build_source_body(
+                source, max_chars_per_source=max(120, max_chars_per_source)
+            )
             if not body:
                 continue
 
-            attrs: Dict[str, Optional[str]] = {
+            attrs: dict[str, str | None] = {
                 "id": str(index),
                 "type": str(source.get("type") or "unknown"),
                 "title": str(source.get("title") or ""),
@@ -109,9 +111,7 @@ class SourceContextService:
                 "doc_id": str(source.get("doc_id") or ""),
                 "filename": str(source.get("filename") or ""),
                 "chunk_index": (
-                    str(source.get("chunk_index"))
-                    if source.get("chunk_index") is not None
-                    else ""
+                    str(source.get("chunk_index")) if source.get("chunk_index") is not None else ""
                 ),
                 "scope": str(source.get("scope") or ""),
                 "layer": str(source.get("layer") or ""),
@@ -130,7 +130,7 @@ class SourceContextService:
         self,
         query: str,
         source_context: str,
-        template: Optional[str] = None,
+        template: str | None = None,
     ) -> str:
         """Apply a source template with `{{QUERY}}` and `{{CONTEXT}}` placeholders."""
         if not source_context:

@@ -5,18 +5,18 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 import pytest
 from fastapi import HTTPException
 
-from src.domain.models.async_run import AsyncRunRecord, RunStatus
 from src.api.routers import runs as runs_router
 from src.application.flow.flow_stream_runtime import FlowStreamRuntime
+from src.domain.models.async_run import AsyncRunRecord, RunStatus
 
 
-async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]:
-    payloads: List[Dict[str, Any]] = []
+async def _collect_sse_payloads(streaming_response: Any) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
     async for chunk in streaming_response.body_iterator:
         text = chunk.decode("utf-8") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
         for line in text.splitlines():
@@ -26,7 +26,7 @@ async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]
     return payloads
 
 
-def _make_record(*, run_id: str, status: RunStatus, error: Optional[str] = None) -> AsyncRunRecord:
+def _make_record(*, run_id: str, status: RunStatus, error: str | None = None) -> AsyncRunRecord:
     now = datetime.now(timezone.utc)
     return AsyncRunRecord(
         run_id=run_id,
@@ -43,18 +43,18 @@ def _make_record(*, run_id: str, status: RunStatus, error: Optional[str] = None)
 
 
 class _FakeStore:
-    def __init__(self, record: Optional[AsyncRunRecord]):
+    def __init__(self, record: AsyncRunRecord | None):
         self.record = record
 
-    async def get_run(self, _run_id: str) -> Optional[AsyncRunRecord]:
+    async def get_run(self, _run_id: str) -> AsyncRunRecord | None:
         return self.record
 
 
 class _FakeListStore:
-    def __init__(self, runs: List[AsyncRunRecord]):
+    def __init__(self, runs: list[AsyncRunRecord]):
         self.runs = runs
 
-    async def list_runs(self, **_kwargs) -> List[AsyncRunRecord]:
+    async def list_runs(self, **_kwargs) -> list[AsyncRunRecord]:
         return list(self.runs)
 
 
@@ -62,9 +62,11 @@ class _FakeResumeService:
     def __init__(self, record: AsyncRunRecord):
         self.record = record
         self.calls: list[dict[str, object]] = []
-        self.error: Optional[ValueError] = None
+        self.error: ValueError | None = None
 
-    async def resume_workflow_run(self, run_id: str, *, checkpoint_id: Optional[str] = None) -> AsyncRunRecord:
+    async def resume_workflow_run(
+        self, run_id: str, *, checkpoint_id: str | None = None
+    ) -> AsyncRunRecord:
         if self.error is not None:
             raise self.error
         self.calls.append({"run_id": run_id, "checkpoint_id": checkpoint_id})
@@ -74,7 +76,7 @@ class _FakeResumeService:
 class _FakeCreateService:
     def __init__(self, record: AsyncRunRecord):
         self.record = record
-        self.error: Optional[ValueError] = None
+        self.error: ValueError | None = None
         self.calls: list[dict[str, object]] = []
 
     async def create_workflow_run(self, **kwargs) -> AsyncRunRecord:
@@ -87,7 +89,7 @@ class _FakeCreateService:
 class _FakeCancelService:
     def __init__(self, record: AsyncRunRecord):
         self.record = record
-        self.error: Optional[ValueError] = None
+        self.error: ValueError | None = None
 
     async def cancel_run(self, run_id: str) -> AsyncRunRecord:
         if self.error is not None:
@@ -113,7 +115,9 @@ async def test_create_run_success_and_error_mapping():
     service = _FakeCreateService(_make_record(run_id="run-create", status="running"))
 
     response = await runs_router.create_run(
-        request=runs_router.CreateRunRequest(kind="workflow", workflow_id="wf-test", inputs={"x": 1}),
+        request=runs_router.CreateRunRequest(
+            kind="workflow", workflow_id="wf-test", inputs={"x": 1}
+        ),
         service=service,  # type: ignore[arg-type]
     )
     assert response.run_id == "run-create"
@@ -134,7 +138,9 @@ async def test_create_run_success_and_error_mapping():
 
     with pytest.raises(HTTPException) as exc_info:
         await runs_router.create_run(
-            request=runs_router.CreateRunRequest(kind="workflow", workflow_id="wf-test").model_copy(update={"kind": "chat"}),
+            request=runs_router.CreateRunRequest(kind="workflow", workflow_id="wf-test").model_copy(
+                update={"kind": "chat"}
+            ),
             service=service,  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 400
@@ -145,10 +151,12 @@ async def test_stream_run_returns_synthetic_terminal_payload_when_runtime_stream
     store = _FakeStore(_make_record(run_id="run-synthetic", status="failed", error="boom"))
     runtime = FlowStreamRuntime()
 
-    response = await runs_router.stream_run(run_id="run-synthetic", store=cast(Any, store), runtime=runtime)
+    response = await runs_router.stream_run(
+        run_id="run-synthetic", store=cast(Any, store), runtime=runtime
+    )
     payloads = await _collect_sse_payloads(response)
 
-    flow_events = [cast(Dict[str, Any], item["flow_event"]) for item in payloads]
+    flow_events = [cast(dict[str, Any], item["flow_event"]) for item in payloads]
     assert [event.get("event_type") for event in flow_events] == [
         "stream_started",
         "stream_error",
@@ -163,7 +171,7 @@ async def test_list_runs_applies_status_filter_after_reconcile():
     store = _FakeListStore([running_record])
 
     class _ReconcilingService:
-        async def reconcile_orphaned_runs(self, runs: List[AsyncRunRecord]) -> List[AsyncRunRecord]:
+        async def reconcile_orphaned_runs(self, runs: list[AsyncRunRecord]) -> list[AsyncRunRecord]:
             runs[0].status = "failed"
             return runs
 
@@ -188,7 +196,7 @@ async def test_get_run_and_cancel_run_routes():
     store = _FakeStore(record)
 
     class _ReconcilingService:
-        async def reconcile_orphaned_runs(self, runs: List[AsyncRunRecord]) -> List[AsyncRunRecord]:
+        async def reconcile_orphaned_runs(self, runs: list[AsyncRunRecord]) -> list[AsyncRunRecord]:
             return runs
 
     response = await runs_router.get_run(
@@ -220,8 +228,15 @@ async def test_get_run_and_cancel_run_routes():
 async def test_stream_run_and_resume_stream_live_paths():
     record = _make_record(run_id="run-live", status="running")
     runtime = FlowStreamRuntime()
-    runtime.create_stream(stream_id=record.stream_id, conversation_id=record.run_id, context_type="workflow", project_id=None)
-    emitter = runs_router.FlowEventEmitter(stream_id=record.stream_id, conversation_id=record.run_id)
+    runtime.create_stream(
+        stream_id=record.stream_id,
+        conversation_id=record.run_id,
+        context_type="workflow",
+        project_id=None,
+    )
+    emitter = runs_router.FlowEventEmitter(
+        stream_id=record.stream_id, conversation_id=record.run_id
+    )
     started = emitter.emit_started(context_type="workflow")
     runtime.append_payload(record.stream_id, started)
 
@@ -237,8 +252,15 @@ async def test_stream_run_and_resume_stream_live_paths():
     assert payloads[0]["flow_event"]["event_type"] == "stream_started"
 
     runtime = FlowStreamRuntime()
-    runtime.create_stream(stream_id=record.stream_id, conversation_id=record.run_id, context_type="workflow", project_id=None)
-    emitter = runs_router.FlowEventEmitter(stream_id=record.stream_id, conversation_id=record.run_id)
+    runtime.create_stream(
+        stream_id=record.stream_id,
+        conversation_id=record.run_id,
+        context_type="workflow",
+        project_id=None,
+    )
+    emitter = runs_router.FlowEventEmitter(
+        stream_id=record.stream_id, conversation_id=record.run_id
+    )
     started = emitter.emit_started(context_type="workflow")
     runtime.append_payload(record.stream_id, started)
 

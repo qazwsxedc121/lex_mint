@@ -3,14 +3,16 @@ Ollama SDK Adapter
 
 Adapter for Ollama local models using langchain-ollama.
 """
-import logging
+
 import importlib
-from typing import AsyncIterator, List, Dict, Any
+import logging
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ class OllamaAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Create a ChatOllama instance.
@@ -50,7 +52,7 @@ class OllamaAdapter(BaseLLMAdapter):
             ChatOllama instance
         """
         module = importlib.import_module("langchain_ollama")
-        ChatOllama = getattr(module, "ChatOllama")
+        ChatOllama = module.ChatOllama
 
         llm_kwargs = {
             "model": model,
@@ -81,10 +83,7 @@ class OllamaAdapter(BaseLLMAdapter):
         return ChatOllama(**llm_kwargs)
 
     async def stream(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from Ollama.
@@ -103,12 +102,12 @@ class OllamaAdapter(BaseLLMAdapter):
         usage_data = None
 
         async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, 'content') else ""
+            content = chunk.content if hasattr(chunk, "content") else ""
             thinking = ""
 
             # Check for reasoning content in additional_kwargs
-            if hasattr(chunk, 'additional_kwargs'):
-                thinking = chunk.additional_kwargs.get('reasoning_content', '')
+            if hasattr(chunk, "additional_kwargs"):
+                thinking = chunk.additional_kwargs.get("reasoning_content", "")
 
             # Extract usage from chunk (usually only in final chunk)
             extracted = TokenUsage.extract_from_chunk(chunk)
@@ -123,12 +122,7 @@ class OllamaAdapter(BaseLLMAdapter):
                 raw=chunk,
             )
 
-    async def invoke(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm, messages: list[BaseMessage], **kwargs) -> LLMResponse:
         """
         Invoke Ollama and get complete response.
 
@@ -143,12 +137,12 @@ class OllamaAdapter(BaseLLMAdapter):
         response = await llm.ainvoke(messages)
 
         thinking = ""
-        if hasattr(response, 'additional_kwargs'):
-            thinking = response.additional_kwargs.get('reasoning_content', '')
+        if hasattr(response, "additional_kwargs"):
+            thinking = response.additional_kwargs.get("reasoning_content", "")
 
         usage = None
-        if hasattr(response, 'response_metadata'):
-            raw_usage = response.response_metadata.get('usage')
+        if hasattr(response, "response_metadata"):
+            raw_usage = response.response_metadata.get("usage")
             usage = TokenUsage.from_dict(raw_usage)
 
         return LLMResponse(
@@ -162,7 +156,7 @@ class OllamaAdapter(BaseLLMAdapter):
         """Ollama supports reasoning mode for compatible models."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Get parameters for Ollama reasoning mode.
 
@@ -170,11 +164,7 @@ class OllamaAdapter(BaseLLMAdapter):
         """
         return {"reasoning": True}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from local Ollama instance.
 
@@ -188,7 +178,7 @@ class OllamaAdapter(BaseLLMAdapter):
         import httpx
 
         try:
-            url = (base_url or "http://localhost:11434").rstrip('/')
+            url = (base_url or "http://localhost:11434").rstrip("/")
             tags_url = f"{url}/api/tags"
 
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -214,10 +204,10 @@ class OllamaAdapter(BaseLLMAdapter):
                         family = details.get("family", "")
                         all_families = set(families + ([family] if family else []))
 
-                        has_vision = any(
-                            f in all_families
-                            for f in ("clip", "mllama", "llava")
-                        ) or "vision" in model_name.lower()
+                        has_vision = (
+                            any(f in all_families for f in ("clip", "mllama", "llava"))
+                            or "vision" in model_name.lower()
+                        )
 
                         tags = []
                         if has_vision:
@@ -248,10 +238,7 @@ class OllamaAdapter(BaseLLMAdapter):
             return []
 
     async def test_connection(
-        self,
-        base_url: str,
-        api_key: str,
-        model_id: str | None = None
+        self, base_url: str, api_key: str, model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test connection to Ollama server.
@@ -267,7 +254,7 @@ class OllamaAdapter(BaseLLMAdapter):
         import httpx
 
         try:
-            url = (base_url or "http://localhost:11434").rstrip('/')
+            url = (base_url or "http://localhost:11434").rstrip("/")
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 # First check if Ollama is running
@@ -278,7 +265,10 @@ class OllamaAdapter(BaseLLMAdapter):
                 model_count = len(data.get("models", []))
 
                 if model_count == 0:
-                    return True, "Ollama is running but no models installed. Run 'ollama pull <model>' to add models."
+                    return (
+                        True,
+                        "Ollama is running but no models installed. Run 'ollama pull <model>' to add models.",
+                    )
 
                 return True, f"Connected to Ollama with {model_count} model(s) available"
 

@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Any, Dict, Optional
+from typing import Any
 
 
 class LLMLogger:
@@ -27,7 +27,7 @@ class LLMLogger:
         if not self.logger.handlers:
             # File handler for detailed JSON logs
             log_file = self.log_dir / f"llm_interactions_{datetime.now().strftime('%Y%m%d')}.log"
-            fh = logging.FileHandler(log_file, encoding='utf-8')
+            fh = logging.FileHandler(log_file, encoding="utf-8")
             fh.setLevel(logging.DEBUG)
 
             # Console handler for summary
@@ -35,8 +35,8 @@ class LLMLogger:
             ch.setLevel(logging.INFO)
 
             # Formatters
-            file_formatter = logging.Formatter('%(message)s')
-            console_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+            file_formatter = logging.Formatter("%(message)s")
+            console_formatter = logging.Formatter("[%(levelname)s] %(message)s")
 
             fh.setFormatter(file_formatter)
             ch.setFormatter(console_formatter)
@@ -47,10 +47,10 @@ class LLMLogger:
     def log_interaction(
         self,
         session_id: str,
-        messages_sent: List[Any],
+        messages_sent: list[Any],
         response_received: Any,
         model: str = "deepseek-chat",
-        extra_params: Optional[Dict[str, Any]] = None
+        extra_params: dict[str, Any] | None = None,
     ) -> None:
         """Log a complete LLM interaction.
 
@@ -66,26 +66,27 @@ class LLMLogger:
         # Convert LangChain messages to dict for logging
         messages_dict = []
         for msg in messages_sent:
-            messages_dict.append({
-                "type": msg.__class__.__name__,
-                "content": msg.content,
-                "role": getattr(msg, 'role', getattr(msg, 'type', 'unknown'))
-            })
+            messages_dict.append(
+                {
+                    "type": msg.__class__.__name__,
+                    "content": msg.content,
+                    "role": getattr(msg, "role", getattr(msg, "type", "unknown")),
+                }
+            )
 
         # Build log entry
         log_entry = {
             "timestamp": timestamp,
             "session_id": session_id,
             "model": model,
-            "request": {
-                "message_count": len(messages_sent),
-                "messages": messages_dict
-            },
+            "request": {"message_count": len(messages_sent), "messages": messages_dict},
             "response": {
                 "type": response_received.__class__.__name__,
                 "content": response_received.content,
-                "role": getattr(response_received, 'role', getattr(response_received, 'type', 'unknown'))
-            }
+                "role": getattr(
+                    response_received, "role", getattr(response_received, "type", "unknown")
+                ),
+            },
         }
 
         # Add extra params if provided
@@ -109,7 +110,7 @@ class LLMLogger:
             f"Received: {len(response_received.content)} chars"
         )
 
-    def log_raw_request(self, session_id: str, raw_data: Dict[str, Any]) -> None:
+    def log_raw_request(self, session_id: str, raw_data: dict[str, Any]) -> None:
         """Log raw API request data.
 
         Args:
@@ -121,7 +122,7 @@ class LLMLogger:
             "timestamp": timestamp,
             "type": "RAW_REQUEST",
             "session_id": session_id,
-            "data": raw_data
+            "data": raw_data,
         }
         self.logger.debug(json.dumps(log_entry, ensure_ascii=False, indent=2))
 
@@ -138,11 +139,7 @@ class LLMLogger:
             "timestamp": timestamp,
             "type": "ERROR",
             "session_id": session_id,
-            "error": {
-                "type": error.__class__.__name__,
-                "message": str(error),
-                "context": context
-            }
+            "error": {"type": error.__class__.__name__, "message": str(error), "context": context},
         }
         self.logger.error(json.dumps(log_entry, ensure_ascii=False, indent=2))
 

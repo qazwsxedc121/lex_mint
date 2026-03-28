@@ -1,10 +1,11 @@
 """
 Shared utilities for LLM adapters.
 """
-from typing import Any, List
+
+from typing import Any
 
 
-def extract_tool_calls(payload: Any) -> List[Any]:
+def extract_tool_calls(payload: Any) -> list[Any]:
     """Extract tool call payload from LangChain chunks/responses.
 
     Priority order (first non-empty wins):

@@ -2,8 +2,11 @@
 
 import pytest
 
+from src.application.chat.chat_runtime.committee_types import (
+    CommitteeRuntimeState,
+    CommitteeTurnRecord,
+)
 from src.application.chat.chat_runtime.supervisor import CommitteeSupervisor
-from src.application.chat.chat_runtime.committee_types import CommitteeRuntimeState, CommitteeTurnRecord
 
 
 @pytest.mark.asyncio
@@ -141,7 +144,9 @@ async def test_supervisor_normalizes_parallel_targets():
     )
 
     async def fake_llm(_system_prompt: str, _user_prompt: str) -> str:
-        return '{"action":"parallel_speak","assistant_ids":["a","b","sup","ghost"],"reason":"faster"}'
+        return (
+            '{"action":"parallel_speak","assistant_ids":["a","b","sup","ghost"],"reason":"faster"}'
+        )
 
     decision = await supervisor.decide(state, fake_llm)
     assert decision.action == "parallel_speak"

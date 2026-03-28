@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.infrastructure.storage.conversation_storage import ConversationStorage
 
@@ -18,10 +18,10 @@ class MarkdownImportService:
     async def import_markdown(
         self,
         markdown_text: str,
-        filename: Optional[str] = None,
+        filename: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
         """Import a single Markdown conversation.
 
         Returns:
@@ -42,15 +42,11 @@ class MarkdownImportService:
             }
 
         session_id = await self.storage.create_session(
-            context_type=context_type,
-            project_id=project_id
+            context_type=context_type, project_id=project_id
         )
 
         await self.storage.set_messages(
-            session_id,
-            messages,
-            context_type=context_type,
-            project_id=project_id
+            session_id, messages, context_type=context_type, project_id=project_id
         )
 
         metadata_updates = {
@@ -59,34 +55,31 @@ class MarkdownImportService:
             "imported_at": datetime.now().isoformat(),
         }
         await self.storage.update_session_metadata(
-            session_id,
-            metadata_updates,
-            context_type=context_type,
-            project_id=project_id
+            session_id, metadata_updates, context_type=context_type, project_id=project_id
         )
 
         return {
             "imported": 1,
             "skipped": 0,
-            "sessions": [{
-                "session_id": session_id,
-                "title": title,
-                "message_count": len(messages),
-            }],
+            "sessions": [
+                {
+                    "session_id": session_id,
+                    "title": title,
+                    "message_count": len(messages),
+                }
+            ],
             "errors": [],
         }
 
     def _parse_markdown(
-        self,
-        markdown_text: str,
-        filename: Optional[str]
-    ) -> tuple[str, List[Dict[str, Any]]]:
+        self, markdown_text: str, filename: str | None
+    ) -> tuple[str, list[dict[str, Any]]]:
         lines = markdown_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         title = self._extract_title(lines, filename)
 
-        messages: List[Dict[str, Any]] = []
-        current_role: Optional[str] = None
-        current_lines: List[str] = []
+        messages: list[dict[str, Any]] = []
+        current_role: str | None = None
+        current_lines: list[str] = []
 
         for line in lines:
             role = self._detect_role_heading(line)
@@ -114,7 +107,7 @@ class MarkdownImportService:
 
         return title, messages
 
-    def _extract_title(self, lines: List[str], filename: Optional[str]) -> str:
+    def _extract_title(self, lines: list[str], filename: str | None) -> str:
         for line in lines:
             if line.startswith("# "):
                 title = line[2:].strip()
@@ -129,7 +122,7 @@ class MarkdownImportService:
 
         return "Imported Markdown"
 
-    def _detect_role_heading(self, line: str) -> Optional[str]:
+    def _detect_role_heading(self, line: str) -> str | None:
         stripped = line.lstrip()
         if not stripped.startswith("#"):
             return None
@@ -141,6 +134,6 @@ class MarkdownImportService:
             return "user"
         return None
 
-    def _finalize_content(self, lines: List[str]) -> str:
+    def _finalize_content(self, lines: list[str]) -> str:
         text = "\n".join(lines).strip()
         return text

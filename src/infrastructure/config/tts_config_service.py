@@ -3,10 +3,10 @@ TTS Config Service
 
 Manages configuration for Text-to-Speech.
 """
+
 import logging
-from pathlib import Path
-from typing import Dict, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TTSConfig:
     """Configuration for TTS"""
+
     enabled: bool
     voice: str
     voice_zh: str
@@ -33,8 +34,8 @@ class TTSConfig:
 class TTSConfigService:
     """Service for managing TTS configuration"""
 
-    def __init__(self, config_path: Optional[str] = None):
-        self.defaults_path: Optional[Path] = None
+    def __init__(self, config_path: str | None = None):
+        self.defaults_path: Path | None = None
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "tts_config.yaml"
@@ -48,13 +49,13 @@ class TTSConfigService:
         """Create default config file if it doesn't exist"""
         if not self.config_path.exists():
             default_data = {
-                'tts': {
-                    'enabled': True,
-                    'voice': 'en-US-AriaNeural',
-                    'voice_zh': 'zh-CN-XiaoxiaoNeural',
-                    'rate': '+0%',
-                    'volume': '+0%',
-                    'max_text_length': 10000,
+                "tts": {
+                    "enabled": True,
+                    "voice": "en-US-AriaNeural",
+                    "voice_zh": "zh-CN-XiaoxiaoNeural",
+                    "rate": "+0%",
+                    "volume": "+0%",
+                    "max_text_length": 10000,
                 }
             }
             initial_text = yaml.safe_dump(default_data, allow_unicode=True, sort_keys=False)
@@ -68,26 +69,26 @@ class TTSConfigService:
     def _load_config(self) -> TTSConfig:
         """Load configuration from YAML file"""
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
 
-            config_data = data.get('tts', {})
+            config_data = data.get("tts", {})
             return TTSConfig(
-                enabled=config_data.get('enabled', True),
-                voice=config_data.get('voice', 'en-US-AriaNeural'),
-                voice_zh=config_data.get('voice_zh', 'zh-CN-XiaoxiaoNeural'),
-                rate=config_data.get('rate', '+0%'),
-                volume=config_data.get('volume', '+0%'),
-                max_text_length=config_data.get('max_text_length', 10000),
+                enabled=config_data.get("enabled", True),
+                voice=config_data.get("voice", "en-US-AriaNeural"),
+                voice_zh=config_data.get("voice_zh", "zh-CN-XiaoxiaoNeural"),
+                rate=config_data.get("rate", "+0%"),
+                volume=config_data.get("volume", "+0%"),
+                max_text_length=config_data.get("max_text_length", 10000),
             )
         except Exception as e:
             logger.error(f"Failed to load TTS config: {e}")
             return TTSConfig(
                 enabled=True,
-                voice='en-US-AriaNeural',
-                voice_zh='zh-CN-XiaoxiaoNeural',
-                rate='+0%',
-                volume='+0%',
+                voice="en-US-AriaNeural",
+                voice_zh="zh-CN-XiaoxiaoNeural",
+                rate="+0%",
+                volume="+0%",
                 max_text_length=10000,
             )
 
@@ -95,20 +96,20 @@ class TTSConfigService:
         """Reload configuration from file"""
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict):
+    def save_config(self, updates: dict):
         """Save updated configuration to file"""
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
-            if 'tts' not in data:
-                data['tts'] = {}
+            if "tts" not in data:
+                data["tts"] = {}
 
             for key, value in updates.items():
                 if value is not None:
-                    data['tts'][key] = value
+                    data["tts"][key] = value
 
-            with open(self.config_path, 'w', encoding='utf-8') as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
 
             self.reload_config()

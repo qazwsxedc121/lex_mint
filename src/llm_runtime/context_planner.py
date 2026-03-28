@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 
-def _default_optional_segment_ratios() -> Dict[str, float]:
+def _default_optional_segment_ratios() -> dict[str, float]:
     return {
         "memory": 0.16,
         "rag": 0.18,
@@ -16,7 +17,7 @@ def _default_optional_segment_ratios() -> Dict[str, float]:
     }
 
 
-def _default_min_segment_tokens_by_name() -> Dict[str, int]:
+def _default_min_segment_tokens_by_name() -> dict[str, int]:
     return {
         "sources": 32,
     }
@@ -29,10 +30,14 @@ class ContextPlannerPolicy:
     min_history_floor_tokens: int = 128
     summary_max_ratio: float = 0.15
     min_summary_tokens: int = 32
-    optional_segment_ratios: Dict[str, float] = field(default_factory=_default_optional_segment_ratios)
+    optional_segment_ratios: dict[str, float] = field(
+        default_factory=_default_optional_segment_ratios
+    )
     default_optional_segment_ratio: float = 0.08
     min_segment_tokens: int = 24
-    min_segment_tokens_by_name: Dict[str, int] = field(default_factory=_default_min_segment_tokens_by_name)
+    min_segment_tokens_by_name: dict[str, int] = field(
+        default_factory=_default_min_segment_tokens_by_name
+    )
 
 
 @dataclass(frozen=True)
@@ -44,9 +49,9 @@ class PlannedSegment:
     estimated_tokens_before: int = 0
     estimated_tokens_after: int = 0
     truncated: bool = False
-    drop_reason: Optional[str] = None
+    drop_reason: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "kind": self.kind,
@@ -67,26 +72,26 @@ class ContextUsageSummary:
 
 @dataclass(frozen=True)
 class ContextPlan:
-    system_segments: List[PlannedSegment]
-    chat_messages: List[Dict[str, Any]]
-    segment_reports: List[PlannedSegment]
+    system_segments: list[PlannedSegment]
+    chat_messages: list[dict[str, Any]]
+    segment_reports: list[PlannedSegment]
     usage_summary: ContextUsageSummary
 
 
 class ContextPlanner:
     """Plans prompt assembly before the final LangChain safety trim."""
 
-    def __init__(self, *, policy: Optional[ContextPlannerPolicy] = None):
+    def __init__(self, *, policy: ContextPlannerPolicy | None = None):
         self.policy = policy or ContextPlannerPolicy()
 
-    def _estimate_text_tokens(self, text: Optional[str]) -> int:
+    def _estimate_text_tokens(self, text: str | None) -> int:
         cleaned = (text or "").strip()
         if not cleaned:
             return 0
         chars_per_token = max(1, int(self.policy.approx_chars_per_token or 1))
         return max(1, len(cleaned) // chars_per_token)
 
-    def _estimate_message_tokens(self, messages: Sequence[Dict[str, Any]]) -> int:
+    def _estimate_message_tokens(self, messages: Sequence[dict[str, Any]]) -> int:
         total = 0
         for msg in messages:
             role = msg.get("role", "")
@@ -101,7 +106,7 @@ class ContextPlanner:
             total += self._estimate_text_tokens(str(msg.get("content") or ""))
         return total
 
-    def _truncate_text_to_tokens(self, text: Optional[str], max_tokens: int) -> str:
+    def _truncate_text_to_tokens(self, text: str | None, max_tokens: int) -> str:
         cleaned = (text or "").strip()
         if not cleaned:
             return ""
@@ -121,14 +126,13 @@ class ContextPlanner:
         return cleaned[: max_chars - 3].rstrip() + "..."
 
     @staticmethod
-    def _truncate_messages_by_rounds(messages: List[Dict[str, Any]], max_rounds: Optional[int]) -> List[Dict[str, Any]]:
+    def _truncate_messages_by_rounds(
+        messages: list[dict[str, Any]], max_rounds: int | None
+    ) -> list[dict[str, Any]]:
         if not max_rounds or max_rounds <= 0:
             return list(messages)
 
-        human_indexes = [
-            index for index, msg in enumerate(messages)
-            if msg.get("role") == "user"
-        ]
+        human_indexes = [index for index, msg in enumerate(messages) if msg.get("role") == "user"]
         if len(human_indexes) <= max_rounds:
             return list(messages)
 
@@ -140,7 +144,7 @@ class ContextPlanner:
         *,
         name: str,
         kind: str,
-        content: Optional[str],
+        content: str | None,
         max_tokens: int,
         required: bool = False,
     ) -> PlannedSegment:
@@ -156,7 +160,9 @@ class ContextPlanner:
                 drop_reason="empty",
             )
 
-        min_tokens = self.policy.min_segment_tokens_by_name.get(name, self.policy.min_segment_tokens)
+        min_tokens = self.policy.min_segment_tokens_by_name.get(
+            name, self.policy.min_segment_tokens
+        )
         if max_tokens < min_tokens and not required:
             return PlannedSegment(
                 name=name,
@@ -184,15 +190,15 @@ class ContextPlanner:
         self,
         *,
         context_budget_tokens: int,
-        base_system_prompt: Optional[str],
-        compressed_history_summary: Optional[str],
-        recent_messages: List[Dict[str, Any]],
-        max_rounds: Optional[int] = None,
-        memory_context: Optional[str] = None,
-        webpage_context: Optional[str] = None,
-        search_context: Optional[str] = None,
-        rag_context: Optional[str] = None,
-        structured_source_context: Optional[str] = None,
+        base_system_prompt: str | None,
+        compressed_history_summary: str | None,
+        recent_messages: list[dict[str, Any]],
+        max_rounds: int | None = None,
+        memory_context: str | None = None,
+        webpage_context: str | None = None,
+        search_context: str | None = None,
+        rag_context: str | None = None,
+        structured_source_context: str | None = None,
     ) -> ContextPlan:
         budget = max(1, int(context_budget_tokens or 0))
         planned_messages = self._truncate_messages_by_rounds(recent_messages, max_rounds)
@@ -218,12 +224,17 @@ class ContextPlanner:
         history_floor = (
             min(
                 history_tokens,
-                max(self.policy.min_history_floor_tokens, int(budget * self.policy.history_floor_ratio)),
+                max(
+                    self.policy.min_history_floor_tokens,
+                    int(budget * self.policy.history_floor_ratio),
+                ),
             )
             if history_tokens
             else 0
         )
-        summary_budget = max(self.policy.min_summary_tokens, int(budget * self.policy.summary_max_ratio))
+        summary_budget = max(
+            self.policy.min_summary_tokens, int(budget * self.policy.summary_max_ratio)
+        )
         summary_segment = self._plan_segment(
             name="summary",
             kind="summary",
@@ -239,7 +250,7 @@ class ContextPlanner:
         )
         remaining_pool = max(0, budget - reserved_tokens)
 
-        optional_segments: List[PlannedSegment] = []
+        optional_segments: list[PlannedSegment] = []
         for name, kind, content in [
             ("memory", "context", memory_context),
             ("rag", "context", rag_context),
@@ -263,7 +274,12 @@ class ContextPlanner:
 
             cap_tokens = max(
                 self.policy.min_segment_tokens,
-                int(budget * self.policy.optional_segment_ratios.get(name, self.policy.default_optional_segment_ratio)),
+                int(
+                    budget
+                    * self.policy.optional_segment_ratios.get(
+                        name, self.policy.default_optional_segment_ratio
+                    )
+                ),
             )
             allowance = min(cap_tokens, remaining_pool) if remaining_pool > 0 else 0
             segment = self._plan_segment(
@@ -280,7 +296,9 @@ class ContextPlanner:
             for segment in [system_segment, summary_segment, *optional_segments]
             if segment.included
         ]
-        estimated_prompt_tokens = history_tokens + sum(segment.estimated_tokens_after for segment in system_segments)
+        estimated_prompt_tokens = history_tokens + sum(
+            segment.estimated_tokens_after for segment in system_segments
+        )
         usage_summary = ContextUsageSummary(
             context_budget=budget,
             estimated_prompt_tokens=estimated_prompt_tokens,

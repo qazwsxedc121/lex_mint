@@ -1,8 +1,8 @@
 """Centralized logging configuration module"""
 
-from datetime import datetime
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from src.core.paths import logs_dir
@@ -18,11 +18,11 @@ class TeeOutput:
         self.file = None
         self.file_path = file_path
         self.original_stream = original_stream
-        self.encoding = 'utf-8'
+        self.encoding = "utf-8"
 
     def open(self):
         """Open the log file"""
-        self.file = open(self.file_path, 'a', encoding='utf-8', buffering=1)
+        self.file = open(self.file_path, "a", encoding="utf-8", buffering=1)
 
     def write(self, message):
         """Write to both console and file"""
@@ -94,7 +94,7 @@ def setup_logging():
 
     log_file = logs_directory / "server.log"
 
-    with open(log_file, 'a', encoding='utf-8') as file_handle:
+    with open(log_file, "a", encoding="utf-8") as file_handle:
         file_handle.write("\n" + "=" * 100 + "\n")
         file_handle.write(f"Server started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         file_handle.write("=" * 100 + "\n\n")
@@ -111,25 +111,20 @@ def setup_logging():
     console_handler = logging.StreamHandler(stdout_tee)
     console_handler.setLevel(logging.INFO)
     console_formatter = logging.Formatter(
-        '[%(asctime)s] [%(levelname)s] %(name)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "[%(asctime)s] [%(levelname)s] %(name)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
     console_handler.setFormatter(console_formatter)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=[console_handler],
-        force=True
-    )
+    logging.basicConfig(level=logging.INFO, handlers=[console_handler], force=True)
 
-    logging.getLogger('src').setLevel(logging.INFO)
-    logging.getLogger('llm_interactions').setLevel(logging.INFO)
+    logging.getLogger("src").setLevel(logging.INFO)
+    logging.getLogger("llm_interactions").setLevel(logging.INFO)
 
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-    logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
-    logging.getLogger('uvicorn').setLevel(logging.WARNING)
-    logging.getLogger('httpx').setLevel(logging.WARNING)
-    logging.getLogger('httpcore').setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     _initialized = True
 

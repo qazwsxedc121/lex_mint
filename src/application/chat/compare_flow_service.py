@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol
+from typing import Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
-from src.application.chat.chat_runtime import CompareModelsSettings, ChatOrchestrationRequest
+from src.application.chat.chat_runtime import ChatOrchestrationRequest, CompareModelsSettings
 from src.application.chat.service_contracts import (
     ContextPayload,
     SourcePayload,
@@ -21,13 +22,13 @@ class _StorageLike(Protocol):
         session_id: str,
         role: str,
         content: str,
-        attachments: Optional[List[SourcePayload]] = None,
-        usage: Optional[TokenUsage] = None,
-        cost: Optional[CostInfo] = None,
-        sources: Optional[List[SourcePayload]] = None,
+        attachments: list[SourcePayload] | None = None,
+        usage: TokenUsage | None = None,
+        cost: CostInfo | None = None,
+        sources: list[SourcePayload] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-        assistant_id: Optional[str] = None,
+        project_id: str | None = None,
+        assistant_id: str | None = None,
     ) -> str: ...
 
 
@@ -36,9 +37,9 @@ class _ComparisonStorageLike(Protocol):
         self,
         session_id: str,
         assistant_message_id: str,
-        responses: List[SourcePayload],
+        responses: list[SourcePayload],
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None: ...
 
 
@@ -49,10 +50,10 @@ class _ChatInputServiceLike(Protocol):
         session_id: str,
         raw_user_message: str,
         expanded_user_message: str,
-        attachments: Optional[List[SourcePayload]],
+        attachments: list[SourcePayload] | None,
         skip_user_append: bool,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> PreparedUserInput: ...
 
 
@@ -69,7 +70,7 @@ class CompareFlowDeps:
     chat_input_service: _ChatInputServiceLike
     compare_models_orchestrator: _CompareModelsOrchestratorLike
     prepare_context: Callable[..., Awaitable[ContextPayload]]
-    build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
+    build_file_context_block: Callable[[list[dict[str, str]] | None], Awaitable[str]]
 
 
 class CompareFlowService:
@@ -83,14 +84,14 @@ class CompareFlowService:
         *,
         session_id: str,
         user_message: str,
-        model_ids: List[str],
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[SourcePayload]] = None,
+        model_ids: list[str],
+        reasoning_effort: str | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream compare responses and persist both canonical and comparison results."""
         original_user_message = user_message
@@ -148,7 +149,7 @@ class CompareFlowService:
             project_id=project_id,
         )
 
-        model_results: Dict[str, SourcePayload] = {}
+        model_results: dict[str, SourcePayload] = {}
         async for event in self.deps.compare_models_orchestrator.stream(compare_request):
             event_type = event.get("type")
             if event_type == "compare_complete":
@@ -170,11 +171,11 @@ class CompareFlowService:
         self,
         *,
         session_id: str,
-        model_ids: List[str],
-        model_results: Dict[str, SourcePayload],
-        all_sources: List[SourcePayload],
+        model_ids: list[str],
+        model_results: dict[str, SourcePayload],
+        all_sources: list[SourcePayload],
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> str:
         """Persist canonical assistant message plus all compare responses."""
         first_model_id = model_ids[0]

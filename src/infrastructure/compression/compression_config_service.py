@@ -3,23 +3,22 @@ Compression Config Service
 
 Manages configuration for context compression (summarization).
 """
+
 import logging
-from pathlib import Path
-from typing import Dict, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
-from src.infrastructure.config.yaml_config_utils import (
-    load_default_yaml_section,
-    load_layered_yaml_section,
-    save_yaml_section_updates,
-)
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     ensure_local_file,
-    resolve_layered_read_path,
+)
+from src.infrastructure.config.yaml_config_utils import (
+    load_default_yaml_section,
+    load_layered_yaml_section,
+    save_yaml_section_updates,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +85,7 @@ Output ONLY the structured summary following the format above. No additional com
 @dataclass
 class CompressionConfig:
     """Configuration for context compression"""
+
     provider: str
     model_id: str
     local_gguf_model_path: str
@@ -115,8 +115,8 @@ class CompressionConfig:
 class CompressionConfigService:
     """Service for managing compression configuration"""
 
-    def __init__(self, config_path: Optional[str] = None):
-        self.defaults_path: Optional[Path] = config_defaults_dir() / "compression_config.yaml"
+    def __init__(self, config_path: str | None = None):
+        self.defaults_path: Path | None = config_defaults_dir() / "compression_config.yaml"
 
         if config_path is None:
             self.config_path = config_local_dir() / "compression_config.yaml"
@@ -133,98 +133,102 @@ class CompressionConfigService:
             initial_text=yaml.safe_dump({"compression": {}}, allow_unicode=True, sort_keys=False),
         )
 
-    def _load_default_section(self) -> Dict:
+    def _load_default_section(self) -> dict:
         """Load fallback defaults from the repo default config file."""
-        return load_default_yaml_section(self.defaults_path, 'compression')
+        return load_default_yaml_section(self.defaults_path, "compression")
 
     def _load_config(self) -> CompressionConfig:
         """Load configuration from YAML file"""
         default_config, config_data = load_layered_yaml_section(
             config_path=self.config_path,
             defaults_path=self.defaults_path,
-            section_name='compression',
+            section_name="compression",
             logger=logger,
-            error_label='compression config',
+            error_label="compression config",
         )
 
         return CompressionConfig(
-            provider=config_data.get('provider', default_config.get('provider', 'model_config')),
-            model_id=config_data.get('model_id', default_config.get('model_id', '')),
+            provider=config_data.get("provider", default_config.get("provider", "model_config")),
+            model_id=config_data.get("model_id", default_config.get("model_id", "")),
             local_gguf_model_path=config_data.get(
-                'local_gguf_model_path',
-                default_config.get('local_gguf_model_path', 'models/llm/local-summarizer.gguf'),
+                "local_gguf_model_path",
+                default_config.get("local_gguf_model_path", "models/llm/local-summarizer.gguf"),
             ),
-            local_gguf_n_ctx=config_data.get('local_gguf_n_ctx', default_config.get('local_gguf_n_ctx', 8192)),
+            local_gguf_n_ctx=config_data.get(
+                "local_gguf_n_ctx", default_config.get("local_gguf_n_ctx", 8192)
+            ),
             local_gguf_n_threads=config_data.get(
-                'local_gguf_n_threads',
-                default_config.get('local_gguf_n_threads', 0),
+                "local_gguf_n_threads",
+                default_config.get("local_gguf_n_threads", 0),
             ),
             local_gguf_n_gpu_layers=config_data.get(
-                'local_gguf_n_gpu_layers',
-                default_config.get('local_gguf_n_gpu_layers', 0),
+                "local_gguf_n_gpu_layers",
+                default_config.get("local_gguf_n_gpu_layers", 0),
             ),
             local_gguf_max_tokens=config_data.get(
-                'local_gguf_max_tokens',
-                default_config.get('local_gguf_max_tokens', 2048),
+                "local_gguf_max_tokens",
+                default_config.get("local_gguf_max_tokens", 2048),
             ),
-            temperature=config_data.get('temperature', default_config.get('temperature', 0.3)),
-            min_messages=config_data.get('min_messages', default_config.get('min_messages', 2)),
-            timeout_seconds=config_data.get('timeout_seconds', default_config.get('timeout_seconds', 60)),
+            temperature=config_data.get("temperature", default_config.get("temperature", 0.3)),
+            min_messages=config_data.get("min_messages", default_config.get("min_messages", 2)),
+            timeout_seconds=config_data.get(
+                "timeout_seconds", default_config.get("timeout_seconds", 60)
+            ),
             prompt_template=config_data.get(
-                'prompt_template',
-                default_config.get('prompt_template', DEFAULT_PROMPT_TEMPLATE),
+                "prompt_template",
+                default_config.get("prompt_template", DEFAULT_PROMPT_TEMPLATE),
             ),
             compression_output_language=config_data.get(
-                'compression_output_language',
-                default_config.get('compression_output_language', 'auto'),
+                "compression_output_language",
+                default_config.get("compression_output_language", "auto"),
             ),
             compression_strategy=config_data.get(
-                'compression_strategy',
-                default_config.get('compression_strategy', 'hierarchical'),
+                "compression_strategy",
+                default_config.get("compression_strategy", "hierarchical"),
             ),
             hierarchical_chunk_target_tokens=config_data.get(
-                'hierarchical_chunk_target_tokens',
-                default_config.get('hierarchical_chunk_target_tokens', 0),
+                "hierarchical_chunk_target_tokens",
+                default_config.get("hierarchical_chunk_target_tokens", 0),
             ),
             hierarchical_chunk_overlap_messages=config_data.get(
-                'hierarchical_chunk_overlap_messages',
-                default_config.get('hierarchical_chunk_overlap_messages', 2),
+                "hierarchical_chunk_overlap_messages",
+                default_config.get("hierarchical_chunk_overlap_messages", 2),
             ),
             hierarchical_reduce_target_tokens=config_data.get(
-                'hierarchical_reduce_target_tokens',
-                default_config.get('hierarchical_reduce_target_tokens', 0),
+                "hierarchical_reduce_target_tokens",
+                default_config.get("hierarchical_reduce_target_tokens", 0),
             ),
             hierarchical_reduce_overlap_items=config_data.get(
-                'hierarchical_reduce_overlap_items',
-                default_config.get('hierarchical_reduce_overlap_items', 1),
+                "hierarchical_reduce_overlap_items",
+                default_config.get("hierarchical_reduce_overlap_items", 1),
             ),
             hierarchical_max_levels=config_data.get(
-                'hierarchical_max_levels',
-                default_config.get('hierarchical_max_levels', 4),
+                "hierarchical_max_levels",
+                default_config.get("hierarchical_max_levels", 4),
             ),
             quality_guard_enabled=config_data.get(
-                'quality_guard_enabled',
-                default_config.get('quality_guard_enabled', True),
+                "quality_guard_enabled",
+                default_config.get("quality_guard_enabled", True),
             ),
             quality_guard_min_coverage=config_data.get(
-                'quality_guard_min_coverage',
-                default_config.get('quality_guard_min_coverage', 0.75),
+                "quality_guard_min_coverage",
+                default_config.get("quality_guard_min_coverage", 0.75),
             ),
             quality_guard_max_facts=config_data.get(
-                'quality_guard_max_facts',
-                default_config.get('quality_guard_max_facts', 24),
+                "quality_guard_max_facts",
+                default_config.get("quality_guard_max_facts", 24),
             ),
             compression_metrics_enabled=config_data.get(
-                'compression_metrics_enabled',
-                default_config.get('compression_metrics_enabled', True),
+                "compression_metrics_enabled",
+                default_config.get("compression_metrics_enabled", True),
             ),
             auto_compress_enabled=config_data.get(
-                'auto_compress_enabled',
-                default_config.get('auto_compress_enabled', False),
+                "auto_compress_enabled",
+                default_config.get("auto_compress_enabled", False),
             ),
             auto_compress_threshold=config_data.get(
-                'auto_compress_threshold',
-                default_config.get('auto_compress_threshold', 0.5),
+                "auto_compress_threshold",
+                default_config.get("auto_compress_threshold", 0.5),
             ),
         )
 
@@ -232,12 +236,12 @@ class CompressionConfigService:
         """Reload configuration from file"""
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict):
+    def save_config(self, updates: dict):
         """Save updated configuration to file"""
         try:
             save_yaml_section_updates(
                 config_path=self.config_path,
-                section_name='compression',
+                section_name="compression",
                 updates=updates,
             )
             self.reload_config()

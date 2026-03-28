@@ -3,14 +3,15 @@
 import logging
 import re
 import time
-from typing import AsyncIterator, Union, Dict, Any, Optional, Tuple, List, Sequence, Protocol
+from collections.abc import AsyncIterator, Sequence
+from typing import Any, Protocol
 
-from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
-from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
+from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.llm.language_detection_service import LanguageDetectionService
-from src.llm_runtime.think_tag_filter import strip_think_blocks
+from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
 from src.llm_runtime import filter_messages_by_context_boundary
+from src.llm_runtime.think_tag_filter import strip_think_blocks
 from src.providers.types import CallMode
 
 logger = logging.getLogger(__name__)
@@ -86,10 +87,10 @@ class CompressionService:
     @staticmethod
     def _resolve_effective_compression_model_id(
         *,
-        session_model_id: Optional[str],
-        compression_model_id: Optional[str],
+        session_model_id: str | None,
+        compression_model_id: str | None,
         provider: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         if provider != "model_config":
             return session_model_id
 
@@ -104,38 +105,38 @@ class CompressionService:
         return max(1, len(content) // _CHARS_PER_TOKEN)
 
     @classmethod
-    def _estimate_message_tokens(cls, message: Dict[str, Any]) -> int:
+    def _estimate_message_tokens(cls, message: dict[str, Any]) -> int:
         # Add a small per-message overhead to account for role wrappers.
         return cls._estimate_text_tokens(str(message.get("content", ""))) + 8
 
     @classmethod
-    def _estimate_messages_tokens(cls, messages: Sequence[Dict[str, Any]]) -> int:
+    def _estimate_messages_tokens(cls, messages: Sequence[dict[str, Any]]) -> int:
         return sum(cls._estimate_message_tokens(msg) for msg in messages)
 
     @staticmethod
-    def _only_chat_messages(messages: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _only_chat_messages(messages: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
         return [msg for msg in messages if msg.get("role") in ("user", "assistant")]
 
     @classmethod
     def _chunk_messages(
         cls,
-        messages: Sequence[Dict[str, Any]],
+        messages: Sequence[dict[str, Any]],
         *,
         target_tokens: int,
         overlap_messages: int,
-    ) -> List[List[Dict[str, Any]]]:
+    ) -> list[list[dict[str, Any]]]:
         if not messages:
             return []
 
         safe_target = max(1, int(target_tokens))
         safe_overlap = max(0, int(overlap_messages))
-        chunks: List[List[Dict[str, Any]]] = []
+        chunks: list[list[dict[str, Any]]] = []
         i = 0
         total = len(messages)
 
         while i < total:
             start = i
-            chunk: List[Dict[str, Any]] = []
+            chunk: list[dict[str, Any]] = []
             current_tokens = 0
 
             while i < total:
@@ -167,19 +168,19 @@ class CompressionService:
         *,
         target_tokens: int,
         overlap_items: int,
-    ) -> List[List[str]]:
+    ) -> list[list[str]]:
         if not texts:
             return []
 
         safe_target = max(1, int(target_tokens))
         safe_overlap = max(0, int(overlap_items))
-        chunks: List[List[str]] = []
+        chunks: list[list[str]] = []
         i = 0
         total = len(texts)
 
         while i < total:
             start = i
-            chunk: List[str] = []
+            chunk: list[str] = []
             current_tokens = 0
 
             while i < total:
@@ -209,7 +210,7 @@ class CompressionService:
         config: Any,
         partial_summaries: Sequence[str],
         *,
-        output_language_code: Optional[str],
+        output_language_code: str | None,
     ) -> str:
         serialized = "\n\n".join(
             f"[Summary {idx}]\n{text.strip()}"
@@ -217,20 +218,14 @@ class CompressionService:
             if (text or "").strip()
         )
         merged_input = (
-            "<partial_summaries>\n"
-            + (serialized or "[empty]")
-            + "\n</partial_summaries>"
+            "<partial_summaries>\n" + (serialized or "[empty]") + "\n</partial_summaries>"
         )
         base_prompt = cls._build_compression_prompt(
             config,
             merged_input,
             output_language_code=output_language_code,
         )
-        return (
-            f"{_REDUCE_INSTRUCTIONS}\n\n"
-            f"{base_prompt}\n\n"
-            "Output only the merged summary."
-        )
+        return f"{_REDUCE_INSTRUCTIONS}\n\n{base_prompt}\n\nOutput only the merged summary."
 
     @staticmethod
     def _local_input_budget_tokens(config: Any) -> int:
@@ -267,7 +262,9 @@ class CompressionService:
 
     @staticmethod
     def _local_max_hierarchy_levels(config: Any) -> int:
-        return max(1, int(getattr(config, "hierarchical_max_levels", _DEFAULT_MAX_HIERARCHY_LEVELS) or 1))
+        return max(
+            1, int(getattr(config, "hierarchical_max_levels", _DEFAULT_MAX_HIERARCHY_LEVELS) or 1)
+        )
 
     @staticmethod
     def _local_map_max_tokens(config: Any) -> int:
@@ -304,7 +301,9 @@ class CompressionService:
         return max(256, min(2048, int(int(context_length_tokens) * 0.24)))
 
     @staticmethod
-    def _resolve_context_length_tokens(model_service: ModelConfigService, model_config: Any, provider_config: Any) -> int:
+    def _resolve_context_length_tokens(
+        model_service: ModelConfigService, model_config: Any, provider_config: Any
+    ) -> int:
         merged = model_service.get_merged_capabilities(model_config, provider_config)
         return max(512, int(getattr(merged, "context_length", 4096) or 4096))
 
@@ -314,7 +313,9 @@ class CompressionService:
 
     @staticmethod
     def _quality_guard_min_coverage(config: Any) -> float:
-        value = float(getattr(config, "quality_guard_min_coverage", _DEFAULT_QUALITY_MIN_COVERAGE) or 0)
+        value = float(
+            getattr(config, "quality_guard_min_coverage", _DEFAULT_QUALITY_MIN_COVERAGE) or 0
+        )
         return min(1.0, max(0.5, value))
 
     @staticmethod
@@ -332,13 +333,13 @@ class CompressionService:
         return mode or "auto"
 
     @staticmethod
-    def _output_language_name(language_code: Optional[str]) -> Optional[str]:
+    def _output_language_name(language_code: str | None) -> str | None:
         if not language_code:
             return None
         return _OUTPUT_LANGUAGE_NAMES.get(language_code.lower(), language_code)
 
     @classmethod
-    def _build_output_language_instruction(cls, language_code: Optional[str]) -> str:
+    def _build_output_language_instruction(cls, language_code: str | None) -> str:
         if not language_code:
             return ""
         language_name = cls._output_language_name(language_code)
@@ -351,12 +352,17 @@ class CompressionService:
     @classmethod
     def _resolve_output_language_for_messages(
         cls,
-        messages: Sequence[Dict[str, Any]],
+        messages: Sequence[dict[str, Any]],
         config: Any,
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+    ) -> tuple[str | None, dict[str, Any]]:
         mode = cls._compression_output_language_mode(config)
         if mode == "none":
-            return None, {"mode": mode, "detected_language": None, "detector": "none", "confidence": None}
+            return None, {
+                "mode": mode,
+                "detected_language": None,
+                "detector": "none",
+                "confidence": None,
+            }
 
         if mode == "auto":
             text = "\n".join(
@@ -365,7 +371,9 @@ class CompressionService:
                 if str(msg.get("content", "")).strip()
             )
             detected_raw, confidence, detector = LanguageDetectionService.detect_language(text)
-            detected = LanguageDetectionService.normalize_language_hint(detected_raw) or detected_raw
+            detected = (
+                LanguageDetectionService.normalize_language_hint(detected_raw) or detected_raw
+            )
             effective = detected.lower() if detected else None
             return effective, {
                 "mode": mode,
@@ -391,7 +399,7 @@ class CompressionService:
         config: Any,
         formatted_messages: str,
         *,
-        output_language_code: Optional[str],
+        output_language_code: str | None,
     ) -> str:
         base_prompt = str(config.prompt_template.format(formatted_messages=formatted_messages))
         language_instruction = cls._build_output_language_instruction(output_language_code)
@@ -408,11 +416,11 @@ class CompressionService:
     @classmethod
     def _extract_critical_facts(
         cls,
-        messages: Sequence[Dict[str, Any]],
+        messages: Sequence[dict[str, Any]],
         *,
         max_facts: int,
-    ) -> List[str]:
-        facts: List[str] = []
+    ) -> list[str]:
+        facts: list[str] = []
         seen: set[str] = set()
         safe_max = max(1, int(max_facts))
 
@@ -436,7 +444,7 @@ class CompressionService:
         return facts
 
     @staticmethod
-    def _critical_fact_coverage(summary: str, facts: Sequence[str]) -> Tuple[float, List[str]]:
+    def _critical_fact_coverage(summary: str, facts: Sequence[str]) -> tuple[float, list[str]]:
         if not facts:
             return 1.0, []
 
@@ -471,11 +479,11 @@ class CompressionService:
         *,
         local_llm: LocalPromptLLMLike,
         config: Any,
-        source_messages: Sequence[Dict[str, Any]],
+        source_messages: Sequence[dict[str, Any]],
         summary: str,
         max_tokens: int,
-        output_language_code: Optional[str],
-    ) -> Tuple[str, Dict[str, Any]]:
+        output_language_code: str | None,
+    ) -> tuple[str, dict[str, Any]]:
         if not self._quality_guard_enabled(config):
             return summary, {"enabled": False}
 
@@ -485,7 +493,7 @@ class CompressionService:
         )
         min_coverage = self._quality_guard_min_coverage(config)
         coverage_before, missing_before = self._critical_fact_coverage(summary, facts)
-        guard_meta: Dict[str, Any] = {
+        guard_meta: dict[str, Any] = {
             "enabled": True,
             "min_coverage": round(min_coverage, 3),
             "fact_count": len(facts),
@@ -524,7 +532,9 @@ class CompressionService:
 
         coverage_after, missing_after = self._critical_fact_coverage(summary, facts)
         if missing_after and coverage_after < min_coverage:
-            summary = self._append_missing_facts(summary, missing_after[:_DEFAULT_QUALITY_REPAIR_LIMIT])
+            summary = self._append_missing_facts(
+                summary, missing_after[:_DEFAULT_QUALITY_REPAIR_LIMIT]
+            )
             guard_meta["fallback_injected"] = True
             coverage_after, missing_after = self._critical_fact_coverage(summary, facts)
 
@@ -543,7 +553,7 @@ class CompressionService:
         mode: str,
         levels: int,
         initial_chunks: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         output_tokens = self._estimate_text_tokens(output_text or "")
         safe_input = max(1, int(input_tokens))
         ratio = float(output_tokens / safe_input)
@@ -564,9 +574,9 @@ class CompressionService:
         *,
         local_llm: LocalPromptLLMLike,
         config: Any,
-        messages: Sequence[Dict[str, Any]],
+        messages: Sequence[dict[str, Any]],
         max_tokens: int,
-        output_language_code: Optional[str],
+        output_language_code: str | None,
     ) -> str:
         formatted = self._format_messages(messages)
         prompt = self._build_compression_prompt(
@@ -588,7 +598,7 @@ class CompressionService:
         config: Any,
         summaries: Sequence[str],
         max_tokens: int,
-        output_language_code: Optional[str],
+        output_language_code: str | None,
     ) -> str:
         prompt = self._build_reduce_prompt(
             config,
@@ -607,16 +617,18 @@ class CompressionService:
         *,
         local_llm: Any,
         config: Any,
-        compressible: Sequence[Dict[str, Any]],
-        output_language_code: Optional[str] = None,
-        output_language_meta: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        compressible: Sequence[dict[str, Any]],
+        output_language_code: str | None = None,
+        output_language_meta: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         started_at = time.perf_counter()
         chat_messages = self._only_chat_messages(compressible)
         if not chat_messages:
             return "", {"mode": "empty", "levels": 0, "initial_chunks": 0}
         if output_language_meta is None:
-            resolved_code, resolved_meta = self._resolve_output_language_for_messages(chat_messages, config)
+            resolved_code, resolved_meta = self._resolve_output_language_for_messages(
+                chat_messages, config
+            )
             output_language_code = output_language_code or resolved_code
             output_language_meta = resolved_meta
         elif output_language_code is None:
@@ -630,7 +642,7 @@ class CompressionService:
         levels = 1
         initial_chunks = 1
         summary = ""
-        quality_meta: Dict[str, Any] = {"enabled": False}
+        quality_meta: dict[str, Any] = {"enabled": False}
 
         # Path selection is based on context budget only:
         # fit-in-budget -> single pass; overflow -> hierarchical map/reduce.
@@ -651,7 +663,7 @@ class CompressionService:
                 overlap_messages=self._local_chunk_overlap_messages(config),
             )
             initial_chunks = len(message_chunks)
-            level_summaries: List[str] = []
+            level_summaries: list[str] = []
             for chunk in message_chunks:
                 chunk_summary = self._summarize_message_chunk_with_local(
                     local_llm=local_llm,
@@ -664,7 +676,11 @@ class CompressionService:
                     level_summaries.append(chunk_summary)
 
             if not level_summaries:
-                return "", {"mode": "hierarchical_failed", "levels": 1, "initial_chunks": len(message_chunks)}
+                return "", {
+                    "mode": "hierarchical_failed",
+                    "levels": 1,
+                    "initial_chunks": len(message_chunks),
+                }
 
             levels = 1
             max_levels = self._local_max_hierarchy_levels(config)
@@ -677,7 +693,7 @@ class CompressionService:
                     target_tokens=reduce_target_tokens,
                     overlap_items=self._local_reduce_overlap_items(config),
                 )
-                reduced_summaries: List[str] = []
+                reduced_summaries: list[str] = []
                 for group in grouped:
                     merged = self._summarize_text_group_with_local(
                         local_llm=local_llm,
@@ -744,8 +760,8 @@ class CompressionService:
         adapter: Any,
         llm: Any,
         config: Any,
-        messages: Sequence[Dict[str, Any]],
-        output_language_code: Optional[str],
+        messages: Sequence[dict[str, Any]],
+        output_language_code: str | None,
         allow_responses_fallback: bool = False,
     ) -> str:
         from langchain_core.messages import HumanMessage as HMsg
@@ -767,7 +783,7 @@ class CompressionService:
         llm: Any,
         config: Any,
         summaries: Sequence[str],
-        output_language_code: Optional[str],
+        output_language_code: str | None,
         allow_responses_fallback: bool = False,
     ) -> str:
         from langchain_core.messages import HumanMessage as HMsg
@@ -787,12 +803,12 @@ class CompressionService:
         adapter: Any,
         llm_factory: Any,
         config: Any,
-        compressible: Sequence[Dict[str, Any]],
+        compressible: Sequence[dict[str, Any]],
         context_length_tokens: int,
-        output_language_code: Optional[str],
-        output_language_meta: Dict[str, Any],
+        output_language_code: str | None,
+        output_language_meta: dict[str, Any],
         allow_responses_fallback: bool = False,
-    ) -> Tuple[str, Dict[str, Any]]:
+    ) -> tuple[str, dict[str, Any]]:
         started_at = time.perf_counter()
         chat_messages = self._only_chat_messages(compressible)
         if not chat_messages:
@@ -825,7 +841,7 @@ class CompressionService:
                 overlap_messages=self._local_chunk_overlap_messages(config),
             )
             initial_chunks = len(message_chunks)
-            level_summaries: List[str] = []
+            level_summaries: list[str] = []
             for chunk in message_chunks:
                 llm = llm_factory(max_tokens=map_max_tokens)
                 chunk_summary = await self._summarize_message_chunk_with_adapter(
@@ -840,7 +856,11 @@ class CompressionService:
                     level_summaries.append(chunk_summary)
 
             if not level_summaries:
-                return "", {"mode": "hierarchical_failed", "levels": 1, "initial_chunks": len(message_chunks)}
+                return "", {
+                    "mode": "hierarchical_failed",
+                    "levels": 1,
+                    "initial_chunks": len(message_chunks),
+                }
 
             levels = 1
             max_levels = self._local_max_hierarchy_levels(config)
@@ -853,7 +873,7 @@ class CompressionService:
                     target_tokens=reduce_target_tokens,
                     overlap_items=self._local_reduce_overlap_items(config),
                 )
-                reduced_summaries: List[str] = []
+                reduced_summaries: list[str] = []
                 for group in grouped:
                     llm = llm_factory(max_tokens=reduce_max_tokens)
                     merged = await self._summarize_text_group_with_adapter(
@@ -910,8 +930,8 @@ class CompressionService:
         self,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        project_id: str | None = None,
+    ) -> AsyncIterator[str | dict[str, Any]]:
         """Compress conversation context by summarizing messages via LLM.
 
         Streams summary tokens, then appends the summary to storage.
@@ -945,7 +965,10 @@ class CompressionService:
 
         # Check minimum messages
         if len(compressible) < config.min_messages:
-            yield {"type": "error", "error": f"Not enough messages to compress (need at least {config.min_messages})"}
+            yield {
+                "type": "error",
+                "error": f"Not enough messages to compress (need at least {config.min_messages})",
+            }
             return
 
         compressed_count = len(compressible)
@@ -977,7 +1000,9 @@ class CompressionService:
             actual_model_id = f"local_gguf:{local_llm.model_path.name}"
             print(f"[COMPRESS] Starting local GGUF compression (model: {actual_model_id})")
             print(f"[COMPRESS] Compressing {compressed_count} messages")
-            logger.info(f"Local GGUF compression started: {compressed_count} messages, model: {actual_model_id}")
+            logger.info(
+                f"Local GGUF compression started: {compressed_count} messages, model: {actual_model_id}"
+            )
 
             try:
                 full_response, compression_meta = self._compress_with_local_gguf(
@@ -998,7 +1023,9 @@ class CompressionService:
                     compression_meta.get("levels"),
                     compression_meta.get("initial_chunks"),
                 )
-                logger.info("[COMPRESS][LOCAL] quality_guard=%s", compression_meta.get("quality_guard"))
+                logger.info(
+                    "[COMPRESS][LOCAL] quality_guard=%s", compression_meta.get("quality_guard")
+                )
                 logger.info("[COMPRESS][LOCAL] metrics=%s", compression_meta.get("metrics"))
                 message_id = await self.storage.append_summary(
                     session_id=session_id,
@@ -1008,7 +1035,9 @@ class CompressionService:
                     context_type=context_type,
                     project_id=project_id,
                 )
-                print(f"[COMPRESS] Compression complete: {len(full_response)} chars, message_id: {message_id[:8]}...")
+                print(
+                    f"[COMPRESS] Compression complete: {len(full_response)} chars, message_id: {message_id[:8]}..."
+                )
                 logger.info(f"Context compression complete: {len(full_response)} chars")
                 yield {
                     "type": "compression_complete",
@@ -1031,9 +1060,7 @@ class CompressionService:
         adapter = model_service.get_adapter_for_provider(provider_config)
         resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
         effective_call_mode = (
-            resolved_call_mode
-            if isinstance(resolved_call_mode, CallMode)
-            else CallMode.AUTO
+            resolved_call_mode if isinstance(resolved_call_mode, CallMode) else CallMode.AUTO
         )
         allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
@@ -1064,6 +1091,7 @@ class CompressionService:
         )
 
         try:
+
             def llm_factory(*, max_tokens: int):
                 return adapter.create_llm(
                     model=model_config.id,
@@ -1106,7 +1134,9 @@ class CompressionService:
                 project_id=project_id,
             )
 
-            print(f"[COMPRESS] Compression complete: {len(full_response)} chars, message_id: {message_id[:8]}...")
+            print(
+                f"[COMPRESS] Compression complete: {len(full_response)} chars, message_id: {message_id[:8]}..."
+            )
             logger.info(f"Context compression complete: {len(full_response)} chars")
 
             yield {
@@ -1135,8 +1165,8 @@ class CompressionService:
         self,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Optional[Tuple[str, int]]:
+        project_id: str | None = None,
+    ) -> tuple[str, int] | None:
         """Non-streaming compression for auto-trigger use.
 
         Args:
@@ -1165,7 +1195,9 @@ class CompressionService:
         compressible, _ = filter_messages_by_context_boundary(messages)
 
         if len(compressible) < config.min_messages:
-            logger.info(f"[AUTO-COMPRESS] Skipped: only {len(compressible)} messages (need {config.min_messages})")
+            logger.info(
+                f"[AUTO-COMPRESS] Skipped: only {len(compressible)} messages (need {config.min_messages})"
+            )
             return None
 
         compressed_count = len(compressible)
@@ -1204,7 +1236,9 @@ class CompressionService:
                     compression_meta.get("levels"),
                     compression_meta.get("initial_chunks"),
                 )
-                logger.info("[AUTO-COMPRESS][LOCAL] quality_guard=%s", compression_meta.get("quality_guard"))
+                logger.info(
+                    "[AUTO-COMPRESS][LOCAL] quality_guard=%s", compression_meta.get("quality_guard")
+                )
                 logger.info("[AUTO-COMPRESS][LOCAL] metrics=%s", compression_meta.get("metrics"))
                 message_id = await self.storage.append_summary(
                     session_id=session_id,
@@ -1231,9 +1265,7 @@ class CompressionService:
         adapter = model_service.get_adapter_for_provider(provider_config)
         resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
         effective_call_mode = (
-            resolved_call_mode
-            if isinstance(resolved_call_mode, CallMode)
-            else CallMode.AUTO
+            resolved_call_mode if isinstance(resolved_call_mode, CallMode) else CallMode.AUTO
         )
         allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
@@ -1263,6 +1295,7 @@ class CompressionService:
         )
 
         try:
+
             def llm_factory(*, max_tokens: int):
                 return adapter.create_llm(
                     model=model_config.id,
@@ -1303,7 +1336,9 @@ class CompressionService:
                 project_id=project_id,
             )
 
-            print(f"[AUTO-COMPRESS] Complete: {len(full_response)} chars, message_id: {message_id[:8]}...")
+            print(
+                f"[AUTO-COMPRESS] Complete: {len(full_response)} chars, message_id: {message_id[:8]}..."
+            )
             logger.info(f"Auto-compression complete: {len(full_response)} chars")
             return message_id, compressed_count
 

@@ -5,15 +5,17 @@ Adapter for Doubao models via Volcano Engine Ark platform's OpenAI-compatible AP
 Supports thinking mode, reasoning effort levels, tool calls, and streaming
 through pass-through request parameters.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
+from ..base import BaseLLMAdapter
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .reasoning_openai import ChatReasoningOpenAI
 from .utils import extract_tool_calls
-from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
 
     _DEFAULT_TEST_MODEL = "doubao-1-5-pro-32k-250115"
 
-    _CURATED_MODELS: List[Dict[str, str]] = [
+    _CURATED_MODELS: list[dict[str, str]] = [
         {"id": "doubao-seed-2-0-pro-260215", "name": "Doubao Seed 2.0 Pro"},
         {"id": "doubao-seed-2-0-lite-260215", "name": "Doubao Seed 2.0 Lite"},
         {"id": "doubao-seed-2-0-mini-260215", "name": "Doubao Seed 2.0 Mini"},
@@ -50,11 +52,11 @@ class VolcEngineAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        reasoning_effort: Optional[str] = None,
-        **kwargs
+        reasoning_effort: str | None = None,
+        **kwargs,
     ) -> ChatReasoningOpenAI:
         """Create ChatReasoningOpenAI client for Volcano Engine Ark endpoint."""
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -68,8 +70,8 @@ class VolcEngineAdapter(BaseLLMAdapter):
             if key in kwargs and kwargs[key] is not None:
                 llm_kwargs[key] = kwargs[key]
 
-        model_kwargs: Dict[str, Any] = {}
-        extra_body: Dict[str, Any] = {}
+        model_kwargs: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
         disable_thinking = bool(kwargs.get("disable_thinking", False))
 
         # Doubao thinking mode uses `thinking.type`.
@@ -92,7 +94,9 @@ class VolcEngineAdapter(BaseLLMAdapter):
                     f"Valid: {self._EFFORT_LEVELS}. Ignoring."
                 )
         elif reasoning_effort and disable_thinking:
-            logger.info(f"Volcengine reasoning_effort ignored because thinking is disabled for {model}")
+            logger.info(
+                f"Volcengine reasoning_effort ignored because thinking is disabled for {model}"
+            )
 
         # Sampling and OpenAI-compatible extras.
         passthrough_keys = [
@@ -124,10 +128,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
         return ChatReasoningOpenAI(**llm_kwargs)
 
     async def stream(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """Stream Volcengine responses, including reasoning and tool-call chunks."""
         usage_data = None
@@ -154,10 +155,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
             )
 
     async def invoke(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> LLMResponse:
         """Invoke Volcengine and return normalized full response."""
         response = await llm.ainvoke(messages)
@@ -185,7 +183,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
         """Doubao supports thinking mode via `thinking.type=enabled`."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Doubao supports both thinking toggle and reasoning effort levels.
 
@@ -201,11 +199,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
             "reasoning_effort": effort_value,
         }
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from Volcengine /models endpoint.
 
@@ -219,8 +213,7 @@ class VolcEngineAdapter(BaseLLMAdapter):
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
-                    models_url,
-                    headers={"Authorization": f"Bearer {api_key}"}
+                    models_url, headers={"Authorization": f"Bearer {api_key}"}
                 )
                 response.raise_for_status()
 

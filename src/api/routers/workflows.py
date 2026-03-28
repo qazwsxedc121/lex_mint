@@ -6,25 +6,24 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.application.workflows import WorkflowExecutionService
-
-from src.domain.models.async_run import AsyncRunRecord
-from src.domain.models.workflow import Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
 from src.application.flow.async_run_provider import get_async_run_service
 from src.application.flow.async_run_service import AsyncRunService
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_types import (
     STREAM_ERROR,
 )
-from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 from src.application.flow.workflow_flow_event_mapper import map_workflow_event_to_flow_payload
+from src.application.workflows import WorkflowExecutionService
 from src.application.workflows.run_history_service import WorkflowRunHistoryService
+from src.domain.models.async_run import AsyncRunRecord
+from src.domain.models.workflow import Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
+from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +39,13 @@ _workflow_execution_service = WorkflowExecutionService(
 class WorkflowRunRequest(BaseModel):
     """Request body for workflow execution."""
 
-    inputs: Dict[str, Any] = Field(default_factory=dict)
-    session_id: Optional[str] = None
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    session_id: str | None = None
     context_type: Literal["workflow", "chat", "project"] = "workflow"
-    project_id: Optional[str] = None
+    project_id: str | None = None
     stream_mode: Literal["default", "editor_rewrite"] = "default"
-    artifact_target_path: Optional[str] = None
-    write_mode: Optional[Literal["none", "create", "overwrite"]] = None
+    artifact_target_path: str | None = None
+    write_mode: Literal["none", "create", "overwrite"] | None = None
 
 
 def get_workflow_config_service() -> WorkflowConfigService:
@@ -65,7 +64,9 @@ def _validate_workflow_run_request(workflow: Workflow, request: WorkflowRunReque
     if not workflow.enabled:
         raise HTTPException(status_code=409, detail="Workflow is disabled")
     if request.context_type == "project" and not request.project_id:
-        raise HTTPException(status_code=400, detail="project_id is required when context_type is 'project'")
+        raise HTTPException(
+            status_code=400, detail="project_id is required when context_type is 'project'"
+        )
     if request.artifact_target_path and request.context_type != "project":
         raise HTTPException(
             status_code=400,
@@ -78,7 +79,7 @@ def _validate_workflow_run_request(workflow: Workflow, request: WorkflowRunReque
         )
 
 
-@router.get("", response_model=List[Workflow])
+@router.get("", response_model=list[Workflow])
 async def list_workflows(
     service: WorkflowConfigService = Depends(get_workflow_config_service),
 ):
@@ -186,7 +187,9 @@ async def run_workflow_stream(
     _validate_workflow_run_request(workflow, request)
 
     run_id = str(uuid.uuid4())
-    emitter = FlowEventEmitter(stream_id=run_id, conversation_id=workflow_id, default_turn_id=run_id)
+    emitter = FlowEventEmitter(
+        stream_id=run_id, conversation_id=workflow_id, default_turn_id=run_id
+    )
 
     async def event_generator():
         started_payload = emitter.emit_started(context_type=request.context_type)
@@ -258,7 +261,7 @@ async def create_workflow_run(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/{workflow_id}/runs", response_model=List[WorkflowRunRecord])
+@router.get("/{workflow_id}/runs", response_model=list[WorkflowRunRecord])
 async def list_workflow_runs(
     workflow_id: str,
     limit: int = Query(default=50, ge=1, le=50),

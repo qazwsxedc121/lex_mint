@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final, FrozenSet
-
+from typing import Final
 
 STREAM_STARTED: Final[str] = "stream_started"
 STREAM_ENDED: Final[str] = "stream_ended"
@@ -46,7 +45,7 @@ WORKFLOW_OUTPUT_REPORTED: Final[str] = "workflow_output_reported"
 WORKFLOW_ARTIFACT_WRITTEN: Final[str] = "workflow_artifact_written"
 WORKFLOW_RUN_FINISHED: Final[str] = "workflow_run_finished"
 
-TERMINAL_EVENT_TYPES: Final[FrozenSet[str]] = frozenset(
+TERMINAL_EVENT_TYPES: Final[frozenset[str]] = frozenset(
     {
         STREAM_ENDED,
         STREAM_ERROR,

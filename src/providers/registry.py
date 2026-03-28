@@ -3,31 +3,33 @@ Adapter Registry
 
 Maps providers to their SDK adapters without text matching.
 """
+
 import logging
-from typing import Type, Dict, Optional, Any, AsyncIterator, List, cast
+from collections.abc import AsyncIterator
+from typing import Any, cast
 
 from langchain_core.messages import BaseMessage
 
-from .base import BaseLLMAdapter
-from .types import ProviderConfig, ProviderType, ApiProtocol
-from .builtin import BUILTIN_PROVIDERS, get_builtin_provider
 from .adapters import (
+    LMSTUDIO_IMPORT_ERROR,
+    AnthropicAdapter,
+    BailianAdapter,
+    DeepSeekAdapter,
+    GeminiAdapter,
+    KimiAdapter,
+    LmStudioAdapter,
+    LocalGgufAdapter,
+    OllamaAdapter,
     OpenAIAdapter,
     OpenRouterAdapter,
-    DeepSeekAdapter,
-    AnthropicAdapter,
-    OllamaAdapter,
-    LmStudioAdapter,
-    LMSTUDIO_IMPORT_ERROR,
+    SiliconFlowAdapter,
+    VolcEngineAdapter,
     XAIAdapter,
     ZhipuAdapter,
-    VolcEngineAdapter,
-    GeminiAdapter,
-    BailianAdapter,
-    SiliconFlowAdapter,
-    KimiAdapter,
-    LocalGgufAdapter,
 )
+from .base import BaseLLMAdapter
+from .builtin import get_builtin_provider
+from .types import ApiProtocol, ProviderConfig, ProviderType
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,9 @@ logger = logging.getLogger(__name__)
 class MissingDependencyAdapter(BaseLLMAdapter):
     """Adapter placeholder used when an optional provider SDK is not installed."""
 
-    def __init__(self, *, sdk_type: str, dependency_name: str, import_error: Optional[Exception] = None):
+    def __init__(
+        self, *, sdk_type: str, dependency_name: str, import_error: Exception | None = None
+    ):
         self._sdk_type = sdk_type
         self._dependency_name = dependency_name
         self._import_error = import_error
@@ -65,7 +69,7 @@ class MissingDependencyAdapter(BaseLLMAdapter):
     async def invoke(
         self,
         llm: Any,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ):
         self._raise()
@@ -73,7 +77,7 @@ class MissingDependencyAdapter(BaseLLMAdapter):
     def stream(
         self,
         llm: Any,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> AsyncIterator:
         async def _missing_dependency_stream():
@@ -89,7 +93,7 @@ class MissingDependencyAdapter(BaseLLMAdapter):
         self,
         base_url: str,
         api_key: str,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
     ) -> tuple[bool, str]:
         return False, self._message()
 
@@ -103,7 +107,7 @@ class AdapterRegistry:
     """
 
     # Mapping of sdk_class names to adapter classes
-    _adapters: Dict[str, Type[BaseLLMAdapter]] = {
+    _adapters: dict[str, type[BaseLLMAdapter]] = {
         "openai": OpenAIAdapter,
         "openrouter": OpenRouterAdapter,
         "deepseek": DeepSeekAdapter,
@@ -122,7 +126,7 @@ class AdapterRegistry:
         _adapters["lmstudio"] = LmStudioAdapter
 
     # Mapping of API protocols to default adapter classes
-    _protocol_adapters: Dict[ApiProtocol, str] = {
+    _protocol_adapters: dict[ApiProtocol, str] = {
         ApiProtocol.OPENAI: "openai",
         ApiProtocol.ANTHROPIC: "anthropic",
         ApiProtocol.GEMINI: "gemini",
@@ -163,7 +167,9 @@ class AdapterRegistry:
             Adapter instance (defaults to OpenAIAdapter if not found)
         """
         if sdk_type == "lmstudio" and LmStudioAdapter is None:
-            logger.warning("LM Studio adapter requested but optional dependency 'lmstudio' is not installed")
+            logger.warning(
+                "LM Studio adapter requested but optional dependency 'lmstudio' is not installed"
+            )
             return MissingDependencyAdapter(
                 sdk_type="lmstudio",
                 dependency_name="lmstudio",
@@ -197,7 +203,7 @@ class AdapterRegistry:
         provider_id: str,
         provider_type: ProviderType = ProviderType.BUILTIN,
         protocol: ApiProtocol = ApiProtocol.OPENAI,
-        sdk_class: Optional[str] = None,
+        sdk_class: str | None = None,
     ) -> BaseLLMAdapter:
         """
         Get adapter by provider ID with optional overrides.
@@ -228,7 +234,7 @@ class AdapterRegistry:
         return cls.get(sdk_type)
 
     @classmethod
-    def register(cls, name: str, adapter_class: Type[BaseLLMAdapter]):
+    def register(cls, name: str, adapter_class: type[BaseLLMAdapter]):
         """
         Register a new adapter class.
 

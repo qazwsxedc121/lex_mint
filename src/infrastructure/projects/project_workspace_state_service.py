@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Optional
 
 import aiofiles
 import yaml
@@ -38,7 +37,7 @@ class ProjectWorkspaceStateService:
     _locks: dict[str, asyncio.Lock] = {}
     _locks_guard = asyncio.Lock()
 
-    def __init__(self, project_service: Optional[ProjectService] = None, max_recent_items: int = 20):
+    def __init__(self, project_service: ProjectService | None = None, max_recent_items: int = 20):
         self.project_service = project_service or ProjectService()
         self.max_recent_items = max(1, int(max_recent_items))
 
@@ -52,7 +51,9 @@ class ProjectWorkspaceStateService:
         return project_root / ".lex_mint" / "state" / "project_workspace_state.yaml"
 
     def _default_state(self, project_id: str) -> ProjectWorkspaceState:
-        return ProjectWorkspaceState(project_id=project_id, updated_at=None, recent_items=[], extra={})
+        return ProjectWorkspaceState(
+            project_id=project_id, updated_at=None, recent_items=[], extra={}
+        )
 
     async def _get_lock(self, project_root: Path) -> asyncio.Lock:
         key = str(self._state_path(project_root).resolve())
@@ -68,7 +69,7 @@ class ProjectWorkspaceStateService:
         if not path.exists():
             return self._default_state(project_id)
 
-        async with aiofiles.open(path, "r", encoding="utf-8") as f:
+        async with aiofiles.open(path, encoding="utf-8") as f:
             content = await f.read()
 
         if not content.strip():
@@ -116,7 +117,9 @@ class ProjectWorkspaceStateService:
             meta=dict(item.meta or {}),
         )
 
-    def _merge_item(self, state: ProjectWorkspaceState, item: ProjectWorkspaceRecentItem) -> ProjectWorkspaceState:
+    def _merge_item(
+        self, state: ProjectWorkspaceState, item: ProjectWorkspaceRecentItem
+    ) -> ProjectWorkspaceState:
         filtered = [
             existing
             for existing in state.recent_items
@@ -132,7 +135,9 @@ class ProjectWorkspaceStateService:
         project_root = await self._get_project_root(project_id)
         return await self._read_state(project_id, project_root)
 
-    async def upsert_recent_item(self, project_id: str, item: ProjectWorkspaceItemUpsert) -> ProjectWorkspaceState:
+    async def upsert_recent_item(
+        self, project_id: str, item: ProjectWorkspaceItemUpsert
+    ) -> ProjectWorkspaceState:
         project_root = await self._get_project_root(project_id)
         lock = await self._get_lock(project_root)
         async with lock:

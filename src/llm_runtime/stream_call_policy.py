@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from src.providers.types import CallMode
 
@@ -12,7 +12,7 @@ def should_allow_responses_fallback(call_mode: CallMode) -> bool:
     return call_mode == CallMode.RESPONSES
 
 
-def build_stream_kwargs(*, allow_responses_fallback: bool) -> Dict[str, Any]:
+def build_stream_kwargs(*, allow_responses_fallback: bool) -> dict[str, Any]:
     """Build adapter.stream kwargs based on resolved stream policy."""
     if not allow_responses_fallback:
         return {}

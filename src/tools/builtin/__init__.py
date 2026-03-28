@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 from ..definitions import ToolDefinition
-from .format_json import TOOL as FORMAT_JSON_TOOL, build_tool as build_format_json_tool, execute as format_json
-from .get_current_time import TOOL as GET_CURRENT_TIME_TOOL, build_tool as build_get_current_time_tool, execute as get_current_time
-from .simple_calculator import TOOL as SIMPLE_CALCULATOR_TOOL, build_tool as build_simple_calculator_tool, execute as simple_calculator
-from .text_statistics import TOOL as TEXT_STATISTICS_TOOL, build_tool as build_text_statistics_tool, execute as text_statistics
+from .format_json import TOOL as FORMAT_JSON_TOOL
+from .format_json import build_tool as build_format_json_tool
+from .format_json import execute as format_json
+from .get_current_time import TOOL as GET_CURRENT_TIME_TOOL
+from .get_current_time import build_tool as build_get_current_time_tool
+from .get_current_time import execute as get_current_time
+from .simple_calculator import TOOL as SIMPLE_CALCULATOR_TOOL
+from .simple_calculator import build_tool as build_simple_calculator_tool
+from .simple_calculator import execute as simple_calculator
+from .text_statistics import TOOL as TEXT_STATISTICS_TOOL
+from .text_statistics import build_tool as build_text_statistics_tool
+from .text_statistics import execute as text_statistics
 
-BUILTIN_TOOL_DEFINITIONS: List[ToolDefinition] = [
+BUILTIN_TOOL_DEFINITIONS: list[ToolDefinition] = [
     GET_CURRENT_TIME_TOOL,
     SIMPLE_CALCULATOR_TOOL,
     FORMAT_JSON_TOOL,
@@ -42,9 +48,11 @@ def get_builtin_tool_handler(name: str):
     return _BUILTIN_TOOL_HANDLERS.get(name)
 
 
-def get_builtin_tool_default_enabled_map() -> Dict[str, bool]:
+def get_builtin_tool_default_enabled_map() -> dict[str, bool]:
     """Project-level default enabled state for builtin tools."""
-    return {definition.name: definition.enabled_by_default for definition in BUILTIN_TOOL_DEFINITIONS}
+    return {
+        definition.name: definition.enabled_by_default for definition in BUILTIN_TOOL_DEFINITIONS
+    }
 
 
 __all__ = [

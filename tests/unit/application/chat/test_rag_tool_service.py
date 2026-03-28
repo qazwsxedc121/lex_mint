@@ -3,8 +3,8 @@
 import asyncio
 import json
 
-from src.infrastructure.retrieval.rag_service import RagResult
 from src.application.chat.rag_tool_service import RagToolService
+from src.infrastructure.retrieval.rag_service import RagResult
 
 
 class _FakeRagService:
@@ -18,7 +18,9 @@ class _FakeRagService:
         return (
             [
                 RagResult(
-                    content="Chunk content for testing." if not is_other else "Other chunk for testing.",
+                    content="Chunk content for testing."
+                    if not is_other
+                    else "Other chunk for testing.",
                     score=0.42,
                     kb_id="kb_test",
                     doc_id="doc_1" if not is_other else "doc_2",
@@ -103,7 +105,7 @@ def test_read_knowledge_accepts_citation_id_from_search():
     assert payload["ok"] is True
     assert payload["sources"][0]["ref_id"] == "kb:kb_test|doc:doc_1|chunk:3"
     assert payload["sources"][0]["content"] == "Exact chunk payload"
-    assert "<source id=\"1\"" in payload["context_block"]
+    assert '<source id="1"' in payload["context_block"]
 
 
 def test_read_knowledge_blocks_unbound_kb_ref():

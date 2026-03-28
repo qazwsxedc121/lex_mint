@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from threading import Lock
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
@@ -84,7 +85,8 @@ def discover_local_gguf_models() -> list[dict[str, Any]]:
                     None,
                     provider_defaults=dict(_DEFAULT_DISCOVERY_CAPABILITIES),
                     provider_id="local_gguf",
-                ) or dict(_DEFAULT_DISCOVERY_CAPABILITIES),
+                )
+                or dict(_DEFAULT_DISCOVERY_CAPABILITIES),
             }
 
     return list(discovered_by_id.values())
@@ -183,7 +185,9 @@ class LocalLlamaCppService:
         return str(content or "")
 
     @classmethod
-    def _normalize_messages(cls, messages: Iterable[BaseMessage | dict[str, Any]]) -> list[dict[str, str]]:
+    def _normalize_messages(
+        cls, messages: Iterable[BaseMessage | dict[str, Any]]
+    ) -> list[dict[str, str]]:
         normalized: list[dict[str, str]] = []
         for message in messages:
             if isinstance(message, dict):
@@ -328,7 +332,7 @@ class LocalLlamaCppService:
                         keep = _prefix_overlap(buffer, close_tag)
                         buffer = buffer[-keep:] if keep else ""
                         break
-                    buffer = buffer[close_idx + len(close_tag):]
+                    buffer = buffer[close_idx + len(close_tag) :]
                     in_thinking = False
                     continue
 
@@ -337,7 +341,7 @@ class LocalLlamaCppService:
                     visible = buffer[:open_idx]
                     if visible:
                         yield visible
-                    buffer = buffer[open_idx + len(open_tag):]
+                    buffer = buffer[open_idx + len(open_tag) :]
                     in_thinking = True
                     continue
 
@@ -395,7 +399,9 @@ class LocalLlamaCppService:
             self._messages_to_prompt(normalized_messages),
             generation_kwargs=generation_kwargs,
         )
-        yield from self._filter_thinking_tokens(fallback_stream) if disable_thinking else fallback_stream
+        yield from (
+            self._filter_thinking_tokens(fallback_stream) if disable_thinking else fallback_stream
+        )
 
     def complete_messages(
         self,

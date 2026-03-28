@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.application.chat.chat_runtime import (
     CommitteeOrchestrator,
@@ -94,11 +94,11 @@ class GroupOrchestrationSupportService:
     def build_group_identity_prompt(
         current_assistant_id: str,
         current_assistant_name: str,
-        group_assistants: List[str],
-        assistant_name_map: Dict[str, str],
+        group_assistants: list[str],
+        assistant_name_map: dict[str, str],
     ) -> str:
         """Build explicit role and participant instructions for group chat rounds."""
-        participants: List[str] = []
+        participants: list[str] = []
         for index, participant_id in enumerate(group_assistants, start=1):
             participant_name = assistant_name_map.get(participant_id, participant_id)
             marker = " (you)" if participant_id == current_assistant_id else ""
@@ -118,13 +118,13 @@ class GroupOrchestrationSupportService:
 
     @staticmethod
     def build_group_history_hint(
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         current_assistant_id: str,
-        assistant_name_map: Dict[str, str],
+        assistant_name_map: dict[str, str],
         max_turns: int = 12,
     ) -> str:
         """Build a compact speaker-labeled assistant turn summary for disambiguation."""
-        turn_lines: List[str] = []
+        turn_lines: list[str] = []
         for message in messages:
             if message.get("role") != "assistant":
                 continue
@@ -152,7 +152,7 @@ class GroupOrchestrationSupportService:
         )
 
     @staticmethod
-    def assistant_params_from_config(assistant_obj: AssistantLike) -> Dict[str, Any]:
+    def assistant_params_from_config(assistant_obj: AssistantLike) -> dict[str, Any]:
         """Extract generation params from assistant config object."""
         return {
             "temperature": assistant_obj.temperature,
@@ -165,14 +165,14 @@ class GroupOrchestrationSupportService:
 
     @staticmethod
     def build_group_instruction_prompt(
-        instruction: Optional[str],
-        structured_packet: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
+        instruction: str | None,
+        structured_packet: dict[str, Any] | None = None,
+    ) -> str | None:
         """Wrap internal directives and optional committee packet into one prompt."""
         if not instruction and not structured_packet:
             return None
 
-        sections: List[str] = []
+        sections: list[str] = []
         if instruction:
             cleaned = instruction.strip()
             if cleaned:
@@ -198,7 +198,7 @@ class GroupOrchestrationSupportService:
         return "\n\n".join(sections)
 
     @staticmethod
-    def extract_bullet_items(text: str, *, limit: int = 5) -> List[str]:
+    def extract_bullet_items(text: str, *, limit: int = 5) -> list[str]:
         """Extract concise bullet-like items from free-form text."""
         return CommitteeTurnExecutor.extract_bullet_items(text, limit=limit)
 
@@ -206,9 +206,9 @@ class GroupOrchestrationSupportService:
     def extract_keyword_sentences(
         text: str,
         *,
-        keywords: List[str],
+        keywords: list[str],
         limit: int = 4,
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract short sentences containing any keyword."""
         return CommitteeTurnExecutor.extract_keyword_sentences(
             text,
@@ -217,7 +217,7 @@ class GroupOrchestrationSupportService:
         )
 
     @staticmethod
-    def build_structured_turn_summary(content: str) -> Dict[str, Any]:
+    def build_structured_turn_summary(content: str) -> dict[str, Any]:
         """Build lightweight structured summary from assistant natural-language output."""
         return CommitteeTurnExecutor.build_structured_turn_summary(content)
 
@@ -226,9 +226,9 @@ class GroupOrchestrationSupportService:
         *,
         state: CommitteeRuntimeState,
         target_assistant_id: str,
-        assistant_name_map: Dict[str, str],
-        instruction: Optional[str],
-    ) -> Dict[str, Any]:
+        assistant_name_map: dict[str, str],
+        instruction: str | None,
+    ) -> dict[str, Any]:
         """Build structured per-turn packet used as internal committee context."""
         return CommitteeTurnExecutor.build_committee_turn_packet(
             state=state,
@@ -248,8 +248,8 @@ class GroupOrchestrationSupportService:
         content: str,
         expected_assistant_id: str,
         expected_assistant_name: str,
-        participant_name_map: Dict[str, str],
-    ) -> Optional[str]:
+        participant_name_map: dict[str, str],
+    ) -> str | None:
         """Detect obvious cases where a speaker claims another participant identity."""
         return CommitteeTurnExecutor.detect_group_role_drift(
             content=content,
@@ -261,7 +261,7 @@ class GroupOrchestrationSupportService:
     @staticmethod
     def build_role_retry_instruction(
         *,
-        base_instruction: Optional[str],
+        base_instruction: str | None,
         expected_assistant_name: str,
     ) -> str:
         """Build a retry instruction when role drift is detected."""

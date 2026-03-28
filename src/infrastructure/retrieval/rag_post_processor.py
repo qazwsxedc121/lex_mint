@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .rag_service import RagResult
@@ -13,7 +13,7 @@ class RagPostProcessor:
     """Owns deterministic result ordering and deduplication rules."""
 
     @staticmethod
-    def result_identity(result: "RagResult") -> Tuple[str, str, int, str]:
+    def result_identity(result: RagResult) -> tuple[str, str, int, str]:
         doc_key = result.doc_id or result.filename or ""
         if not doc_key:
             digest = hashlib.sha1(result.content.encode("utf-8", errors="ignore")).hexdigest()
@@ -21,13 +21,15 @@ class RagPostProcessor:
         return (result.kb_id, doc_key, int(result.chunk_index), result.filename or "")
 
     @classmethod
-    def doc_identity(cls, result: "RagResult") -> str:
-        return f"{result.kb_id}:{result.doc_id or result.filename or cls.result_identity(result)[1]}"
+    def doc_identity(cls, result: RagResult) -> str:
+        return (
+            f"{result.kb_id}:{result.doc_id or result.filename or cls.result_identity(result)[1]}"
+        )
 
     @classmethod
-    def deduplicate_results(cls, results: List["RagResult"]) -> List["RagResult"]:
+    def deduplicate_results(cls, results: list[RagResult]) -> list[RagResult]:
         seen = set()
-        deduped: List["RagResult"] = []
+        deduped: list[RagResult] = []
         for item in results:
             key = cls.result_identity(item)
             if key in seen:
@@ -37,11 +39,11 @@ class RagPostProcessor:
         return deduped
 
     @classmethod
-    def apply_doc_diversity(cls, results: List["RagResult"], max_per_doc: int) -> List["RagResult"]:
+    def apply_doc_diversity(cls, results: list[RagResult], max_per_doc: int) -> list[RagResult]:
         if max_per_doc <= 0:
             return results
-        per_doc: Dict[str, int] = {}
-        diversified: List["RagResult"] = []
+        per_doc: dict[str, int] = {}
+        diversified: list[RagResult] = []
         for item in results:
             doc_key = cls.doc_identity(item)
             count = per_doc.get(doc_key, 0)
@@ -52,9 +54,9 @@ class RagPostProcessor:
         return diversified
 
     @classmethod
-    def collapse_to_best_per_doc(cls, results: List["RagResult"]) -> List["RagResult"]:
+    def collapse_to_best_per_doc(cls, results: list[RagResult]) -> list[RagResult]:
         seen_docs = set()
-        collapsed: List["RagResult"] = []
+        collapsed: list[RagResult] = []
         for item in results:
             doc_key = cls.doc_identity(item)
             if doc_key in seen_docs:
@@ -64,7 +66,7 @@ class RagPostProcessor:
         return collapsed
 
     @staticmethod
-    def long_context_reorder(results: List["RagResult"]) -> List["RagResult"]:
+    def long_context_reorder(results: list[RagResult]) -> list[RagResult]:
         if len(results) <= 2:
             return results
         front = results[::2]
@@ -72,10 +74,9 @@ class RagPostProcessor:
         return front + list(reversed(back))
 
     @classmethod
-    def reorder_results(cls, results: List["RagResult"], strategy: str) -> List["RagResult"]:
+    def reorder_results(cls, results: list[RagResult], strategy: str) -> list[RagResult]:
         if strategy == "none":
             return results
         if strategy == "long_context":
             return cls.long_context_reorder(results)
         return results
-

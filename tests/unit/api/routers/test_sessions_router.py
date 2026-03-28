@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -54,10 +54,14 @@ class _FakeStorage:
         return "imported-session"
 
     async def set_messages(self, session_id: str, messages: list[dict[str, Any]], **kwargs):
-        self.calls.append(("set_messages", {"session_id": session_id, "messages": messages, **kwargs}))
+        self.calls.append(
+            ("set_messages", {"session_id": session_id, "messages": messages, **kwargs})
+        )
 
     async def update_session_metadata(self, session_id: str, updates: dict[str, Any], **kwargs):
-        self.calls.append(("update_metadata", {"session_id": session_id, "updates": updates, **kwargs}))
+        self.calls.append(
+            ("update_metadata", {"session_id": session_id, "updates": updates, **kwargs})
+        )
 
 
 class _FakeSessionService:
@@ -164,7 +168,9 @@ async def test_session_router_create_list_search_get_and_delete(monkeypatch):
     get_response = await sessions_router.get_session(session_id="session-123", storage=storage)
     assert get_response["compare_data"]["baseline"] == "A"
 
-    delete_response = await sessions_router.delete_session(session_id="session-123", session_service=service)
+    delete_response = await sessions_router.delete_session(
+        session_id="session-123", session_service=service
+    )
     assert delete_response["message"] == "Session deleted"
 
 
@@ -200,7 +206,9 @@ async def test_session_router_updates_and_transfers():
     )
     assert group_response["message"] == "Group assistants updated"
 
-    settings_response = await sessions_router.get_group_settings(session_id="s1", session_service=service)
+    settings_response = await sessions_router.get_group_settings(
+        session_id="s1", session_service=service
+    )
     assert settings_response["group_mode"] == "committee"
 
     updated_settings = await sessions_router.update_group_settings(
@@ -231,12 +239,16 @@ async def test_session_router_updates_and_transfers():
     )
     assert branch_response["session_id"] == "branched-session"
 
-    duplicate_response = await sessions_router.duplicate_session(session_id="s1", session_service=service)
+    duplicate_response = await sessions_router.duplicate_session(
+        session_id="s1", session_service=service
+    )
     assert duplicate_response["session_id"] == "duplicated-session"
 
     move_response = await sessions_router.move_session(
         session_id="s1",
-        request=sessions_router.TransferSessionRequest(target_context_type="project", target_project_id="p1"),
+        request=sessions_router.TransferSessionRequest(
+            target_context_type="project", target_project_id="p1"
+        ),
         session_service=service,
     )
     assert move_response["message"] == "Session moved successfully"
@@ -279,19 +291,29 @@ async def test_session_router_imports_chatgpt_json_zip_and_markdown():
                 "n1": {
                     "id": "n1",
                     "parent": None,
-                    "message": {"id": "m1", "author": {"role": "user"}, "content": {"parts": ["hello"]}},
+                    "message": {
+                        "id": "m1",
+                        "author": {"role": "user"},
+                        "content": {"parts": ["hello"]},
+                    },
                 },
                 "n2": {
                     "id": "n2",
                     "parent": "n1",
-                    "message": {"id": "m2", "author": {"role": "assistant"}, "content": {"parts": ["hi"]}},
+                    "message": {
+                        "id": "m2",
+                        "author": {"role": "assistant"},
+                        "content": {"parts": ["hi"]},
+                    },
                 },
             },
         }
     ]
 
     json_file = _FakeUploadFile("conversations.json", json.dumps(payload).encode("utf-8"))
-    json_response = await sessions_router.import_chatgpt_conversations(file=json_file, storage=storage)
+    json_response = await sessions_router.import_chatgpt_conversations(
+        file=json_file, storage=storage
+    )
     assert json_response["imported"] == 1
 
     archive = io.BytesIO()

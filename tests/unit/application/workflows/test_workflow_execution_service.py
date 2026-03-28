@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, AsyncIterator, Dict, Union
+from typing import Any
 
 import pytest
 
+from src.application.workflows import WorkflowExecutionService
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 from src.domain.models.workflow import (
     ArtifactNode,
     ConditionNode,
@@ -19,22 +22,22 @@ from src.domain.models.workflow import (
     Workflow,
     WorkflowInputDef,
 )
-from src.application.workflows import WorkflowExecutionService
-from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 
-async def _fake_llm_stream(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+async def _fake_llm_stream(**_: Any) -> AsyncIterator[str | dict[str, Any]]:
     yield "hello "
     yield "world"
     yield {"type": "usage", "usage": {"completion_tokens": 2}}
 
 
 class _FakeStorage:
-    def __init__(self, session_payload: Dict[str, Any]):
+    def __init__(self, session_payload: dict[str, Any]):
         self.session_payload = session_payload
-        self.calls: list[Dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
-    async def get_session(self, session_id: str, context_type: str = "chat", project_id: str | None = None):
+    async def get_session(
+        self, session_id: str, context_type: str = "chat", project_id: str | None = None
+    ):
         self.calls.append(
             {
                 "session_id": session_id,
@@ -47,7 +50,7 @@ class _FakeStorage:
 
 class _FakeProjectService:
     def __init__(self):
-        self.files: Dict[tuple[str, str], str] = {}
+        self.files: dict[tuple[str, str], str] = {}
 
     async def read_file(self, project_id: str, relative_path: str):
         key = (project_id, relative_path)
@@ -130,7 +133,9 @@ def _simple_rewrite_workflow() -> Workflow:
         entry_node_id="start_1",
         nodes=[
             StartNode(id="start_1", type="start", next_id="llm_1"),
-            LlmNode(id="llm_1", type="llm", prompt_template="{{inputs.selected_text}}", next_id="end_1"),
+            LlmNode(
+                id="llm_1", type="llm", prompt_template="{{inputs.selected_text}}", next_id="end_1"
+            ),
             EndNode(id="end_1", type="end", result_template="{{ctx.last_output}}"),
         ],
         created_at=now,
@@ -145,11 +150,19 @@ def _artifact_workflow() -> Workflow:
         name="Artifact Runtime",
         enabled=True,
         scenario="project_pipeline",
-        input_schema=[WorkflowInputDef(key="language", type="string", required=False, default="zh-CN")],
+        input_schema=[
+            WorkflowInputDef(key="language", type="string", required=False, default="zh-CN")
+        ],
         entry_node_id="start_1",
         nodes=[
             StartNode(id="start_1", type="start", next_id="llm_1"),
-            LlmNode(id="llm_1", type="llm", prompt_template="draft", output_key="draft_doc", next_id="artifact_1"),
+            LlmNode(
+                id="llm_1",
+                type="llm",
+                prompt_template="draft",
+                output_key="draft_doc",
+                next_id="artifact_1",
+            ),
             ArtifactNode(
                 id="artifact_1",
                 type="artifact",
@@ -177,7 +190,13 @@ def _chapter_artifact_workflow() -> Workflow:
         entry_node_id="start_1",
         nodes=[
             StartNode(id="start_1", type="start", next_id="llm_1"),
-            LlmNode(id="llm_1", type="llm", prompt_template="draft", output_key="draft_doc", next_id="artifact_1"),
+            LlmNode(
+                id="llm_1",
+                type="llm",
+                prompt_template="draft",
+                output_key="draft_doc",
+                next_id="artifact_1",
+            ),
             ArtifactNode(
                 id="artifact_1",
                 type="artifact",
@@ -213,7 +232,13 @@ def _chapter_artifact_workflow_with_guard() -> Workflow:
         entry_node_id="start_1",
         nodes=[
             StartNode(id="start_1", type="start", next_id="llm_1"),
-            LlmNode(id="llm_1", type="llm", prompt_template="draft", output_key="draft_doc", next_id="artifact_1"),
+            LlmNode(
+                id="llm_1",
+                type="llm",
+                prompt_template="draft",
+                output_key="draft_doc",
+                next_id="artifact_1",
+            ),
             ArtifactNode(
                 id="artifact_1",
                 type="artifact",
@@ -303,7 +328,9 @@ async def test_workflow_execution_service_success(temp_config_dir):
     workflow = _workflow_with_condition()
 
     events = []
-    async for event in service.execute_stream(workflow, {"topic": "python", "use_alt": False}, run_id="run_ok"):
+    async for event in service.execute_stream(
+        workflow, {"topic": "python", "use_alt": False}, run_id="run_ok"
+    ):
         events.append(event)
 
     event_types = [event.get("type") for event in events]
@@ -324,9 +351,9 @@ async def test_workflow_execution_service_success(temp_config_dir):
 async def test_workflow_execution_service_condition_branch_routes_to_true_path(temp_config_dir):
     history_dir = Path(temp_config_dir) / "workflow_runs"
     history_service = WorkflowRunHistoryService(history_dir=history_dir)
-    captured_prompt: Dict[str, Any] = {}
+    captured_prompt: dict[str, Any] = {}
 
-    async def prompt_echo_stream(**kwargs: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def prompt_echo_stream(**kwargs: Any) -> AsyncIterator[str | dict[str, Any]]:
         messages = kwargs.get("messages") or []
         captured_prompt["content"] = str(messages[0].get("content") or "") if messages else ""
         yield captured_prompt["content"]
@@ -426,9 +453,9 @@ async def test_workflow_execution_service_editor_rewrite_filters_think_and_uses_
 ):
     history_dir = Path(temp_config_dir) / "workflow_runs"
     history_service = WorkflowRunHistoryService(history_dir=history_dir)
-    captured_kwargs: Dict[str, Any] = {}
+    captured_kwargs: dict[str, Any] = {}
 
-    async def fake_llm_stream(**kwargs: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def fake_llm_stream(**kwargs: Any) -> AsyncIterator[str | dict[str, Any]]:
         captured_kwargs.update(kwargs)
         yield "<think>hidden "
         yield "internal</think>Hello"
@@ -528,7 +555,9 @@ async def test_workflow_execution_service_artifact_node_writes_project_file(temp
     ):
         events.append(event)
 
-    artifact_event = next((event for event in events if event.get("type") == "workflow_artifact_written"), None)
+    artifact_event = next(
+        (event for event in events if event.get("type") == "workflow_artifact_written"), None
+    )
     assert artifact_event is not None
     assert artifact_event["file_path"] == "novel/00_charter.md"
     assert artifact_event["written"] is True
@@ -606,7 +635,7 @@ async def test_workflow_execution_service_retries_transient_llm_errors(temp_conf
     history_service = WorkflowRunHistoryService(history_dir=history_dir)
     attempts = {"count": 0}
 
-    async def flaky_llm_stream(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def flaky_llm_stream(**_: Any) -> AsyncIterator[str | dict[str, Any]]:
         attempts["count"] += 1
         if attempts["count"] == 1:
             raise TimeoutError("upstream timeout")
@@ -630,7 +659,9 @@ async def test_workflow_execution_service_retries_transient_llm_errors(temp_conf
         events.append(event)
 
     assert attempts["count"] == 2
-    retry_event = next((event for event in events if event.get("type") == "workflow_node_retrying"), None)
+    retry_event = next(
+        (event for event in events if event.get("type") == "workflow_node_retrying"), None
+    )
     assert retry_event is not None
     assert retry_event["attempt"] == 2
     assert events[-1]["type"] == "workflow_run_finished"
@@ -643,7 +674,7 @@ async def test_workflow_execution_service_does_not_retry_after_partial_output(te
     history_service = WorkflowRunHistoryService(history_dir=history_dir)
     attempts = {"count": 0}
 
-    async def flaky_after_text(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def flaky_after_text(**_: Any) -> AsyncIterator[str | dict[str, Any]]:
         attempts["count"] += 1
         yield "partial"
         raise TimeoutError("broken stream")
@@ -677,7 +708,7 @@ async def test_workflow_execution_service_honors_llm_timeout_and_retry_budget(te
     history_service = WorkflowRunHistoryService(history_dir=history_dir)
     attempts = {"count": 0}
 
-    async def slow_llm_stream(**_: Any) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def slow_llm_stream(**_: Any) -> AsyncIterator[str | dict[str, Any]]:
         attempts["count"] += 1
         await asyncio.sleep(0.05)
         yield "too-late"

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping
+from typing import Any
 
 
 class ContextManager(ABC):
@@ -19,7 +20,7 @@ class ContextManager(ABC):
         run_id: str,
         actor_id: str,
         namespace: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return a copy of the context payload for one scope."""
         raise NotImplementedError
 
@@ -31,7 +32,7 @@ class ContextManager(ABC):
         actor_id: str,
         namespace: str,
         payload: Mapping[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Replace one context namespace payload and return the stored value."""
         raise NotImplementedError
 
@@ -43,7 +44,7 @@ class ContextManager(ABC):
         actor_id: str,
         namespace: str,
         payload: Mapping[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Merge payload into one namespace and return the stored value."""
         raise NotImplementedError
 
@@ -52,7 +53,7 @@ class ContextManager(ABC):
 class InMemoryContextManager(ContextManager):
     """In-memory ContextManager with run/actor/namespace isolation."""
 
-    _store: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = field(default_factory=dict)
+    _store: dict[str, dict[str, dict[str, dict[str, Any]]]] = field(default_factory=dict)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def read(
@@ -61,14 +62,9 @@ class InMemoryContextManager(ContextManager):
         run_id: str,
         actor_id: str,
         namespace: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         async with self._lock:
-            stored = (
-                self._store
-                .get(run_id, {})
-                .get(actor_id, {})
-                .get(namespace, {})
-            )
+            stored = self._store.get(run_id, {}).get(actor_id, {}).get(namespace, {})
             return deepcopy(stored)
 
     async def write(
@@ -78,7 +74,7 @@ class InMemoryContextManager(ContextManager):
         actor_id: str,
         namespace: str,
         payload: Mapping[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         async with self._lock:
             run_scope = self._store.setdefault(run_id, {})
             actor_scope = run_scope.setdefault(actor_id, {})
@@ -92,7 +88,7 @@ class InMemoryContextManager(ContextManager):
         actor_id: str,
         namespace: str,
         payload: Mapping[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         async with self._lock:
             run_scope = self._store.setdefault(run_id, {})
             actor_scope = run_scope.setdefault(actor_id, {})

@@ -19,10 +19,14 @@ class _FakeStorage:
         return "session-1"
 
     async def set_messages(self, session_id: str, messages: list[dict[str, Any]], **kwargs):
-        self.calls.append(("set_messages", {"session_id": session_id, "messages": messages, **kwargs}))
+        self.calls.append(
+            ("set_messages", {"session_id": session_id, "messages": messages, **kwargs})
+        )
 
     async def update_session_metadata(self, session_id: str, metadata: dict[str, Any], **kwargs):
-        self.calls.append(("update_metadata", {"session_id": session_id, "metadata": metadata, **kwargs}))
+        self.calls.append(
+            ("update_metadata", {"session_id": session_id, "metadata": metadata, **kwargs})
+        )
 
 
 @pytest.mark.asyncio
@@ -78,8 +82,13 @@ def test_chatgpt_import_service_extracts_latest_node_and_content_variants():
         "n3": {"message": {"create_time": 2}},
     }
     assert service._find_latest_node(mapping) == "n2"
-    assert service._extract_content_text({"parts": ["a", {"text": "b"}, {"content": "c"}]}) == "a\nb\nc"
-    assert service._extract_title({"title": ""}, [{"role": "user", "content": "x" * 80}]).endswith("...")
+    assert (
+        service._extract_content_text({"parts": ["a", {"text": "b"}, {"content": "c"}]})
+        == "a\nb\nc"
+    )
+    assert service._extract_title({"title": ""}, [{"role": "user", "content": "x" * 80}]).endswith(
+        "..."
+    )
 
 
 @pytest.mark.asyncio

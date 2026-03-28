@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.application.chat.service_contracts import SourcePayload
 
 
-def merge_source_groups(*source_groups: Optional[List[SourcePayload]]) -> List[SourcePayload]:
+def merge_source_groups(*source_groups: list[SourcePayload] | None) -> list[SourcePayload]:
     """Return a flat source list while ignoring empty groups."""
-    merged: List[SourcePayload] = []
+    merged: list[SourcePayload] = []
     for group in source_groups:
         if group:
             merged.extend(group)
@@ -17,9 +17,9 @@ def merge_source_groups(*source_groups: Optional[List[SourcePayload]]) -> List[S
 
 
 def merge_tool_diagnostics_into_sources(
-    all_sources: List[SourcePayload],
-    tool_diagnostics: Optional[Dict[str, Any]],
-) -> List[SourcePayload]:
+    all_sources: list[SourcePayload],
+    tool_diagnostics: dict[str, Any] | None,
+) -> list[SourcePayload]:
     """Merge low-level tool diagnostics into the stable rag diagnostics source."""
     merged_sources = list(all_sources or [])
     if not tool_diagnostics:
@@ -32,7 +32,7 @@ def merge_tool_diagnostics_into_sources(
     tool_finalize_reason = str(
         tool_diagnostics.get("tool_finalize_reason", "normal_no_tools") or "normal_no_tools"
     )
-    payload: Dict[str, int | str] = {
+    payload: dict[str, int | str] = {
         "tool_search_count": tool_search_count,
         "tool_search_unique_count": tool_search_unique_count,
         "tool_search_duplicate_count": tool_search_duplicate_count,
@@ -40,7 +40,7 @@ def merge_tool_diagnostics_into_sources(
         "tool_finalize_reason": tool_finalize_reason,
     }
 
-    diagnostics_index: Optional[int] = None
+    diagnostics_index: int | None = None
     for index in range(len(merged_sources) - 1, -1, -1):
         if str(merged_sources[index].get("type", "")) == "rag_diagnostics":
             diagnostics_index = index

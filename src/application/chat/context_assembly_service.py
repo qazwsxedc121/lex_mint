@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from src.application.chat.service_contracts import (
     AssistantLike,
@@ -33,7 +34,7 @@ class ContextAssemblyService:
         search_service: SearchServiceLike,
         source_context_service: SourceContextServiceLike,
         rag_config_service: RagConfigServiceLike,
-        rag_context_builder: Callable[..., Awaitable[tuple[Optional[str], List[SourcePayload]]]],
+        rag_context_builder: Callable[..., Awaitable[tuple[str | None, list[SourcePayload]]]],
     ):
         self.storage = storage
         self.memory_service = memory_service
@@ -49,9 +50,9 @@ class ContextAssemblyService:
         session_id: str,
         raw_user_message: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
+        search_query: str | None = None,
     ) -> ContextPayload:
         """Prepare context payload consumed by orchestrators."""
         session = await self.storage.get_session(
@@ -65,13 +66,13 @@ class ContextAssemblyService:
 
         base_system_prompt = None
         max_rounds = None
-        assistant_params: Dict[str, Any] = {}
-        assistant_obj: Optional[AssistantLike] = None
-        memory_context: Optional[str] = None
-        webpage_context: Optional[str] = None
-        search_context: Optional[str] = None
-        rag_context: Optional[str] = None
-        structured_source_context: Optional[str] = None
+        assistant_params: dict[str, Any] = {}
+        assistant_obj: AssistantLike | None = None
+        memory_context: str | None = None
+        webpage_context: str | None = None
+        search_context: str | None = None
+        rag_context: str | None = None
+        structured_source_context: str | None = None
 
         if assistant_id:
             from src.infrastructure.config.assistant_config_service import AssistantConfigService
@@ -108,7 +109,7 @@ class ContextAssemblyService:
         assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
         resolved_model_id = str(model_id or "")
 
-        memory_sources: List[SourcePayload] = []
+        memory_sources: list[SourcePayload] = []
         try:
             include_assistant_memory = bool(assistant_id and assistant_memory_enabled)
             memory_context, memory_sources = self.memory_service.build_memory_context(
@@ -120,15 +121,17 @@ class ContextAssemblyService:
         except Exception as e:
             logger.warning("Memory retrieval failed: %s", e)
 
-        webpage_sources: List[SourcePayload] = []
+        webpage_sources: list[SourcePayload] = []
         try:
-            webpage_context, webpage_source_models = await self.webpage_service.build_context(raw_user_message)
+            webpage_context, webpage_source_models = await self.webpage_service.build_context(
+                raw_user_message
+            )
             if webpage_source_models:
                 webpage_sources = [s.model_dump() for s in webpage_source_models]
         except Exception as e:
             logger.warning("Webpage parsing failed: %s", e)
 
-        search_sources: List[SourcePayload] = []
+        search_sources: list[SourcePayload] = []
         if use_web_search:
             query = (search_query or raw_user_message).strip()
             if len(query) > 200:
@@ -188,7 +191,7 @@ class ContextAssemblyService:
         )
 
     @staticmethod
-    def _assistant_params_from_assistant(assistant: AssistantLike) -> Dict[str, Any]:
+    def _assistant_params_from_assistant(assistant: AssistantLike) -> dict[str, Any]:
         return {
             "temperature": assistant.temperature,
             "max_tokens": assistant.max_tokens,
@@ -213,23 +216,31 @@ class ContextAssemblyService:
             return False
 
     @staticmethod
-    def _compose_system_prompt(*segments: Optional[str]) -> Optional[str]:
-        parts = [str(segment).strip() for segment in segments if isinstance(segment, str) and segment.strip()]
+    def _compose_system_prompt(*segments: str | None) -> str | None:
+        parts = [
+            str(segment).strip()
+            for segment in segments
+            if isinstance(segment, str) and segment.strip()
+        ]
         return "\n\n".join(parts) if parts else None
 
     def _build_structured_source_context(
         self,
         *,
         raw_user_message: str,
-        all_sources: List[SourcePayload],
-    ) -> Optional[str]:
+        all_sources: list[SourcePayload],
+    ) -> str | None:
         if not all_sources or not self._is_structured_source_context_enabled():
             return None
         try:
-            source_tags = self.source_context_service.build_source_tags(raw_user_message, all_sources)
+            source_tags = self.source_context_service.build_source_tags(
+                raw_user_message, all_sources
+            )
             if not source_tags:
                 return None
-            structured_context = self.source_context_service.apply_template(raw_user_message, source_tags)
+            structured_context = self.source_context_service.apply_template(
+                raw_user_message, source_tags
+            )
             if not structured_context:
                 return None
             logger.info(

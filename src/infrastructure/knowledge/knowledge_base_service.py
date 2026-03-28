@@ -3,30 +3,30 @@ Knowledge Base configuration management service
 
 Handles loading, saving, and managing knowledge base configurations and documents.
 """
+
 import asyncio
 import json
-import os
-import yaml
-import aiofiles
-import shutil
 import logging
+import os
+import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
-from datetime import datetime
 
+import aiofiles
+import yaml
+
+from src.core.paths import data_state_dir, knowledge_bases_dir, repo_root, resolve_user_data_path
 from src.domain.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseDocument,
     KnowledgeBasesConfig,
 )
 
-from src.core.paths import data_state_dir, knowledge_bases_dir, repo_root, resolve_user_data_path
-
 logger = logging.getLogger(__name__)
 
 
 class KnowledgeBaseService:
     """Knowledge base configuration management service"""
+
     # Protect YAML read/write in-process so concurrent uploads do not corrupt config on Windows.
     _config_lock = asyncio.Lock()
     # Protect load-modify-save sequences so concurrent writers do not lose updates.
@@ -35,17 +35,17 @@ class KnowledgeBaseService:
     _io_retry_delay_seconds = 0.1
     _doc_events_compact_threshold = 2000
     # Shared cache by config path so short-lived service instances can reuse parsed YAML.
-    _config_cache: Dict[str, KnowledgeBasesConfig] = {}
-    _config_cache_mtime_ns: Dict[str, int] = {}
+    _config_cache: dict[str, KnowledgeBasesConfig] = {}
+    _config_cache_mtime_ns: dict[str, int] = {}
     # Shared in-memory document store backed by snapshot/events text files.
     _docs_lock = asyncio.Lock()
-    _docs_loaded: Dict[str, bool] = {}
-    _docs_cache: Dict[str, Dict[str, KnowledgeBaseDocument]] = {}
-    _docs_snapshot_mtime_ns: Dict[str, int] = {}
-    _docs_events_mtime_ns: Dict[str, int] = {}
-    _docs_event_count: Dict[str, int] = {}
+    _docs_loaded: dict[str, bool] = {}
+    _docs_cache: dict[str, dict[str, KnowledgeBaseDocument]] = {}
+    _docs_snapshot_mtime_ns: dict[str, int] = {}
+    _docs_events_mtime_ns: dict[str, int] = {}
+    _docs_event_count: dict[str, int] = {}
 
-    def __init__(self, config_path: Optional[Path] = None, storage_dir: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None, storage_dir: Path | None = None):
         if config_path is None:
             config_path = data_state_dir() / "knowledge_bases_config.yaml"
         if storage_dir is None:
@@ -70,8 +70,8 @@ class KnowledgeBaseService:
         """Ensure configuration file exists, create default if not"""
         if not self.config_path.exists():
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            default_config = {'knowledge_bases': [], 'documents': []}
-            with open(self.config_path, 'w', encoding='utf-8') as f:
+            default_config = {"knowledge_bases": [], "documents": []}
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(default_config, f, allow_unicode=True, sort_keys=False)
 
     def _cache_key(self) -> str:
@@ -113,9 +113,9 @@ class KnowledgeBaseService:
         if not self.docs_events_path.exists():
             self.docs_events_path.write_text("", encoding="utf-8")
 
-    async def _write_docs_snapshot(self, docs_map: Dict[str, KnowledgeBaseDocument]) -> None:
+    async def _write_docs_snapshot(self, docs_map: dict[str, KnowledgeBaseDocument]) -> None:
         temp_path = self.docs_snapshot_path.with_suffix(".jsonl.tmp")
-        lines: List[str] = []
+        lines: list[str] = []
         for item in docs_map.values():
             payload = item.model_dump(mode="json")
             lines.append(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
@@ -124,13 +124,10 @@ class KnowledgeBaseService:
             await f.write(content)
         os.replace(str(temp_path), str(self.docs_snapshot_path))
 
-    async def _append_doc_events(self, events: List[Dict[str, object]]) -> None:
+    async def _append_doc_events(self, events: list[dict[str, object]]) -> None:
         if not events:
             return
-        lines = [
-            json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-            for event in events
-        ]
+        lines = [json.dumps(event, ensure_ascii=False, separators=(",", ":")) for event in events]
         payload = "\n".join(lines) + "\n"
         async with aiofiles.open(self.docs_events_path, "a", encoding="utf-8") as f:
             await f.write(payload)
@@ -157,7 +154,7 @@ class KnowledgeBaseService:
         if not config.documents:
             return
 
-        docs_map: Dict[str, KnowledgeBaseDocument] = {}
+        docs_map: dict[str, KnowledgeBaseDocument] = {}
         for doc in config.documents:
             docs_map[self._doc_cache_key(doc.kb_id, doc.id)] = doc
 
@@ -185,10 +182,10 @@ class KnowledgeBaseService:
             ):
                 return
 
-            docs_map: Dict[str, KnowledgeBaseDocument] = {}
+            docs_map: dict[str, KnowledgeBaseDocument] = {}
             event_count = 0
 
-            async with aiofiles.open(self.docs_snapshot_path, "r", encoding="utf-8") as f:
+            async with aiofiles.open(self.docs_snapshot_path, encoding="utf-8") as f:
                 snapshot_raw = await f.read()
             for raw in snapshot_raw.splitlines():
                 line = raw.strip()
@@ -198,7 +195,7 @@ class KnowledgeBaseService:
                 doc = KnowledgeBaseDocument(**payload)
                 docs_map[self._doc_cache_key(doc.kb_id, doc.id)] = doc
 
-            async with aiofiles.open(self.docs_events_path, "r", encoding="utf-8") as f:
+            async with aiofiles.open(self.docs_events_path, encoding="utf-8") as f:
                 events_raw = await f.read()
             for raw in events_raw.splitlines():
                 line = raw.strip()
@@ -244,7 +241,7 @@ class KnowledgeBaseService:
                     if cached is not None and cached_mtime == mtime_ns:
                         return cached.model_copy(deep=True)
 
-                    async with aiofiles.open(self.config_path, 'r', encoding='utf-8') as f:
+                    async with aiofiles.open(self.config_path, encoding="utf-8") as f:
                         content = await f.read()
                 data = yaml.safe_load(content) or {}
                 config = KnowledgeBasesConfig(**data)
@@ -262,21 +259,21 @@ class KnowledgeBaseService:
     async def save_config(self, config: KnowledgeBasesConfig):
         """Save configuration file with atomic replace and retry."""
         content = yaml.safe_dump(
-            config.model_dump(mode='json'),
-            allow_unicode=True,
-            sort_keys=False
+            config.model_dump(mode="json"), allow_unicode=True, sort_keys=False
         )
-        temp_path = self.config_path.with_suffix('.yaml.tmp')
+        temp_path = self.config_path.with_suffix(".yaml.tmp")
         last_error: Exception | None = None
         for attempt in range(self._io_retry_attempts):
             try:
                 async with self._config_lock:
-                    async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+                    async with aiofiles.open(temp_path, "w", encoding="utf-8") as f:
                         await f.write(content)
                     os.replace(str(temp_path), str(self.config_path))
                     cache_key = self._cache_key()
                     self._config_cache[cache_key] = config.model_copy(deep=True)
-                    self._config_cache_mtime_ns[cache_key] = int(self.config_path.stat().st_mtime_ns)
+                    self._config_cache_mtime_ns[cache_key] = int(
+                        self.config_path.stat().st_mtime_ns
+                    )
                 return
             except OSError as e:
                 last_error = e
@@ -292,24 +289,24 @@ class KnowledgeBaseService:
 
     # ==================== Knowledge Base Management ====================
 
-    async def get_knowledge_bases(self) -> List[KnowledgeBase]:
+    async def get_knowledge_bases(self) -> list[KnowledgeBase]:
         """Get all knowledge bases"""
         config = await self.load_config()
         await self._ensure_docs_cache_loaded()
         store_key = self._doc_store_key()
         docs_map = self._docs_cache.get(store_key, {})
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for doc in docs_map.values():
             counts[doc.kb_id] = counts.get(doc.kb_id, 0) + 1
 
-        items: List[KnowledgeBase] = []
+        items: list[KnowledgeBase] = []
         for kb in config.knowledge_bases:
             kb_dict = kb.model_dump()
             kb_dict["document_count"] = int(counts.get(kb.id, 0))
             items.append(KnowledgeBase(**kb_dict))
         return items
 
-    async def get_knowledge_base(self, kb_id: str) -> Optional[KnowledgeBase]:
+    async def get_knowledge_base(self, kb_id: str) -> KnowledgeBase | None:
         """Get a specific knowledge base"""
         config = await self.load_config()
         await self._ensure_docs_cache_loaded()
@@ -347,7 +344,7 @@ class KnowledgeBaseService:
                 if kb.id == kb_id:
                     kb_dict = kb.model_dump()
                     for key, value in updates.items():
-                        if key in kb_dict and key not in ('id', 'created_at', 'document_count'):
+                        if key in kb_dict and key not in ("id", "created_at", "document_count"):
                             kb_dict[key] = value
                     config.knowledge_bases[i] = KnowledgeBase(**kb_dict)
                     await self.save_config(config)
@@ -374,8 +371,12 @@ class KnowledgeBaseService:
                     for key in to_delete:
                         docs_map.pop(key, None)
                     await self._append_doc_events([{"op": "delete_kb", "kb_id": kb_id}])
-                    self._docs_event_count[store_key] = int(self._docs_event_count.get(store_key, 0) or 0) + 1
-                    self._docs_events_mtime_ns[store_key] = int(self.docs_events_path.stat().st_mtime_ns)
+                    self._docs_event_count[store_key] = (
+                        int(self._docs_event_count.get(store_key, 0) or 0) + 1
+                    )
+                    self._docs_events_mtime_ns[store_key] = int(
+                        self.docs_events_path.stat().st_mtime_ns
+                    )
                     await self._compact_doc_events_if_needed(store_key)
 
         # Remove storage directory
@@ -386,10 +387,10 @@ class KnowledgeBaseService:
         # Remove vector-store chunks
         try:
             from src.infrastructure.config.rag_config_service import RagConfigService
+
             rag_config = RagConfigService()
             backend = str(
-                getattr(rag_config.config.storage, "vector_store_backend", "chroma")
-                or "chroma"
+                getattr(rag_config.config.storage, "vector_store_backend", "chroma") or "chroma"
             ).lower()
             if backend == "sqlite_vec":
                 from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
@@ -402,6 +403,7 @@ class KnowledgeBaseService:
                     persist_dir = resolve_user_data_path(persist_dir)
 
                 import chromadb
+
                 client = chromadb.PersistentClient(path=str(persist_dir))
                 collection_name = f"kb_{kb_id}"
                 try:
@@ -422,14 +424,14 @@ class KnowledgeBaseService:
 
     # ==================== Document Management ====================
 
-    async def get_documents(self, kb_id: str) -> List[KnowledgeBaseDocument]:
+    async def get_documents(self, kb_id: str) -> list[KnowledgeBaseDocument]:
         """Get all documents for a knowledge base"""
         await self._ensure_docs_cache_loaded()
         store_key = self._doc_store_key()
         docs_map = self._docs_cache.get(store_key, {})
         return [doc.model_copy(deep=True) for doc in docs_map.values() if doc.kb_id == kb_id]
 
-    async def get_document(self, kb_id: str, doc_id: str) -> Optional[KnowledgeBaseDocument]:
+    async def get_document(self, kb_id: str, doc_id: str) -> KnowledgeBaseDocument | None:
         """Get a specific document"""
         await self._ensure_docs_cache_loaded()
         store_key = self._doc_store_key()
@@ -455,11 +457,15 @@ class KnowledgeBaseService:
                         }
                     ]
                 )
-                self._docs_event_count[store_key] = int(self._docs_event_count.get(store_key, 0) or 0) + 1
-                self._docs_events_mtime_ns[store_key] = int(self.docs_events_path.stat().st_mtime_ns)
+                self._docs_event_count[store_key] = (
+                    int(self._docs_event_count.get(store_key, 0) or 0) + 1
+                )
+                self._docs_events_mtime_ns[store_key] = int(
+                    self.docs_events_path.stat().st_mtime_ns
+                )
                 await self._compact_doc_events_if_needed(store_key)
 
-    async def add_documents_bulk(self, docs: List[KnowledgeBaseDocument]):
+    async def add_documents_bulk(self, docs: list[KnowledgeBaseDocument]):
         """Add multiple document records with one append-only event write."""
         if not docs:
             return
@@ -469,7 +475,7 @@ class KnowledgeBaseService:
             store_key = self._doc_store_key()
             async with self._docs_lock:
                 docs_map = self._docs_cache.get(store_key, {})
-                events: List[Dict[str, object]] = []
+                events: list[dict[str, object]] = []
                 for doc in docs:
                     docs_map[self._doc_cache_key(doc.kb_id, doc.id)] = doc.model_copy(deep=True)
                     events.append(
@@ -479,8 +485,12 @@ class KnowledgeBaseService:
                         }
                     )
                 await self._append_doc_events(events)
-                self._docs_event_count[store_key] = int(self._docs_event_count.get(store_key, 0) or 0) + len(events)
-                self._docs_events_mtime_ns[store_key] = int(self.docs_events_path.stat().st_mtime_ns)
+                self._docs_event_count[store_key] = int(
+                    self._docs_event_count.get(store_key, 0) or 0
+                ) + len(events)
+                self._docs_events_mtime_ns[store_key] = int(
+                    self.docs_events_path.stat().st_mtime_ns
+                )
                 await self._compact_doc_events_if_needed(store_key)
 
     async def update_document_status(
@@ -489,7 +499,7 @@ class KnowledgeBaseService:
         doc_id: str,
         status: str,
         chunk_count: int = 0,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ):
         """Update document processing status"""
         async with self._mutation_lock:
@@ -503,9 +513,9 @@ class KnowledgeBaseService:
                     raise ValueError(f"Document '{doc_id}' not found in KB '{kb_id}'")
 
                 doc_dict = doc.model_dump()
-                doc_dict['status'] = status
-                doc_dict['chunk_count'] = chunk_count
-                doc_dict['error_message'] = error_message
+                doc_dict["status"] = status
+                doc_dict["chunk_count"] = chunk_count
+                doc_dict["error_message"] = error_message
                 updated = KnowledgeBaseDocument(**doc_dict)
                 docs_map[cache_key] = updated
                 await self._append_doc_events(
@@ -516,14 +526,18 @@ class KnowledgeBaseService:
                         }
                     ]
                 )
-                self._docs_event_count[store_key] = int(self._docs_event_count.get(store_key, 0) or 0) + 1
-                self._docs_events_mtime_ns[store_key] = int(self.docs_events_path.stat().st_mtime_ns)
+                self._docs_event_count[store_key] = (
+                    int(self._docs_event_count.get(store_key, 0) or 0) + 1
+                )
+                self._docs_events_mtime_ns[store_key] = int(
+                    self.docs_events_path.stat().st_mtime_ns
+                )
                 await self._compact_doc_events_if_needed(store_key)
                 return
 
     async def delete_document(self, kb_id: str, doc_id: str):
         """Delete a document and its chunks"""
-        remaining_kb_doc_count: Optional[int] = None
+        remaining_kb_doc_count: int | None = None
         async with self._mutation_lock:
             await self._ensure_docs_cache_loaded()
             store_key = self._doc_store_key()
@@ -543,15 +557,21 @@ class KnowledgeBaseService:
                         }
                     ]
                 )
-                self._docs_event_count[store_key] = int(self._docs_event_count.get(store_key, 0) or 0) + 1
-                self._docs_events_mtime_ns[store_key] = int(self.docs_events_path.stat().st_mtime_ns)
+                self._docs_event_count[store_key] = (
+                    int(self._docs_event_count.get(store_key, 0) or 0) + 1
+                )
+                self._docs_events_mtime_ns[store_key] = int(
+                    self.docs_events_path.stat().st_mtime_ns
+                )
                 await self._compact_doc_events_if_needed(store_key)
                 remaining_kb_doc_count = sum(1 for doc in docs_map.values() if doc.kb_id == kb_id)
 
             config = await self.load_config()
             config_changed = False
             existing_doc_count = len(config.documents)
-            config.documents = [doc for doc in config.documents if not (doc.kb_id == kb_id and doc.id == doc_id)]
+            config.documents = [
+                doc for doc in config.documents if not (doc.kb_id == kb_id and doc.id == doc_id)
+            ]
             if len(config.documents) != existing_doc_count:
                 config_changed = True
 
@@ -577,10 +597,10 @@ class KnowledgeBaseService:
         # Remove chunks from vector store
         try:
             from src.infrastructure.config.rag_config_service import RagConfigService
+
             rag_config = RagConfigService()
             backend = str(
-                getattr(rag_config.config.storage, "vector_store_backend", "chroma")
-                or "chroma"
+                getattr(rag_config.config.storage, "vector_store_backend", "chroma") or "chroma"
             ).lower()
             if backend == "sqlite_vec":
                 from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
@@ -593,6 +613,7 @@ class KnowledgeBaseService:
                     persist_dir = resolve_user_data_path(persist_dir)
 
                 import chromadb
+
                 client = chromadb.PersistentClient(path=str(persist_dir))
                 collection_name = f"kb_{kb_id}"
                 try:
@@ -617,6 +638,3 @@ class KnowledgeBaseService:
         doc_dir = self.storage_dir / kb_id / "documents"
         doc_dir.mkdir(parents=True, exist_ok=True)
         return doc_dir / f"{doc_id}_{filename}"
-
-
-

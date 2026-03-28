@@ -3,13 +3,14 @@ Document Processing Service
 
 Pipeline: Upload -> Extract Text -> Chunk -> Embed -> Store in vector backend
 """
+
+import asyncio
+import importlib
 import logging
 import random
-import asyncio
 import uuid
-import importlib
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 from src.core.paths import resolve_user_data_path
 
@@ -25,8 +26,9 @@ class DocumentProcessingService:
 
     def __init__(self):
         from src.infrastructure.config.rag_config_service import RagConfigService
-        from src.infrastructure.retrieval.embedding_service import EmbeddingService
         from src.infrastructure.retrieval.bm25_service import Bm25Service
+        from src.infrastructure.retrieval.embedding_service import EmbeddingService
+
         self.rag_config_service = RagConfigService()
         self.embedding_service = EmbeddingService()
         self.bm25_service = Bm25Service()
@@ -48,8 +50,8 @@ class DocumentProcessingService:
         filename: str,
         file_type: str,
         file_path: str,
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
         track_status: bool = True,
         kb_snapshot=None,
     ):
@@ -66,6 +68,7 @@ class DocumentProcessingService:
             chunk_overlap: Override chunk overlap
         """
         from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
+
         kb_service = KnowledgeBaseService()
 
         try:
@@ -74,9 +77,21 @@ class DocumentProcessingService:
                 await kb_service.update_document_status(kb_id, doc_id, "processing")
 
             # Get chunk settings from KB override or global config
-            kb = kb_snapshot if kb_snapshot is not None else await kb_service.get_knowledge_base(kb_id)
-            effective_chunk_size = chunk_size or (kb.chunk_size if kb and kb.chunk_size else self.rag_config_service.config.chunking.chunk_size)
-            effective_chunk_overlap = chunk_overlap or (kb.chunk_overlap if kb and kb.chunk_overlap else self.rag_config_service.config.chunking.chunk_overlap)
+            kb = (
+                kb_snapshot
+                if kb_snapshot is not None
+                else await kb_service.get_knowledge_base(kb_id)
+            )
+            effective_chunk_size = chunk_size or (
+                kb.chunk_size
+                if kb and kb.chunk_size
+                else self.rag_config_service.config.chunking.chunk_size
+            )
+            effective_chunk_overlap = chunk_overlap or (
+                kb.chunk_overlap
+                if kb and kb.chunk_overlap
+                else self.rag_config_service.config.chunking.chunk_overlap
+            )
 
             # Step 1: Extract text
             logger.info(f"Extracting text from {filename} ({file_type})")
@@ -86,8 +101,12 @@ class DocumentProcessingService:
             logger.info(f"Extracted {len(text)} characters from {filename}")
 
             # Step 2: Chunk text (semantic-first)
-            logger.info(f"Chunking text with size={effective_chunk_size}, overlap={effective_chunk_overlap}")
-            chunks = self._chunk_text(text, file_type, effective_chunk_size, effective_chunk_overlap)
+            logger.info(
+                f"Chunking text with size={effective_chunk_size}, overlap={effective_chunk_overlap}"
+            )
+            chunks = self._chunk_text(
+                text, file_type, effective_chunk_size, effective_chunk_overlap
+            )
             logger.info(f"Created {len(chunks)} chunks from {filename}")
 
             if not chunks:
@@ -126,10 +145,11 @@ class DocumentProcessingService:
             # Step 5: Update document status to ready
             if track_status:
                 await kb_service.update_document_status(
-                    kb_id, doc_id, "ready",
-                    chunk_count=len(chunks)
+                    kb_id, doc_id, "ready", chunk_count=len(chunks)
                 )
-            logger.info(f"Document {doc_id} ({filename}) processed successfully: {len(chunks)} chunks")
+            logger.info(
+                f"Document {doc_id} ({filename}) processed successfully: {len(chunks)} chunks"
+            )
             return len(chunks)
 
         except Exception as e:
@@ -137,8 +157,7 @@ class DocumentProcessingService:
             if track_status:
                 try:
                     await kb_service.update_document_status(
-                        kb_id, doc_id, "error",
-                        error_message=str(e)
+                        kb_id, doc_id, "error", error_message=str(e)
                     )
                 except Exception as e2:
                     logger.error(f"Failed to update document status to error: {e2}")
@@ -148,29 +167,29 @@ class DocumentProcessingService:
         """Extract text content from a file based on its type"""
         file_type = file_type.lower()
 
-        if file_type in ('.txt', '.md'):
+        if file_type in (".txt", ".md"):
             return self._extract_text_plain(file_path)
-        elif file_type == '.pdf':
+        elif file_type == ".pdf":
             return self._extract_text_pdf(file_path)
-        elif file_type == '.docx':
+        elif file_type == ".docx":
             return self._extract_text_docx(file_path)
-        elif file_type in ('.html', '.htm'):
+        elif file_type in (".html", ".htm"):
             return self._extract_text_html(file_path)
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
     def _extract_text_plain(self, file_path: str) -> str:
         """Extract text from plain text files (txt, md)"""
-        encodings = ['utf-8', 'utf-8-sig', 'gbk', 'gb2312', 'latin-1']
+        encodings = ["utf-8", "utf-8-sig", "gbk", "gb2312", "latin-1"]
         for encoding in encodings:
             try:
-                with open(file_path, 'r', encoding=encoding) as f:
+                with open(file_path, encoding=encoding) as f:
                     return f.read()
             except UnicodeDecodeError:
                 continue
         # Fallback: read as bytes and decode with errors='replace'
-        with open(file_path, 'rb') as f:
-            return f.read().decode('utf-8', errors='replace')
+        with open(file_path, "rb") as f:
+            return f.read().decode("utf-8", errors="replace")
 
     def _extract_text_pdf(self, file_path: str) -> str:
         """Extract text from PDF files."""
@@ -189,7 +208,9 @@ class DocumentProcessingService:
         except ModuleNotFoundError:
             logger.debug("PyMuPDF not installed, falling back to pypdf for: %s", file_path)
         except Exception as e:
-            logger.warning("PyMuPDF extraction failed for %s: %s, falling back to pypdf", file_path, e)
+            logger.warning(
+                "PyMuPDF extraction failed for %s: %s, falling back to pypdf", file_path, e
+            )
 
         from pypdf import PdfReader
 
@@ -204,6 +225,7 @@ class DocumentProcessingService:
     def _extract_text_docx(self, file_path: str) -> str:
         """Extract text from DOCX files"""
         from docx import Document
+
         doc = Document(file_path)
         text_parts = []
         for paragraph in doc.paragraphs:
@@ -215,7 +237,8 @@ class DocumentProcessingService:
         """Extract text from HTML files using trafilatura"""
         try:
             import trafilatura
-            with open(file_path, 'r', encoding='utf-8') as f:
+
+            with open(file_path, encoding="utf-8") as f:
                 html_content = f.read()
             text = trafilatura.extract(html_content)
             if text:
@@ -226,14 +249,18 @@ class DocumentProcessingService:
         # Fallback: read as plain text
         return self._extract_text_plain(file_path)
 
-    def _chunk_text(self, text: str, file_type: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+    def _chunk_text(
+        self, text: str, file_type: str, chunk_size: int, chunk_overlap: int
+    ) -> list[str]:
         """Split text into semantic chunks first, then merge into size-limited chunks."""
         units = self._semantic_units(text, file_type, chunk_size, chunk_overlap)
         if not units:
             return self._fallback_recursive_chunks(text, chunk_size, chunk_overlap)
         return self._merge_units(units, chunk_size, chunk_overlap)
 
-    def _semantic_units(self, text: str, file_type: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+    def _semantic_units(
+        self, text: str, file_type: str, chunk_size: int, chunk_overlap: int
+    ) -> list[str]:
         """Create semantic units (sections/paragraphs) before merging into chunks."""
         normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
         if not normalized:
@@ -246,7 +273,7 @@ class DocumentProcessingService:
             units = self._split_paragraphs(normalized)
 
         # Split oversized units with a fallback splitter
-        refined_units: List[str] = []
+        refined_units: list[str] = []
         for unit in units:
             if len(unit) <= chunk_size:
                 refined_units.append(unit)
@@ -254,11 +281,11 @@ class DocumentProcessingService:
             refined_units.extend(self._fallback_recursive_chunks(unit, chunk_size, chunk_overlap))
         return refined_units
 
-    def _split_markdown_sections(self, text: str) -> List[str]:
+    def _split_markdown_sections(self, text: str) -> list[str]:
         """Split markdown into sections by heading, keeping heading with its content."""
         lines = text.split("\n")
-        sections: List[str] = []
-        current: List[str] = []
+        sections: list[str] = []
+        current: list[str] = []
         for line in lines:
             if line.strip().startswith("#"):
                 if current:
@@ -269,15 +296,15 @@ class DocumentProcessingService:
             sections.append("\n".join(current).strip())
         return [s for s in sections if s]
 
-    def _split_paragraphs(self, text: str) -> List[str]:
+    def _split_paragraphs(self, text: str) -> list[str]:
         """Split text into paragraphs (blank-line delimited)."""
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         return paragraphs
 
-    def _merge_units(self, units: List[str], chunk_size: int, chunk_overlap: int) -> List[str]:
+    def _merge_units(self, units: list[str], chunk_size: int, chunk_overlap: int) -> list[str]:
         """Merge semantic units into size-limited chunks with overlap."""
-        chunks: List[str] = []
-        current_units: List[str] = []
+        chunks: list[str] = []
+        current_units: list[str] = []
         current_len = 0
 
         def flush_current() -> None:
@@ -292,7 +319,7 @@ class DocumentProcessingService:
                 current_len = 0
                 return
             # Build overlap by keeping trailing units up to overlap size
-            overlap_units: List[str] = []
+            overlap_units: list[str] = []
             overlap_len = 0
             for unit in reversed(current_units):
                 overlap_len += len(unit)
@@ -320,7 +347,9 @@ class DocumentProcessingService:
         flush_current()
         return [c for c in chunks if c]
 
-    def _fallback_recursive_chunks(self, text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+    def _fallback_recursive_chunks(
+        self, text: str, chunk_size: int, chunk_overlap: int
+    ) -> list[str]:
         """Fallback splitter for oversized units or non-structured text."""
         from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -338,12 +367,12 @@ class DocumentProcessingService:
         doc_id: str,
         filename: str,
         file_type: str,
-        chunks: List[str],
+        chunks: list[str],
         embedding_fn,
     ):
         """Store document chunks in ChromaDB"""
-        from langchain_chroma import Chroma
         from chromadb.errors import InvalidArgumentError
+        from langchain_chroma import Chroma
 
         persist_dir = Path(self.rag_config_service.config.storage.persist_directory)
         if not persist_dir.is_absolute():
@@ -376,13 +405,22 @@ class DocumentProcessingService:
             for i in range(len(chunks))
         ]
 
-        batch_size = max(1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64))
-        batch_delay = max(0.0, float(getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0))
-        max_retries = int(getattr(self.rag_config_service.config.embedding, "batch_max_retries", 3) or 0)
+        batch_size = max(
+            1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64)
+        )
+        batch_delay = max(
+            0.0,
+            float(
+                getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0
+            ),
+        )
+        max_retries = int(
+            getattr(self.rag_config_service.config.embedding, "batch_max_retries", 3) or 0
+        )
         max_delay = 60.0
 
         total = len(chunks)
-        added_ids: List[str] = []
+        added_ids: list[str] = []
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             batch_texts = chunks[start:end]
@@ -399,7 +437,9 @@ class DocumentProcessingService:
                         metadatas=batch_metas,
                     )
                     added_ids.extend(batch_ids)
-                    logger.info(f"Stored chunks {start + 1}-{end} of {total} in '{collection_name}'")
+                    logger.info(
+                        f"Stored chunks {start + 1}-{end} of {total} in '{collection_name}'"
+                    )
                     break
                 except InvalidArgumentError as e:
                     if added_ids:
@@ -479,27 +519,35 @@ class DocumentProcessingService:
         doc_id: str,
         filename: str,
         file_type: str,
-        chunks: List[str],
+        chunks: list[str],
         embedding_fn,
     ):
         """Store document chunks in SQLite vector store."""
         if not hasattr(embedding_fn, "embed_documents"):
-            raise ValueError("Embedding function does not support embed_documents() for sqlite_vec backend")
+            raise ValueError(
+                "Embedding function does not support embed_documents() for sqlite_vec backend"
+            )
 
         sqlite_vec_service = self._get_sqlite_vec_service()
         ingest_id = uuid.uuid4().hex[:8]
         ids = [f"{doc_id}_{ingest_id}_chunk_{i}" for i in range(len(chunks))]
 
-        batch_size = max(1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64))
+        batch_size = max(
+            1, int(getattr(self.rag_config_service.config.embedding, "batch_size", 64) or 64)
+        )
         batch_delay = max(
             0.0,
-            float(getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0),
+            float(
+                getattr(self.rag_config_service.config.embedding, "batch_delay_seconds", 0.5) or 0.0
+            ),
         )
-        max_retries = int(getattr(self.rag_config_service.config.embedding, "batch_max_retries", 3) or 0)
+        max_retries = int(
+            getattr(self.rag_config_service.config.embedding, "batch_max_retries", 3) or 0
+        )
         max_delay = 60.0
 
         total = len(chunks)
-        chunk_rows: List[dict] = []
+        chunk_rows: list[dict] = []
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             batch_texts = chunks[start:end]
@@ -584,5 +632,3 @@ class DocumentProcessingService:
             )
             if deleted:
                 logger.info(f"Removed {deleted} stale SQLite chunks for doc {doc_id} in kb_{kb_id}")
-
-

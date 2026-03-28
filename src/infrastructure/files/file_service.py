@@ -1,14 +1,14 @@
 """File upload and management service."""
 
-import os
+import base64
+import logging
 import mimetypes
 import shutil
-import base64
 from pathlib import Path
-from typing import Any, Dict, Optional
-from fastapi import UploadFile
+from typing import Any
+
 import aiofiles
-import logging
+from fastapi import UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +18,16 @@ class FileService:
 
     ALLOWED_MIME_PREFIXES = [
         # Text files
-        'text/',
-        'application/json',
-        'application/xml',
-        'application/javascript',
-        'application/x-yaml',
+        "text/",
+        "application/json",
+        "application/xml",
+        "application/javascript",
+        "application/x-yaml",
         # Image files
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
     ]
 
     def __init__(self, attachments_dir: Path, max_size_mb: int = 10):
@@ -50,7 +50,7 @@ class FileService:
         Returns:
             True if image, False otherwise
         """
-        return mime_type.startswith('image/')
+        return mime_type.startswith("image/")
 
     async def validate_file(self, file: UploadFile) -> None:
         """Validate file is text or image and under size limit.
@@ -70,25 +70,22 @@ class FileService:
             raise ValueError(f"File exceeds {self.max_size_mb}MB limit")
 
         # Detect MIME type
-        mime_type = file.content_type or 'application/octet-stream'
+        mime_type = file.content_type or "application/octet-stream"
 
         # Fallback to extension-based detection
-        if mime_type == 'application/octet-stream' and file.filename:
+        if mime_type == "application/octet-stream" and file.filename:
             guessed = mimetypes.guess_type(file.filename)[0]
             if guessed:
                 mime_type = guessed
 
         # Check if allowed MIME type
-        allowed = any(
-            mime_type.startswith(prefix)
-            for prefix in self.ALLOWED_MIME_PREFIXES
-        )
+        allowed = any(mime_type.startswith(prefix) for prefix in self.ALLOWED_MIME_PREFIXES)
 
         if not allowed:
             # For non-image files, try to decode as text
             if not self.is_image_file(mime_type):
                 try:
-                    content[:1024].decode('utf-8')
+                    content[:1024].decode("utf-8")
                     # If decodable, treat as text
                     logger.info(f"File {file.filename} validated as text (MIME: {mime_type})")
                     return
@@ -103,13 +100,11 @@ class FileService:
                     "Only text files and images (JPEG, PNG, GIF, WebP) are allowed."
                 )
 
-        logger.info(f"File {file.filename} validated successfully (MIME: {mime_type}, size: {len(content)} bytes)")
+        logger.info(
+            f"File {file.filename} validated successfully (MIME: {mime_type}, size: {len(content)} bytes)"
+        )
 
-    async def save_temp_file(
-        self,
-        session_id: str,
-        file: UploadFile
-    ) -> Dict[str, Any]:
+    async def save_temp_file(self, session_id: str, file: UploadFile) -> dict[str, Any]:
         """Save uploaded file to temporary location.
 
         Args:
@@ -131,8 +126,8 @@ class FileService:
         content = await file.read()
 
         # Detect MIME type
-        mime_type = file.content_type or 'application/octet-stream'
-        if mime_type == 'application/octet-stream' and file.filename:
+        mime_type = file.content_type or "application/octet-stream"
+        if mime_type == "application/octet-stream" and file.filename:
             guessed = mimetypes.guess_type(file.filename)[0]
             if guessed:
                 mime_type = guessed
@@ -140,7 +135,7 @@ class FileService:
         # Save to temp location
         safe_filename = file.filename or "uploaded_file"
         temp_path = temp_dir / safe_filename
-        async with aiofiles.open(temp_path, 'wb') as f:
+        async with aiofiles.open(temp_path, "wb") as f:
             await f.write(content)
 
         logger.info(f"Saved temp file: {temp_path}")
@@ -153,11 +148,7 @@ class FileService:
         }
 
     async def move_to_permanent(
-        self,
-        session_id: str,
-        message_index: int,
-        temp_path: str,
-        filename: str
+        self, session_id: str, message_index: int, temp_path: str, filename: str
     ) -> Path:
         """Move file from temp to permanent location.
 
@@ -194,11 +185,11 @@ class FileService:
         """
         # Try UTF-8 first
         try:
-            async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(filepath, encoding="utf-8") as f:
                 return await f.read()
         except UnicodeDecodeError:
             # Fallback: try with chardet or just read as binary and decode with errors='replace'
-            async with aiofiles.open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            async with aiofiles.open(filepath, encoding="utf-8", errors="replace") as f:
                 return await f.read()
 
     async def get_file_as_base64(self, filepath: Path) -> str:
@@ -210,16 +201,11 @@ class FileService:
         Returns:
             Base64 encoded file content
         """
-        async with aiofiles.open(filepath, 'rb') as f:
+        async with aiofiles.open(filepath, "rb") as f:
             content = await f.read()
-            return base64.b64encode(content).decode('utf-8')
+            return base64.b64encode(content).decode("utf-8")
 
-    def get_file_path(
-        self,
-        session_id: str,
-        message_index: int,
-        filename: str
-    ) -> Optional[Path]:
+    def get_file_path(self, session_id: str, message_index: int, filename: str) -> Path | None:
         """Get path to a file attachment.
 
         Args:

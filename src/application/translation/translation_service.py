@@ -2,11 +2,12 @@
 
 import asyncio
 import logging
-from typing import AsyncIterator, Union, Dict, Any, Optional, List
+from collections.abc import AsyncIterator
+from typing import Any
 
-from src.infrastructure.llm.language_detection_service import LanguageDetectionService
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.translation_config_service import TranslationConfigService
+from src.infrastructure.llm.language_detection_service import LanguageDetectionService
 from src.infrastructure.llm.local_llama_cpp_service import LocalLlamaCppService
 from src.llm_runtime.think_tag_filter import ThinkTagStreamFilter
 from src.providers.types import CallMode
@@ -58,11 +59,11 @@ class TranslationService:
     async def translate_stream(
         self,
         text: str,
-        target_language: Optional[str] = None,
-        model_id: Optional[str] = None,
+        target_language: str | None = None,
+        model_id: str | None = None,
         use_input_target_language: bool = False,
         auto_detect_language: bool = True,
-    ) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    ) -> AsyncIterator[str | dict[str, Any]]:
         """Translate text via LLM streaming.
 
         Args:
@@ -197,9 +198,7 @@ class TranslationService:
         capabilities = model_service.get_merged_capabilities(model_config, provider_config)
         resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
         effective_call_mode = (
-            resolved_call_mode
-            if isinstance(resolved_call_mode, CallMode)
-            else CallMode.AUTO
+            resolved_call_mode if isinstance(resolved_call_mode, CallMode) else CallMode.AUTO
         )
         allow_responses_fallback = effective_call_mode == CallMode.RESPONSES
 
@@ -233,9 +232,10 @@ class TranslationService:
             allow_responses_fallback,
         )
 
-        from langchain_core.messages import HumanMessage as HMsg, BaseMessage
+        from langchain_core.messages import BaseMessage
+        from langchain_core.messages import HumanMessage as HMsg
 
-        langchain_messages: List[BaseMessage] = [HMsg(content=prompt)]
+        langchain_messages: list[BaseMessage] = [HMsg(content=prompt)]
 
         try:
             full_response = ""

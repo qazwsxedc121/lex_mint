@@ -10,7 +10,6 @@ To the new layout:
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict
 
 import yaml
 
@@ -19,7 +18,7 @@ from src.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def migrate_project_conversations(conversations_dir: Path) -> Dict[str, int]:
+def migrate_project_conversations(conversations_dir: Path) -> dict[str, int]:
     """Migrate project conversations from central storage to project directories.
 
     Reads projects_config.yaml to build project_id -> root_path map, then moves
@@ -45,23 +44,26 @@ def migrate_project_conversations(conversations_dir: Path) -> Dict[str, int]:
 
     # Build project_id -> root_path map from config
     config_path = settings.projects_config_path
-    project_map: Dict[str, str] = {}
+    project_map: dict[str, str] = {}
     if config_path.exists():
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if data:
-                for proj in data.get('projects', []):
-                    pid = proj.get('id')
-                    root = proj.get('root_path')
+                for proj in data.get("projects", []):
+                    pid = proj.get("id")
+                    root = proj.get("root_path")
                     if pid and root:
                         project_map[pid] = root
         except Exception as e:
             logger.warning("Failed to read projects config for migration: %s", e)
             return result
 
-    logger.info("Migration: found %d project dir(s) to check, %d project(s) in config",
-                len(project_subdirs), len(project_map))
+    logger.info(
+        "Migration: found %d project dir(s) to check, %d project(s) in config",
+        len(project_subdirs),
+        len(project_map),
+    )
 
     for proj_dir in project_subdirs:
         project_id = proj_dir.name
@@ -75,8 +77,11 @@ def migrate_project_conversations(conversations_dir: Path) -> Dict[str, int]:
         # Verify root_path exists
         root = Path(root_path)
         if not root.exists() or not root.is_dir():
-            logger.warning("Migration: root_path '%s' for project '%s' does not exist, skipping",
-                           root_path, project_id)
+            logger.warning(
+                "Migration: root_path '%s' for project '%s' does not exist, skipping",
+                root_path,
+                project_id,
+            )
             result["skipped"] += 1
             continue
 
@@ -112,13 +117,16 @@ def migrate_project_conversations(conversations_dir: Path) -> Dict[str, int]:
                 shutil.move(str(src_file), str(dst_file))
                 dir_migrated += 1
             except Exception as e:
-                logger.error("Migration: failed to move '%s' -> '%s': %s",
-                             src_file, dst_file, e)
+                logger.error("Migration: failed to move '%s' -> '%s': %s", src_file, dst_file, e)
                 result["errors"] += 1
 
         if dir_migrated:
-            logger.info("Migration: moved %d file(s) for project '%s' -> %s",
-                        dir_migrated, project_id, target_dir)
+            logger.info(
+                "Migration: moved %d file(s) for project '%s' -> %s",
+                dir_migrated,
+                project_id,
+                target_dir,
+            )
             result["migrated"] += dir_migrated
 
         # Remove empty source directory
@@ -136,6 +144,10 @@ def migrate_project_conversations(conversations_dir: Path) -> Dict[str, int]:
     except OSError:
         pass
 
-    logger.info("Migration complete: migrated=%d, skipped=%d, errors=%d",
-                result["migrated"], result["skipped"], result["errors"])
+    logger.info(
+        "Migration complete: migrated=%d, skipped=%d, errors=%d",
+        result["migrated"],
+        result["skipped"],
+        result["errors"],
+    )
     return result

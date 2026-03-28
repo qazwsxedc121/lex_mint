@@ -1,6 +1,6 @@
 """Supervisor logic for committee orchestration."""
 
-from typing import Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
 
 from .committee_types import CommitteeDecision, CommitteeRuntimeState
 from .supervisor_gatekeeper import (
@@ -13,7 +13,6 @@ from .supervisor_prompts import (
     CommitteeSupervisorPromptConfig,
 )
 
-
 DecisionLLMCaller = Callable[[str, str], Awaitable[str]]
 
 
@@ -25,16 +24,16 @@ class CommitteeSupervisor:
         *,
         supervisor_id: str,
         supervisor_name: str,
-        participant_order: List[str],
-        participant_names: Dict[str, str],
+        participant_order: list[str],
+        participant_names: dict[str, str],
         max_rounds: int,
         min_member_turns_before_finish: int = 2,
         min_total_rounds_before_finish: int = 0,
         max_parallel_speakers: int = 3,
         allow_parallel_speak: bool = True,
         allow_finish: bool = True,
-        supervisor_system_prompt_template: Optional[str] = None,
-        summary_instruction_template: Optional[str] = None,
+        supervisor_system_prompt_template: str | None = None,
+        summary_instruction_template: str | None = None,
     ):
         self.supervisor_id = supervisor_id
         self.supervisor_name = supervisor_name
@@ -119,7 +118,7 @@ class CommitteeSupervisor:
         state: CommitteeRuntimeState,
         *,
         reason: str,
-        draft_summary: Optional[str] = None,
+        draft_summary: str | None = None,
     ) -> str:
         """Build the final summary instruction for the supervisor assistant."""
         return self._prompt_builder.build_summary_instruction(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,11 +29,11 @@ class FlowEvent(BaseModel):
     seq: int = Field(ge=1)
     ts: int = Field(ge=0)
     stream_id: str = Field(min_length=1)
-    conversation_id: Optional[str] = None
-    turn_id: Optional[str] = None
+    conversation_id: str | None = None
+    turn_id: str | None = None
     event_type: str = Field(min_length=1)
     stage: FlowEventStage
-    payload: Dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 def now_ms() -> int:
@@ -48,9 +48,9 @@ def new_flow_event(
     stream_id: str,
     event_type: str,
     stage: FlowEventStage,
-    payload: Optional[Dict[str, Any]] = None,
-    conversation_id: Optional[str] = None,
-    turn_id: Optional[str] = None,
+    payload: dict[str, Any] | None = None,
+    conversation_id: str | None = None,
+    turn_id: str | None = None,
 ) -> FlowEvent:
     """Create one validated flow event with generated ids/timestamp."""
 

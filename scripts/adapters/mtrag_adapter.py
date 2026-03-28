@@ -6,8 +6,9 @@ from __future__ import annotations
 import csv
 import json
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any
 
 
 def sanitize_doc_id(value: str) -> str:
@@ -32,8 +33,8 @@ def clean_query_text(text: Any) -> str:
     return query
 
 
-def load_queries(path: Path) -> Dict[str, str]:
-    queries: Dict[str, str] = {}
+def load_queries(path: Path) -> dict[str, str]:
+    queries: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         raw = str(line or "").strip()
         if not raw:
@@ -47,8 +48,8 @@ def load_queries(path: Path) -> Dict[str, str]:
     return queries
 
 
-def load_qrels(path: Path) -> Dict[str, Dict[str, float]]:
-    qrels: Dict[str, Dict[str, float]] = {}
+def load_qrels(path: Path) -> dict[str, dict[str, float]]:
+    qrels: dict[str, dict[str, float]] = {}
     with path.open("r", encoding="utf-8") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         for row in reader:
@@ -74,7 +75,7 @@ def build_rag_eval_dataset_from_mtrag(
     dataset_name: str,
     top_k: int,
     max_cases: int | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if not kb_ids:
         raise ValueError("kb_ids cannot be empty.")
 
@@ -85,7 +86,7 @@ def build_rag_eval_dataset_from_mtrag(
     safe_top_k = max(1, int(top_k))
     safe_max_cases = None if max_cases is None else max(1, int(max_cases))
 
-    cases: List[Dict[str, Any]] = []
+    cases: list[dict[str, Any]] = []
     count = 0
     for qid in sorted(queries.keys()):
         if qid not in qrels:
@@ -130,4 +131,3 @@ def build_rag_eval_dataset_from_mtrag(
         "default_kb_ids": normalized_kb_ids,
         "cases": cases,
     }
-

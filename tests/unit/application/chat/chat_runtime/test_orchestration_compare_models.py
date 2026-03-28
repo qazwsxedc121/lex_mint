@@ -3,9 +3,9 @@
 import pytest
 
 from src.application.chat.chat_runtime import (
+    ChatOrchestrationRequest,
     CompareModelsOrchestrator,
     CompareModelsSettings,
-    ChatOrchestrationRequest,
 )
 from src.providers.types import CostInfo, TokenUsage
 
@@ -55,10 +55,18 @@ async def test_compare_models_streams_multiplexed_events_and_completion():
     )
 
     events = await _collect_events(orchestrator.stream(request))
-    assert any(event.get("type") == "model_start" and event.get("model_id") == "m1" for event in events)
-    assert any(event.get("type") == "model_start" and event.get("model_id") == "m2" for event in events)
-    assert any(event.get("type") == "model_done" and event.get("model_id") == "m1" for event in events)
-    assert any(event.get("type") == "model_done" and event.get("model_id") == "m2" for event in events)
+    assert any(
+        event.get("type") == "model_start" and event.get("model_id") == "m1" for event in events
+    )
+    assert any(
+        event.get("type") == "model_start" and event.get("model_id") == "m2" for event in events
+    )
+    assert any(
+        event.get("type") == "model_done" and event.get("model_id") == "m1" for event in events
+    )
+    assert any(
+        event.get("type") == "model_done" and event.get("model_id") == "m2" for event in events
+    )
 
     completion = events[-1]
     assert completion["type"] == "compare_complete"

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from collections.abc import AsyncIterator
+from typing import Any
 
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.files.file_service import FileService
@@ -27,23 +28,23 @@ from .reasoning import (
     log_reasoning_decision,
     resolve_reasoning_decision,
 )
-from .think_tag_filter import ThinkTagStreamFilter, strip_think_blocks
 from .streaming_client import call_llm_stream as _call_llm_stream_impl
 from .sync_client import call_llm as _call_llm_impl
+from .think_tag_filter import ThinkTagStreamFilter, strip_think_blocks
 
 
 def call_llm(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     session_id: str = "unknown",
-    model_id: Optional[str] = None,
-    system_prompt: Optional[str] = None,
-    context_segments: Optional[Dict[str, Optional[str]]] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    top_p: Optional[float] = None,
-    top_k: Optional[int] = None,
-    frequency_penalty: Optional[float] = None,
-    presence_penalty: Optional[float] = None,
+    model_id: str | None = None,
+    system_prompt: str | None = None,
+    context_segments: dict[str, str | None] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    frequency_penalty: float | None = None,
+    presence_penalty: float | None = None,
 ) -> str:
     """Stable runtime entrypoint with injectable factories for tests."""
     return _call_llm_impl(
@@ -64,23 +65,23 @@ def call_llm(
 
 
 async def call_llm_stream(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     session_id: str = "unknown",
-    model_id: Optional[str] = None,
-    system_prompt: Optional[str] = None,
-    context_segments: Optional[Dict[str, Optional[str]]] = None,
-    max_rounds: Optional[int] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    top_p: Optional[float] = None,
-    top_k: Optional[int] = None,
-    frequency_penalty: Optional[float] = None,
-    presence_penalty: Optional[float] = None,
-    reasoning_effort: Optional[str] = None,
-    file_service: Optional[FileService] = None,
-    tools: Optional[List] = None,
-    tool_executor: Optional[Any] = None,
-) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    model_id: str | None = None,
+    system_prompt: str | None = None,
+    context_segments: dict[str, str | None] | None = None,
+    max_rounds: int | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    frequency_penalty: float | None = None,
+    presence_penalty: float | None = None,
+    reasoning_effort: str | None = None,
+    file_service: FileService | None = None,
+    tools: list | None = None,
+    tool_executor: Any | None = None,
+) -> AsyncIterator[str | dict[str, Any]]:
     """Stable streaming runtime entrypoint with injectable factories for tests."""
     async for chunk in _call_llm_stream_impl(
         messages=messages,
@@ -103,6 +104,7 @@ async def call_llm_stream(
         llm_logger_factory=get_llm_logger,
     ):
         yield chunk
+
 
 _build_context_plan = build_context_plan
 _build_reasoning_decision_payload = build_reasoning_decision_payload

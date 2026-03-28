@@ -86,14 +86,18 @@ async def test_build_context_block_handles_defaults_empty_and_errors():
         file_reference_config_service=_ConfigService(fail=True),
         project_service=_ProjectService(""),
     )
-    empty_result = await default_builder.build_context_block([{"project_id": "p1", "path": "empty.txt"}])
+    empty_result = await default_builder.build_context_block(
+        [{"project_id": "p1", "path": "empty.txt"}]
+    )
     assert "empty file" in empty_result
 
     error_builder = FileReferenceContextBuilder(
         file_reference_config_service=_ConfigService(),
         project_service=_ProjectService("x", fail=True),
     )
-    error_result = await error_builder.build_context_block([{"project_id": "p1", "path": "bad.txt"}])
+    error_result = await error_builder.build_context_block(
+        [{"project_id": "p1", "path": "bad.txt"}]
+    )
     assert "Could not read file" in error_result
 
     assert await error_builder.build_context_block(None) == ""

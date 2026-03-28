@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .service_contracts import SourcePayload
 
@@ -14,8 +14,8 @@ class PreparedUserInput:
 
     raw_user_message: str
     full_message_content: str
-    attachment_metadata: List[SourcePayload]
-    user_message_id: Optional[str]
+    attachment_metadata: list[SourcePayload]
+    user_message_id: str | None
 
 
 class ChatInputService:
@@ -31,13 +31,13 @@ class ChatInputService:
         session_id: str,
         raw_user_message: str,
         expanded_user_message: str,
-        attachments: Optional[List[SourcePayload]],
+        attachments: list[SourcePayload] | None,
         skip_user_append: bool,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> PreparedUserInput:
         """Resolve attachment contents and optionally append the user message."""
-        attachment_metadata: List[SourcePayload] = []
+        attachment_metadata: list[SourcePayload] = []
         full_message_content = expanded_user_message
 
         if attachments:
@@ -76,7 +76,7 @@ class ChatInputService:
                     filename,
                 )
 
-        user_message_id: Optional[str] = None
+        user_message_id: str | None = None
         if not skip_user_append:
             user_message_id = await self.storage.append_message(
                 session_id,

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Sequence, Tuple, Union
+from typing import Any, Protocol
 
-from src.domain.models.search import SearchSource
-
-SourcePayload = Dict[str, Any]
-MessagePayload = Dict[str, Any]
-StreamEvent = Dict[str, Any]
-StreamItem = Union[str, StreamEvent]
+SourcePayload = dict[str, Any]
+MessagePayload = dict[str, Any]
+StreamEvent = dict[str, Any]
+StreamItem = str | StreamEvent
 
 
 class SupportsModelDump(Protocol):
@@ -32,34 +31,34 @@ class AssistantLike(Protocol):
     def model_id(self) -> str: ...
 
     @property
-    def system_prompt(self) -> Optional[str]: ...
+    def system_prompt(self) -> str | None: ...
 
     @property
-    def temperature(self) -> Optional[float]: ...
+    def temperature(self) -> float | None: ...
 
     @property
-    def max_tokens(self) -> Optional[int]: ...
+    def max_tokens(self) -> int | None: ...
 
     @property
-    def top_p(self) -> Optional[float]: ...
+    def top_p(self) -> float | None: ...
 
     @property
-    def top_k(self) -> Optional[int]: ...
+    def top_k(self) -> int | None: ...
 
     @property
-    def frequency_penalty(self) -> Optional[float]: ...
+    def frequency_penalty(self) -> float | None: ...
 
     @property
-    def presence_penalty(self) -> Optional[float]: ...
+    def presence_penalty(self) -> float | None: ...
 
     @property
-    def max_rounds(self) -> Optional[int]: ...
+    def max_rounds(self) -> int | None: ...
 
     @property
     def memory_enabled(self) -> bool: ...
 
     @property
-    def knowledge_base_ids(self) -> Optional[List[str]]: ...
+    def knowledge_base_ids(self) -> list[str] | None: ...
 
     @property
     def enabled(self) -> bool: ...
@@ -73,8 +72,8 @@ class SessionStorageLike(Protocol):
         session_id: str,
         *,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Dict[str, Any]: ...
+        project_id: str | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class MemoryContextServiceLike(Protocol):
@@ -84,10 +83,10 @@ class MemoryContextServiceLike(Protocol):
         self,
         *,
         query: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         include_global: bool,
         include_assistant: bool,
-    ) -> Tuple[Optional[str], List[SourcePayload]]: ...
+    ) -> tuple[str | None, list[SourcePayload]]: ...
 
 
 class MemoryServiceLike(Protocol):
@@ -97,19 +96,19 @@ class MemoryServiceLike(Protocol):
         self,
         *,
         query: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         include_global: bool,
         include_assistant: bool,
-    ) -> Tuple[Optional[str], List[SourcePayload]]: ...
+    ) -> tuple[str | None, list[SourcePayload]]: ...
 
     async def extract_and_persist_from_turn(
         self,
         *,
         user_message: str,
         assistant_message: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         source_session_id: str,
-        source_message_id: Optional[str],
+        source_message_id: str | None,
         assistant_memory_enabled: bool,
     ) -> None: ...
 
@@ -121,7 +120,7 @@ class WebpageServiceLike(Protocol):
         self,
         query: str,
         /,
-    ) -> Tuple[Optional[str], Sequence[SupportsModelDump]]: ...
+    ) -> tuple[str | None, Sequence[SupportsModelDump]]: ...
 
 
 class SearchServiceLike(Protocol):
@@ -134,7 +133,7 @@ class SearchServiceLike(Protocol):
         query: str,
         sources: Sequence[SupportsModelDump],
         /,
-    ) -> Optional[str]: ...
+    ) -> str | None: ...
 
 
 class SourceContextServiceLike(Protocol):
@@ -143,7 +142,7 @@ class SourceContextServiceLike(Protocol):
     def build_source_tags(
         self,
         query: str,
-        sources: List[SourcePayload],
+        sources: list[SourcePayload],
         max_sources: int = 20,
         max_chars_per_source: int = 1200,
     ) -> Any: ...
@@ -152,8 +151,8 @@ class SourceContextServiceLike(Protocol):
         self,
         query: str,
         source_context: Any,
-        template: Optional[str] = None,
-    ) -> Optional[str]: ...
+        template: str | None = None,
+    ) -> str | None: ...
 
 
 class RagConfigServiceLike(Protocol):
@@ -169,7 +168,7 @@ class TitleServiceLike(Protocol):
 
     def should_generate_title(self, message_count: int, current_title: str, /) -> bool: ...
 
-    def generate_title_async(self, session_id: str) -> Awaitable[Optional[str]]: ...
+    def generate_title_async(self, session_id: str) -> Awaitable[str | None]: ...
 
 
 class FollowupServiceLike(Protocol):
@@ -177,7 +176,7 @@ class FollowupServiceLike(Protocol):
 
     config: Any
 
-    async def generate_followups_async(self, messages: List[MessagePayload], /) -> List[str]: ...
+    async def generate_followups_async(self, messages: list[MessagePayload], /) -> list[str]: ...
 
 
 TaskScheduler = Callable[[Awaitable[Any]], Any]
@@ -187,18 +186,18 @@ TaskScheduler = Callable[[Awaitable[Any]], Any]
 class ContextPayload:
     """Resolved context package consumed by chat/comparison flows."""
 
-    messages: List[MessagePayload]
-    system_prompt: Optional[str]
-    assistant_params: Dict[str, Any]
-    all_sources: List[SourcePayload]
+    messages: list[MessagePayload]
+    system_prompt: str | None
+    assistant_params: dict[str, Any]
+    all_sources: list[SourcePayload]
     model_id: str
-    assistant_id: Optional[str]
-    assistant_obj: Optional[AssistantLike]
+    assistant_id: str | None
+    assistant_obj: AssistantLike | None
     assistant_memory_enabled: bool
-    max_rounds: Optional[int]
-    base_system_prompt: Optional[str] = None
-    memory_context: Optional[str] = None
-    webpage_context: Optional[str] = None
-    search_context: Optional[str] = None
-    rag_context: Optional[str] = None
-    structured_source_context: Optional[str] = None
+    max_rounds: int | None
+    base_system_prompt: str | None = None
+    memory_context: str | None = None
+    webpage_context: str | None = None
+    search_context: str | None = None
+    rag_context: str | None = None
+    structured_source_context: str | None = None

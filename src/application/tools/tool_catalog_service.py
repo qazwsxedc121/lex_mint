@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
-
+from src.domain.models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalogResponse
 from src.tools.definitions import ToolDefinition
 from src.tools.registry import get_tool_registry
 from src.tools.request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
-
-from src.domain.models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalogResponse
 
 
 class ToolCatalogService:
@@ -17,13 +14,13 @@ class ToolCatalogService:
     GROUP_ORDER = ["builtin", "web", "projectDocuments", "knowledge"]
 
     @classmethod
-    def get_tool_definitions(cls) -> List[ToolDefinition]:
+    def get_tool_definitions(cls) -> list[ToolDefinition]:
         registry = get_tool_registry()
         definitions = list(registry.get_all_definitions())
         definitions.extend(REQUEST_SCOPED_TOOL_DEFINITIONS)
 
         seen_names = set()
-        unique_definitions: List[ToolDefinition] = []
+        unique_definitions: list[ToolDefinition] = []
         for definition in definitions:
             if definition.name in seen_names:
                 continue
@@ -36,7 +33,7 @@ class ToolCatalogService:
         definitions = cls.get_tool_definitions()
         items = [cls._to_item(definition) for definition in definitions]
 
-        grouped: Dict[str, List[ToolCatalogItem]] = {group: [] for group in cls.GROUP_ORDER}
+        grouped: dict[str, list[ToolCatalogItem]] = {group: [] for group in cls.GROUP_ORDER}
         for item in items:
             grouped.setdefault(item.group, []).append(item)
 

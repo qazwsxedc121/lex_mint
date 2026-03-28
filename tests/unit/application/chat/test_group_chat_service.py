@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
@@ -47,7 +47,7 @@ class _FakeSearchService:
             raise RuntimeError("search failed")
         return [_SearchSource(url=f"https://example.com/{query}")]
 
-    def build_search_context(self, query: str, sources: List[_SearchSource]):
+    def build_search_context(self, query: str, sources: list[_SearchSource]):
         return f"context:{query}:{len(sources)}"
 
 

@@ -8,18 +8,18 @@ import asyncio
 import re
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.domain.models.knowledge_base import KnowledgeBaseDocument
+from src.infrastructure.config.rag_config_service import RagConfigService
 from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
-from src.infrastructure.config.rag_config_service import RagConfigService
 
 
 @dataclass
@@ -41,7 +41,7 @@ class ImportOutcome:
     line_no: int
     ok: bool
     error: str = ""
-    doc: Optional[KnowledgeBaseDocument] = None
+    doc: KnowledgeBaseDocument | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,7 +137,9 @@ def _open_text_file(path: Path):
 
 def _natural_sort_key(path: Path):
     # Keep numeric suffixes in human order (part_2 before part_10).
-    return [int(token) if token.isdigit() else token.lower() for token in re.split(r"(\d+)", path.name)]
+    return [
+        int(token) if token.isdigit() else token.lower() for token in re.split(r"(\d+)", path.name)
+    ]
 
 
 def _check_embedding_runtime(
@@ -172,7 +174,7 @@ def _check_embedding_runtime(
         n_gpu_layers = int(cfg.local_gguf_n_gpu_layers or 0)
         print(f"[embed] local_gguf_model_path={cfg.local_gguf_model_path}")
         print(f"[embed] local_gguf_n_gpu_layers={n_gpu_layers}")
-        gpu_offload_supported: Optional[bool] = None
+        gpu_offload_supported: bool | None = None
         try:
             import llama_cpp
 
@@ -195,12 +197,12 @@ def _check_embedding_runtime(
 
 
 def _iter_corpus_records(
-    files: List[Path],
+    files: list[Path],
     *,
     start_offset: int,
-    max_docs: Optional[int],
+    max_docs: int | None,
     lines_per_doc: int,
-) -> Iterator[Dict[str, object]]:
+) -> Iterator[dict[str, object]]:
     seen = 0
     emitted = 0
     safe_offset = max(0, int(start_offset))
@@ -209,7 +211,7 @@ def _iter_corpus_records(
 
     for bundle in files:
         stem = bundle.stem
-        group_items: List[tuple[int, str]] = []
+        group_items: list[tuple[int, str]] = []
         with _open_text_file(bundle) as handle:
             for line_no, raw in enumerate(handle, start=1):
                 content = str(raw or "").strip()
@@ -294,7 +296,7 @@ async def _import_record(
     processor: DocumentProcessingService,
     kb_id: str,
     kb_snapshot,
-    record: Dict[str, object],
+    record: dict[str, object],
 ) -> ImportOutcome:
     doc_id = str(record["doc_id"])
     filename = str(record["filename"])
@@ -361,9 +363,7 @@ async def _main() -> None:
         key=_natural_sort_key,
     )
     if not bundle_files:
-        raise RuntimeError(
-            f"No files matched in {args.source_dir} with glob '{args.file_glob}'."
-        )
+        raise RuntimeError(f"No files matched in {args.source_dir} with glob '{args.file_glob}'.")
 
     worker_count = max(1, int(args.workers))
     metadata_flush_size = max(1, int(args.metadata_flush_size))
@@ -384,7 +384,7 @@ async def _main() -> None:
     started_at = time.perf_counter()
     pending: set[asyncio.Task[ImportOutcome]] = set()
     worker_cursor = 0
-    ready_doc_buffer: List[KnowledgeBaseDocument] = []
+    ready_doc_buffer: list[KnowledgeBaseDocument] = []
 
     async def _flush_ready_docs(*, force: bool = False) -> None:
         nonlocal ready_doc_buffer

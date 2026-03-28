@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, List, Optional, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from src.application.chat.service_contracts import (
     FollowupServiceLike,
@@ -36,8 +37,8 @@ class PostTurnService:
         storage: Any,
         memory_service: Any,
         task_scheduler: TaskScheduler = _default_task_scheduler,
-        title_service_factory: Optional[Callable[..., TitleServiceLike]] = None,
-        followup_service_factory: Optional[Callable[[], FollowupServiceLike]] = None,
+        title_service_factory: Callable[..., TitleServiceLike] | None = None,
+        followup_service_factory: Callable[[], FollowupServiceLike] | None = None,
     ):
         self.storage = storage
         self.memory_service = memory_service
@@ -51,7 +52,7 @@ class PostTurnService:
         session_id: str,
         assistant_message: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> None:
         """Persist partial assistant content for cancelled streams."""
         if not assistant_message:
@@ -69,28 +70,28 @@ class PostTurnService:
         *,
         session_id: str,
         assistant_message: str,
-        usage_data: Optional[TokenUsage],
-        cost_data: Optional[CostInfo],
-        sources: Optional[List[SourcePayload]],
+        usage_data: TokenUsage | None,
+        cost_data: CostInfo | None,
+        sources: list[SourcePayload] | None,
         raw_user_message: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         assistant_memory_enabled: bool,
-        user_message_id: Optional[str],
+        user_message_id: str | None,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> str:
         """Persist final assistant message and schedule post-turn background tasks."""
         assistant_message_id = cast(
             str,
             await self.storage.append_message(
-            session_id,
-            "assistant",
-            assistant_message,
-            usage=usage_data,
-            cost=cost_data,
-            sources=sources if sources else None,
-            context_type=context_type,
-            project_id=project_id,
+                session_id,
+                "assistant",
+                assistant_message,
+                usage=usage_data,
+                cost=cost_data,
+                sources=sources if sources else None,
+                context_type=context_type,
+                project_id=project_id,
             ),
         )
 
@@ -114,7 +115,7 @@ class PostTurnService:
         *,
         session_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> None:
         """Schedule title generation when trigger conditions are met."""
         try:
@@ -127,7 +128,9 @@ class PostTurnService:
             is_temporary = updated_session.get("temporary", False)
             message_count = len(updated_session["state"]["messages"])
             current_title = updated_session["title"]
-            if not is_temporary and title_service.should_generate_title(message_count, current_title):
+            if not is_temporary and title_service.should_generate_title(
+                message_count, current_title
+            ):
                 self.task_scheduler(title_service.generate_title_async(session_id))
         except Exception as e:
             logger.warning("Failed to schedule title generation: %s", e)
@@ -137,8 +140,8 @@ class PostTurnService:
         *,
         session_id: str,
         context_type: str,
-        project_id: Optional[str],
-    ) -> Optional[List[str]]:
+        project_id: str | None,
+    ) -> list[str] | None:
         """Generate optional follow-up question suggestions from latest session state."""
         try:
             followup_service = self._build_followup_service()
@@ -153,7 +156,7 @@ class PostTurnService:
                 context_type=context_type,
                 project_id=project_id,
             )
-            messages_for_followup: List[MessagePayload] = updated_session["state"]["messages"]
+            messages_for_followup: list[MessagePayload] = updated_session["state"]["messages"]
             questions = await followup_service.generate_followups_async(messages_for_followup)
             return questions or None
         except Exception as e:
@@ -165,10 +168,10 @@ class PostTurnService:
         *,
         raw_user_message: str,
         assistant_message: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         assistant_memory_enabled: bool,
         session_id: str,
-        user_message_id: Optional[str],
+        user_message_id: str | None,
     ) -> None:
         if not raw_user_message or not assistant_message:
             return

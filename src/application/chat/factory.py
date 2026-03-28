@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from .compare_flow_service import CompareFlowDeps, CompareFlowService
-from .session_command_service import ChatSessionCommandService
 from .service import ChatApplicationDeps, ChatApplicationService
+from .session_command_service import ChatSessionCommandService
 from .single_chat_flow_service import SingleChatFlowDeps, SingleChatFlowService
 
 

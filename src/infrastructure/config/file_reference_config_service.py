@@ -1,9 +1,8 @@
 """File reference preview/injection configuration service."""
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
-import logging
 
 import yaml
 
@@ -32,8 +31,8 @@ class FileReferenceConfig:
 class FileReferenceConfigService:
     """Load/save file reference config from layered config files."""
 
-    def __init__(self, config_path: Optional[Path] = None):
-        self.defaults_path: Optional[Path] = None
+    def __init__(self, config_path: Path | None = None):
+        self.defaults_path: Path | None = None
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "file_reference_config.yaml"
@@ -45,7 +44,7 @@ class FileReferenceConfigService:
         self.config = self._load_config()
 
     @staticmethod
-    def _default_data() -> Dict:
+    def _default_data() -> dict:
         return {
             "file_reference": {
                 "ui_preview_max_chars": 1200,
@@ -83,7 +82,7 @@ class FileReferenceConfigService:
     def _load_config(self) -> FileReferenceConfig:
         self._ensure_config_exists()
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             cfg = data.get("file_reference", {})
             defaults = FileReferenceConfig()
@@ -113,10 +112,10 @@ class FileReferenceConfigService:
     def reload_config(self) -> None:
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict) -> None:
+    def save_config(self, updates: dict) -> None:
         self._ensure_config_exists()
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception:
             data = {}

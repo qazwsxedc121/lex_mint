@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +17,8 @@ class ReasoningDecision:
     requested_mode: str
     thinking_enabled: bool
     disable_thinking: bool
-    effective_reasoning_option: Optional[str]
-    effective_reasoning_effort: Optional[str]
+    effective_reasoning_option: str | None
+    effective_reasoning_effort: str | None
 
 
 def build_reasoning_decision_payload(
@@ -32,28 +32,37 @@ def build_reasoning_decision_payload(
     reasoning_controls: Any,
     thinking_enabled: bool,
     disable_thinking: bool,
-    effective_reasoning_option: Optional[str],
-    effective_reasoning_effort: Optional[str],
-) -> Dict[str, Any]:
+    effective_reasoning_option: str | None,
+    effective_reasoning_effort: str | None,
+) -> dict[str, Any]:
     """Build a structured reasoning decision log payload."""
+
     def _coerce_bool(value: Any, default: bool = False) -> bool:
         return value if isinstance(value, bool) else default
 
-    def _coerce_str(value: Any) -> Optional[str]:
+    def _coerce_str(value: Any) -> str | None:
         if value is None:
             return None
         return value if isinstance(value, str) else None
 
-    raw_options = getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    raw_options = (
+        getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    )
     options = [str(option) for option in raw_options] if isinstance(raw_options, list) else []
-    controls_mode = getattr(reasoning_controls, "mode", None) if reasoning_controls is not None else None
-    controls_param = getattr(reasoning_controls, "param", None) if reasoning_controls is not None else None
+    controls_mode = (
+        getattr(reasoning_controls, "mode", None) if reasoning_controls is not None else None
+    )
+    controls_param = (
+        getattr(reasoning_controls, "param", None) if reasoning_controls is not None else None
+    )
     disable_supported = (
         getattr(reasoning_controls, "disable_supported", None)
         if reasoning_controls is not None
         else None
     )
-    requires_interleaved = _coerce_bool(getattr(capabilities, "requires_interleaved_thinking", False))
+    requires_interleaved = _coerce_bool(
+        getattr(capabilities, "requires_interleaved_thinking", False)
+    )
 
     return {
         "session_id": session_id,
@@ -115,7 +124,7 @@ def log_reasoning_decision(
 def resolve_reasoning_decision(
     *,
     capabilities: Any,
-    reasoning_effort: Optional[str],
+    reasoning_effort: str | None,
     model_id: str,
 ) -> ReasoningDecision:
     """Resolve reasoning request into adapter-ready flags."""
@@ -123,7 +132,7 @@ def resolve_reasoning_decision(
     explicit_disable_reasoning = reasoning_mode == "none"
 
     reasoning_controls = getattr(capabilities, "reasoning_controls", None)
-    reasoning_controls_mode: Optional[str] = None
+    reasoning_controls_mode: str | None = None
     if reasoning_controls is not None:
         raw_mode = getattr(reasoning_controls, "mode", None)
         if isinstance(raw_mode, str):
@@ -140,17 +149,17 @@ def resolve_reasoning_decision(
             disable_reasoning_supported = raw_disable_supported
 
     disable_thinking = explicit_disable_reasoning and disable_reasoning_supported
-    raw_reasoning_options = getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    raw_reasoning_options = (
+        getattr(reasoning_controls, "options", []) if reasoning_controls is not None else []
+    )
     options_iterable = raw_reasoning_options if isinstance(raw_reasoning_options, list) else []
     allowed_reasoning_options = [
-        str(option).strip().lower()
-        for option in options_iterable
-        if str(option).strip()
+        str(option).strip().lower() for option in options_iterable if str(option).strip()
     ]
 
     thinking_enabled = False
-    effective_reasoning_effort: Optional[str] = None
-    effective_reasoning_option: Optional[str] = None
+    effective_reasoning_effort: str | None = None
+    effective_reasoning_option: str | None = None
 
     if explicit_disable_reasoning:
         if not disable_reasoning_supported:
@@ -176,7 +185,12 @@ def resolve_reasoning_decision(
                     reasoning_controls.param if reasoning_controls else "reasoning",
                     effective_reasoning_option,
                 )
-            elif reasoning_controls_mode == "toggle" and reasoning_mode in {"low", "medium", "high", "minimal"}:
+            elif reasoning_controls_mode == "toggle" and reasoning_mode in {
+                "low",
+                "medium",
+                "high",
+                "minimal",
+            }:
                 thinking_enabled = True
                 effective_reasoning_option = allowed_reasoning_options[0]
                 logger.info(
@@ -196,7 +210,9 @@ def resolve_reasoning_decision(
             thinking_enabled = True
             effective_reasoning_option = reasoning_mode
             effective_reasoning_effort = reasoning_mode
-            logger.info("Thinking mode enabled for %s (effort: %s)", model_id, effective_reasoning_effort)
+            logger.info(
+                "Thinking mode enabled for %s (effort: %s)", model_id, effective_reasoning_effort
+            )
         else:
             logger.warning(
                 "Unknown reasoning_effort '%s', falling back to model default behavior",

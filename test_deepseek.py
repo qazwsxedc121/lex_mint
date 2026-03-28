@@ -1,8 +1,9 @@
 """Simple script to verify DeepSeek API connection."""
 
 from pathlib import Path
-from langchain_openai import ChatOpenAI
+
 import yaml
+from langchain_openai import ChatOpenAI
 
 
 def load_deepseek_key() -> str | None:
@@ -15,6 +16,7 @@ def load_deepseek_key() -> str | None:
         return None
     return data.get("providers", {}).get("deepseek", {}).get("api_key")
 
+
 api_key = load_deepseek_key()
 if not api_key:
     print("Error: DeepSeek API key not found")
@@ -25,17 +27,14 @@ print("Testing DeepSeek API connection...")
 
 try:
     llm = ChatOpenAI(
-        model="deepseek-chat",
-        temperature=0.7,
-        base_url="https://api.deepseek.com",
-        api_key=api_key
+        model="deepseek-chat", temperature=0.7, base_url="https://api.deepseek.com", api_key=api_key
     )
-    
+
     response = llm.invoke("Hello! Can you hear me? Please respond with 'Yes, I can hear you!'")
-    
+
     print(f"\nDeepSeek Response: {response.content}")
     print("\nAPI connection successful!")
-    
+
 except Exception as e:
     print(f"\nError connecting to DeepSeek API: {e}")
     exit(1)

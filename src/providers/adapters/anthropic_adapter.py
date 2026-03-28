@@ -3,13 +3,15 @@ Anthropic SDK Adapter
 
 Adapter for Anthropic Claude API using langchain-anthropic.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Create a ChatAnthropic instance.
@@ -52,7 +54,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         """
         from langchain_anthropic import ChatAnthropic
 
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "api_key": api_key,
             "streaming": streaming,
@@ -67,7 +69,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         if thinking_enabled:
             llm_kwargs["thinking"] = {
                 "type": "enabled",
-                "budget_tokens": kwargs.get("thinking_budget", 10000)
+                "budget_tokens": kwargs.get("thinking_budget", 10000),
             }
             # Extended thinking doesn't support temperature
             llm_kwargs.pop("temperature", None)
@@ -89,10 +91,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         return ChatAnthropic(**llm_kwargs)
 
     async def stream(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from Anthropic Claude.
@@ -111,14 +110,14 @@ class AnthropicAdapter(BaseLLMAdapter):
         usage_data = None
 
         async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, 'content') else ""
+            content = chunk.content if hasattr(chunk, "content") else ""
             thinking = ""
 
             # Check for thinking content in additional_kwargs
-            if hasattr(chunk, 'additional_kwargs'):
-                thinking = chunk.additional_kwargs.get('thinking', '')
+            if hasattr(chunk, "additional_kwargs"):
+                thinking = chunk.additional_kwargs.get("thinking", "")
                 if not thinking:
-                    thinking = chunk.additional_kwargs.get('thinking_content', '')
+                    thinking = chunk.additional_kwargs.get("thinking_content", "")
 
             # Extract usage from chunk (usually only in final chunk)
             extracted = TokenUsage.extract_from_chunk(chunk)
@@ -133,12 +132,7 @@ class AnthropicAdapter(BaseLLMAdapter):
                 raw=chunk,
             )
 
-    async def invoke(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm, messages: list[BaseMessage], **kwargs) -> LLMResponse:
         """
         Invoke Anthropic Claude and get complete response.
 
@@ -153,14 +147,14 @@ class AnthropicAdapter(BaseLLMAdapter):
         response = await llm.ainvoke(messages)
 
         thinking = ""
-        if hasattr(response, 'additional_kwargs'):
-            thinking = response.additional_kwargs.get('thinking', '')
+        if hasattr(response, "additional_kwargs"):
+            thinking = response.additional_kwargs.get("thinking", "")
             if not thinking:
-                thinking = response.additional_kwargs.get('thinking_content', '')
+                thinking = response.additional_kwargs.get("thinking_content", "")
 
         usage = None
-        if hasattr(response, 'response_metadata'):
-            raw_usage = response.response_metadata.get('usage')
+        if hasattr(response, "response_metadata"):
+            raw_usage = response.response_metadata.get("usage")
             usage = TokenUsage.from_dict(raw_usage)
 
         return LLMResponse(
@@ -174,7 +168,7 @@ class AnthropicAdapter(BaseLLMAdapter):
         """Claude supports extended thinking."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Get parameters for Claude extended thinking mode.
 
@@ -188,18 +182,9 @@ class AnthropicAdapter(BaseLLMAdapter):
             "medium": 10000,
             "high": 20000,
         }
-        return {
-            "thinking": {
-                "type": "enabled",
-                "budget_tokens": budget_map.get(effort, 10000)
-            }
-        }
+        return {"thinking": {"type": "enabled", "budget_tokens": budget_map.get(effort, 10000)}}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Anthropic doesn't provide a public model listing API.
 

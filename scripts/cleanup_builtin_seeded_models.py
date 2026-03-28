@@ -26,7 +26,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.core.paths import config_local_dir
 
-
 LEGACY_BUILTIN_MODEL_IDS: dict[str, set[str]] = {
     "deepseek": {"deepseek-chat", "deepseek-reasoner"},
     "zhipu": {
@@ -91,8 +90,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _build_seeded_ids() -> dict[str, set[str]]:
     return {
-        provider_id: set(model_ids)
-        for provider_id, model_ids in LEGACY_BUILTIN_MODEL_IDS.items()
+        provider_id: set(model_ids) for provider_id, model_ids in LEGACY_BUILTIN_MODEL_IDS.items()
     }
 
 

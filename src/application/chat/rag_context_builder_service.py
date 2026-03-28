@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.application.chat.service_contracts import AssistantLike
 
@@ -17,23 +17,27 @@ class RagContextBuilderService:
         self,
         *,
         raw_user_message: str,
-        assistant_id: Optional[str],
-        assistant_obj: Optional[AssistantLike] = None,
-        runtime_model_id: Optional[str] = None,
+        assistant_id: str | None,
+        assistant_obj: AssistantLike | None = None,
+        runtime_model_id: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
-        rag_sources: List[Dict[str, Any]] = []
+        project_id: str | None = None,
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        rag_sources: list[dict[str, Any]] = []
 
         try:
             assistant_for_rag = assistant_obj
             if assistant_for_rag is None and assistant_id:
-                from src.infrastructure.config.assistant_config_service import AssistantConfigService
+                from src.infrastructure.config.assistant_config_service import (
+                    AssistantConfigService,
+                )
 
                 assistant_service = AssistantConfigService()
                 assistant_for_rag = await assistant_service.get_assistant(assistant_id)
 
-            from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+            from src.infrastructure.projects.project_knowledge_base_resolver import (
+                ProjectKnowledgeBaseResolver,
+            )
 
             kb_ids = await ProjectKnowledgeBaseResolver().resolve_effective_kb_ids(
                 assistant_id=assistant_id,

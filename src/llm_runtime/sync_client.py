@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
@@ -26,17 +27,17 @@ LoggerFactory = Callable[[], Any]
 
 
 def call_llm(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     session_id: str = "unknown",
-    model_id: Optional[str] = None,
-    system_prompt: Optional[str] = None,
-    context_segments: Optional[Dict[str, Optional[str]]] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    top_p: Optional[float] = None,
-    top_k: Optional[int] = None,
-    frequency_penalty: Optional[float] = None,
-    presence_penalty: Optional[float] = None,
+    model_id: str | None = None,
+    system_prompt: str | None = None,
+    context_segments: dict[str, str | None] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    frequency_penalty: float | None = None,
+    presence_penalty: float | None = None,
     model_service_factory: ModelServiceFactory = ModelConfigService,
     llm_logger_factory: LoggerFactory = get_llm_logger,
 ) -> str:
@@ -85,7 +86,7 @@ def call_llm(
         context_budget_tokens=max_input_tokens,
     )
 
-    langchain_messages: List[BaseMessage] = [
+    langchain_messages: list[BaseMessage] = [
         SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
         for segment in context_plan.system_segments
     ]

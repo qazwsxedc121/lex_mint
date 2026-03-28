@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 from .committee_types import CommitteeRuntimeState
 
@@ -13,16 +12,16 @@ class CommitteeSupervisorPromptConfig:
     """Static prompt configuration for one supervisor instance."""
 
     supervisor_id: str
-    participant_order: List[str]
-    participant_names: Dict[str, str]
+    participant_order: list[str]
+    participant_names: dict[str, str]
     max_rounds: int
     min_member_turns_before_finish: int
     min_total_rounds_before_finish: int
     max_parallel_speakers: int
     allow_parallel_speak: bool
     allow_finish: bool
-    supervisor_system_prompt_template: Optional[str] = None
-    summary_instruction_template: Optional[str] = None
+    supervisor_system_prompt_template: str | None = None
+    summary_instruction_template: str | None = None
 
 
 class CommitteeSupervisorPromptBuilder:
@@ -80,7 +79,7 @@ class CommitteeSupervisorPromptBuilder:
         self,
         state: CommitteeRuntimeState,
         *,
-        required_targets: List[str],
+        required_targets: list[str],
     ) -> str:
         participants = []
         for index, assistant_id in enumerate(self.config.participant_order, start=1):
@@ -88,7 +87,7 @@ class CommitteeSupervisorPromptBuilder:
             marker = " (supervisor)" if assistant_id == self.config.supervisor_id else ""
             participants.append(f"{index}. {name} [{assistant_id}]{marker}")
 
-        turn_lines: List[str] = []
+        turn_lines: list[str] = []
         for index, turn in enumerate(state.turns, start=1):
             key_points = "; ".join(turn.key_points[:2]) if turn.key_points else turn.content_preview
             risks = "; ".join(turn.risks[:1]) if turn.risks else ""
@@ -137,14 +136,14 @@ class CommitteeSupervisorPromptBuilder:
         state: CommitteeRuntimeState,
         *,
         reason: str,
-        draft_summary: Optional[str] = None,
+        draft_summary: str | None = None,
     ) -> str:
-        lines: List[str] = []
+        lines: list[str] = []
         for index, turn in enumerate(state.turns, start=1):
             key_points = "; ".join(turn.key_points[:3]) if turn.key_points else turn.content_preview
             risks = "; ".join(turn.risks[:2]) if turn.risks else ""
             actions = "; ".join(turn.actions[:2]) if turn.actions else ""
-            notes: List[str] = []
+            notes: list[str] = []
             if risks:
                 notes.append(f"risks={risks}")
             if actions:
@@ -154,7 +153,9 @@ class CommitteeSupervisorPromptBuilder:
                 f"{index}. {turn.assistant_name} [{turn.assistant_id}]: {key_points}{notes_block}"
             )
         turns_block = "\n".join(lines) if lines else "- No member turns recorded."
-        draft_block = f"\nDraft summary from supervisor decision:\n{draft_summary}\n" if draft_summary else ""
+        draft_block = (
+            f"\nDraft summary from supervisor decision:\n{draft_summary}\n" if draft_summary else ""
+        )
         if self.config.summary_instruction_template:
             try:
                 return self.config.summary_instruction_template.format(
@@ -177,9 +178,9 @@ class CommitteeSupervisorPromptBuilder:
     @staticmethod
     def _member_turn_counts(
         state: CommitteeRuntimeState,
-        required_targets: List[str],
-    ) -> Dict[str, int]:
-        counts: Dict[str, int] = {assistant_id: 0 for assistant_id in required_targets}
+        required_targets: list[str],
+    ) -> dict[str, int]:
+        counts: dict[str, int] = dict.fromkeys(required_targets, 0)
         for turn in state.turns:
             if turn.assistant_id in counts:
                 counts[turn.assistant_id] += 1

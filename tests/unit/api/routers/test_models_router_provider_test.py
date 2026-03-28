@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi import HTTPException
 
+from src.api.routers import models as models_router
 from src.domain.models.model_config import (
     Provider,
-    ProviderTestRequest,
-    ProviderTestStoredRequest,
     ProviderEndpointProbeRequest,
     ProviderEndpointProbeResponse,
     ProviderEndpointProbeResult,
+    ProviderTestRequest,
+    ProviderTestStoredRequest,
 )
-from src.api.routers import models as models_router
-from src.providers.types import ApiProtocol, CallMode, ProviderType, EndpointProfile
+from src.providers.types import ApiProtocol, CallMode, EndpointProfile, ProviderType
 
 
 def _provider(
@@ -60,7 +60,9 @@ async def test_stored_connection_allows_empty_key_when_provider_does_not_require
 @pytest.mark.asyncio
 async def test_direct_connection_request_accepts_empty_key_for_local_provider():
     service = Mock()
-    provider = _provider(provider_id="lmstudio", protocol=ApiProtocol.LMSTUDIO, base_url="http://localhost:1234")
+    provider = _provider(
+        provider_id="lmstudio", protocol=ApiProtocol.LMSTUDIO, base_url="http://localhost:1234"
+    )
 
     service.get_provider = AsyncMock(return_value=provider)
     service.test_provider_connection = AsyncMock(return_value=(True, "Connection successful"))
@@ -84,7 +86,9 @@ async def test_direct_connection_request_accepts_empty_key_for_local_provider():
 @pytest.mark.asyncio
 async def test_stored_connection_requires_key_when_provider_needs_it():
     service = Mock()
-    provider = _provider(provider_id="deepseek", protocol=ApiProtocol.OPENAI, base_url="https://api.deepseek.com")
+    provider = _provider(
+        provider_id="deepseek", protocol=ApiProtocol.OPENAI, base_url="https://api.deepseek.com"
+    )
 
     service.get_provider = AsyncMock(return_value=provider)
     service.get_api_key = AsyncMock(return_value=None)

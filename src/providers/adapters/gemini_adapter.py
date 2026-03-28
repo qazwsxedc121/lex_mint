@@ -4,14 +4,16 @@ Google Gemini SDK Adapter
 Adapter for Google Gemini API using langchain-google-genai.
 Supports thinking mode (Gemini 2.5+), vision, and function calling.
 """
-import logging
+
 import importlib
-from typing import AsyncIterator, List, Dict, Any
+import logging
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .utils import extract_tool_calls
 
 logger = logging.getLogger(__name__)
@@ -73,7 +75,7 @@ class GeminiAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Create a ChatGoogleGenerativeAI instance.
@@ -91,9 +93,9 @@ class GeminiAdapter(BaseLLMAdapter):
             ChatGoogleGenerativeAI instance
         """
         module = importlib.import_module("langchain_google_genai")
-        ChatGoogleGenerativeAI = getattr(module, "ChatGoogleGenerativeAI")
+        ChatGoogleGenerativeAI = module.ChatGoogleGenerativeAI
 
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "google_api_key": api_key,
             "temperature": temperature,
@@ -119,10 +121,7 @@ class GeminiAdapter(BaseLLMAdapter):
         return ChatGoogleGenerativeAI(**llm_kwargs)
 
     async def stream(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from Google Gemini.
@@ -163,12 +162,7 @@ class GeminiAdapter(BaseLLMAdapter):
                 raw=chunk,
             )
 
-    async def invoke(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm, messages: list[BaseMessage], **kwargs) -> LLMResponse:
         """
         Invoke Google Gemini and get complete response.
 
@@ -208,7 +202,7 @@ class GeminiAdapter(BaseLLMAdapter):
         """Gemini 2.5 models support thinking mode."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Get parameters for Gemini thinking mode.
 
@@ -220,11 +214,7 @@ class GeminiAdapter(BaseLLMAdapter):
         budget = self._THINKING_BUDGETS.get(effort, self._THINKING_BUDGETS["medium"])
         return {"thinking_budget": budget}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from Google Gemini API.
 
@@ -240,13 +230,13 @@ class GeminiAdapter(BaseLLMAdapter):
         """
         import httpx
 
-        models: List[Dict[str, str]] = []
+        models: list[dict[str, str]] = []
         page_token = None
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 while True:
-                    params: Dict[str, str] = {"key": api_key, "pageSize": "100"}
+                    params: dict[str, str] = {"key": api_key, "pageSize": "100"}
                     if page_token:
                         params["pageToken"] = page_token
 
@@ -265,13 +255,19 @@ class GeminiAdapter(BaseLLMAdapter):
 
                         model_name = model.get("name", "")
                         # model_name is like "models/gemini-2.5-flash"
-                        model_id = model_name.replace("models/", "") if model_name.startswith("models/") else model_name
+                        model_id = (
+                            model_name.replace("models/", "")
+                            if model_name.startswith("models/")
+                            else model_name
+                        )
                         display_name = model.get("displayName", model_id)
 
-                        models.append({
-                            "id": model_id,
-                            "name": display_name,
-                        })
+                        models.append(
+                            {
+                                "id": model_id,
+                                "name": display_name,
+                            }
+                        )
 
                     page_token = data.get("nextPageToken")
                     if not page_token:
@@ -285,10 +281,7 @@ class GeminiAdapter(BaseLLMAdapter):
         return sorted(models, key=lambda x: x["id"]) if models else self._curated_models()
 
     async def test_connection(
-        self,
-        base_url: str,
-        api_key: str,
-        model_id: str | None = None
+        self, base_url: str, api_key: str, model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test connection to Google Gemini API.
@@ -321,7 +314,11 @@ class GeminiAdapter(BaseLLMAdapter):
                         error_msg = error_data.get("error", {}).get("message", "Bad request")
                     except Exception:
                         error_msg = response.text or "Bad request"
-                    label = "Invalid API key" if response.status_code == 400 else "Authentication failed"
+                    label = (
+                        "Invalid API key"
+                        if response.status_code == 400
+                        else "Authentication failed"
+                    )
                     return False, f"{label}: {error_msg}"
                 response.raise_for_status()
 
@@ -339,7 +336,7 @@ class GeminiAdapter(BaseLLMAdapter):
             return False, f"Connection error: {str(e)}"
 
     @staticmethod
-    def _curated_models() -> List[Dict[str, str]]:
+    def _curated_models() -> list[dict[str, str]]:
         """Fallback curated model list when API fetch fails."""
         return [
             {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},

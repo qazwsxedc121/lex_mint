@@ -7,9 +7,14 @@ import contextlib
 import inspect
 import re
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Literal, Optional, Union, cast
+from typing import (
+    Any,
+    Literal,
+    cast,
+)
 
 from src.application.orchestration import (
     ActorEmit,
@@ -24,7 +29,7 @@ from src.application.orchestration import (
     RunContext,
     RunSpec,
 )
-from src.llm_runtime import call_llm_stream
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 from src.core.config import settings
 from src.domain.models.workflow import (
     ArtifactNode,
@@ -41,9 +46,8 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
+from src.llm_runtime import call_llm_stream
 from src.llm_runtime.think_tag_filter import ThinkTagStreamFilter
-from src.application.workflows.run_history_service import WorkflowRunHistoryService
-
 
 _TEMPLATE_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")
 _NODE_ID_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -59,24 +63,24 @@ class _Token:
 
 @dataclass
 class _ResolvedRuntimeConfig:
-    model_id: Optional[str]
-    system_prompt: Optional[str]
-    generation_params: Dict[str, Any]
+    model_id: str | None
+    system_prompt: str | None
+    generation_params: dict[str, Any]
 
 
 @dataclass
 class _WorkflowRunState:
     run_id: str
     workflow: Workflow
-    inputs: Dict[str, Any]
-    ctx: Dict[str, Any]
+    inputs: dict[str, Any]
+    ctx: dict[str, Any]
     runtime: _ResolvedRuntimeConfig
-    session_id: Optional[str]
+    session_id: str | None
     context_type: str
-    project_id: Optional[str]
+    project_id: str | None
     stream_mode: str
-    artifact_target_path: Optional[str]
-    write_mode: Optional[Literal["none", "create", "overwrite"]]
+    artifact_target_path: str | None
+    write_mode: Literal["none", "create", "overwrite"] | None
 
 
 class _ConditionParser:
@@ -100,13 +104,13 @@ class _ConditionParser:
         re.VERBOSE,
     )
 
-    def __init__(self, expression: str, context: Dict[str, Any]):
+    def __init__(self, expression: str, context: dict[str, Any]):
         self.tokens = self._tokenize(expression)
         self.pos = 0
         self.context = context
 
-    def _tokenize(self, expression: str) -> List[_Token]:
-        tokens: List[_Token] = []
+    def _tokenize(self, expression: str) -> list[_Token]:
+        tokens: list[_Token] = []
         for match in self._TOKEN_RE.finditer(expression):
             kind = match.lastgroup
             value = match.group()
@@ -119,12 +123,12 @@ class _ConditionParser:
             tokens.append(_Token(kind=kind, value=value))
         return tokens
 
-    def _peek(self) -> Optional[_Token]:
+    def _peek(self) -> _Token | None:
         if self.pos >= len(self.tokens):
             return None
         return self.tokens[self.pos]
 
-    def _consume(self, expected_kind: Optional[str] = None) -> _Token:
+    def _consume(self, expected_kind: str | None = None) -> _Token:
         token = self._peek()
         if token is None:
             raise ValueError("Unexpected end of expression")
@@ -223,7 +227,7 @@ class _ConditionParser:
         raise ValueError(f"Unexpected token '{token.value}'")
 
 
-def _resolve_context_path(context: Dict[str, Any], path: str) -> Any:
+def _resolve_context_path(context: dict[str, Any], path: str) -> Any:
     current: Any = context
     for part in path.split("."):
         if isinstance(current, dict) and part in current:
@@ -248,15 +252,13 @@ class WorkflowExecutionService:
     def __init__(
         self,
         *,
-        history_service: Optional[WorkflowRunHistoryService] = None,
-        orchestration_engine: Optional[OrchestrationEngine] = None,
-        llm_stream_fn: Optional[
-            Callable[..., AsyncIterator[Union[str, Dict[str, Any]]]]
-        ] = None,
-        storage: Optional[ConversationStorage] = None,
-        project_service: Optional[ProjectService] = None,
+        history_service: WorkflowRunHistoryService | None = None,
+        orchestration_engine: OrchestrationEngine | None = None,
+        llm_stream_fn: Callable[..., AsyncIterator[str | dict[str, Any]]] | None = None,
+        storage: ConversationStorage | None = None,
+        project_service: ProjectService | None = None,
         max_steps: int = 100,
-        default_llm_timeout_ms: Optional[int] = 180000,
+        default_llm_timeout_ms: int | None = 180000,
         default_llm_retry_count: int = 1,
         default_llm_retry_backoff_ms: int = 300,
         max_llm_retry_backoff_ms: int = 5000,
@@ -268,9 +270,7 @@ class WorkflowExecutionService:
         self.project_service = project_service or ProjectService()
         self.max_steps = max(1, int(max_steps))
         self.default_llm_timeout_ms = (
-            None
-            if default_llm_timeout_ms is None
-            else max(1, int(default_llm_timeout_ms))
+            None if default_llm_timeout_ms is None else max(1, int(default_llm_timeout_ms))
         )
         self.default_llm_retry_count = max(0, int(default_llm_retry_count))
         self.default_llm_retry_backoff_ms = max(0, int(default_llm_retry_backoff_ms))
@@ -279,25 +279,25 @@ class WorkflowExecutionService:
     async def execute_stream(
         self,
         workflow: Workflow,
-        inputs: Optional[Dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
         *,
-        run_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        run_id: str | None = None,
+        session_id: str | None = None,
         context_type: str = "workflow",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         stream_mode: str = "default",
-        artifact_target_path: Optional[str] = None,
-        write_mode: Optional[Literal["none", "create", "overwrite"]] = None,
-        resume_from_checkpoint_id: Optional[str] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        artifact_target_path: str | None = None,
+        write_mode: Literal["none", "create", "overwrite"] | None = None,
+        resume_from_checkpoint_id: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Execute a workflow and stream runtime events."""
         run_identifier = run_id or str(uuid.uuid4())
         started_at = datetime.now(timezone.utc)
-        normalized_inputs: Dict[str, Any] = {}
-        ctx: Dict[str, Any] = {}
-        output_text: Optional[str] = None
+        normalized_inputs: dict[str, Any] = {}
+        ctx: dict[str, Any] = {}
+        output_text: str | None = None
         status: str = "error"
-        error_message: Optional[str] = None
+        error_message: str | None = None
 
         try:
             runtime = await self._resolve_runtime_config(
@@ -352,7 +352,7 @@ class WorkflowExecutionService:
             async for runtime_event in runtime_stream:
                 event_type = str(runtime_event.get("type") or "")
                 checkpoint_id = runtime_event.get("checkpoint_id")
-                checkpoint_payload: Dict[str, Any] = {}
+                checkpoint_payload: dict[str, Any] = {}
                 if isinstance(checkpoint_id, str) and checkpoint_id:
                     checkpoint_payload["checkpoint_id"] = checkpoint_id
 
@@ -450,7 +450,7 @@ class WorkflowExecutionService:
                     node = node_map.get(node_id)
                     if node is None:
                         raise ValueError(f"Unknown runtime node '{node_id}'")
-                    retry_payload: Dict[str, Any] = {
+                    retry_payload: dict[str, Any] = {
                         "type": "workflow_node_retrying",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
@@ -474,7 +474,7 @@ class WorkflowExecutionService:
                     if not isinstance(payload, dict):
                         payload = {}
 
-                    finish_payload: Dict[str, Any] = {
+                    finish_payload: dict[str, Any] = {
                         "type": "workflow_node_finished",
                         "workflow_id": workflow.id,
                         "run_id": run_identifier,
@@ -571,8 +571,8 @@ class WorkflowExecutionService:
         workflow: Workflow,
         run_state: _WorkflowRunState,
     ) -> RunSpec:
-        node_specs: List[NodeSpec] = []
-        edges: List[EdgeSpec] = []
+        node_specs: list[NodeSpec] = []
+        edges: list[EdgeSpec] = []
 
         for node in workflow.nodes:
             if isinstance(node, StartNode):
@@ -651,8 +651,12 @@ class WorkflowExecutionService:
                         metadata={"node_type": node.type},
                     )
                 )
-                edges.append(EdgeSpec(source_id=node.id, target_id=node.true_next_id, branch="true"))
-                edges.append(EdgeSpec(source_id=node.id, target_id=node.false_next_id, branch="false"))
+                edges.append(
+                    EdgeSpec(source_id=node.id, target_id=node.true_next_id, branch="true")
+                )
+                edges.append(
+                    EdgeSpec(source_id=node.id, target_id=node.false_next_id, branch="false")
+                )
                 continue
 
             if isinstance(node, ArtifactNode):
@@ -714,7 +718,7 @@ class WorkflowExecutionService:
             },
         )
 
-    def _build_template_context(self, run_state: _WorkflowRunState) -> Dict[str, Any]:
+    def _build_template_context(self, run_state: _WorkflowRunState) -> dict[str, Any]:
         return {"inputs": run_state.inputs, "ctx": run_state.ctx}
 
     async def _run_start_node(
@@ -722,7 +726,7 @@ class WorkflowExecutionService:
         *,
         execution_context: ActorExecutionContext,
         node: StartNode,
-    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+    ) -> AsyncIterator[ActorEmit | ActorResult]:
         await execution_context.patch_context(
             namespace="workflow",
             payload={"status": "started"},
@@ -735,12 +739,12 @@ class WorkflowExecutionService:
         execution_context: ActorExecutionContext,
         node: LlmNode,
         run_state: _WorkflowRunState,
-    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+    ) -> AsyncIterator[ActorEmit | ActorResult]:
         template_context = self._build_template_context(run_state)
         prompt = self._render_template(node.prompt_template, template_context)
         request_params = self._build_llm_request_params(node=node, runtime=run_state.runtime)
-        chunk_parts: List[str] = []
-        usage: Optional[Dict[str, Any]] = None
+        chunk_parts: list[str] = []
+        usage: dict[str, Any] | None = None
         think_filter = ThinkTagStreamFilter() if run_state.stream_mode == "editor_rewrite" else None
         stream = self.llm_stream_fn(
             messages=[{"role": "user", "content": prompt}],
@@ -781,7 +785,7 @@ class WorkflowExecutionService:
             payload={output_key: node_output, "last_output": node_output},
         )
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "output_key": output_key,
             "output": node_output,
         }
@@ -796,7 +800,7 @@ class WorkflowExecutionService:
         execution_context: ActorExecutionContext,
         node: ConditionNode,
         run_state: _WorkflowRunState,
-    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+    ) -> AsyncIterator[ActorEmit | ActorResult]:
         template_context = self._build_template_context(run_state)
         result = _ConditionParser(node.expression, template_context).parse()
         await execution_context.patch_context(
@@ -821,7 +825,7 @@ class WorkflowExecutionService:
         execution_context: ActorExecutionContext,
         node: ArtifactNode,
         run_state: _WorkflowRunState,
-    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+    ) -> AsyncIterator[ActorEmit | ActorResult]:
         if not run_state.project_id or run_state.context_type != "project":
             raise ValueError(
                 "Artifact node requires project context (context_type='project' and project_id)"
@@ -829,9 +833,8 @@ class WorkflowExecutionService:
 
         template_context = self._build_template_context(run_state)
         artifact_file_path = (
-            (run_state.artifact_target_path or "").strip()
-            or self._render_template(node.file_path_template, template_context).strip()
-        )
+            run_state.artifact_target_path or ""
+        ).strip() or self._render_template(node.file_path_template, template_context).strip()
         artifact_file_path = self._validate_artifact_file_path(
             artifact_file_path,
             node_id=node.id,
@@ -844,7 +847,7 @@ class WorkflowExecutionService:
             )
 
         artifact_content = self._render_template(node.content_template, template_context)
-        artifact_payload: Dict[str, Any] = {
+        artifact_payload: dict[str, Any] = {
             "file_path": artifact_file_path,
             "write_mode": node_write_mode,
             "bytes": len(artifact_content.encode("utf-8")),
@@ -909,7 +912,7 @@ class WorkflowExecutionService:
         execution_context: ActorExecutionContext,
         node: EndNode,
         run_state: _WorkflowRunState,
-    ) -> AsyncIterator[Union[ActorEmit, ActorResult]]:
+    ) -> AsyncIterator[ActorEmit | ActorResult]:
         template_context = self._build_template_context(run_state)
         if node.result_template:
             output = self._render_template(node.result_template, template_context)
@@ -936,13 +939,11 @@ class WorkflowExecutionService:
         *,
         node: LlmNode,
         runtime: _ResolvedRuntimeConfig,
-    ) -> Dict[str, Any]:
-        request_params: Dict[str, Any] = {}
+    ) -> dict[str, Any]:
+        request_params: dict[str, Any] = {}
         model_id = node.model_id or runtime.model_id
         system_prompt = (
-            node.system_prompt
-            if node.system_prompt is not None
-            else runtime.system_prompt
+            node.system_prompt if node.system_prompt is not None else runtime.system_prompt
         )
         request_params["model_id"] = model_id
         request_params["system_prompt"] = system_prompt
@@ -967,7 +968,7 @@ class WorkflowExecutionService:
 
         return request_params
 
-    def _resolve_llm_timeout_ms(self, node: LlmNode) -> Optional[int]:
+    def _resolve_llm_timeout_ms(self, node: LlmNode) -> int | None:
         if node.timeout_ms is None:
             return self.default_llm_timeout_ms
         return max(1, int(node.timeout_ms))
@@ -1014,9 +1015,9 @@ class WorkflowExecutionService:
     async def _resolve_runtime_config(
         self,
         *,
-        session_id: Optional[str],
+        session_id: str | None,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> _ResolvedRuntimeConfig:
         if not session_id or context_type not in {"chat", "project"}:
             return _ResolvedRuntimeConfig(model_id=None, system_prompt=None, generation_params={})
@@ -1029,8 +1030,8 @@ class WorkflowExecutionService:
 
         assistant_id = session.get("assistant_id")
         model_id = session.get("model_id")
-        system_prompt: Optional[str] = None
-        generation_params: Dict[str, Any] = {}
+        system_prompt: str | None = None
+        generation_params: dict[str, Any] = {}
 
         if isinstance(assistant_id, str) and assistant_id:
             assistant = await AssistantConfigService().get_assistant(assistant_id)
@@ -1048,15 +1049,17 @@ class WorkflowExecutionService:
                 if key in param_overrides and param_overrides[key] is not None:
                     generation_params[key] = param_overrides[key]
 
-        resolved_model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+        resolved_model_id = (
+            model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+        )
         return _ResolvedRuntimeConfig(
             model_id=resolved_model_id,
             system_prompt=system_prompt,
             generation_params=generation_params,
         )
 
-    def _extract_generation_params(self, assistant_obj: Any) -> Dict[str, Any]:
-        params: Dict[str, Any] = {}
+    def _extract_generation_params(self, assistant_obj: Any) -> dict[str, Any]:
+        params: dict[str, Any] = {}
         for key in self._PARAM_KEYS:
             value = getattr(assistant_obj, key, None)
             if value is not None:
@@ -1066,9 +1069,9 @@ class WorkflowExecutionService:
     def _validate_and_normalize_inputs(
         self,
         workflow: Workflow,
-        raw_inputs: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        normalized: Dict[str, Any] = {}
+        raw_inputs: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized: dict[str, Any] = {}
         node_ids = {node.id for node in workflow.nodes}
 
         for input_def in workflow.input_schema:
@@ -1088,9 +1091,7 @@ class WorkflowExecutionService:
                 if input_def.pattern:
                     try:
                         if re.fullmatch(input_def.pattern, value) is None:
-                            raise ValueError(
-                                f"Input '{input_def.key}' format is invalid"
-                            )
+                            raise ValueError(f"Input '{input_def.key}' format is invalid")
                     except re.error as exc:
                         raise ValueError(
                             f"Input '{input_def.key}' has invalid pattern config: {exc}"
@@ -1130,7 +1131,7 @@ class WorkflowExecutionService:
 
         return normalized
 
-    def _render_template(self, template: str, context: Dict[str, Any]) -> str:
+    def _render_template(self, template: str, context: dict[str, Any]) -> str:
         def repl(match: re.Match[str]) -> str:
             path = match.group(1)
             try:
@@ -1178,9 +1179,7 @@ class WorkflowExecutionService:
             raise ValueError(f"Artifact node '{node_id}' produced empty file path")
         for part in parts:
             if part in {".", ".."}:
-                raise ValueError(
-                    f"Artifact node '{node_id}' produced unsafe path segment '{part}'"
-                )
+                raise ValueError(f"Artifact node '{node_id}' produced unsafe path segment '{part}'")
             if part.endswith(" ") or part.endswith("."):
                 raise ValueError(
                     f"Artifact node '{node_id}' path segment cannot end with dot or space: '{part}'"

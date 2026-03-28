@@ -1,8 +1,8 @@
 """Chat application layer public exports."""
 
 from .service import ChatApplicationDeps, ChatApplicationService
-from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 from .session_application_service import SessionApplicationDeps, SessionApplicationService
+from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 
 
 def build_default_chat_application_service(*args, **kwargs):

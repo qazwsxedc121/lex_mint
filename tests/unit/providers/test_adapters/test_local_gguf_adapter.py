@@ -127,7 +127,7 @@ async def test_invoke_parses_local_tool_call_xml(monkeypatch):
             assert kwargs["tool_choice"] == "auto"
             return (
                 "<think>Need a tool.</think>\n"
-                "<tool_call>{\"name\": \"calculator\", \"arguments\": {\"expression\": \"2+3\"}}</tool_call>"
+                '<tool_call>{"name": "calculator", "arguments": {"expression": "2+3"}}</tool_call>'
             )
 
     monkeypatch.setattr(
@@ -175,7 +175,7 @@ async def test_stream_parses_tool_call_and_hides_thinking_when_disabled(monkeypa
         def complete_messages(self, _messages, **kwargs):
             return (
                 "<think>Need a tool.</think>\n"
-                "<tool_call>{\"name\": \"calculator\", \"arguments\": {\"expression\": \"2+3\"}}</tool_call>"
+                '<tool_call>{"name": "calculator", "arguments": {"expression": "2+3"}}</tool_call>'
             )
 
     monkeypatch.setattr(

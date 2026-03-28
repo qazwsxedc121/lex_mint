@@ -8,6 +8,7 @@ import time
 import pytest
 
 from src.domain.models.project_config import Project
+from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.projects.project_document_tool_service import (
     PendingPatch,
     PendingPatchStore,
@@ -15,7 +16,6 @@ from src.infrastructure.projects.project_document_tool_service import (
     ProjectDocumentToolService,
     confirm_pending_patch_apply,
 )
-from src.infrastructure.config.project_service import ProjectService
 
 
 @pytest.fixture
@@ -74,14 +74,7 @@ async def test_apply_diff_dry_run_then_confirm(tmp_path, project_service: Projec
 
     read_payload = json.loads(await service.read_current_document())
     base_hash = read_payload["content_hash"]
-    diff_text = (
-        "--- a/notes.txt\n"
-        "+++ b/notes.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        "-line2\n"
-        "+line-two\n"
-    )
+    diff_text = "--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n line1\n-line2\n+line-two\n"
     dry_run_payload = json.loads(
         await service.apply_diff_current_document(
             unified_diff=diff_text,
@@ -121,14 +114,7 @@ async def test_apply_diff_hash_mismatch_returns_error(tmp_path, project_service:
         pending_store=store,
     )
 
-    diff_text = (
-        "--- a/notes.txt\n"
-        "+++ b/notes.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        "-line2\n"
-        "+line-two\n"
-    )
+    diff_text = "--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n line1\n-line2\n+line-two\n"
     result = await service.execute_tool(
         "apply_diff_current_document",
         {
@@ -171,7 +157,9 @@ async def test_read_current_document_empty_file_ok(tmp_path, project_service: Pr
 
 
 @pytest.mark.asyncio
-async def test_confirm_pending_patch_expired_error_contains_expiry(tmp_path, project_service: ProjectService):
+async def test_confirm_pending_patch_expired_error_contains_expiry(
+    tmp_path, project_service: ProjectService
+):
     prepared_project = await _prepare_project(tmp_path, project_service)
     store = PendingPatchStore()
     patch_id = "expired-patch-1"
@@ -226,12 +214,7 @@ async def test_apply_diff_accepts_paths_with_spaces(tmp_path, project_service: P
     base_hash = read_payload["content_hash"]
 
     diff_text = (
-        "--- a/notes file.txt\n"
-        "+++ b/notes file.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        "-line2\n"
-        "+line-two\n"
+        "--- a/notes file.txt\n+++ b/notes file.txt\n@@ -1,2 +1,2 @@\n line1\n-line2\n+line-two\n"
     )
     dry_run_payload = json.loads(
         await service.apply_diff_current_document(
@@ -247,7 +230,9 @@ async def test_apply_diff_accepts_paths_with_spaces(tmp_path, project_service: P
 
 
 @pytest.mark.asyncio
-async def test_apply_diff_fallbacks_when_hunk_line_number_is_wrong(tmp_path, project_service: ProjectService):
+async def test_apply_diff_fallbacks_when_hunk_line_number_is_wrong(
+    tmp_path, project_service: ProjectService
+):
     prepared_project = await _prepare_project(tmp_path, project_service)
     store = PendingPatchStore()
     service = ProjectDocumentToolService(
@@ -260,13 +245,7 @@ async def test_apply_diff_fallbacks_when_hunk_line_number_is_wrong(tmp_path, pro
 
     read_payload = json.loads(await service.read_current_document())
     base_hash = read_payload["content_hash"]
-    diff_text = (
-        "--- a/notes.txt\n"
-        "+++ b/notes.txt\n"
-        "@@ -1,1 +1,1 @@\n"
-        "-line2\n"
-        "+line-two\n"
-    )
+    diff_text = "--- a/notes.txt\n+++ b/notes.txt\n@@ -1,1 +1,1 @@\n-line2\n+line-two\n"
     dry_run_payload = json.loads(
         await service.apply_diff_current_document(
             unified_diff=diff_text,
@@ -290,7 +269,9 @@ async def test_apply_diff_fallbacks_when_hunk_line_number_is_wrong(tmp_path, pro
 
 
 @pytest.mark.asyncio
-async def test_apply_diff_rejects_ambiguous_hunk_fallback(tmp_path, project_service: ProjectService):
+async def test_apply_diff_rejects_ambiguous_hunk_fallback(
+    tmp_path, project_service: ProjectService
+):
     root = tmp_path / "project_root_ambiguous"
     root.mkdir()
     (root / "notes.txt").write_text("dup\ndup\n", encoding="utf-8")
@@ -310,13 +291,7 @@ async def test_apply_diff_rejects_ambiguous_hunk_fallback(tmp_path, project_serv
 
     read_payload = json.loads(await service.read_current_document())
     base_hash = read_payload["content_hash"]
-    diff_text = (
-        "--- a/notes.txt\n"
-        "+++ b/notes.txt\n"
-        "@@ -99,1 +99,1 @@\n"
-        "-dup\n"
-        "+updated\n"
-    )
+    diff_text = "--- a/notes.txt\n+++ b/notes.txt\n@@ -99,1 +99,1 @@\n-dup\n+updated\n"
     result = await service.execute_tool(
         "apply_diff_current_document",
         {
@@ -346,13 +321,7 @@ async def test_apply_diff_rejects_invalid_hunk_counts(tmp_path, project_service:
 
     read_payload = json.loads(await service.read_current_document())
     base_hash = read_payload["content_hash"]
-    diff_text = (
-        "--- a/notes.txt\n"
-        "+++ b/notes.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        "-line2\n"
-        "+line-two\n"
-    )
+    diff_text = "--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n-line2\n+line-two\n"
     result = await service.execute_tool(
         "apply_diff_current_document",
         {
@@ -392,7 +361,9 @@ async def test_search_project_text_basic_match(tmp_path, project_service: Projec
 
 
 @pytest.mark.asyncio
-async def test_search_project_text_include_glob_filters_files(tmp_path, project_service: ProjectService):
+async def test_search_project_text_include_glob_filters_files(
+    tmp_path, project_service: ProjectService
+):
     prepared_project = await _prepare_project(tmp_path, project_service)
     root = tmp_path / "project_root"
     (root / "script.py").write_text("needle = 1\n", encoding="utf-8")
@@ -418,7 +389,9 @@ async def test_search_project_text_include_glob_filters_files(tmp_path, project_
 
 
 @pytest.mark.asyncio
-async def test_search_project_text_invalid_regex_returns_error(tmp_path, project_service: ProjectService):
+async def test_search_project_text_invalid_regex_returns_error(
+    tmp_path, project_service: ProjectService
+):
     prepared_project = await _prepare_project(tmp_path, project_service)
     service = ProjectDocumentToolService(
         project_id=prepared_project.id,
@@ -493,7 +466,9 @@ async def test_read_project_document_without_active_file(tmp_path, project_servi
 
 
 @pytest.mark.asyncio
-async def test_apply_diff_project_document_without_active_file(tmp_path, project_service: ProjectService):
+async def test_apply_diff_project_document_without_active_file(
+    tmp_path, project_service: ProjectService
+):
     prepared_project = await _prepare_project(tmp_path, project_service)
     service = ProjectDocumentToolService(
         project_id=prepared_project.id,
@@ -504,14 +479,7 @@ async def test_apply_diff_project_document_without_active_file(tmp_path, project
     )
     read_payload = json.loads(await service.read_project_document(file_path="notes.txt"))
     base_hash = read_payload["content_hash"]
-    diff_text = (
-        "--- a/notes.txt\n"
-        "+++ b/notes.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        "-line2\n"
-        "+line-two\n"
-    )
+    diff_text = "--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n line1\n-line2\n+line-two\n"
     dry_run_payload = json.loads(
         await service.apply_diff_project_document(
             file_path="notes.txt",
@@ -537,7 +505,9 @@ async def test_apply_diff_project_document_without_active_file(tmp_path, project
 
 
 @pytest.mark.asyncio
-async def test_read_current_document_without_active_file_returns_error(tmp_path, project_service: ProjectService):
+async def test_read_current_document_without_active_file_returns_error(
+    tmp_path, project_service: ProjectService
+):
     prepared_project = await _prepare_project(tmp_path, project_service)
     service = ProjectDocumentToolService(
         project_id=prepared_project.id,

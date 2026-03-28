@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Dict, List, Optional
 
 from .committee_types import CommitteeDecision
 
@@ -33,8 +32,10 @@ class CommitteeSupervisorDecisionParser:
         action = self._ACTION_MAP.get(action_raw, "speak")
 
         assistant_id = payload.get("assistant_id") or payload.get("agent_id")
-        assistant_ids_raw = payload.get("assistant_ids") or payload.get("agent_ids") or payload.get("agents")
-        assistant_ids: List[str] = []
+        assistant_ids_raw = (
+            payload.get("assistant_ids") or payload.get("agent_ids") or payload.get("agents")
+        )
+        assistant_ids: list[str] = []
         if isinstance(assistant_ids_raw, list):
             for value in assistant_ids_raw:
                 text = str(value).strip()
@@ -57,7 +58,7 @@ class CommitteeSupervisorDecisionParser:
         )
 
     @staticmethod
-    def _extract_json_payload(raw_output: str) -> Optional[Dict]:
+    def _extract_json_payload(raw_output: str) -> dict | None:
         text = (raw_output or "").strip()
         if not text:
             return None
@@ -69,7 +70,7 @@ class CommitteeSupervisorDecisionParser:
         start_idx = text.find("{")
         end_idx = text.rfind("}")
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            candidates.append(text[start_idx:end_idx + 1])
+            candidates.append(text[start_idx : end_idx + 1])
 
         for candidate in candidates:
             try:

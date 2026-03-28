@@ -1,11 +1,11 @@
 """Unit tests for SQLite vector store service."""
 
 import math
-import struct
-import uuid
 import shutil
+import struct
 import sys
 import types
+import uuid
 from pathlib import Path
 
 from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
@@ -145,7 +145,7 @@ def test_sqlite_vec_search_uses_extension_distance(monkeypatch):
         b = _blob_to_vector(blob_b)
         if not a or not b or len(a) != len(b):
             return 1.0
-        dot = sum(x * y for x, y in zip(a, b))
+        dot = sum(x * y for x, y in zip(a, b, strict=True))
         norm_a = math.sqrt(sum(x * x for x in a))
         norm_b = math.sqrt(sum(y * y for y in b))
         if norm_a <= 0 or norm_b <= 0:

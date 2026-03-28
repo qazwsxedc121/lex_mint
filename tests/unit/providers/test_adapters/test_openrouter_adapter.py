@@ -55,7 +55,7 @@ def test_create_llm_uses_interleaved_wrapper_when_required(monkeypatch):
     )
 
     assert isinstance(llm, FakeChatOpenRouterInterleaved)
-    assert getattr(llm, "_requires_interleaved_thinking") is True
+    assert llm._requires_interleaved_thinking is True
 
 
 def test_create_llm_falls_back_when_openrouter_package_missing(monkeypatch):

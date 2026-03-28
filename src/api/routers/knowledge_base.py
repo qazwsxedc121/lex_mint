@@ -3,30 +3,32 @@ Knowledge Base API Router
 
 Provides CRUD endpoints for knowledge bases and document management.
 """
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
-from typing import List, Optional, Protocol
-import logging
-import uuid
-import asyncio
-import os
-import aiofiles
-from pathlib import Path
 
-from src.domain.models.knowledge_base import (
-    KnowledgeBase,
-    KnowledgeBaseDocument,
-    KnowledgeBaseCreate,
-    KnowledgeBaseUpdate,
-    KnowledgeBaseChunk,
-)
-from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
+import asyncio
+import logging
+import os
+import uuid
+from pathlib import Path
+from typing import Protocol
+
+import aiofiles
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+
 from src.core.config import settings
 from src.core.paths import resolve_user_data_path
+from src.domain.models.knowledge_base import (
+    KnowledgeBase,
+    KnowledgeBaseChunk,
+    KnowledgeBaseCreate,
+    KnowledgeBaseDocument,
+    KnowledgeBaseUpdate,
+)
+from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
-ALLOWED_EXTENSIONS = {'.txt', '.md', '.pdf', '.docx', '.html'}
+ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".html"}
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 MAX_KB_UPLOAD_SIZE_BYTES = max(1, int(settings.max_file_size_mb)) * 1024 * 1024
 
@@ -46,7 +48,7 @@ async def _persist_upload_file(
     """Persist uploaded content incrementally to avoid large in-memory buffers."""
     file_size = 0
     try:
-        async with aiofiles.open(storage_path, 'wb') as f:
+        async with aiofiles.open(storage_path, "wb") as f:
             while True:
                 chunk = await upload_file.read(chunk_size_bytes)
                 if not chunk:
@@ -64,7 +66,9 @@ async def _persist_upload_file(
         raise
     except Exception as e:
         storage_path.unlink(missing_ok=True)
-        logger.error(f"Failed to persist uploaded file '{upload_file.filename}' to {storage_path}: {e}")
+        logger.error(
+            f"Failed to persist uploaded file '{upload_file.filename}' to {storage_path}: {e}"
+        )
         raise HTTPException(status_code=500, detail="Failed to save uploaded file")
     finally:
         try:
@@ -77,7 +81,7 @@ class _UploadFileLike(Protocol):
     """Minimal upload-file shape used by _persist_upload_file for easier testing."""
 
     @property
-    def filename(self) -> Optional[str]: ...
+    def filename(self) -> str | None: ...
 
     async def read(self, size: int = -1) -> bytes: ...
 
@@ -86,10 +90,9 @@ class _UploadFileLike(Protocol):
 
 # ==================== Knowledge Base CRUD ====================
 
-@router.get("", response_model=List[KnowledgeBase])
-async def list_knowledge_bases(
-    service: KnowledgeBaseService = Depends(get_kb_service)
-):
+
+@router.get("", response_model=list[KnowledgeBase])
+async def list_knowledge_bases(service: KnowledgeBaseService = Depends(get_kb_service)):
     """List all knowledge bases"""
     try:
         return await service.get_knowledge_bases()
@@ -100,8 +103,7 @@ async def list_knowledge_bases(
 
 @router.post("", response_model=KnowledgeBase)
 async def create_knowledge_base(
-    data: KnowledgeBaseCreate,
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    data: KnowledgeBaseCreate, service: KnowledgeBaseService = Depends(get_kb_service)
 ):
     """Create a new knowledge base"""
     try:
@@ -124,10 +126,7 @@ async def create_knowledge_base(
 
 
 @router.get("/{kb_id}", response_model=KnowledgeBase)
-async def get_knowledge_base(
-    kb_id: str,
-    service: KnowledgeBaseService = Depends(get_kb_service)
-):
+async def get_knowledge_base(kb_id: str, service: KnowledgeBaseService = Depends(get_kb_service)):
     """Get a specific knowledge base"""
     kb = await service.get_knowledge_base(kb_id)
     if not kb:
@@ -137,9 +136,7 @@ async def get_knowledge_base(
 
 @router.put("/{kb_id}", response_model=KnowledgeBase)
 async def update_knowledge_base(
-    kb_id: str,
-    data: KnowledgeBaseUpdate,
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    kb_id: str, data: KnowledgeBaseUpdate, service: KnowledgeBaseService = Depends(get_kb_service)
 ):
     """Update a knowledge base"""
     try:
@@ -159,8 +156,7 @@ async def update_knowledge_base(
 
 @router.delete("/{kb_id}")
 async def delete_knowledge_base(
-    kb_id: str,
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    kb_id: str, service: KnowledgeBaseService = Depends(get_kb_service)
 ):
     """Delete a knowledge base and all its documents"""
     try:
@@ -178,11 +174,9 @@ async def delete_knowledge_base(
 
 # ==================== Document Management ====================
 
-@router.get("/{kb_id}/documents", response_model=List[KnowledgeBaseDocument])
-async def list_documents(
-    kb_id: str,
-    service: KnowledgeBaseService = Depends(get_kb_service)
-):
+
+@router.get("/{kb_id}/documents", response_model=list[KnowledgeBaseDocument])
+async def list_documents(kb_id: str, service: KnowledgeBaseService = Depends(get_kb_service)):
     """List all documents in a knowledge base"""
     kb = await service.get_knowledge_base(kb_id)
     if not kb:
@@ -194,7 +188,7 @@ async def list_documents(
 async def upload_document(
     kb_id: str,
     file: UploadFile = File(...),
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    service: KnowledgeBaseService = Depends(get_kb_service),
 ):
     """Upload a document to a knowledge base"""
     kb = await service.get_knowledge_base(kb_id)
@@ -207,7 +201,7 @@ async def upload_document(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
 
     # Generate document ID
@@ -237,9 +231,7 @@ async def upload_document(
 
 @router.delete("/{kb_id}/documents/{doc_id}")
 async def delete_document(
-    kb_id: str,
-    doc_id: str,
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    kb_id: str, doc_id: str, service: KnowledgeBaseService = Depends(get_kb_service)
 ):
     """Delete a document from a knowledge base"""
     try:
@@ -257,9 +249,7 @@ async def delete_document(
 
 @router.post("/{kb_id}/documents/{doc_id}/reprocess")
 async def reprocess_document(
-    kb_id: str,
-    doc_id: str,
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    kb_id: str, doc_id: str, service: KnowledgeBaseService = Depends(get_kb_service)
 ):
     """Re-process a document"""
     doc = await service.get_document(kb_id, doc_id)
@@ -280,17 +270,19 @@ async def reprocess_document(
     await service.update_document_status(kb_id, doc_id, "pending")
 
     # Trigger async processing
-    asyncio.create_task(_process_document_async(kb_id, doc_id, doc.filename, doc.file_type, storage_path))
+    asyncio.create_task(
+        _process_document_async(kb_id, doc_id, doc.filename, doc.file_type, storage_path)
+    )
 
     return {"message": f"Document '{doc_id}' queued for reprocessing"}
 
 
-@router.get("/{kb_id}/chunks", response_model=List[KnowledgeBaseChunk])
+@router.get("/{kb_id}/chunks", response_model=list[KnowledgeBaseChunk])
 async def list_chunks(
     kb_id: str,
-    doc_id: Optional[str] = Query(None),
+    doc_id: str | None = Query(None),
     limit: int = Query(200, ge=1, le=2000),
-    service: KnowledgeBaseService = Depends(get_kb_service)
+    service: KnowledgeBaseService = Depends(get_kb_service),
 ):
     """List chunks for a knowledge base (developer inspection)."""
     kb = await service.get_knowledge_base(kb_id)
@@ -299,12 +291,12 @@ async def list_chunks(
 
     try:
         from src.infrastructure.config.rag_config_service import RagConfigService
+
         rag_config = RagConfigService()
         backend = str(
-            getattr(rag_config.config.storage, "vector_store_backend", "chroma")
-            or "chroma"
+            getattr(rag_config.config.storage, "vector_store_backend", "chroma") or "chroma"
         ).lower()
-        items: List[KnowledgeBaseChunk] = []
+        items: list[KnowledgeBaseChunk] = []
         if backend == "sqlite_vec":
             from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
 
@@ -326,6 +318,7 @@ async def list_chunks(
                 persist_dir = resolve_user_data_path(persist_dir)
 
             import chromadb
+
             client = chromadb.PersistentClient(path=str(persist_dir))
             collection_name = f"kb_{kb_id}"
             collection = client.get_collection(collection_name)
@@ -348,14 +341,20 @@ async def list_chunks(
                         chunk_index = 0
                 else:
                     chunk_index = 0
-                items.append(KnowledgeBaseChunk(
-                    id=str(ids[index]) if index < len(ids) else "",
-                    kb_id=str(meta.get("kb_id") or kb_id),
-                    doc_id=(str(meta.get("doc_id")) if meta.get("doc_id") is not None else None),
-                    filename=(str(meta.get("filename")) if meta.get("filename") is not None else None),
-                    chunk_index=chunk_index,
-                    content=str(content or ""),
-                ))
+                items.append(
+                    KnowledgeBaseChunk(
+                        id=str(ids[index]) if index < len(ids) else "",
+                        kb_id=str(meta.get("kb_id") or kb_id),
+                        doc_id=(
+                            str(meta.get("doc_id")) if meta.get("doc_id") is not None else None
+                        ),
+                        filename=(
+                            str(meta.get("filename")) if meta.get("filename") is not None else None
+                        ),
+                        chunk_index=chunk_index,
+                        content=str(content or ""),
+                    )
+                )
 
         items.sort(key=lambda item: (item.doc_id or "", item.chunk_index, item.id))
         return items[:limit]
@@ -364,10 +363,15 @@ async def list_chunks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _process_document_async(kb_id: str, doc_id: str, filename: str, file_type: str, storage_path):
+async def _process_document_async(
+    kb_id: str, doc_id: str, filename: str, file_type: str, storage_path
+):
     """Background task to process a document"""
     try:
-        from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
+        from src.infrastructure.knowledge.document_processing_service import (
+            DocumentProcessingService,
+        )
+
         processor = DocumentProcessingService()
         await processor.process_document(kb_id, doc_id, filename, file_type, str(storage_path))
     except Exception as e:

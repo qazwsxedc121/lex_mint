@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 from pydantic import BaseModel, Field
 
 from .definitions import ToolDefinition
@@ -86,7 +84,7 @@ class SearchKnowledgeArgs(BaseModel):
 class ReadKnowledgeArgs(BaseModel):
     """Arguments for read_knowledge tool."""
 
-    refs: List[str] = Field(
+    refs: list[str] = Field(
         ...,
         min_length=1,
         max_length=8,
@@ -137,12 +135,12 @@ READ_KNOWLEDGE_TOOL = ToolDefinition(
 class ReadCurrentDocumentArgs(BaseModel):
     """Arguments for read_current_document."""
 
-    start_line: Optional[int] = Field(
+    start_line: int | None = Field(
         default=None,
         ge=1,
         description="1-based start line (inclusive). Omit to read from the first line.",
     )
-    end_line: Optional[int] = Field(
+    end_line: int | None = Field(
         default=None,
         ge=1,
         description="1-based end line (inclusive). Omit to read through the last line.",
@@ -187,12 +185,12 @@ class SearchProjectTextArgs(BaseModel):
     )
     case_sensitive: bool = Field(default=False, description="Enable case-sensitive matching.")
     use_regex: bool = Field(default=False, description="Treat query as a regular expression.")
-    include_glob: Optional[str] = Field(
+    include_glob: str | None = Field(
         default=None,
         max_length=200,
         description="Optional include glob, for example **/*.py.",
     )
-    exclude_glob: Optional[str] = Field(
+    exclude_glob: str | None = Field(
         default=None,
         max_length=200,
         description="Optional exclude glob, for example **/node_modules/**.",
@@ -226,12 +224,12 @@ class ReadProjectDocumentArgs(BaseModel):
         max_length=800,
         description="Project-relative file path to read.",
     )
-    start_line: Optional[int] = Field(
+    start_line: int | None = Field(
         default=None,
         ge=1,
         description="1-based start line (inclusive). Omit to read from the first line.",
     )
-    end_line: Optional[int] = Field(
+    end_line: int | None = Field(
         default=None,
         ge=1,
         description="1-based end line (inclusive). Omit to read through the last line.",
@@ -353,7 +351,7 @@ REQUEST_SCOPED_TOOL_DEFINITIONS = [
 ]
 
 
-def get_request_scoped_tool_default_enabled_map() -> Dict[str, bool]:
+def get_request_scoped_tool_default_enabled_map() -> dict[str, bool]:
     """Project-level default enabled state for non-builtin tools."""
     return {
         definition.name: definition.enabled_by_default

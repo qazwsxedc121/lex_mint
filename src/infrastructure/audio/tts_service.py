@@ -3,9 +3,9 @@ TTS Service
 
 Provides text-to-speech synthesis using Edge TTS.
 """
-import re
+
 import logging
-from typing import Optional
+import re
 
 import edge_tts
 
@@ -23,35 +23,35 @@ class TTSService:
     def _sanitize_text(self, text: str) -> str:
         """Strip markdown/code/thinking blocks to plain speech text."""
         # Remove <think>...</think> blocks
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
         # Remove code fences (```...```)
-        text = re.sub(r'```[\s\S]*?```', '', text)
+        text = re.sub(r"```[\s\S]*?```", "", text)
         # Remove inline code (`...`)
-        text = re.sub(r'`[^`]+`', '', text)
+        text = re.sub(r"`[^`]+`", "", text)
         # Remove image refs ![alt](url)
-        text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
+        text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
         # Remove markdown links [text](url) -> text
-        text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', text)
+        text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
         # Remove bold/italic markers
-        text = re.sub(r'[*_]{1,3}', '', text)
+        text = re.sub(r"[*_]{1,3}", "", text)
         # Remove strikethrough
-        text = re.sub(r'~~', '', text)
+        text = re.sub(r"~~", "", text)
         # Remove headings markers
-        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
         # Remove HTML tags
-        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r"<[^>]+>", "", text)
         # Remove blockquote markers
-        text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^>\s*", "", text, flags=re.MULTILINE)
         # Remove horizontal rules
-        text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
         # Remove list markers
-        text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
-        text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)
         # Remove table formatting
-        text = re.sub(r'\|', ' ', text)
+        text = re.sub(r"\|", " ", text)
         # Collapse multiple whitespace
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        text = re.sub(r'[ \t]+', ' ', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = re.sub(r"[ \t]+", " ", text)
         return text.strip()
 
     def _detect_chinese(self, text: str) -> bool:
@@ -63,7 +63,7 @@ class TTSService:
         chinese_count = 0
         other_alpha_count = 0
         for ch in text:
-            if '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf':
+            if "\u4e00" <= ch <= "\u9fff" or "\u3400" <= ch <= "\u4dbf":
                 chinese_count += 1
             elif ch.isalpha():
                 other_alpha_count += 1
@@ -75,8 +75,8 @@ class TTSService:
     async def synthesize(
         self,
         text: str,
-        voice: Optional[str] = None,
-        rate: Optional[str] = None,
+        voice: str | None = None,
+        rate: str | None = None,
     ) -> bytes:
         """Synthesize text to audio bytes using edge-tts.
 
@@ -93,7 +93,7 @@ class TTSService:
             raise ValueError("Text is empty after sanitization")
 
         if len(sanitized) > config.max_text_length:
-            sanitized = sanitized[:config.max_text_length]
+            sanitized = sanitized[: config.max_text_length]
 
         # Auto-detect language and pick voice if not explicitly specified
         if voice:
@@ -103,9 +103,13 @@ class TTSService:
         else:
             effective_voice = config.voice
 
-        logger.info(f"TTS synthesize: voice={effective_voice}, rate={effective_rate}, text_len={len(sanitized)}")
+        logger.info(
+            f"TTS synthesize: voice={effective_voice}, rate={effective_rate}, text_len={len(sanitized)}"
+        )
 
-        communicate = edge_tts.Communicate(sanitized, effective_voice, rate=effective_rate, volume=config.volume)
+        communicate = edge_tts.Communicate(
+            sanitized, effective_voice, rate=effective_rate, volume=config.volume
+        )
         audio_chunks: list[bytes] = []
         async for chunk in communicate.stream():
             if chunk.get("type") == "audio":

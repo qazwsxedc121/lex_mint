@@ -57,10 +57,14 @@ class _RagService:
 
 @pytest.mark.asyncio
 async def test_rag_context_builder_returns_none_when_no_effective_kbs(monkeypatch):
-    monkeypatch.setattr(project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", lambda: _Resolver([]))
+    monkeypatch.setattr(
+        project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", lambda: _Resolver([])
+    )
 
     service = RagContextBuilderService()
-    context, sources = await service.build_context_and_sources(raw_user_message="hello", assistant_id=None)
+    context, sources = await service.build_context_and_sources(
+        raw_user_message="hello", assistant_id=None
+    )
 
     assert context is None
     assert sources == []
@@ -73,7 +77,9 @@ async def test_rag_context_builder_builds_context_and_sources(monkeypatch):
         "AssistantConfigService",
         lambda: _AssistantService(SimpleNamespace(id="assistant-1")),
     )
-    monkeypatch.setattr(project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", lambda: _Resolver(["kb-1"]))
+    monkeypatch.setattr(
+        project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", lambda: _Resolver(["kb-1"])
+    )
     monkeypatch.setattr(
         rag_service_module,
         "RagService",
@@ -96,7 +102,9 @@ async def test_rag_context_builder_builds_context_and_sources(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rag_context_builder_handles_retrieval_errors(monkeypatch):
-    monkeypatch.setattr(project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", lambda: _Resolver(["kb-1"]))
+    monkeypatch.setattr(
+        project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", lambda: _Resolver(["kb-1"])
+    )
 
     class _BrokenRagService:
         async def retrieve_with_diagnostics(self, *args, **kwargs):
@@ -105,7 +113,9 @@ async def test_rag_context_builder_handles_retrieval_errors(monkeypatch):
     monkeypatch.setattr(rag_service_module, "RagService", lambda: _BrokenRagService())
 
     service = RagContextBuilderService()
-    context, sources = await service.build_context_and_sources(raw_user_message="hello", assistant_id=None)
+    context, sources = await service.build_context_and_sources(
+        raw_user_message="hello", assistant_id=None
+    )
 
     assert context is None
     assert sources == []

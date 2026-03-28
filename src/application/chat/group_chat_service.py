@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import uuid
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Protocol, Tuple
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
+from typing import Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.chat_runtime import (
-    CommitteeOrchestrator,
     ChatOrchestrationRequest,
+    CommitteeOrchestrator,
     ResolvedCommitteeSettings,
     ResolvedGroupSettings,
     RoundRobinOrchestrator,
@@ -23,7 +24,6 @@ from src.application.chat.service_contracts import (
     StreamEvent,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,10 +34,10 @@ class _ChatInputServiceLike(Protocol):
         session_id: str,
         raw_user_message: str,
         expanded_user_message: str,
-        attachments: Optional[List[SourcePayload]],
+        attachments: list[SourcePayload] | None,
         skip_user_append: bool,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> PreparedUserInput: ...
 
 
@@ -47,7 +47,7 @@ class _PostTurnServiceLike(Protocol):
         *,
         session_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> None: ...
 
 
@@ -58,14 +58,14 @@ class GroupChatDeps:
     chat_input_service: _ChatInputServiceLike
     post_turn_service: _PostTurnServiceLike
     search_service: SearchServiceLike
-    build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
-    build_group_runtime_assistant: Callable[[str], Awaitable[Optional[Tuple[str, AssistantLike, str]]]]
+    build_file_context_block: Callable[[list[dict[str, str]] | None], Awaitable[str]]
+    build_group_runtime_assistant: Callable[[str], Awaitable[tuple[str, AssistantLike, str] | None]]
     resolve_group_settings: Callable[..., ResolvedGroupSettings]
     create_committee_orchestrator: Callable[[], CommitteeOrchestrator]
     create_round_robin_orchestrator: Callable[[], RoundRobinOrchestrator]
     is_group_trace_enabled: Callable[[], bool]
-    log_group_trace: Callable[[str, str, Dict[str, object]], None]
-    truncate_log_text: Callable[[Optional[str], int], str]
+    log_group_trace: Callable[[str, str, dict[str, object]], None]
+    truncate_log_text: Callable[[str | None, int], str]
     group_trace_preview_chars: int
 
 
@@ -80,16 +80,16 @@ class GroupChatService:
         *,
         session_id: str,
         raw_user_message: str,
-        group_assistants: List[str],
-        assistant_name_map: Dict[str, str],
-        assistant_config_map: Dict[str, AssistantLike],
-        group_settings: Optional[Dict[str, object]],
-        reasoning_effort: Optional[str],
+        group_assistants: list[str],
+        assistant_name_map: dict[str, str],
+        assistant_config_map: dict[str, AssistantLike],
+        group_settings: dict[str, object] | None,
+        reasoning_effort: str | None,
         context_type: str,
-        project_id: Optional[str],
-        search_context: Optional[str],
-        search_sources: List[SourcePayload],
-        trace_id: Optional[str] = None,
+        project_id: str | None,
+        search_context: str | None,
+        search_sources: list[SourcePayload],
+        trace_id: str | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
         if trace_id is None and self.deps.is_group_trace_enabled():
@@ -101,7 +101,7 @@ class GroupChatService:
             group_settings=group_settings,
             assistant_config_map=assistant_config_map,
         )
-        committee_settings: Optional[ResolvedCommitteeSettings] = resolved_settings.committee
+        committee_settings: ResolvedCommitteeSettings | None = resolved_settings.committee
         if committee_settings is None:
             return
 
@@ -128,17 +128,17 @@ class GroupChatService:
         self,
         session_id: str,
         user_message: str,
-        group_assistants: List[str],
+        group_assistants: list[str],
         group_mode: str = "round_robin",
-        group_settings: Optional[Dict[str, object]] = None,
+        group_settings: dict[str, object] | None = None,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[SourcePayload]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream process user message with multiple assistants (group chat)."""
         original_user_message = user_message
@@ -159,9 +159,11 @@ class GroupChatService:
         if prepared_input.user_message_id:
             yield {"type": "user_message_id", "message_id": prepared_input.user_message_id}
 
-        group_assistants, assistant_name_map, assistant_config_map = await self._resolve_participants(
-            group_assistants
-        )
+        (
+            group_assistants,
+            assistant_name_map,
+            assistant_config_map,
+        ) = await self._resolve_participants(group_assistants)
         if not group_assistants:
             yield {
                 "type": "group_done",
@@ -200,17 +202,18 @@ class GroupChatService:
 
     async def _resolve_participants(
         self,
-        group_assistants: List[str],
-    ) -> Tuple[List[str], Dict[str, str], Dict[str, AssistantLike]]:
-        assistant_name_map: Dict[str, str] = {}
-        assistant_config_map: Dict[str, AssistantLike] = {}
-        resolved_group_assistants: List[str] = []
+        group_assistants: list[str],
+    ) -> tuple[list[str], dict[str, str], dict[str, AssistantLike]]:
+        assistant_name_map: dict[str, str] = {}
+        assistant_config_map: dict[str, AssistantLike] = {}
+        resolved_group_assistants: list[str] = []
         seen_participants = set()
         for participant_token in group_assistants:
             resolved = await self.deps.build_group_runtime_assistant(participant_token)
             if not resolved:
                 logger.warning(
-                    "[GroupChat] Participant '%s' not found or disabled, skipping", participant_token
+                    "[GroupChat] Participant '%s' not found or disabled, skipping",
+                    participant_token,
                 )
                 continue
             participant_id, participant_obj, participant_name = resolved
@@ -226,10 +229,10 @@ class GroupChatService:
         self,
         *,
         use_web_search: bool,
-        search_query: Optional[str],
+        search_query: str | None,
         raw_user_message: str,
-    ) -> Tuple[Optional[str], List[SourcePayload]]:
-        search_sources: List[SourcePayload] = []
+    ) -> tuple[str | None, list[SourcePayload]]:
+        search_sources: list[SourcePayload] = []
         search_context = None
         if not use_web_search:
             return search_context, search_sources
@@ -251,15 +254,15 @@ class GroupChatService:
         session_id: str,
         raw_user_message: str,
         group_mode: str,
-        group_assistants: List[str],
-        assistant_name_map: Dict[str, str],
-        assistant_config_map: Dict[str, AssistantLike],
-        group_settings: Optional[Dict[str, object]],
-        reasoning_effort: Optional[str],
+        group_assistants: list[str],
+        assistant_name_map: dict[str, str],
+        assistant_config_map: dict[str, AssistantLike],
+        group_settings: dict[str, object] | None,
+        reasoning_effort: str | None,
         context_type: str,
-        project_id: Optional[str],
-        search_context: Optional[str],
-        search_sources: List[SourcePayload],
+        project_id: str | None,
+        search_context: str | None,
+        search_sources: list[SourcePayload],
     ) -> AsyncIterator[StreamEvent]:
         normalized_group_mode = (group_mode or "round_robin").strip().lower()
         if normalized_group_mode == "committee":
@@ -310,8 +313,8 @@ class GroupChatService:
         session_id: str,
         raw_user_message: str,
         group_mode: str,
-        group_assistants: List[str],
-    ) -> Optional[str]:
+        group_assistants: list[str],
+    ) -> str | None:
         if not self.deps.is_group_trace_enabled():
             return None
         trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"

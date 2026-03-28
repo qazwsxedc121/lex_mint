@@ -6,12 +6,11 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from typing import List, Optional
 
 import aiofiles
 
-from src.domain.models.workflow import WorkflowRunHistory, WorkflowRunRecord
 from src.core.paths import data_state_dir
+from src.domain.models.workflow import WorkflowRunHistory, WorkflowRunRecord
 
 
 def _safe_workflow_id(workflow_id: str) -> str:
@@ -24,7 +23,7 @@ class WorkflowRunHistoryService:
     _locks: dict[str, asyncio.Lock] = {}
     _locks_guard = asyncio.Lock()
 
-    def __init__(self, history_dir: Optional[Path] = None, max_runs_per_workflow: int = 50):
+    def __init__(self, history_dir: Path | None = None, max_runs_per_workflow: int = 50):
         if history_dir is None:
             history_dir = data_state_dir() / "workflow_runs"
         self.history_dir = Path(history_dir)
@@ -47,7 +46,7 @@ class WorkflowRunHistoryService:
         path = self._history_path(workflow_id)
         if not path.exists():
             return WorkflowRunHistory(runs=[])
-        async with aiofiles.open(path, "r", encoding="utf-8") as f:
+        async with aiofiles.open(path, encoding="utf-8") as f:
             content = await f.read()
         if not content.strip():
             return WorkflowRunHistory(runs=[])
@@ -73,13 +72,13 @@ class WorkflowRunHistoryService:
             history.runs = history.runs[: self.max_runs_per_workflow]
             await self._write_history(record.workflow_id, history)
 
-    async def list_runs(self, workflow_id: str, limit: int = 50) -> List[WorkflowRunRecord]:
+    async def list_runs(self, workflow_id: str, limit: int = 50) -> list[WorkflowRunRecord]:
         """Return latest run records for a workflow."""
         history = await self._read_history(workflow_id)
         safe_limit = max(1, min(int(limit), self.max_runs_per_workflow))
         return history.runs[:safe_limit]
 
-    async def get_run(self, workflow_id: str, run_id: str) -> Optional[WorkflowRunRecord]:
+    async def get_run(self, workflow_id: str, run_id: str) -> WorkflowRunRecord | None:
         """Return one run record by id."""
         history = await self._read_history(workflow_id)
         for record in history.runs:

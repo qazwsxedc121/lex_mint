@@ -3,20 +3,22 @@ Assistant configuration management service
 
 Handles loading, saving, and managing AI assistant configurations
 """
-import yaml
-import aiofiles
+
 from pathlib import Path
-from typing import List, Optional
+
+import aiofiles
+import yaml
 from langchain_openai import ChatOpenAI
 
-from src.domain.models.assistant_config import Assistant, AssistantsConfig
-from .model_config_service import ModelConfigService
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     ensure_local_file,
     resolve_layered_read_path,
 )
+from src.domain.models.assistant_config import Assistant, AssistantsConfig
+
+from .model_config_service import ModelConfigService
 
 
 class AssistantConfigService:
@@ -24,8 +26,8 @@ class AssistantConfigService:
 
     def __init__(
         self,
-        config_path: Optional[Path] = None,
-        model_service: Optional[ModelConfigService] = None,
+        config_path: Path | None = None,
+        model_service: ModelConfigService | None = None,
     ):
         """
         Initialize assistant configuration service
@@ -34,7 +36,7 @@ class AssistantConfigService:
             config_path: Configuration file path, defaults to project root assistants_config.yaml
             model_service: Model configuration service instance for validation
         """
-        self.defaults_path: Optional[Path] = config_defaults_dir() / "assistants_config.yaml"
+        self.defaults_path: Path | None = config_defaults_dir() / "assistants_config.yaml"
 
         if config_path is None:
             self.config_path = config_local_dir() / "assistants_config.yaml"
@@ -63,7 +65,7 @@ class AssistantConfigService:
     def _get_default_config(self) -> dict:
         """Get default configuration"""
         if self.defaults_path is not None and self.defaults_path.exists():
-            with open(self.defaults_path, "r", encoding="utf-8") as f:
+            with open(self.defaults_path, encoding="utf-8") as f:
                 return yaml.safe_load(f) or {"default": "", "assistants": []}
 
         return {"default": "", "assistants": []}
@@ -79,7 +81,7 @@ class AssistantConfigService:
             else self.config_path
         )
 
-        async with aiofiles.open(config_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(config_path, encoding="utf-8") as f:
             content = await f.read()
             data = yaml.safe_load(content)
             return AssistantsConfig(**data)
@@ -91,13 +93,11 @@ class AssistantConfigService:
         Uses temporary file + replace for atomicity
         """
         # Write to temporary file first
-        temp_path = self.config_path.with_suffix('.yaml.tmp')
-        async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+        temp_path = self.config_path.with_suffix(".yaml.tmp")
+        async with aiofiles.open(temp_path, "w", encoding="utf-8") as f:
             # Use mode='json' to serialize enums as values
             content = yaml.safe_dump(
-                config.model_dump(mode='json'),
-                allow_unicode=True,
-                sort_keys=False
+                config.model_dump(mode="json"), allow_unicode=True, sort_keys=False
             )
             await f.write(content)
 
@@ -110,7 +110,7 @@ class AssistantConfigService:
         self,
         config: AssistantsConfig,
         assistant_id: str,
-    ) -> Optional[Assistant]:
+    ) -> Assistant | None:
         for assistant in config.assistants:
             if assistant.id == assistant_id:
                 return assistant
@@ -140,7 +140,7 @@ class AssistantConfigService:
                 f"Assistant '{assistant.id}' is unavailable because its model is not enabled: {exc}"
             ) from exc
 
-    async def require_enabled_assistant(self, assistant_id: Optional[str] = None) -> Assistant:
+    async def require_enabled_assistant(self, assistant_id: str | None = None) -> Assistant:
         """Resolve an assistant and ensure both the assistant and its model are enabled."""
         config = await self.load_config()
         requested_assistant_id = assistant_id or config.default
@@ -161,13 +161,13 @@ class AssistantConfigService:
         )
         return assistant
 
-    async def get_assistants(self, enabled_only: bool = False) -> List[Assistant]:
+    async def get_assistants(self, enabled_only: bool = False) -> list[Assistant]:
         """Get all assistants"""
         config = await self.load_config()
         if not enabled_only:
             return config.assistants
 
-        enabled_assistants: List[Assistant] = []
+        enabled_assistants: list[Assistant] = []
         for assistant in config.assistants:
             try:
                 await self._ensure_assistant_is_enabled(
@@ -179,7 +179,7 @@ class AssistantConfigService:
             enabled_assistants.append(assistant)
         return enabled_assistants
 
-    async def get_assistant(self, assistant_id: str) -> Optional[Assistant]:
+    async def get_assistant(self, assistant_id: str) -> Assistant | None:
         """
         Get specified assistant
 
@@ -303,7 +303,9 @@ class AssistantConfigService:
         # Last resort default
         return 0.7
 
-    async def create_llm_from_assistant(self, assistant_id: str) -> tuple[ChatOpenAI, Optional[str], Optional[int]]:
+    async def create_llm_from_assistant(
+        self, assistant_id: str
+    ) -> tuple[ChatOpenAI, str | None, int | None]:
         """
         Create LLM instance from assistant configuration
 
@@ -361,6 +363,5 @@ class AssistantConfigService:
             top_k=None,
             frequency_penalty=None,
             presence_penalty=None,
-            enabled=True
+            enabled=True,
         )
-

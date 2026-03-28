@@ -3,13 +3,13 @@ TTS API Router
 
 Provides endpoint for text-to-speech synthesis.
 """
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
-from pydantic import BaseModel
-from typing import Optional
+
 import logging
 
 from edge_tts.exceptions import NoAudioReceived
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel
 
 from src.infrastructure.audio.tts_service import TTSService
 
@@ -21,9 +21,10 @@ tts_service = TTSService()
 
 class TTSSynthesizeRequest(BaseModel):
     """Request model for TTS synthesis"""
+
     text: str
-    voice: Optional[str] = None
-    rate: Optional[str] = None
+    voice: str | None = None
+    rate: str | None = None
 
 
 @router.post("/synthesize")
@@ -51,7 +52,7 @@ async def synthesize(request: TTSSynthesizeRequest):
             headers={
                 "Content-Disposition": "inline",
                 "Cache-Control": "no-cache",
-            }
+            },
         )
     except HTTPException:
         raise
@@ -59,7 +60,7 @@ async def synthesize(request: TTSSynthesizeRequest):
         logger.warning("Edge TTS returned no audio - voice may not support the given text")
         raise HTTPException(
             status_code=422,
-            detail="No audio received. The voice may not support the given text content. Try a different voice."
+            detail="No audio received. The voice may not support the given text content. Try a different voice.",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

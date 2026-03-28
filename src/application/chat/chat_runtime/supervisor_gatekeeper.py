@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 from .committee_types import CommitteeDecision, CommitteeRuntimeState
 
@@ -13,7 +12,7 @@ class CommitteeSupervisorGatekeeperConfig:
     """Static policy used to normalize supervisor decisions."""
 
     supervisor_id: str
-    participant_order: List[str]
+    participant_order: list[str]
     max_rounds: int
     min_member_turns_before_finish: int
     min_total_rounds_before_finish: int
@@ -87,7 +86,7 @@ class CommitteeSupervisorDecisionGatekeeper:
             if not requested_targets and decision.assistant_id:
                 requested_targets = [decision.assistant_id]
 
-            selected_targets: List[str] = []
+            selected_targets: list[str] = []
             for assistant_id in requested_targets:
                 if assistant_id not in valid_targets or assistant_id == self.config.supervisor_id:
                     continue
@@ -104,8 +103,10 @@ class CommitteeSupervisorDecisionGatekeeper:
                 selected_targets.append(depth_target)
 
             required_slots = 1
-            if pending_member_targets and len(pending_member_targets) > 1 and remaining_rounds <= len(
+            if (
                 pending_member_targets
+                and len(pending_member_targets) > 1
+                and remaining_rounds <= len(pending_member_targets)
             ):
                 required_slots = 2
 
@@ -121,8 +122,10 @@ class CommitteeSupervisorDecisionGatekeeper:
             if len(selected_targets) <= 1:
                 fallback_target = selected_targets[0] if selected_targets else None
                 if not fallback_target:
-                    fallback_target = pending_member_targets[0] if pending_member_targets else self._fallback_speaker(
-                        state, valid_targets
+                    fallback_target = (
+                        pending_member_targets[0]
+                        if pending_member_targets
+                        else self._fallback_speaker(state, valid_targets)
                     )
                 decision.action = "speak"
                 decision.assistant_id = fallback_target
@@ -138,9 +141,7 @@ class CommitteeSupervisorDecisionGatekeeper:
             if not decision.reason:
                 decision.reason = "supervisor_selected_parallel_speakers"
             if not decision.instruction:
-                decision.instruction = (
-                    "Provide your perspective with concrete points, and avoid repeating other members verbatim."
-                )
+                decision.instruction = "Provide your perspective with concrete points, and avoid repeating other members verbatim."
             return decision
 
         preferred_target = decision.assistant_id
@@ -162,7 +163,7 @@ class CommitteeSupervisorDecisionGatekeeper:
             decision.reason = "supervisor_selected_speaker"
         return decision
 
-    def required_member_targets(self, valid_targets: List[str]) -> List[str]:
+    def required_member_targets(self, valid_targets: list[str]) -> list[str]:
         return [
             assistant_id
             for assistant_id in self.config.participant_order
@@ -172,8 +173,8 @@ class CommitteeSupervisorDecisionGatekeeper:
     def depth_required_target(
         self,
         state: CommitteeRuntimeState,
-        required_targets: List[str],
-    ) -> Optional[str]:
+        required_targets: list[str],
+    ) -> str | None:
         """Return the next member that should speak to satisfy long-discussion depth."""
         if not required_targets:
             return None
@@ -207,9 +208,9 @@ class CommitteeSupervisorDecisionGatekeeper:
     @staticmethod
     def member_turn_counts(
         state: CommitteeRuntimeState,
-        required_targets: List[str],
-    ) -> Dict[str, int]:
-        counts: Dict[str, int] = {assistant_id: 0 for assistant_id in required_targets}
+        required_targets: list[str],
+    ) -> dict[str, int]:
+        counts: dict[str, int] = dict.fromkeys(required_targets, 0)
         for turn in state.turns:
             if turn.assistant_id in counts:
                 counts[turn.assistant_id] += 1
@@ -221,13 +222,11 @@ class CommitteeSupervisorDecisionGatekeeper:
         state: CommitteeRuntimeState,
         assistant_id: str,
         reason: str,
-        depth_target: Optional[str] = None,
+        depth_target: str | None = None,
     ) -> CommitteeDecision:
         assistant_name = state.participants.get(assistant_id, assistant_id)
         if depth_target and assistant_id == depth_target:
-            instruction = (
-                f"As {assistant_name}, build on prior points, add new evidence, and sharpen trade-offs."
-            )
+            instruction = f"As {assistant_name}, build on prior points, add new evidence, and sharpen trade-offs."
         else:
             instruction = f"Please contribute your best analysis as {assistant_name}."
         return CommitteeDecision(
@@ -237,8 +236,12 @@ class CommitteeSupervisorDecisionGatekeeper:
             reason=reason,
         )
 
-    def _fallback_speaker(self, state: CommitteeRuntimeState, valid_targets: List[str]) -> str:
-        non_supervisor = [assistant_id for assistant_id in valid_targets if assistant_id != self.config.supervisor_id]
+    def _fallback_speaker(self, state: CommitteeRuntimeState, valid_targets: list[str]) -> str:
+        non_supervisor = [
+            assistant_id
+            for assistant_id in valid_targets
+            if assistant_id != self.config.supervisor_id
+        ]
         candidates = non_supervisor if non_supervisor else valid_targets
         fallback_index = len(state.turns) % len(candidates)
         return candidates[fallback_index]
@@ -246,8 +249,10 @@ class CommitteeSupervisorDecisionGatekeeper:
     def _pending_member_targets(
         self,
         state: CommitteeRuntimeState,
-        valid_targets: List[str],
-    ) -> List[str]:
+        valid_targets: list[str],
+    ) -> list[str]:
         required_targets = self.required_member_targets(valid_targets)
         spoken_targets = {turn.assistant_id for turn in state.turns}
-        return [assistant_id for assistant_id in required_targets if assistant_id not in spoken_targets]
+        return [
+            assistant_id for assistant_id in required_targets if assistant_id not in spoken_targets
+        ]

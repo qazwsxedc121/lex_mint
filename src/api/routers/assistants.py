@@ -3,16 +3,17 @@ Assistant management API endpoints
 
 CRUD operations for AI assistant configurations
 """
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List
 
-from ..dependencies import get_assistant_service as get_shared_assistant_service
+from fastapi import APIRouter, Depends, HTTPException
+
 from src.domain.models.assistant_config import (
     Assistant,
     AssistantCreate,
     AssistantUpdate,
 )
 from src.infrastructure.config.assistant_config_service import AssistantConfigService
+
+from ..dependencies import get_assistant_service as get_shared_assistant_service
 
 router = APIRouter(prefix="/api/assistants", tags=["assistants"])
 
@@ -24,7 +25,8 @@ def get_assistant_service() -> AssistantConfigService:
 
 # ==================== Assistant Management ====================
 
-@router.get("", response_model=List[Assistant])
+
+@router.get("", response_model=list[Assistant])
 async def list_assistants(
     enabled_only: bool = False,
     service: AssistantConfigService = Depends(get_assistant_service),
@@ -35,8 +37,7 @@ async def list_assistants(
 
 @router.get("/{assistant_id}", response_model=Assistant)
 async def get_assistant(
-    assistant_id: str,
-    service: AssistantConfigService = Depends(get_assistant_service)
+    assistant_id: str, service: AssistantConfigService = Depends(get_assistant_service)
 ):
     """
     Get specified assistant details
@@ -53,7 +54,7 @@ async def get_assistant(
 @router.post("", status_code=201)
 async def create_assistant(
     assistant_data: AssistantCreate,
-    service: AssistantConfigService = Depends(get_assistant_service)
+    service: AssistantConfigService = Depends(get_assistant_service),
 ):
     """Create new assistant"""
     try:
@@ -69,7 +70,7 @@ async def create_assistant(
 async def update_assistant(
     assistant_id: str,
     assistant_update: AssistantUpdate,
-    service: AssistantConfigService = Depends(get_assistant_service)
+    service: AssistantConfigService = Depends(get_assistant_service),
 ):
     """
     Update assistant information
@@ -99,8 +100,7 @@ async def update_assistant(
 
 @router.delete("/{assistant_id}")
 async def delete_assistant(
-    assistant_id: str,
-    service: AssistantConfigService = Depends(get_assistant_service)
+    assistant_id: str, service: AssistantConfigService = Depends(get_assistant_service)
 ):
     """Delete assistant (cannot delete default assistant)"""
     try:
@@ -112,8 +112,11 @@ async def delete_assistant(
 
 # ==================== Default Assistant ====================
 
+
 @router.get("/default/id")
-async def get_default_assistant_id(service: AssistantConfigService = Depends(get_assistant_service)):
+async def get_default_assistant_id(
+    service: AssistantConfigService = Depends(get_assistant_service),
+):
     """Get default assistant ID"""
     default_id = await service.get_default_assistant_id()
     return {"default_assistant_id": default_id}
@@ -130,12 +133,14 @@ async def get_default_assistant(service: AssistantConfigService = Depends(get_as
 
 @router.put("/default/{assistant_id}")
 async def set_default_assistant(
-    assistant_id: str,
-    service: AssistantConfigService = Depends(get_assistant_service)
+    assistant_id: str, service: AssistantConfigService = Depends(get_assistant_service)
 ):
     """Set default assistant"""
     try:
         await service.set_default_assistant(assistant_id)
-        return {"message": "Default assistant updated successfully", "default_assistant_id": assistant_id}
+        return {
+            "message": "Default assistant updated successfully",
+            "default_assistant_id": assistant_id,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

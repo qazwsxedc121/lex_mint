@@ -14,9 +14,10 @@ access it through the normal LangChain message interface.
 The implementation mirrors `langchain-deepseek`'s ChatDeepSeek, which
 uses the identical technique for DeepSeek's reasoning_content.
 """
+
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
 
 import openai
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
@@ -46,17 +47,15 @@ class ChatReasoningOpenAI(BaseChatOpenAI):
 
         # Primary: direct reasoning_content attribute
         if hasattr(msg, "reasoning_content") and msg.reasoning_content:
-            result.generations[0].message.additional_kwargs[
-                "reasoning_content"
-            ] = msg.reasoning_content
+            result.generations[0].message.additional_kwargs["reasoning_content"] = (
+                msg.reasoning_content
+            )
 
         # Fallback: model_extra dict (e.g. via OpenRouter)
         elif hasattr(msg, "model_extra") and isinstance(msg.model_extra, dict):
             reasoning = msg.model_extra.get("reasoning_content") or msg.model_extra.get("reasoning")
             if reasoning:
-                result.generations[0].message.additional_kwargs[
-                    "reasoning_content"
-                ] = reasoning
+                result.generations[0].message.additional_kwargs["reasoning_content"] = reasoning
 
         return result
 
@@ -86,16 +85,12 @@ class ChatReasoningOpenAI(BaseChatOpenAI):
             # Primary: reasoning_content in delta
             reasoning_content = delta.get("reasoning_content")
             if reasoning_content is not None:
-                generation_chunk.message.additional_kwargs[
-                    "reasoning_content"
-                ] = reasoning_content
+                generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning_content
             else:
                 # Fallback: "reasoning" key (some proxies)
                 reasoning = delta.get("reasoning")
                 if reasoning is not None:
-                    generation_chunk.message.additional_kwargs[
-                        "reasoning_content"
-                    ] = reasoning
+                    generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning
 
         return generation_chunk
 
@@ -119,7 +114,7 @@ def inject_tool_call_reasoning_content(
     if not isinstance(payload_messages, list):
         return payload
 
-    for msg_obj, msg_dict in zip(source_messages, payload_messages):
+    for msg_obj, msg_dict in zip(source_messages, payload_messages, strict=False):
         if not isinstance(msg_obj, AIMessage):
             continue
         if not isinstance(msg_dict, dict) or msg_dict.get("role") != "assistant":

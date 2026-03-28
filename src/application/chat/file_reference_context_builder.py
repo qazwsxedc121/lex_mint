@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Protocol
 
 from src.domain.models.project_config import FileContent
-
 from src.infrastructure.config.file_reference_config_service import (
     FileReferenceConfig,
     FileReferenceConfigService,
@@ -68,7 +67,7 @@ class FileReferenceContextBuilder:
         return f"{text[:head]}\n...\n{text[-tail:]}"
 
     @staticmethod
-    def _select_chunk_indexes(total_chunks: int, max_chunks: int) -> List[int]:
+    def _select_chunk_indexes(total_chunks: int, max_chunks: int) -> list[int]:
         """Select representative chunk indexes across the whole file."""
         if total_chunks <= max_chunks:
             return list(range(total_chunks))
@@ -109,14 +108,11 @@ class FileReferenceContextBuilder:
             preview_max_chars = max(1, cfg.injection_preview_max_chars)
             preview_max_lines = max(1, cfg.injection_preview_max_lines)
 
-            chunks = [
-                content[i:i + chunk_size]
-                for i in range(0, len(content), chunk_size)
-            ]
+            chunks = [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)]
             total_chunks = len(chunks)
             selected_indexes = self._select_chunk_indexes(total_chunks, max_chunks)
 
-            chunk_blocks: List[str] = []
+            chunk_blocks: list[str] = []
             for index in selected_indexes:
                 chunk = chunks[index]
                 start_char = index * chunk_size + 1
@@ -147,7 +143,7 @@ class FileReferenceContextBuilder:
 
     async def build_context_block(
         self,
-        file_references: Optional[List[Dict[str, str]]],
+        file_references: list[dict[str, str]] | None,
     ) -> str:
         """Build bounded context from referenced files to avoid context explosion."""
         if not file_references:
@@ -155,7 +151,7 @@ class FileReferenceContextBuilder:
 
         cfg = self._get_file_reference_config()
         total_budget_chars = max(1, cfg.total_budget_chars)
-        parts: List[str] = []
+        parts: list[str] = []
         used_chars = 0
 
         for index, ref in enumerate(file_references):

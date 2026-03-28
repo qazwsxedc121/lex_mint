@@ -31,7 +31,9 @@ def test_emitter_uses_seq_provider_and_payload_merge():
         state["seq"] += 2
         return state["seq"]
 
-    emitter = FlowEventEmitter(stream_id="stream-2", seq_provider=_next_seq, default_turn_id="turn-default")
+    emitter = FlowEventEmitter(
+        stream_id="stream-2", seq_provider=_next_seq, default_turn_id="turn-default"
+    )
     delta = emitter.emit_text_delta("x", payload={"model_id": "m1"})["flow_event"]
     custom = emitter.emit(
         event_type="custom_event",

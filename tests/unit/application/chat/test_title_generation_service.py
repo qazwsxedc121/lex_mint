@@ -98,9 +98,13 @@ async def test_generate_title_async_success_timeout_and_empty(monkeypatch, tmp_p
         "src.application.chat.title_generation_service.ModelConfigService",
         _TimeoutService,
     )
-    monkeypatch.setattr("src.application.chat.title_generation_service.asyncio.wait_for", _raise_timeout)
+    monkeypatch.setattr(
+        "src.application.chat.title_generation_service.asyncio.wait_for", _raise_timeout
+    )
     assert await service.generate_title_async("session-2") is None
 
     storage_empty = _FakeStorage(messages=[])
-    service_empty = TitleGenerationService(storage=storage_empty, config_path=str(tmp_path / "empty.yaml"))
+    service_empty = TitleGenerationService(
+        storage=storage_empty, config_path=str(tmp_path / "empty.yaml")
+    )
     assert await service_empty.generate_title_async("session-3") is None

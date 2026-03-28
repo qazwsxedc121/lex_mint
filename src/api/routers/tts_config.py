@@ -3,12 +3,12 @@ TTS Config API Router
 
 Provides endpoints for configuring text-to-speech and listing available voices.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Optional, List
+
 import logging
 
 import edge_tts
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from src.infrastructure.config.tts_config_service import TTSConfigService
 
@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/tts", tags=["tts"])
 # Pydantic models
 class TTSConfigResponse(BaseModel):
     """Response model for TTS configuration"""
+
     enabled: bool
     voice: str
     voice_zh: str
@@ -29,16 +30,18 @@ class TTSConfigResponse(BaseModel):
 
 class TTSConfigUpdate(BaseModel):
     """Request model for updating TTS configuration"""
-    enabled: Optional[bool] = None
-    voice: Optional[str] = None
-    voice_zh: Optional[str] = None
-    rate: Optional[str] = None
-    volume: Optional[str] = None
-    max_text_length: Optional[int] = Field(None, ge=100, le=100000)
+
+    enabled: bool | None = None
+    voice: str | None = None
+    voice_zh: str | None = None
+    rate: str | None = None
+    volume: str | None = None
+    max_text_length: int | None = Field(None, ge=100, le=100000)
 
 
 class VoiceInfo(BaseModel):
     """Voice information"""
+
     ShortName: str
     Locale: str
     Gender: str
@@ -52,9 +55,7 @@ def get_tts_config_service() -> TTSConfigService:
 
 # Endpoints
 @router.get("/config", response_model=TTSConfigResponse)
-async def get_config(
-    service: TTSConfigService = Depends(get_tts_config_service)
-):
+async def get_config(service: TTSConfigService = Depends(get_tts_config_service)):
     """Get current TTS configuration"""
     try:
         config = service.config
@@ -73,8 +74,7 @@ async def get_config(
 
 @router.put("/config")
 async def update_config(
-    updates: TTSConfigUpdate,
-    service: TTSConfigService = Depends(get_tts_config_service)
+    updates: TTSConfigUpdate, service: TTSConfigService = Depends(get_tts_config_service)
 ):
     """Update TTS configuration"""
     try:
@@ -93,7 +93,7 @@ async def update_config(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/voices", response_model=List[VoiceInfo])
+@router.get("/voices", response_model=list[VoiceInfo])
 async def list_voices():
     """List available TTS voices from Edge TTS"""
     try:

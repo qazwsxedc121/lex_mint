@@ -3,6 +3,7 @@ Retrieval Query Planner Service
 
 Optional pre-retrieval query planning for RAG.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,6 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from src.infrastructure.config.model_config_service import ModelConfigService
 
@@ -38,8 +38,8 @@ class RetrievalQueryPlannerService:
 
     @staticmethod
     def _resolve_model_id(
-        configured_model_id: str, runtime_model_id: Optional[str]
-    ) -> tuple[Optional[str], str]:
+        configured_model_id: str, runtime_model_id: str | None
+    ) -> tuple[str | None, str]:
         configured = str(configured_model_id or "auto").strip() or "auto"
         if configured.lower() == "auto":
             runtime = str(runtime_model_id or "").strip()
@@ -145,7 +145,7 @@ class RetrievalQueryPlannerService:
         self,
         *,
         query: str,
-        runtime_model_id: Optional[str],
+        runtime_model_id: str | None,
         enabled: bool,
         max_queries: int,
         timeout_seconds: int,
@@ -174,9 +174,7 @@ class RetrievalQueryPlannerService:
                 reason="empty_query",
             )
 
-        resolved_model_id, resolved_model_label = self._resolve_model_id(
-            model_id, runtime_model_id
-        )
+        resolved_model_id, resolved_model_label = self._resolve_model_id(model_id, runtime_model_id)
         if not resolved_model_id:
             return RetrievalQueryPlan(
                 original_query=original_query,
@@ -201,9 +199,7 @@ class RetrievalQueryPlannerService:
             )
             planner_output = self._extract_text(response)
             parsed_queries = self._parse_queries_from_text(planner_output)
-            planned_queries = self._normalize_queries(
-                original_query, parsed_queries, max_queries
-            )
+            planned_queries = self._normalize_queries(original_query, parsed_queries, max_queries)
 
             if not planned_queries:
                 planned_queries = [original_query]
@@ -227,9 +223,7 @@ class RetrievalQueryPlannerService:
                 reason="ok",
             )
         except Exception as e:
-            logger.warning(
-                "Retrieval query planner failed; fallback to original query: %s", e
-            )
+            logger.warning("Retrieval query planner failed; fallback to original query: %s", e)
             return RetrievalQueryPlan(
                 original_query=original_query,
                 planned_queries=[original_query],

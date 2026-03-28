@@ -3,13 +3,13 @@ Query Transform Service
 
 Optional pre-retrieval query transformation for RAG.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional, Set
 
 from src.infrastructure.config.model_config_service import ModelConfigService
 
@@ -44,7 +44,9 @@ class QueryTransformService:
         return "none"
 
     @staticmethod
-    def _resolve_model_id(configured_model_id: str, runtime_model_id: Optional[str]) -> tuple[Optional[str], str]:
+    def _resolve_model_id(
+        configured_model_id: str, runtime_model_id: str | None
+    ) -> tuple[str | None, str]:
         configured = str(configured_model_id or "auto").strip() or "auto"
         if configured.lower() == "auto":
             runtime = str(runtime_model_id or "").strip()
@@ -69,16 +71,16 @@ class QueryTransformService:
         )
 
     @staticmethod
-    def _extract_quoted_phrases(text: str) -> Set[str]:
+    def _extract_quoted_phrases(text: str) -> set[str]:
         matches = re.findall(r"[\"“”'‘’]([^\"“”'‘’]{2,120})[\"“”'‘’]", text or "")
         return {m.strip() for m in matches if m and m.strip()}
 
     @staticmethod
-    def _extract_numbers(text: str) -> Set[str]:
+    def _extract_numbers(text: str) -> set[str]:
         return {m for m in re.findall(r"\d+(?:[./:-]\d+)*", text or "") if m}
 
     @staticmethod
-    def _tokenize_significant_terms(text: str) -> Set[str]:
+    def _tokenize_significant_terms(text: str) -> set[str]:
         raw = str(text or "").lower()
         if not raw:
             return set()
@@ -89,21 +91,79 @@ class QueryTransformService:
             return set()
 
         stopwords = {
-            "what", "which", "when", "where", "who", "whom", "whose", "why", "how",
-            "the", "and", "for", "with", "from", "into", "that", "this", "these", "those",
-            "about", "there", "their", "them", "your", "our", "his", "her", "its",
-            "一个", "一种", "这个", "那个", "这些", "那些", "什么", "如何", "为什么", "以及",
-            "相关", "有关", "问题", "内容", "信息", "出现", "对应", "哪章", "一章",
+            "what",
+            "which",
+            "when",
+            "where",
+            "who",
+            "whom",
+            "whose",
+            "why",
+            "how",
+            "the",
+            "and",
+            "for",
+            "with",
+            "from",
+            "into",
+            "that",
+            "this",
+            "these",
+            "those",
+            "about",
+            "there",
+            "their",
+            "them",
+            "your",
+            "our",
+            "his",
+            "her",
+            "its",
+            "一个",
+            "一种",
+            "这个",
+            "那个",
+            "这些",
+            "那些",
+            "什么",
+            "如何",
+            "为什么",
+            "以及",
+            "相关",
+            "有关",
+            "问题",
+            "内容",
+            "信息",
+            "出现",
+            "对应",
+            "哪章",
+            "一章",
         }
         return {tok for tok in tokens if tok not in stopwords}
 
     @staticmethod
-    def _missing_constraint_keyword(original_query: str, rewritten_query: str) -> Optional[str]:
+    def _missing_constraint_keyword(original_query: str, rewritten_query: str) -> str | None:
         # Guard constraints/time qualifiers to reduce false-positive retrieval.
         protected_keywords = [
-            "最终", "最后", "首次", "仅", "只", "必须", "不能", "不得",
-            "至少", "最多", "不超过", "不少于",
-            "only", "must", "must not", "cannot", "never", "at least", "at most",
+            "最终",
+            "最后",
+            "首次",
+            "仅",
+            "只",
+            "必须",
+            "不能",
+            "不得",
+            "至少",
+            "最多",
+            "不超过",
+            "不少于",
+            "only",
+            "must",
+            "must not",
+            "cannot",
+            "never",
+            "at least",
+            "at most",
         ]
         orig = str(original_query or "").lower()
         rew = str(rewritten_query or "").lower()
@@ -119,7 +179,7 @@ class QueryTransformService:
         original_query: str,
         rewritten_query: str,
         max_new_terms: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         original = str(original_query or "").strip()
         rewritten = str(rewritten_query or "").strip()
         if not original or not rewritten:
@@ -168,7 +228,9 @@ class QueryTransformService:
                     parts.append(item)
             content = "".join(parts)
         text = str(content or "").strip()
-        if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+        if (text.startswith('"') and text.endswith('"')) or (
+            text.startswith("'") and text.endswith("'")
+        ):
             text = text[1:-1].strip()
         return " ".join(text.split())
 
@@ -179,14 +241,16 @@ class QueryTransformService:
         enabled: bool,
         mode: str,
         configured_model_id: str,
-        runtime_model_id: Optional[str],
+        runtime_model_id: str | None,
         timeout_seconds: int,
         guard_enabled: bool = True,
         guard_max_new_terms: int = 2,
     ) -> QueryTransformResult:
         original_query = str(query or "").strip()
         normalized_mode = self._normalize_mode(mode)
-        resolved_model_id, resolved_label = self._resolve_model_id(configured_model_id, runtime_model_id)
+        resolved_model_id, resolved_label = self._resolve_model_id(
+            configured_model_id, runtime_model_id
+        )
 
         if not enabled or normalized_mode == "none" or not original_query:
             return QueryTransformResult(
@@ -231,11 +295,14 @@ class QueryTransformService:
             guard_reason = ""
             guard_blocked = False
             if guard_enabled:
-                guard_reason = self._validate_rewrite(
-                    original_query=original_query,
-                    rewritten_query=rewritten_query,
-                    max_new_terms=guard_max_new_terms,
-                ) or ""
+                guard_reason = (
+                    self._validate_rewrite(
+                        original_query=original_query,
+                        rewritten_query=rewritten_query,
+                        max_new_terms=guard_max_new_terms,
+                    )
+                    or ""
+                )
                 if guard_reason:
                     guard_blocked = True
                     rewritten_query = original_query

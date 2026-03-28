@@ -1,20 +1,20 @@
 """Simple and reliable LLM log viewer."""
 
-import json
-from pathlib import Path
-from datetime import datetime
-import sys
 import io
+import json
 import re
+import sys
+from datetime import datetime
+from pathlib import Path
 
 # Fix Windows console encoding
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 
 def parse_log_file(log_path):
     """Parse log file and extract JSON entries."""
-    with open(log_path, 'r', encoding='utf-8') as f:
+    with open(log_path, encoding="utf-8") as f:
         content = f.read()
 
     # Use regex to find all JSON objects
@@ -23,7 +23,7 @@ def parse_log_file(log_path):
 
     entries = []
     for match in matches:
-        json_str = match.group().rstrip('\n=').strip()
+        json_str = match.group().rstrip("\n=").strip()
         try:
             data = json.loads(json_str)
             entries.append(data)
@@ -72,21 +72,21 @@ def view_logs(log_file=None):
         print(f"🆔 会话: {entry['session_id']}")
         print(f"🤖 模型: {entry['model']}")
 
-        request = entry['request']
+        request = entry["request"]
         print(f"\n📤 发送给 DeepSeek ({request['message_count']} 条消息):")
         print("-" * 100)
 
-        for i, msg in enumerate(request['messages'], 1):
-            role = "👤 用户" if msg['type'] == "HumanMessage" else "🤖 助手"
-            content = msg['content']
-            preview = content[:150] + '...' if len(content) > 150 else content
+        for i, msg in enumerate(request["messages"], 1):
+            role = "👤 用户" if msg["type"] == "HumanMessage" else "🤖 助手"
+            content = msg["content"]
+            preview = content[:150] + "..." if len(content) > 150 else content
             print(f"\n{role} - 消息 {i}:")
             print(f"   {preview}")
 
-        response = entry['response']
-        content = response['content']
-        preview = content[:150] + '...' if len(content) > 150 else content
-        print(f"\n📥 DeepSeek 回复:")
+        response = entry["response"]
+        content = response["content"]
+        preview = content[:150] + "..." if len(content) > 150 else content
+        print("\n📥 DeepSeek 回复:")
         print("-" * 100)
         print(f"🤖 {preview}")
 
@@ -125,15 +125,15 @@ def view_interaction(log_file=None, num=1):
 
     print("📤 发送的消息:")
     print("-" * 100)
-    for i, msg in enumerate(entry['request']['messages'], 1):
-        role = "👤 用户" if msg['type'] == "HumanMessage" else "🤖 助手"
+    for i, msg in enumerate(entry["request"]["messages"], 1):
+        role = "👤 用户" if msg["type"] == "HumanMessage" else "🤖 助手"
         print(f"\n{role} 消息 {i} ({msg['type']}):")
-        print(msg['content'])
+        print(msg["content"])
 
     print(f"\n{'=' * 100}")
     print("📥 DeepSeek 的完整回复:")
     print("-" * 100)
-    print(entry['response']['content'])
+    print(entry["response"]["content"])
     print(f"\n{'=' * 100}\n")
 
 

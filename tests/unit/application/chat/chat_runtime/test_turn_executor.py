@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List, Optional
 
 import pytest
 
@@ -12,16 +11,16 @@ class _AssistantStub:
     name: str
     model_id: str
     icon: str
-    system_prompt: Optional[str]
-    temperature: Optional[float]
-    max_tokens: Optional[int]
-    top_p: Optional[float]
-    top_k: Optional[int]
-    frequency_penalty: Optional[float]
-    presence_penalty: Optional[float]
-    max_rounds: Optional[int]
+    system_prompt: str | None
+    temperature: float | None
+    max_tokens: int | None
+    top_p: float | None
+    top_k: int | None
+    frequency_penalty: float | None
+    presence_penalty: float | None
+    max_rounds: int | None
     memory_enabled: bool = True
-    knowledge_base_ids: Optional[List[str]] = None
+    knowledge_base_ids: list[str] | None = None
     enabled: bool = True
 
 
@@ -66,7 +65,11 @@ async def test_group_turn_executor_merges_tool_diagnostics_into_sources(monkeypa
         return (
             "rag ctx",
             [
-                {"type": "rag_diagnostics", "title": "RAG Diagnostics", "snippet": "retrieved context"},
+                {
+                    "type": "rag_diagnostics",
+                    "title": "RAG Diagnostics",
+                    "snippet": "retrieved context",
+                },
                 {"type": "rag", "title": "Doc 1"},
             ],
         )
@@ -123,7 +126,9 @@ async def test_group_turn_executor_merges_tool_diagnostics_into_sources(monkeypa
         )
     )
 
-    assert "tool_diagnostics" not in [event.get("type") for event in events if isinstance(event, dict)]
+    assert "tool_diagnostics" not in [
+        event.get("type") for event in events if isinstance(event, dict)
+    ]
     sources_event = next(event for event in events if event.get("type") == "sources")
     assert [source["type"] for source in sources_event["sources"]] == [
         "memory",

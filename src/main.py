@@ -1,11 +1,13 @@
 """Main entry point for the agent system."""
 
-from dotenv import load_dotenv
 import uuid
+
+from dotenv import load_dotenv
 
 load_dotenv()
 
 from src.llm_runtime import call_llm
+
 
 def main():
     """Run the simple agent example."""
@@ -20,7 +22,7 @@ def main():
 
     while True:
         user_input = input("\nUser: ")
-        if user_input.lower() in ['quit', 'exit']:
+        if user_input.lower() in ["quit", "exit"]:
             break
 
         # 添加用户消息

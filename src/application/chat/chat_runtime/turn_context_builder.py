@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.application.chat.source_diagnostics import merge_source_groups
 
@@ -17,12 +18,12 @@ class GroupTurnContext:
 
     assistant_name: str
     model_id: str
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
     history_hint: str
     identity_prompt: str
-    instruction_prompt: Optional[str]
+    instruction_prompt: str | None
     system_prompt: str
-    sources: List[Dict[str, Any]]
+    sources: list[dict[str, Any]]
 
 
 class GroupTurnContextBuilder:
@@ -33,10 +34,12 @@ class GroupTurnContextBuilder:
         *,
         storage: Any,
         memory_service: Any,
-        build_rag_context_and_sources: Callable[..., Awaitable[Tuple[Optional[str], List[Dict[str, Any]]]]],
-        build_group_history_hint: Callable[[List[Dict[str, Any]], str, Dict[str, str]], str],
-        build_group_identity_prompt: Callable[[str, str, List[str], Dict[str, str]], str],
-        build_group_instruction_prompt: Callable[[Optional[str], Optional[Dict[str, Any]]], Optional[str]],
+        build_rag_context_and_sources: Callable[
+            ..., Awaitable[tuple[str | None, list[dict[str, Any]]]]
+        ],
+        build_group_history_hint: Callable[[list[dict[str, Any]], str, dict[str, str]], str],
+        build_group_identity_prompt: Callable[[str, str, list[str], dict[str, str]], str],
+        build_group_instruction_prompt: Callable[[str | None, dict[str, Any] | None], str | None],
     ):
         self.storage = storage
         self.memory_service = memory_service
@@ -51,15 +54,15 @@ class GroupTurnContextBuilder:
         session_id: str,
         assistant_id: str,
         assistant_obj: Any,
-        group_assistants: List[str],
-        assistant_name_map: Dict[str, str],
+        group_assistants: list[str],
+        assistant_name_map: dict[str, str],
         raw_user_message: str,
         context_type: str,
-        project_id: Optional[str],
-        search_context: Optional[str],
-        search_sources: List[Dict[str, Any]],
-        instruction: Optional[str] = None,
-        committee_turn_packet: Optional[Dict[str, Any]] = None,
+        project_id: str | None,
+        search_context: str | None,
+        search_sources: list[dict[str, Any]],
+        instruction: str | None = None,
+        committee_turn_packet: dict[str, Any] | None = None,
     ) -> GroupTurnContext:
         """Build complete turn context with system prompt stacking."""
         session = await self.storage.get_session(
@@ -97,7 +100,7 @@ class GroupTurnContextBuilder:
         system_prompt = "\n\n".join(prompt_parts)
 
         assistant_memory_enabled = bool(getattr(assistant_obj, "memory_enabled", True))
-        memory_sources: List[Dict[str, Any]] = []
+        memory_sources: list[dict[str, Any]] = []
         try:
             memory_context, memory_sources = self.memory_service.build_memory_context(
                 query=raw_user_message,

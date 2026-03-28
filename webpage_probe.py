@@ -5,14 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from typing import List
 
 from src.infrastructure.web.webpage_service import WebpageService
 
 
-def _dedupe(urls: List[str]) -> List[str]:
+def _dedupe(urls: list[str]) -> list[str]:
     seen = set()
-    ordered: List[str] = []
+    ordered: list[str] = []
     for url in urls:
         if url in seen:
             continue
@@ -86,7 +85,7 @@ async def main() -> int:
     args = _parse_args()
     service = WebpageService(config_path=args.config) if args.config else WebpageService()
 
-    urls: List[str] = []
+    urls: list[str] = []
     if args.text:
         urls.extend(service.extract_urls(args.text))
     urls.extend(args.urls)

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -19,8 +20,8 @@ from src.application.flow.flow_stream_runtime import (
 )
 
 
-async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]:
-    payloads: List[Dict[str, Any]] = []
+async def _collect_sse_payloads(streaming_response: Any) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
     async for chunk in streaming_response.body_iterator:
         text = chunk.decode("utf-8") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
         for line in text.splitlines():
@@ -47,7 +48,9 @@ class _FakeAgent:
         self.calls: list[tuple[str, Any]] = []
 
     async def process_message(self, session_id: str, message: str, **kwargs):
-        self.calls.append(("process_message", {"session_id": session_id, "message": message, **kwargs}))
+        self.calls.append(
+            ("process_message", {"session_id": session_id, "message": message, **kwargs})
+        )
         if self.process_message_error is not None:
             raise self.process_message_error
         return self.process_message_result
@@ -56,11 +59,15 @@ class _FakeAgent:
         self.calls.append(("truncate", kwargs))
 
     def process_chat_stream(self, session_id: str, message: str, **kwargs):
-        self.calls.append(("process_chat_stream", {"session_id": session_id, "message": message, **kwargs}))
+        self.calls.append(
+            ("process_chat_stream", {"session_id": session_id, "message": message, **kwargs})
+        )
         if self.stream_error is not None:
+
             async def _raiser():
                 raise self.stream_error
                 yield  # pragma: no cover
+
             return _raiser()
         return _async_iter(self.stream_items)
 
@@ -86,20 +93,27 @@ class _FakeAgent:
     def compress_context_stream(self, **kwargs):
         self.calls.append(("compress_context_stream", kwargs))
         if self.compress_error is not None:
+
             async def _raiser():
                 raise self.compress_error
                 yield  # pragma: no cover
+
             return _raiser()
         return _async_iter(self.compress_items)
 
     def process_compare_stream(self, session_id: str, message: str, model_ids: list[str], **kwargs):
         self.calls.append(
-            ("process_compare_stream", {"session_id": session_id, "message": message, "model_ids": model_ids, **kwargs})
+            (
+                "process_compare_stream",
+                {"session_id": session_id, "message": message, "model_ids": model_ids, **kwargs},
+            )
         )
         if self.compare_error is not None:
+
             async def _raiser():
                 raise self.compare_error
                 yield  # pragma: no cover
+
             return _raiser()
         return _async_iter(self.compare_items)
 
@@ -206,7 +220,9 @@ async def test_stream_helpers_build_and_produce_payloads():
     ]
 
     runtime = FlowStreamRuntime()
-    runtime.create_stream(stream_id="stream-1", conversation_id="session-1", context_type="chat", project_id=None)
+    runtime.create_stream(
+        stream_id="stream-1", conversation_id="session-1", context_type="chat", project_id=None
+    )
     await chat_router._run_chat_stream_producer(
         request=chat_router.ChatRequest(session_id="session-1", message="stream me"),
         agent=agent,  # type: ignore[arg-type]
@@ -219,7 +235,12 @@ async def test_stream_helpers_build_and_produce_payloads():
 
     for error in (FileNotFoundError(), ValueError("bad stream"), RuntimeError("crash")):
         runtime = FlowStreamRuntime()
-        runtime.create_stream(stream_id="stream-err", conversation_id="session-1", context_type="chat", project_id=None)
+        runtime.create_stream(
+            stream_id="stream-err",
+            conversation_id="session-1",
+            context_type="chat",
+            project_id=None,
+        )
         agent = _FakeAgent()
         agent.stream_error = error
         await chat_router._run_chat_stream_producer(
@@ -249,7 +270,10 @@ async def test_chat_stream_and_resume_routes(monkeypatch):
         runtime=runtime,
     )
     payloads = await _collect_sse_payloads(response)
-    assert [payload["flow_event"]["event_type"] for payload in payloads] == ["stream_started", "stream_ended"]
+    assert [payload["flow_event"]["event_type"] for payload in payloads] == [
+        "stream_started",
+        "stream_ended",
+    ]
 
     with pytest.raises(HTTPException) as exc_info:
         await chat_router.chat_stream(
@@ -272,7 +296,9 @@ async def test_chat_stream_and_resume_routes(monkeypatch):
     assert exc_info.value.status_code == 503
 
     resume_runtime = FlowStreamRuntime()
-    resume_runtime.create_stream(stream_id="stream-resume", conversation_id="session-1", context_type="chat", project_id=None)
+    resume_runtime.create_stream(
+        stream_id="stream-resume", conversation_id="session-1", context_type="chat", project_id=None
+    )
     emitter = FlowEventEmitter(stream_id="stream-resume", conversation_id="session-1")
     started = emitter.emit_started(context_type="chat")
     done = emitter.emit_ended()
@@ -300,7 +326,9 @@ async def test_resume_chat_stream_maps_runtime_errors():
 
     with pytest.raises(HTTPException) as exc_info:
         await chat_router.resume_chat_stream(
-            chat_router.ResumeStreamRequest(session_id="s1", stream_id="stream", last_event_id="evt-1"),
+            chat_router.ResumeStreamRequest(
+                session_id="s1", stream_id="stream", last_event_id="evt-1"
+            ),
             runtime=_ResumeRuntime(),  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 404
@@ -311,7 +339,9 @@ async def test_resume_chat_stream_maps_runtime_errors():
 
     with pytest.raises(HTTPException) as exc_info:
         await chat_router.resume_chat_stream(
-            chat_router.ResumeStreamRequest(session_id="s1", stream_id="stream", last_event_id="evt-1"),
+            chat_router.ResumeStreamRequest(
+                session_id="s1", stream_id="stream", last_event_id="evt-1"
+            ),
             runtime=_CursorGoneRuntime(),  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 410
@@ -322,7 +352,9 @@ async def test_resume_chat_stream_maps_runtime_errors():
 
     with pytest.raises(HTTPException) as exc_info:
         await chat_router.resume_chat_stream(
-            chat_router.ResumeStreamRequest(session_id="s1", stream_id="stream", last_event_id="evt-1"),
+            chat_router.ResumeStreamRequest(
+                session_id="s1", stream_id="stream", last_event_id="evt-1"
+            ),
             runtime=_MismatchRuntime(),  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 409
@@ -487,44 +519,76 @@ async def test_message_mutation_routes_and_compare_stream():
         (chat_router.DeleteMessageRequest(session_id="s1", message_index=-1), 400),
         (chat_router.DeleteMessageRequest(session_id="s1", message_id="bad-value"), 400),
         (chat_router.DeleteMessageRequest(session_id="s1", message_id="boom"), 500),
-        (chat_router.DeleteMessageRequest(session_id="s1", message_id="m1", context_type="project"), 400),
+        (
+            chat_router.DeleteMessageRequest(
+                session_id="s1", message_id="m1", context_type="project"
+            ),
+            400,
+        ),
     ]:
         with pytest.raises(HTTPException) as exc_info:
             await chat_router.delete_message(request, agent=agent)  # type: ignore[arg-type]
         assert exc_info.value.status_code == expected_status
 
-    assert (await chat_router.update_message(
-        chat_router.UpdateMessageRequest(session_id="s1", message_id="m1", content="updated"),
-        agent=agent,  # type: ignore[arg-type]
-    ))["success"] is True
+    assert (
+        await chat_router.update_message(
+            chat_router.UpdateMessageRequest(session_id="s1", message_id="m1", content="updated"),
+            agent=agent,  # type: ignore[arg-type]
+        )
+    )["success"] is True
     for request, expected_status in [
         (chat_router.UpdateMessageRequest(session_id="s1", message_id="missing", content="x"), 404),
         (chat_router.UpdateMessageRequest(session_id="s1", message_id="bad", content="x"), 400),
         (chat_router.UpdateMessageRequest(session_id="s1", message_id="boom", content="x"), 500),
-        (chat_router.UpdateMessageRequest(session_id="s1", message_id="m1", content="x", context_type="project"), 400),
+        (
+            chat_router.UpdateMessageRequest(
+                session_id="s1", message_id="m1", content="x", context_type="project"
+            ),
+            400,
+        ),
     ]:
         with pytest.raises(HTTPException) as exc_info:
             await chat_router.update_message(request, agent=agent)  # type: ignore[arg-type]
         assert exc_info.value.status_code == expected_status
 
-    assert (await chat_router.insert_separator(
-        chat_router.InsertSeparatorRequest(session_id="s1"),
-        agent=agent,  # type: ignore[arg-type]
-    ))["message_id"] == "sep-1"
-    assert (await chat_router.clear_all_messages(
-        chat_router.ClearMessagesRequest(session_id="s1"),
-        agent=agent,  # type: ignore[arg-type]
-    ))["success"] is True
+    assert (
+        await chat_router.insert_separator(
+            chat_router.InsertSeparatorRequest(session_id="s1"),
+            agent=agent,  # type: ignore[arg-type]
+        )
+    )["message_id"] == "sep-1"
+    assert (
+        await chat_router.clear_all_messages(
+            chat_router.ClearMessagesRequest(session_id="s1"),
+            agent=agent,  # type: ignore[arg-type]
+        )
+    )["success"] is True
 
     for request, route, expected_status in [
-        (chat_router.InsertSeparatorRequest(session_id="missing"), chat_router.insert_separator, 404),
+        (
+            chat_router.InsertSeparatorRequest(session_id="missing"),
+            chat_router.insert_separator,
+            404,
+        ),
         (chat_router.InsertSeparatorRequest(session_id="bad"), chat_router.insert_separator, 400),
         (chat_router.InsertSeparatorRequest(session_id="boom"), chat_router.insert_separator, 500),
-        (chat_router.InsertSeparatorRequest(session_id="s1", context_type="project"), chat_router.insert_separator, 400),
-        (chat_router.ClearMessagesRequest(session_id="missing"), chat_router.clear_all_messages, 404),
+        (
+            chat_router.InsertSeparatorRequest(session_id="s1", context_type="project"),
+            chat_router.insert_separator,
+            400,
+        ),
+        (
+            chat_router.ClearMessagesRequest(session_id="missing"),
+            chat_router.clear_all_messages,
+            404,
+        ),
         (chat_router.ClearMessagesRequest(session_id="bad"), chat_router.clear_all_messages, 400),
         (chat_router.ClearMessagesRequest(session_id="boom"), chat_router.clear_all_messages, 500),
-        (chat_router.ClearMessagesRequest(session_id="s1", context_type="project"), chat_router.clear_all_messages, 400),
+        (
+            chat_router.ClearMessagesRequest(session_id="s1", context_type="project"),
+            chat_router.clear_all_messages,
+            400,
+        ),
     ]:
         with pytest.raises(HTTPException) as exc_info:
             await route(request, agent=agent)  # type: ignore[arg-type]
@@ -545,21 +609,27 @@ async def test_message_mutation_routes_and_compare_stream():
         chat_router.CompressContextRequest(session_id="s1"),
         agent=agent,  # type: ignore[arg-type]
     )
-    assert (await _collect_sse_payloads(compress_response))[-1]["flow_event"]["payload"]["error"] == "Session not found"
+    assert (await _collect_sse_payloads(compress_response))[-1]["flow_event"]["payload"][
+        "error"
+    ] == "Session not found"
 
     agent.compress_error = ValueError("bad compress")
     compress_response = await chat_router.compress_context(
         chat_router.CompressContextRequest(session_id="s1"),
         agent=agent,  # type: ignore[arg-type]
     )
-    assert (await _collect_sse_payloads(compress_response))[-1]["flow_event"]["payload"]["error"] == "bad compress"
+    assert (await _collect_sse_payloads(compress_response))[-1]["flow_event"]["payload"][
+        "error"
+    ] == "bad compress"
 
     agent.compress_error = RuntimeError("compress boom")
     compress_response = await chat_router.compress_context(
         chat_router.CompressContextRequest(session_id="s1"),
         agent=agent,  # type: ignore[arg-type]
     )
-    assert (await _collect_sse_payloads(compress_response))[-1]["flow_event"]["payload"]["error"] == "compress boom"
+    assert (await _collect_sse_payloads(compress_response))[-1]["flow_event"]["payload"][
+        "error"
+    ] == "compress boom"
 
     with pytest.raises(HTTPException) as exc_info:
         await chat_router.compress_context(
@@ -579,7 +649,12 @@ async def test_message_mutation_routes_and_compare_stream():
 
     for request, expected_status in [
         (chat_router.CompareRequest(session_id="s1", message="hi", model_ids=["m1"]), 400),
-        (chat_router.CompareRequest(session_id="s1", message="hi", model_ids=["m1", "m2"], context_type="project"), 400),
+        (
+            chat_router.CompareRequest(
+                session_id="s1", message="hi", model_ids=["m1", "m2"], context_type="project"
+            ),
+            400,
+        ),
     ]:
         with pytest.raises(HTTPException) as exc_info:
             await chat_router.chat_compare(request, agent=agent)  # type: ignore[arg-type]
@@ -595,4 +670,6 @@ async def test_message_mutation_routes_and_compare_stream():
             chat_router.CompareRequest(session_id="s1", message="hi", model_ids=["m1", "m2"]),
             agent=agent,  # type: ignore[arg-type]
         )
-        assert (await _collect_sse_payloads(compare_response))[-1]["flow_event"]["payload"]["error"] == expected_error
+        assert (await _collect_sse_payloads(compare_response))[-1]["flow_event"]["payload"][
+            "error"
+        ] == expected_error

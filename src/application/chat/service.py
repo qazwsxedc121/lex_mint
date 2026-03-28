@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 
 from .orchestration_gateway import ChatOrchestrationGateway, ChatOrchestrationGatewayDeps
 from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
@@ -17,8 +18,8 @@ class ChatApplicationDeps:
     single_chat_flow_service: Any
     compare_flow_service: Any
     group_chat_service: Any
-    session_command_service: Optional[ChatSessionCommandService] = None
-    orchestration_gateway: Optional[ChatOrchestrationGateway] = None
+    session_command_service: ChatSessionCommandService | None = None
+    orchestration_gateway: ChatOrchestrationGateway | None = None
 
 
 class ChatApplicationService:
@@ -42,13 +43,13 @@ class ChatApplicationService:
         session_id: str,
         user_message: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
-    ) -> tuple[str, List[Dict[str, Any]]]:
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
         """Run the single-chat use case and collect the final response."""
         return await self._orchestration_gateway.run_single_message(
             session_id=session_id,
@@ -67,15 +68,15 @@ class ChatApplicationService:
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
     ) -> AsyncIterator[Any]:
         """Stream the single-chat use case."""
         async for event in self._orchestration_gateway.stream_single(
@@ -99,15 +100,15 @@ class ChatApplicationService:
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
     ) -> AsyncIterator[Any]:
         """Stream chat with unified mode resolution through orchestration gateway."""
         session_data = await self.storage.get_session(
@@ -157,17 +158,17 @@ class ChatApplicationService:
         self,
         session_id: str,
         user_message: str,
-        group_assistants: List[str],
+        group_assistants: list[str],
         group_mode: str = "round_robin",
-        group_settings: Optional[Dict[str, Any]] = None,
+        group_settings: dict[str, Any] | None = None,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[Any]:
         """Stream the group-chat use case."""
         async for event in self._orchestration_gateway.stream_group(
@@ -191,14 +192,14 @@ class ChatApplicationService:
         self,
         session_id: str,
         user_message: str,
-        model_ids: List[str],
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        model_ids: list[str],
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[Any]:
         """Stream the compare-model use case."""
         async for event in self._orchestration_gateway.stream_compare(
@@ -221,7 +222,7 @@ class ChatApplicationService:
         session_id: str,
         keep_until_index: int,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._session_commands.truncate_messages_after(
             session_id=session_id,
@@ -234,10 +235,10 @@ class ChatApplicationService:
         self,
         *,
         session_id: str,
-        message_index: Optional[int] = None,
-        message_id: Optional[str] = None,
+        message_index: int | None = None,
+        message_id: str | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._session_commands.delete_message(
             session_id=session_id,
@@ -254,7 +255,7 @@ class ChatApplicationService:
         message_id: str,
         content: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._session_commands.update_message_content(
             session_id=session_id,
@@ -269,7 +270,7 @@ class ChatApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> str:
         return await self._session_commands.append_separator(
             session_id=session_id,
@@ -282,7 +283,7 @@ class ChatApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> None:
         await self._session_commands.clear_all_messages(
             session_id=session_id,
@@ -295,7 +296,7 @@ class ChatApplicationService:
         *,
         session_id: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> AsyncIterator[Any]:
         async for event in self._session_commands.compress_context_stream(
             session_id=session_id,

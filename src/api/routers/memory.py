@@ -1,9 +1,9 @@
-﻿"""Memory API router."""
+"""Memory API router."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -19,7 +19,7 @@ class MemorySettingsResponse(BaseModel):
     enabled: bool
     profile_id: str
     collection_name: str
-    enabled_layers: List[str]
+    enabled_layers: list[str]
     top_k: int
     score_threshold: float
     max_injected_items: int
@@ -32,58 +32,58 @@ class MemorySettingsResponse(BaseModel):
 
 
 class MemorySettingsUpdate(BaseModel):
-    enabled: Optional[bool] = None
-    profile_id: Optional[str] = None
-    collection_name: Optional[str] = None
-    enabled_layers: Optional[List[str]] = None
-    top_k: Optional[int] = Field(default=None, ge=1, le=30)
-    score_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    max_injected_items: Optional[int] = Field(default=None, ge=1, le=20)
-    max_item_length: Optional[int] = Field(default=None, ge=50, le=800)
-    auto_extract_enabled: Optional[bool] = None
-    min_text_length: Optional[int] = Field(default=None, ge=1, le=200)
-    max_items_per_turn: Optional[int] = Field(default=None, ge=1, le=20)
-    global_enabled: Optional[bool] = None
-    assistant_enabled: Optional[bool] = None
+    enabled: bool | None = None
+    profile_id: str | None = None
+    collection_name: str | None = None
+    enabled_layers: list[str] | None = None
+    top_k: int | None = Field(default=None, ge=1, le=30)
+    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    max_injected_items: int | None = Field(default=None, ge=1, le=20)
+    max_item_length: int | None = Field(default=None, ge=50, le=800)
+    auto_extract_enabled: bool | None = None
+    min_text_length: int | None = Field(default=None, ge=1, le=200)
+    max_items_per_turn: int | None = Field(default=None, ge=1, le=20)
+    global_enabled: bool | None = None
+    assistant_enabled: bool | None = None
 
 
 class MemoryCreateRequest(BaseModel):
     content: str = Field(..., min_length=1)
     scope: Literal["global", "assistant"] = "global"
     layer: str = Field(default="fact")
-    assistant_id: Optional[str] = None
-    profile_id: Optional[str] = None
+    assistant_id: str | None = None
+    profile_id: str | None = None
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
     importance: float = Field(default=0.6, ge=0.0, le=1.0)
-    source_session_id: Optional[str] = None
-    source_message_id: Optional[str] = None
+    source_session_id: str | None = None
+    source_message_id: str | None = None
     pinned: bool = False
 
 
 class MemoryUpdateRequest(BaseModel):
-    content: Optional[str] = Field(default=None, min_length=1)
-    scope: Optional[Literal["global", "assistant"]] = None
-    layer: Optional[str] = None
-    assistant_id: Optional[str] = None
-    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    importance: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    pinned: Optional[bool] = None
-    is_active: Optional[bool] = None
+    content: str | None = Field(default=None, min_length=1)
+    scope: Literal["global", "assistant"] | None = None
+    layer: str | None = None
+    assistant_id: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    pinned: bool | None = None
+    is_active: bool | None = None
 
 
 class MemorySearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
-    profile_id: Optional[str] = None
-    assistant_id: Optional[str] = None
-    scope: Optional[Literal["global", "assistant"]] = None
-    layer: Optional[str] = None
+    profile_id: str | None = None
+    assistant_id: str | None = None
+    scope: Literal["global", "assistant"] | None = None
+    layer: str | None = None
     include_global: bool = True
     include_assistant: bool = True
     limit: int = Field(default=6, ge=1, le=20)
 
 
 class MemoryListResponse(BaseModel):
-    items: List[Dict[str, Any]]
+    items: list[dict[str, Any]]
     count: int
 
 
@@ -127,10 +127,10 @@ async def update_memory_settings(
 
 @router.get("", response_model=MemoryListResponse)
 async def list_memories(
-    profile_id: Optional[str] = None,
-    scope: Optional[Literal["global", "assistant"]] = None,
-    assistant_id: Optional[str] = None,
-    layer: Optional[str] = None,
+    profile_id: str | None = None,
+    scope: Literal["global", "assistant"] | None = None,
+    assistant_id: str | None = None,
+    layer: str | None = None,
     include_inactive: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     service: MemoryService = Depends(get_memory_service),

@@ -5,12 +5,23 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
-from typing import Any, AsyncIterator, Awaitable, Dict, List, Optional, cast
 import uuid
+from collections.abc import AsyncIterator, Awaitable
+from typing import Any, cast
 
 from .checkpoint import RunCheckpoint
 from .context_manager import InMemoryContextManager
-from .ir import ActorEmit, ActorExecutionContext, ActorResult, ActorSignal, EdgeSpec, NodeSpec, RunContext, RunSpec, validate_run_spec
+from .ir import (
+    ActorEmit,
+    ActorExecutionContext,
+    ActorResult,
+    ActorSignal,
+    EdgeSpec,
+    NodeSpec,
+    RunContext,
+    RunSpec,
+    validate_run_spec,
+)
 from .run_store import RunStore
 
 
@@ -29,7 +40,7 @@ class OrchestrationEngine:
         self,
         *,
         default_max_steps: int = 1000,
-        run_store: Optional[RunStore] = None,
+        run_store: RunStore | None = None,
     ):
         self.default_max_steps = max(1, int(default_max_steps))
         self.run_store = run_store
@@ -37,8 +48,8 @@ class OrchestrationEngine:
     async def run_stream(
         self,
         spec: RunSpec,
-        context: Optional[RunContext] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        context: RunContext | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Run a graph and stream lifecycle events from the entry node."""
 
         async for event in self._run_stream_internal(
@@ -52,9 +63,9 @@ class OrchestrationEngine:
         self,
         spec: RunSpec,
         *,
-        context: Optional[RunContext] = None,
-        from_checkpoint_id: Optional[str] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        context: RunContext | None = None,
+        from_checkpoint_id: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Resume one run from a persisted checkpoint."""
 
         async for event in self._run_stream_internal(
@@ -68,9 +79,9 @@ class OrchestrationEngine:
         self,
         *,
         spec: RunSpec,
-        context: Optional[RunContext],
-        resume_from_checkpoint_id: Optional[str],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        context: RunContext | None,
+        resume_from_checkpoint_id: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
         validate_run_spec(spec)
 
         run_context = context or RunContext(run_id=spec.run_id)
@@ -232,7 +243,7 @@ class OrchestrationEngine:
                 node_started_event["checkpoint_id"] = node_started_checkpoint_id
             yield node_started_event
 
-            result: Optional[ActorResult] = None
+            result: ActorResult | None = None
             max_attempts = node.retry_policy.max_retries + 1
             for attempt in range(1, max_attempts + 1):
                 emitted_runtime_events = False
@@ -251,7 +262,10 @@ class OrchestrationEngine:
                     active_stream = active_node.actor.handler(execution_context)
                     stream = active_stream
 
-                    async def _iterate_signals() -> AsyncIterator[Dict[str, Any]]:
+                    async def _iterate_signals(
+                        active_stream: AsyncIterator[ActorSignal] = active_stream,
+                        active_node: NodeSpec = active_node,
+                    ) -> AsyncIterator[dict[str, Any]]:
                         nonlocal result
                         nonlocal emitted_runtime_events
                         async for signal in active_stream:
@@ -510,7 +524,7 @@ class OrchestrationEngine:
         *,
         run_store: RunStore,
         run_id: str,
-        checkpoint_id: Optional[str],
+        checkpoint_id: str | None,
     ) -> RunCheckpoint:
         if checkpoint_id:
             checkpoint = await run_store.get_checkpoint(run_id=run_id, checkpoint_id=checkpoint_id)
@@ -528,7 +542,7 @@ class OrchestrationEngine:
         *,
         checkpoint: RunCheckpoint,
         entry_node_id: str,
-        edges_by_source: Dict[str, List[EdgeSpec]],
+        edges_by_source: dict[str, list[EdgeSpec]],
     ) -> str:
         event_type = checkpoint.event_type
         if event_type == "started":
@@ -557,20 +571,20 @@ class OrchestrationEngine:
     async def _save_checkpoint(
         self,
         *,
-        run_store: Optional[RunStore],
+        run_store: RunStore | None,
         run_id: str,
         seq: int,
         step: int,
         event_type: str,
-        node_id: Optional[str] = None,
-        actor_id: Optional[str] = None,
-        next_node_id: Optional[str] = None,
-        branch: Optional[str] = None,
-        terminal_status: Optional[str] = None,
-        terminal_reason: Optional[str] = None,
-        payload: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
+        node_id: str | None = None,
+        actor_id: str | None = None,
+        next_node_id: str | None = None,
+        branch: str | None = None,
+        terminal_status: str | None = None,
+        terminal_reason: str | None = None,
+        payload: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
         if run_store is None:
             return None
 
@@ -602,8 +616,8 @@ class OrchestrationEngine:
                     await cast(Awaitable[Any], close_result)
 
     @staticmethod
-    def _index_edges(edges: tuple[EdgeSpec, ...]) -> Dict[str, List[EdgeSpec]]:
-        indexed: Dict[str, List[EdgeSpec]] = {}
+    def _index_edges(edges: tuple[EdgeSpec, ...]) -> dict[str, list[EdgeSpec]]:
+        indexed: dict[str, list[EdgeSpec]] = {}
         for edge in edges:
             indexed.setdefault(edge.source_id, []).append(edge)
         return indexed
@@ -612,9 +626,9 @@ class OrchestrationEngine:
     def _resolve_next_node(
         *,
         node_id: str,
-        branch: Optional[str],
-        edges_by_source: Dict[str, List[EdgeSpec]],
-    ) -> Optional[str]:
+        branch: str | None,
+        edges_by_source: dict[str, list[EdgeSpec]],
+    ) -> str | None:
         options = edges_by_source.get(node_id, [])
         if not options:
             return None
@@ -657,7 +671,7 @@ class OrchestrationEngine:
         return min(delay, cap)
 
     @staticmethod
-    def _normalize_reason(reason: Optional[str], *, fallback: str) -> str:
+    def _normalize_reason(reason: str | None, *, fallback: str) -> str:
         normalized = str(reason or "").strip()
         if normalized:
             return normalized

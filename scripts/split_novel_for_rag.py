@@ -10,8 +10,6 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
-
 
 CHAPTER_PATTERN = re.compile(r"^第[0-9一二三四五六七八九十百千零〇]+章(?:\s+.*)?$")
 PART_PATTERN = re.compile(r"^第[0-9一二三四五六七八九十百千零〇]+部(?:\s+.*)?$")
@@ -34,8 +32,8 @@ def _clean_heading(line: str) -> str:
     return line.replace("\ufeff", "").strip().strip("\u3000").strip()
 
 
-def _normalize_text(raw_lines: List[str]) -> str:
-    normalized: List[str] = []
+def _normalize_text(raw_lines: list[str]) -> str:
+    normalized: list[str] = []
     previous_blank = False
 
     for raw in raw_lines:
@@ -60,7 +58,7 @@ def _safe_name(name: str, *, fallback: str) -> str:
     return cleaned or fallback
 
 
-def _parse_book_metadata(path: Path, book_title_line: str) -> Dict[str, str]:
+def _parse_book_metadata(path: Path, book_title_line: str) -> dict[str, str]:
     base = path.stem
     match = BOOK_FILE_PATTERN.match(base)
     if not match:
@@ -80,7 +78,7 @@ def _parse_book_metadata(path: Path, book_title_line: str) -> Dict[str, str]:
     }
 
 
-def _split_book(path: Path) -> Dict[str, object]:
+def _split_book(path: Path) -> dict[str, object]:
     raw = path.read_text(encoding="utf-8", errors="ignore")
     lines = raw.splitlines()
 
@@ -88,9 +86,9 @@ def _split_book(path: Path) -> Dict[str, object]:
     book_title_line = non_empty[0] if non_empty else path.stem
     metadata = _parse_book_metadata(path, book_title_line)
 
-    preface_lines: List[str] = []
-    chapters_raw: List[Dict[str, object]] = []
-    current: Optional[Dict[str, object]] = None
+    preface_lines: list[str] = []
+    chapters_raw: list[dict[str, object]] = []
+    current: dict[str, object] | None = None
     current_part = ""
 
     for raw_line in lines:
@@ -124,7 +122,7 @@ def _split_book(path: Path) -> Dict[str, object]:
     if current is not None:
         chapters_raw.append(current)
 
-    chapters: List[Chapter] = []
+    chapters: list[Chapter] = []
     preface_text = _normalize_text(preface_lines)
     if preface_text:
         chapters.append(
@@ -158,7 +156,7 @@ def _split_book(path: Path) -> Dict[str, object]:
     }
 
 
-def _render_chapter_markdown(book: Dict[str, object], chapter: Chapter) -> str:
+def _render_chapter_markdown(book: dict[str, object], chapter: Chapter) -> str:
     metadata = book["book_metadata"]  # type: ignore[index]
     source_file = book["source_file"]  # type: ignore[index]
 
@@ -171,14 +169,14 @@ def _render_chapter_markdown(book: Dict[str, object], chapter: Chapter) -> str:
 
     meta_lines = [
         "---",
-        f'source_file: {json.dumps(source_file, ensure_ascii=False)}',
-        f'chapter_index: {chapter.chapter_index}',
-        f'chapter_heading: {json.dumps(heading_line, ensure_ascii=False)}',
-        f'part_heading: {json.dumps(part_heading, ensure_ascii=False)}',
-        f'book_title: {json.dumps(book_title, ensure_ascii=False)}',
-        f'book_title_cn: {json.dumps(title_cn, ensure_ascii=False)}',
-        f'book_title_en: {json.dumps(title_en, ensure_ascii=False)}',
-        f'publish_year: {json.dumps(year, ensure_ascii=False)}',
+        f"source_file: {json.dumps(source_file, ensure_ascii=False)}",
+        f"chapter_index: {chapter.chapter_index}",
+        f"chapter_heading: {json.dumps(heading_line, ensure_ascii=False)}",
+        f"part_heading: {json.dumps(part_heading, ensure_ascii=False)}",
+        f"book_title: {json.dumps(book_title, ensure_ascii=False)}",
+        f"book_title_cn: {json.dumps(title_cn, ensure_ascii=False)}",
+        f"book_title_en: {json.dumps(title_en, ensure_ascii=False)}",
+        f"publish_year: {json.dumps(year, ensure_ascii=False)}",
         "---",
         "",
         f"# {book_title or 'Untitled Book'}",
@@ -190,25 +188,27 @@ def _render_chapter_markdown(book: Dict[str, object], chapter: Chapter) -> str:
     return "\n".join(meta_lines)
 
 
-def split_novels(input_dir: Path, output_dir: Path, clean_output: bool) -> Dict[str, object]:
+def split_novels(input_dir: Path, output_dir: Path, clean_output: bool) -> dict[str, object]:
     if clean_output and output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     all_books = sorted(input_dir.rglob("*.txt"))
-    manifest_books: List[Dict[str, object]] = []
+    manifest_books: list[dict[str, object]] = []
 
     for path in all_books:
         parsed = _split_book(path)
-        chapters: List[Chapter] = parsed["chapters"]  # type: ignore[index]
+        chapters: list[Chapter] = parsed["chapters"]  # type: ignore[index]
         series_dir = _safe_name(str(parsed["series_dir"]), fallback="series")
         book_dir_name = _safe_name(str(parsed["book_file_stem"]), fallback="book")
         book_output_dir = output_dir / series_dir / book_dir_name
         book_output_dir.mkdir(parents=True, exist_ok=True)
 
-        chapter_items: List[Dict[str, object]] = []
+        chapter_items: list[dict[str, object]] = []
         for chapter in chapters:
-            chapter_name = _safe_name(chapter.heading, fallback=f"chapter_{chapter.chapter_index:03d}")
+            chapter_name = _safe_name(
+                chapter.heading, fallback=f"chapter_{chapter.chapter_index:03d}"
+            )
             output_name = f"{chapter.chapter_index:03d}_{chapter_name}.md"
             output_path = book_output_dir / output_name
             output_path.write_text(_render_chapter_markdown(parsed, chapter), encoding="utf-8")

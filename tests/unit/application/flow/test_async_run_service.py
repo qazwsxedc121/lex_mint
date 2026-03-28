@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.domain.models.async_run import AsyncRunRecord, RunStatus
 from src.application.flow.async_run_service import AsyncRunService
 from src.application.flow.flow_stream_runtime import FlowStreamRuntime
+from src.domain.models.async_run import AsyncRunRecord, RunStatus
 
 
 def _make_record(*, run_id: str, status: RunStatus) -> AsyncRunRecord:
@@ -56,8 +56,20 @@ class _FakeWorkflowExecutionService:
 
     async def execute_stream(self, workflow, inputs, **kwargs):
         self.calls.append({"workflow": workflow, "inputs": inputs, **kwargs})
-        yield {"type": "workflow_run_started", "workflow_id": getattr(workflow, "id", "wf"), "run_id": kwargs.get("run_id"), "checkpoint_id": "cp-1"}
-        yield {"type": "workflow_run_finished", "workflow_id": getattr(workflow, "id", "wf"), "run_id": kwargs.get("run_id"), "status": "success", "output": "ok", "checkpoint_id": "cp-2"}
+        yield {
+            "type": "workflow_run_started",
+            "workflow_id": getattr(workflow, "id", "wf"),
+            "run_id": kwargs.get("run_id"),
+            "checkpoint_id": "cp-1",
+        }
+        yield {
+            "type": "workflow_run_finished",
+            "workflow_id": getattr(workflow, "id", "wf"),
+            "run_id": kwargs.get("run_id"),
+            "status": "success",
+            "output": "ok",
+            "checkpoint_id": "cp-2",
+        }
 
 
 @pytest.mark.asyncio
@@ -133,7 +145,11 @@ async def test_resume_workflow_run_restarts_task_with_checkpoint_id():
         for payload in state.events
         if isinstance(payload.get("flow_event"), dict)
     ]
-    workflow_started = next(item for item in flow_events if item.get("event_type") == "workflow_run_started")
-    workflow_finished = next(item for item in flow_events if item.get("event_type") == "workflow_run_finished")
+    workflow_started = next(
+        item for item in flow_events if item.get("event_type") == "workflow_run_started"
+    )
+    workflow_finished = next(
+        item for item in flow_events if item.get("event_type") == "workflow_run_finished"
+    )
     assert workflow_started.get("payload", {}).get("checkpoint_id") == "cp-1"
     assert workflow_finished.get("payload", {}).get("checkpoint_id") == "cp-2"

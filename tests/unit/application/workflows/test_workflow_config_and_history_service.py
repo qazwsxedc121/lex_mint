@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from src.application.workflows.run_history_service import WorkflowRunHistoryService
 from src.domain.models.workflow import (
     EndNode,
     LlmNode,
@@ -15,7 +16,6 @@ from src.domain.models.workflow import (
     WorkflowRunRecord,
 )
 from src.infrastructure.config.workflow_config_service import WorkflowConfigService
-from src.application.workflows.run_history_service import WorkflowRunHistoryService
 
 
 def _sample_workflow(workflow_id: str = "wf_demo") -> Workflow:

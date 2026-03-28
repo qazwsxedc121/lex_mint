@@ -10,9 +10,9 @@ import re
 import shutil
 import sys
 import uuid
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -20,9 +20,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.domain.models.knowledge_base import KnowledgeBaseDocument
+from src.infrastructure.config.rag_config_service import RagConfigService
 from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
-from src.infrastructure.config.rag_config_service import RagConfigService
 from src.infrastructure.web.webpage_service import WebpageService
 
 ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".html", ".htm"}
@@ -107,8 +107,8 @@ def _sanitize_filename(value: str, default_name: str = "doc.md") -> str:
     return text[:160]
 
 
-def _load_urls(urls_file: Path) -> List[str]:
-    urls: List[str] = []
+def _load_urls(urls_file: Path) -> list[str]:
+    urls: list[str] = []
     for raw in urls_file.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -182,7 +182,7 @@ def _check_embedding_runtime(
         print(f"[embed] local_gguf_model_path={cfg.local_gguf_model_path}")
         print(f"[embed] local_gguf_n_gpu_layers={n_gpu_layers}")
 
-        gpu_offload_supported: Optional[bool] = None
+        gpu_offload_supported: bool | None = None
         try:
             import llama_cpp
 
@@ -296,7 +296,7 @@ async def _main() -> None:
     existing_docs = await kb_service.get_documents(args.kb_id)
     existing_names = {str(doc.filename or "").strip() for doc in existing_docs}
 
-    file_candidates: List[tuple[Path, str, str]] = []
+    file_candidates: list[tuple[Path, str, str]] = []
     seen_paths = set()
     for path in _iter_candidate_files(args.source_dir, args.recursive):
         real = str(path.resolve()).lower()
@@ -314,7 +314,7 @@ async def _main() -> None:
         if args.max_files is not None and len(file_candidates) >= max(1, int(args.max_files)):
             break
 
-    urls: List[str] = []
+    urls: list[str] = []
     if args.urls_file is not None:
         if not args.urls_file.exists():
             raise RuntimeError(f"urls file not found: {args.urls_file}")
@@ -381,12 +381,7 @@ async def _main() -> None:
         return
 
     print(
-        "[done] planned={planned} imported={imported} skipped={skipped} failed={failed}".format(
-            planned=stats.planned,
-            imported=stats.imported,
-            skipped=stats.skipped,
-            failed=stats.failed,
-        )
+        f"[done] planned={stats.planned} imported={stats.imported} skipped={stats.skipped} failed={stats.failed}"
     )
 
 

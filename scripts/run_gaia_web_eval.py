@@ -8,7 +8,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -26,14 +25,24 @@ from src.evals.gaia_web_eval import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run GAIA-style web research eval")
     parser.add_argument("--base-url", default="http://127.0.0.1:8988", help="Backend base URL")
-    parser.add_argument("--model-id", default=None, help="Composite model id, for example openai:gpt-4.1")
+    parser.add_argument(
+        "--model-id", default=None, help="Composite model id, for example openai:gpt-4.1"
+    )
     parser.add_argument("--context-type", choices=["chat", "project"], default="chat")
     parser.add_argument("--project-id", default=None, help="Required when context-type=project")
     parser.add_argument("--cases-path", type=str, default=str(DEFAULT_CASES_PATH))
-    parser.add_argument("--case-id", action="append", default=[], help="Run only the specified case id")
-    parser.add_argument("--limit", type=int, default=None, help="Run only the first N selected cases")
-    parser.add_argument("--scored-only", action="store_true", help="Run only cases with reference answers")
-    parser.add_argument("--keep-sessions", action="store_true", help="Do not delete temporary eval sessions")
+    parser.add_argument(
+        "--case-id", action="append", default=[], help="Run only the specified case id"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Run only the first N selected cases"
+    )
+    parser.add_argument(
+        "--scored-only", action="store_true", help="Run only cases with reference answers"
+    )
+    parser.add_argument(
+        "--keep-sessions", action="store_true", help="Do not delete temporary eval sessions"
+    )
     parser.add_argument(
         "--ensure-project-web-tools",
         action="store_true",

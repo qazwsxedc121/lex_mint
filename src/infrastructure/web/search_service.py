@@ -1,25 +1,29 @@
 """Web search service using Tavily or DuckDuckGo."""
 
+import asyncio
+import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Sequence
-import logging
-import asyncio
-import yaml
+from typing import Any
+
 import httpx
-from src.domain.models.search import SearchSource
-from src.infrastructure.config.model_config_service import ModelConfigService
+import yaml
+
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     ensure_local_file,
 )
+from src.domain.models.search import SearchSource
+from src.infrastructure.config.model_config_service import ModelConfigService
 
 logger = logging.getLogger(__name__)
 
 DDGS_CLIENT = None
 try:
     from ddgs import DDGS as DDGSClient  # type: ignore
+
     DDGS_CLIENT = DDGSClient
 except Exception:  # pragma: no cover - optional dependency
     DDGS_CLIENT = None
@@ -38,8 +42,8 @@ class SearchService:
     _MAX_PAGE = 5
     _TAVILY_MAX_PAGE = 2
 
-    def __init__(self, config_path: Optional[Path] = None, keys_path: Optional[Path] = None):
-        self.defaults_path: Optional[Path] = None
+    def __init__(self, config_path: Path | None = None, keys_path: Path | None = None):
+        self.defaults_path: Path | None = None
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "search_config.yaml"
@@ -73,7 +77,7 @@ class SearchService:
     def _load_config(self) -> SearchConfig:
         self._ensure_config_exists()
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             search_data = data.get("search", {})
             return SearchConfig(
@@ -88,7 +92,7 @@ class SearchService:
     def save_config(self, updates: dict) -> None:
         self._ensure_config_exists()
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception:
             data = {}
@@ -99,12 +103,12 @@ class SearchService:
         for key, value in updates.items():
             data["search"][key] = value
 
-        with open(self.config_path, 'w', encoding='utf-8') as f:
+        with open(self.config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 
         self.config = self._load_config()
 
-    async def search(self, query: str, *, page: int = 1) -> List[SearchSource]:
+    async def search(self, query: str, *, page: int = 1) -> list[SearchSource]:
         query = (query or "").strip()
         if not query:
             return []
@@ -120,9 +124,9 @@ class SearchService:
         return []
 
     @staticmethod
-    def _dedupe_sources(sources: List[SearchSource]) -> List[SearchSource]:
+    def _dedupe_sources(sources: list[SearchSource]) -> list[SearchSource]:
         seen_urls: set[str] = set()
-        deduped: List[SearchSource] = []
+        deduped: list[SearchSource] = []
         for source in sources:
             url = str(getattr(source, "url", "") or "").strip()
             if not url or url in seen_urls:
@@ -131,14 +135,14 @@ class SearchService:
             deduped.append(source)
         return deduped
 
-    def _paginate_sources(self, sources: List[SearchSource], *, page: int) -> List[SearchSource]:
+    def _paginate_sources(self, sources: list[SearchSource], *, page: int) -> list[SearchSource]:
         deduped = self._dedupe_sources(sources)
         page_size = max(1, int(self.config.max_results))
         start = (page - 1) * page_size
         end = start + page_size
         return deduped[start:end]
 
-    async def _search_tavily(self, query: str, *, page: int) -> List[SearchSource]:
+    async def _search_tavily(self, query: str, *, page: int) -> list[SearchSource]:
         if page > self._TAVILY_MAX_PAGE:
             raise ValueError(
                 f"Search provider 'tavily' supports simulated pagination only up to page {self._TAVILY_MAX_PAGE}"
@@ -165,14 +169,12 @@ class SearchService:
         timeout = httpx.Timeout(self.config.timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                "https://api.tavily.com/search",
-                json=payload,
-                headers=headers
+                "https://api.tavily.com/search", json=payload, headers=headers
             )
             response.raise_for_status()
             data = response.json()
 
-        sources: List[SearchSource] = []
+        sources: list[SearchSource] = []
         for result in data.get("results", []) or []:
             url = result.get("url")
             title = result.get("title") or url or "Source"
@@ -194,14 +196,14 @@ class SearchService:
 
         return self._paginate_sources(sources, page=page)
 
-    async def _search_duckduckgo(self, query: str, *, page: int) -> List[SearchSource]:
+    async def _search_duckduckgo(self, query: str, *, page: int) -> list[SearchSource]:
         if DDGS_CLIENT is None:
             logger.warning("ddgs is not installed")
             return []
 
-        def run_search() -> List[SearchSource]:
+        def run_search() -> list[SearchSource]:
             backends = ["lite", "html"]
-            last_error: Optional[Exception] = None
+            last_error: Exception | None = None
             ddgs_cls = DDGS_CLIENT
             if ddgs_cls is None:
                 return []
@@ -212,18 +214,12 @@ class SearchService:
                     try:
                         try:
                             iterator = ddgs.text(
-                                query,
-                                max_results=request_limit,
-                                page=page,
-                                backend=backend
+                                query, max_results=request_limit, page=page, backend=backend
                             )
                         except TypeError:
-                            iterator = ddgs.text(
-                                query,
-                                max_results=request_limit
-                            )
+                            iterator = ddgs.text(query, max_results=request_limit)
 
-                        results: List[SearchSource] = []
+                        results: list[SearchSource] = []
                         for result in iterator:
                             url = result.get("href") or result.get("url")
                             title = result.get("title") or url or "Source"
@@ -253,8 +249,7 @@ class SearchService:
 
         try:
             return await asyncio.wait_for(
-                asyncio.to_thread(run_search),
-                timeout=self.config.timeout_seconds
+                asyncio.to_thread(run_search), timeout=self.config.timeout_seconds
             )
         except asyncio.TimeoutError:
             logger.warning("DuckDuckGo search timed out")

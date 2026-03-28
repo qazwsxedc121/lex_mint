@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import uuid
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
+from typing import Any
 
 from src.application.orchestration import (
     ActorEmit,
@@ -26,7 +27,7 @@ class ChatOrchestrationGatewayDeps:
     single_chat_flow_service: Any
     compare_flow_service: Any
     group_chat_service: Any
-    orchestration_engine: Optional[OrchestrationEngine] = None
+    orchestration_engine: OrchestrationEngine | None = None
 
 
 class ChatOrchestrationGateway:
@@ -44,16 +45,16 @@ class ChatOrchestrationGateway:
         session_id: str,
         user_message: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
-    ) -> tuple[str, List[Dict[str, Any]]]:
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
         """Run one single_direct orchestration request through the runtime and collect output."""
-        response_chunks: List[str] = []
-        latest_sources: List[Dict[str, Any]] = []
+        response_chunks: list[str] = []
+        latest_sources: list[dict[str, Any]] = []
 
         async for event in self.stream_single(
             session_id=session_id,
@@ -82,15 +83,15 @@ class ChatOrchestrationGateway:
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
     ) -> AsyncIterator[Any]:
         """Stream single_direct mode through the unified gateway."""
         async for event in self._stream_via_runtime(
@@ -117,17 +118,17 @@ class ChatOrchestrationGateway:
         *,
         session_id: str,
         user_message: str,
-        group_assistants: List[str],
+        group_assistants: list[str],
         group_mode: str = "round_robin",
-        group_settings: Optional[Dict[str, Any]] = None,
+        group_settings: dict[str, Any] | None = None,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[Any]:
         """Stream round_robin/committee modes through the unified gateway."""
         normalized_mode = (group_mode or "round_robin").strip().lower()
@@ -156,14 +157,14 @@ class ChatOrchestrationGateway:
         *,
         session_id: str,
         user_message: str,
-        model_ids: List[str],
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
+        model_ids: list[str],
+        reasoning_effort: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[Any]:
         """Stream compare_models mode through the unified gateway."""
         async for event in self._stream_via_runtime(
@@ -227,4 +228,6 @@ class ChatOrchestrationGateway:
                     yield payload["event"]
                 continue
             if event_type in {"failed", "cancelled"}:
-                raise RuntimeError(str(runtime_event.get("terminal_reason") or "chat stream failed"))
+                raise RuntimeError(
+                    str(runtime_event.get("terminal_reason") or "chat stream failed")
+                )

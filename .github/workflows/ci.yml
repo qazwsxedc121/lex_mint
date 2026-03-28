@@ -44,6 +44,12 @@ jobs:
       - name: Check workflow schema
         run: ./venv/bin/python scripts/generate_workflow_schema.py --check
 
+      - name: Ruff check
+        run: ./venv/bin/python -m ruff check .
+
+      - name: Ruff format check
+        run: ./venv/bin/python -m ruff format --check .
+
       - name: Mypy
         run: ./venv/bin/python -m mypy src
 

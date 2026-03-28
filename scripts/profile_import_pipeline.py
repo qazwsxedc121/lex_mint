@@ -12,7 +12,6 @@ import time
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, Dict, List
 
 import yaml
 
@@ -20,7 +19,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.domain.models.knowledge_base import KnowledgeBase, KnowledgeBaseDocument, KnowledgeBasesConfig
+from src.domain.models.knowledge_base import (
+    KnowledgeBase,
+    KnowledgeBaseDocument,
+    KnowledgeBasesConfig,
+)
 from src.infrastructure.knowledge.document_processing_service import DocumentProcessingService
 from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
 
@@ -53,8 +56,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _iter_samples(source_dir: Path, file_glob: str, limit: int) -> List[Dict[str, object]]:
-    rows: List[Dict[str, object]] = []
+def _iter_samples(source_dir: Path, file_glob: str, limit: int) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
     for bundle in sorted(p for p in source_dir.glob(file_glob) if p.is_file()):
         with bundle.open("r", encoding="utf-8", errors="ignore") as handle:
             for line_no, raw in enumerate(handle, start=1):
@@ -75,13 +78,13 @@ def _iter_samples(source_dir: Path, file_glob: str, limit: int) -> List[Dict[str
 
 class Metrics:
     def __init__(self) -> None:
-        self._values: Dict[str, List[float]] = defaultdict(list)
+        self._values: dict[str, list[float]] = defaultdict(list)
 
     def add(self, key: str, seconds: float) -> None:
         self._values[key].append(float(seconds))
 
-    def summary_lines(self) -> List[str]:
-        lines: List[str] = []
+    def summary_lines(self) -> list[str]:
+        lines: list[str] = []
         for key in sorted(self._values):
             vals = sorted(self._values[key])
             if not vals:
@@ -92,8 +95,8 @@ class Metrics:
             p95 = vals[min(count - 1, int(count * 0.95))]
             p99 = vals[min(count - 1, int(count * 0.99))]
             lines.append(
-                f"{key}: count={count} avg_ms={avg*1000:.2f} p50_ms={p50*1000:.2f} "
-                f"p95_ms={p95*1000:.2f} p99_ms={p99*1000:.2f}"
+                f"{key}: count={count} avg_ms={avg * 1000:.2f} p50_ms={p50 * 1000:.2f} "
+                f"p95_ms={p95 * 1000:.2f} p99_ms={p99 * 1000:.2f}"
             )
         return lines
 

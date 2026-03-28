@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
 
 try:
     from langdetect import DetectorFactory, LangDetectException, detect_langs
@@ -61,7 +60,7 @@ class LanguageDetectionService:
     }
 
     @classmethod
-    def normalize_language_hint(cls, language: str | None) -> Optional[str]:
+    def normalize_language_hint(cls, language: str | None) -> str | None:
         """Normalize language hint/name/locale to short language code."""
         if not language:
             return None
@@ -86,7 +85,7 @@ class LanguageDetectionService:
         return None
 
     @classmethod
-    def _detect_with_heuristic(cls, text: str) -> Optional[str]:
+    def _detect_with_heuristic(cls, text: str) -> str | None:
         """Fallback detector for zh/en when langdetect is unavailable."""
         zh_count = len(cls._ZH_CHAR_RE.findall(text))
         en_count = len(cls._EN_CHAR_RE.findall(text))
@@ -106,7 +105,7 @@ class LanguageDetectionService:
         return None
 
     @classmethod
-    def detect_language(cls, text: str) -> Tuple[Optional[str], Optional[float], str]:
+    def detect_language(cls, text: str) -> tuple[str | None, float | None, str]:
         """Return (language_code, confidence, detector_name)."""
         cleaned = (text or "").strip()
         if not cleaned:

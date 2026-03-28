@@ -8,8 +8,12 @@ import asyncio
 import base64
 import contextlib
 import logging
+from collections.abc import AsyncIterator, Callable, Iterable
 from types import SimpleNamespace
-from typing import Any, AsyncIterator, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, cast
+from typing import (
+    Any,
+    TypeVar,
+)
 from urllib.parse import urlparse
 
 from langchain_core.messages import BaseMessage
@@ -49,20 +53,20 @@ class _ThinkTagParser:
         self._mode = "content"
         self._buffer = ""
 
-    def feed(self, text: str) -> List[Tuple[str, str]]:
+    def feed(self, text: str) -> list[tuple[str, str]]:
         if not text:
             return []
         self._buffer += text
         return self._drain(final=False)
 
-    def finalize(self) -> List[Tuple[str, str]]:
+    def finalize(self) -> list[tuple[str, str]]:
         drained = self._drain(final=True)
         self._mode = "content"
         self._buffer = ""
         return drained
 
-    def _drain(self, *, final: bool) -> List[Tuple[str, str]]:
-        output: List[Tuple[str, str]] = []
+    def _drain(self, *, final: bool) -> list[tuple[str, str]]:
+        output: list[tuple[str, str]] = []
         while True:
             marker = self._START if self._mode == "content" else self._END
             idx = self._buffer.find(marker)
@@ -94,13 +98,13 @@ class _FallbackChatHistory:
     """Minimal chat-history shape used when LM Studio SDK helpers are unavailable."""
 
     def __init__(self) -> None:
-        self.messages: List[Dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
 
     def add_system_prompt(self, text: str) -> None:
         self.messages.append({"role": "system", "content": text})
 
-    def add_user_message(self, text: str, images: Optional[List[Any]] = None) -> None:
-        payload: Dict[str, Any] = {"role": "user", "content": text}
+    def add_user_message(self, text: str, images: list[Any] | None = None) -> None:
+        payload: dict[str, Any] = {"role": "user", "content": text}
         if images:
             payload["images"] = list(images)
         self.messages.append(payload)
@@ -108,7 +112,7 @@ class _FallbackChatHistory:
     def add_assistant_response(self, text: str) -> None:
         self.messages.append({"role": "assistant", "content": text})
 
-    def add_tool_result(self, payload: Dict[str, Any]) -> None:
+    def add_tool_result(self, payload: dict[str, Any]) -> None:
         self.messages.append({"role": "tool", **payload})
 
 
@@ -121,11 +125,11 @@ class LmStudioChatModel:
         model: str,
         api_host: str,
         temperature: float,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        context_length: Optional[int] = None,
-        reasoning: Optional[str] = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        context_length: int | None = None,
+        reasoning: str | None = None,
     ):
         self.model_name = model
         self.model = model
@@ -140,15 +144,15 @@ class LmStudioChatModel:
             "reasoning": reasoning,
         }
 
-    def bind_tools(self, tools: List[Any]):
+    def bind_tools(self, tools: list[Any]):
         return BoundLmStudioChatModel(self, list(tools or []))
 
-    def merged_config(self, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def merged_config(self, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
         params = dict(self._defaults)
         if overrides:
             params.update({key: value for key, value in overrides.items() if value is not None})
 
-        config: Dict[str, Any] = {}
+        config: dict[str, Any] = {}
         if params.get("temperature") is not None:
             config["temperature"] = params["temperature"]
         if params.get("max_tokens") is not None:
@@ -167,7 +171,7 @@ class LmStudioChatModel:
 class BoundLmStudioChatModel:
     """LM Studio chat model with LangChain tools attached."""
 
-    def __init__(self, base: LmStudioChatModel, tools: List[Any]):
+    def __init__(self, base: LmStudioChatModel, tools: list[Any]):
         self.base = base
         self.tools = tools
         self.model_name = base.model_name
@@ -175,10 +179,10 @@ class BoundLmStudioChatModel:
         self.api_host = base.api_host
         self.base_url = base.base_url
 
-    def bind_tools(self, tools: List[Any]):
+    def bind_tools(self, tools: list[Any]):
         return BoundLmStudioChatModel(self.base, list(tools or []))
 
-    def merged_config(self, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def merged_config(self, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.base.merged_config(overrides)
 
 
@@ -204,10 +208,10 @@ class LmStudioAdapter(BaseLLMAdapter):
     def _resolve_reasoning_value(
         *,
         thinking_enabled: bool,
-        reasoning_option: Optional[str],
-        reasoning_effort: Optional[str],
+        reasoning_option: str | None,
+        reasoning_effort: str | None,
         disable_thinking: bool,
-    ) -> Optional[str]:
+    ) -> str | None:
         if disable_thinking:
             return "none"
 
@@ -219,7 +223,7 @@ class LmStudioAdapter(BaseLLMAdapter):
         return None
 
     @staticmethod
-    def _stats_to_usage(stats: Any) -> Optional[TokenUsage]:
+    def _stats_to_usage(stats: Any) -> TokenUsage | None:
         if stats is None:
             return None
 
@@ -236,7 +240,7 @@ class LmStudioAdapter(BaseLLMAdapter):
         )
 
     @staticmethod
-    def _merge_usage(total: Optional[TokenUsage], current: Optional[TokenUsage]) -> Optional[TokenUsage]:
+    def _merge_usage(total: TokenUsage | None, current: TokenUsage | None) -> TokenUsage | None:
         if current is None:
             return total
         if total is None:
@@ -259,12 +263,12 @@ class LmStudioAdapter(BaseLLMAdapter):
         cls,
         content: Any,
         client: Any,
-    ) -> Tuple[List[str], List[Any]]:
+    ) -> tuple[list[str], list[Any]]:
         if isinstance(content, str):
             return [content], []
 
-        text_parts: List[str] = []
-        images: List[Any] = []
+        text_parts: list[str] = []
+        images: list[Any] = []
         if not isinstance(content, list):
             return ["" if content is None else str(content)], []
 
@@ -331,7 +335,7 @@ class LmStudioAdapter(BaseLLMAdapter):
         return chat
 
     @staticmethod
-    def _tool_parameters_from_langchain(tool: BaseTool) -> Dict[str, Any]:
+    def _tool_parameters_from_langchain(tool: BaseTool) -> dict[str, Any]:
         args_schema = getattr(tool, "args_schema", None)
         if args_schema is None:
             return {"input": str}
@@ -340,7 +344,7 @@ class LmStudioAdapter(BaseLLMAdapter):
         if not model_fields:
             return {"input": str}
 
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         for field_name, field_info in model_fields.items():
             annotation = getattr(field_info, "annotation", None) or str
             params[field_name] = annotation
@@ -362,8 +366,8 @@ class LmStudioAdapter(BaseLLMAdapter):
         )
 
     @classmethod
-    def _normalize_sdk_tools(cls, tools: List[Any]) -> List[Any]:
-        normalized: List[Any] = []
+    def _normalize_sdk_tools(cls, tools: list[Any]) -> list[Any]:
+        normalized: list[Any] = []
         tool_function_def_cls = ToolFunctionDef if isinstance(ToolFunctionDef, type) else None
         for tool in tools:
             if tool_function_def_cls is not None and isinstance(tool, tool_function_def_cls):
@@ -391,10 +395,10 @@ class LmStudioAdapter(BaseLLMAdapter):
             emit(kind, chunk)
 
     @staticmethod
-    def _parse_text_with_think_tags(text: str) -> Tuple[str, str]:
+    def _parse_text_with_think_tags(text: str) -> tuple[str, str]:
         parser = _ThinkTagParser()
-        content_parts: List[str] = []
-        thinking_parts: List[str] = []
+        content_parts: list[str] = []
+        thinking_parts: list[str] = []
         for kind, chunk in parser.feed(text or "") + parser.finalize():
             if kind == "thinking":
                 thinking_parts.append(chunk)
@@ -403,13 +407,13 @@ class LmStudioAdapter(BaseLLMAdapter):
         return "".join(content_parts), "".join(thinking_parts)
 
     @staticmethod
-    def _parse_model_metadata(info: Any) -> Dict[str, Any]:
+    def _parse_model_metadata(info: Any) -> dict[str, Any]:
         model_id = str(getattr(info, "model_key", "") or "")
         has_vision = bool(getattr(info, "vision", False))
         has_function_calling = bool(getattr(info, "trained_for_tool_use", False))
         context_length = int(getattr(info, "max_context_length", 0) or 4096)
 
-        capabilities: Dict[str, Any] = {
+        capabilities: dict[str, Any] = {
             "context_length": context_length,
             "vision": has_vision,
             "function_calling": has_function_calling,
@@ -425,9 +429,12 @@ class LmStudioAdapter(BaseLLMAdapter):
                 "disable_supported": True,
             },
         }
-        capabilities = apply_model_capability_hints(model_id, capabilities, provider_id="lmstudio") or capabilities
+        capabilities = (
+            apply_model_capability_hints(model_id, capabilities, provider_id="lmstudio")
+            or capabilities
+        )
 
-        tags: List[str] = []
+        tags: list[str] = []
         if capabilities.get("vision"):
             tags.append("vision")
         if capabilities.get("function_calling"):
@@ -456,7 +463,7 @@ class LmStudioAdapter(BaseLLMAdapter):
     async def _stream_with_tools(
         self,
         llm: BoundLmStudioChatModel,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         client, model = await self._open_model(llm.base)
@@ -464,7 +471,7 @@ class LmStudioAdapter(BaseLLMAdapter):
         parser = _ThinkTagParser()
         emitted_content = False
         final_content = ""
-        total_usage: Optional[TokenUsage] = None
+        total_usage: TokenUsage | None = None
 
         def emit(kind: str, chunk: str) -> None:
             if chunk:
@@ -473,7 +480,9 @@ class LmStudioAdapter(BaseLLMAdapter):
         def on_prediction_fragment(fragment: Any, _round_index: int) -> None:
             text = str(getattr(fragment, "content", "") or "")
             reasoning_type = str(getattr(fragment, "reasoning_type", "none") or "none")
-            self._collect_parser_output(parser, text, emit, force_thinking=(reasoning_type != "none"))
+            self._collect_parser_output(
+                parser, text, emit, force_thinking=(reasoning_type != "none")
+            )
 
         def on_prediction_completed(round_result: Any) -> None:
             nonlocal final_content, total_usage
@@ -530,11 +539,11 @@ class LmStudioAdapter(BaseLLMAdapter):
     async def _invoke_with_tools(
         self,
         llm: BoundLmStudioChatModel,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> LLMResponse:
         client, model = await self._open_model(llm.base)
-        total_usage: Optional[TokenUsage] = None
+        total_usage: TokenUsage | None = None
         final_content = ""
         try:
             history = await self.build_history(messages, client)
@@ -596,7 +605,7 @@ class LmStudioAdapter(BaseLLMAdapter):
     async def stream(
         self,
         llm: LmStudioChatModel | BoundLmStudioChatModel,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         if isinstance(llm, BoundLmStudioChatModel):
@@ -638,7 +647,7 @@ class LmStudioAdapter(BaseLLMAdapter):
     async def invoke(
         self,
         llm: LmStudioChatModel | BoundLmStudioChatModel,
-        messages: List[BaseMessage],
+        messages: list[BaseMessage],
         **kwargs,
     ) -> LLMResponse:
         if isinstance(llm, BoundLmStudioChatModel):
@@ -649,7 +658,9 @@ class LmStudioAdapter(BaseLLMAdapter):
             history = await self.build_history(messages, client)
             result = await model.respond(history, config=llm.merged_config(kwargs))
             usage = self._stats_to_usage(getattr(result, "stats", None))
-            content, thinking = self._parse_text_with_think_tags(str(getattr(result, "content", "") or ""))
+            content, thinking = self._parse_text_with_think_tags(
+                str(getattr(result, "content", "") or "")
+            )
             return LLMResponse(
                 content=content or str(getattr(result, "content", "") or ""),
                 thinking=thinking,
@@ -662,11 +673,11 @@ class LmStudioAdapter(BaseLLMAdapter):
     def supports_thinking(self) -> bool:
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         option = effort if effort in _REASONING_OPTIONS else "medium"
         return {"reasoning": option}
 
-    async def fetch_models(self, base_url: str, api_key: str) -> List[Dict[str, Any]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, Any]]:
         del api_key
         sdk = lms
         async_client_cls = getattr(sdk, "AsyncClient", None)
@@ -678,7 +689,7 @@ class LmStudioAdapter(BaseLLMAdapter):
                 loaded = await client.llm.list_loaded()
 
             loaded_ids = {str(getattr(model, "identifier", "") or "") for model in loaded}
-            models: List[Dict[str, Any]] = []
+            models: list[dict[str, Any]] = []
             for item in downloaded:
                 info = getattr(item, "info", None)
                 if info is None:
@@ -687,7 +698,7 @@ class LmStudioAdapter(BaseLLMAdapter):
                 if not model_id:
                     continue
 
-                entry: Dict[str, Any] = {
+                entry: dict[str, Any] = {
                     "id": model_id,
                     "name": str(getattr(info, "display_name", None) or model_id),
                 }
@@ -705,7 +716,7 @@ class LmStudioAdapter(BaseLLMAdapter):
         self,
         base_url: str,
         api_key: str,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
     ) -> tuple[bool, str]:
         del api_key
         sdk = lms
@@ -729,6 +740,9 @@ class LmStudioAdapter(BaseLLMAdapter):
             if not downloaded_ids and not loaded_ids:
                 return True, "Connected to LM Studio, but no models are installed"
 
-            return True, f"Connected to LM Studio with {len(downloaded_ids or loaded_ids)} available model(s)"
+            return (
+                True,
+                f"Connected to LM Studio with {len(downloaded_ids or loaded_ids)} available model(s)",
+            )
         except Exception as exc:
             return False, f"Cannot connect to LM Studio via SDK: {exc}"

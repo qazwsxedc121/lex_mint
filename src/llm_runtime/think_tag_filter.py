@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 
@@ -42,7 +41,7 @@ class ThinkTagStreamFilter:
                     if len(self._pending) > keep:
                         self._pending = self._pending[-keep:]
                     break
-                self._pending = self._pending[close_idx + len(self._close_tag):]
+                self._pending = self._pending[close_idx + len(self._close_tag) :]
                 self._in_think = False
                 continue
 
@@ -56,7 +55,7 @@ class ThinkTagStreamFilter:
 
             if open_idx > 0:
                 out_parts.append(self._pending[:open_idx])
-            self._pending = self._pending[open_idx + len(self._open_tag):]
+            self._pending = self._pending[open_idx + len(self._open_tag) :]
             self._in_think = True
 
         return "".join(out_parts)

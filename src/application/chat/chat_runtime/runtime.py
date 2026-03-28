@@ -26,4 +26,3 @@ class CommitteeRuntime:
     def advance_round(self, state: CommitteeRuntimeState) -> None:
         """Advance committee round index after one orchestration cycle completes."""
         state.round_index += 1
-

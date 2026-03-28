@@ -3,24 +3,24 @@ Follow-up Questions Service
 
 Generates follow-up question suggestions after each chat response.
 """
+
 import asyncio
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
+from src.core.paths import (
+    config_defaults_dir,
+    config_local_dir,
+    ensure_local_file,
+)
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.yaml_config_utils import (
     load_default_yaml_section,
     load_layered_yaml_section,
     save_yaml_section_updates,
-)
-from src.core.paths import (
-    config_defaults_dir,
-    config_local_dir,
-    ensure_local_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def _response_content_to_text(content: object) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts: List[str] = []
+        parts: list[str] = []
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
@@ -46,6 +46,7 @@ def _response_content_to_text(content: object) -> str:
 @dataclass
 class FollowupConfig:
     """Configuration for follow-up question generation"""
+
     enabled: bool
     count: int
     model_id: str
@@ -57,8 +58,8 @@ class FollowupConfig:
 class FollowupService:
     """Service for generating follow-up question suggestions"""
 
-    def __init__(self, config_path: Optional[str] = None):
-        self.defaults_path: Optional[Path] = config_defaults_dir() / "followup_config.yaml"
+    def __init__(self, config_path: str | None = None):
+        self.defaults_path: Path | None = config_defaults_dir() / "followup_config.yaml"
 
         if config_path is None:
             self.config_path = config_local_dir() / "followup_config.yaml"
@@ -72,35 +73,35 @@ class FollowupService:
         )
         self.config = self._load_config()
 
-    def _load_default_section(self) -> Dict:
+    def _load_default_section(self) -> dict:
         """Load fallback defaults from the repo default config file."""
-        return load_default_yaml_section(self.defaults_path, 'followup')
+        return load_default_yaml_section(self.defaults_path, "followup")
 
     def _load_config(self) -> FollowupConfig:
         """Load configuration from YAML file"""
         default_config, config_data = load_layered_yaml_section(
             config_path=self.config_path,
             defaults_path=self.defaults_path,
-            section_name='followup',
+            section_name="followup",
             logger=logger,
-            error_label='followup config',
+            error_label="followup config",
         )
 
         return FollowupConfig(
-            enabled=config_data.get('enabled', default_config.get('enabled', True)),
-            count=config_data.get('count', default_config.get('count', 3)),
-            model_id=config_data.get('model_id', default_config.get('model_id', '')),
+            enabled=config_data.get("enabled", default_config.get("enabled", True)),
+            count=config_data.get("count", default_config.get("count", 3)),
+            model_id=config_data.get("model_id", default_config.get("model_id", "")),
             max_context_rounds=config_data.get(
-                'max_context_rounds',
-                default_config.get('max_context_rounds', 3),
+                "max_context_rounds",
+                default_config.get("max_context_rounds", 3),
             ),
             timeout_seconds=config_data.get(
-                'timeout_seconds',
-                default_config.get('timeout_seconds', 15),
+                "timeout_seconds",
+                default_config.get("timeout_seconds", 15),
             ),
             prompt_template=config_data.get(
-                'prompt_template',
-                default_config.get('prompt_template', ''),
+                "prompt_template",
+                default_config.get("prompt_template", ""),
             ),
         )
 
@@ -108,12 +109,12 @@ class FollowupService:
         """Reload configuration from file"""
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict):
+    def save_config(self, updates: dict):
         """Save updated configuration to file"""
         try:
             save_yaml_section_updates(
                 config_path=self.config_path,
-                section_name='followup',
+                section_name="followup",
                 updates=updates,
             )
             self.reload_config()
@@ -122,7 +123,7 @@ class FollowupService:
             logger.error(f"Failed to save followup config: {e}")
             raise
 
-    async def generate_followups_async(self, messages: List[Dict]) -> List[str]:
+    async def generate_followups_async(self, messages: list[dict]) -> list[str]:
         """
         Generate follow-up question suggestions asynchronously
 
@@ -149,19 +150,18 @@ class FollowupService:
             # Build conversation text
             conversation_lines = []
             for msg in recent_messages:
-                role = msg.get('type', msg.get('role', 'unknown'))
-                content = msg.get('content', '')
-                if role == 'human':
+                role = msg.get("type", msg.get("role", "unknown"))
+                content = msg.get("content", "")
+                if role == "human":
                     conversation_lines.append(f"User: {content}")
-                elif role in ('assistant', 'ai'):
+                elif role in ("assistant", "ai"):
                     conversation_lines.append(f"Assistant: {content}")
 
             conversation_text = "\n".join(conversation_lines)
 
             # Build prompt
             prompt = self.config.prompt_template.format(
-                count=self.config.count,
-                conversation_text=conversation_text
+                count=self.config.count, conversation_text=conversation_text
             )
 
             # Initialize model
@@ -171,28 +171,28 @@ class FollowupService:
             # Call model with timeout
             logger.info(f"[Followup] Calling model {self.config.model_id}")
             response = await asyncio.wait_for(
-                model_instance.ainvoke(prompt),
-                timeout=self.config.timeout_seconds
+                model_instance.ainvoke(prompt), timeout=self.config.timeout_seconds
             )
 
             # Parse response into questions
             raw_text = _response_content_to_text(response.content).strip()
             questions = []
 
-            for line in raw_text.split('\n'):
+            for line in raw_text.split("\n"):
                 line = line.strip()
                 if not line:
                     continue
                 # Remove common numbering patterns like "1.", "1)", "- ", "* "
                 import re
-                line = re.sub(r'^[\d]+[.\)]\s*', '', line)
-                line = re.sub(r'^[-*]\s*', '', line)
+
+                line = re.sub(r"^[\d]+[.\)]\s*", "", line)
+                line = re.sub(r"^[-*]\s*", "", line)
                 line = line.strip()
                 if line:
                     questions.append(line)
 
             # Limit to configured count
-            questions = questions[:self.config.count]
+            questions = questions[: self.config.count]
 
             logger.info(f"[Followup] Generated {len(questions)} follow-up questions")
             return questions

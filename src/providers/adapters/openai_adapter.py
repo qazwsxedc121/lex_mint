@@ -3,15 +3,18 @@ OpenAI SDK Adapter
 
 Adapter for OpenAI and OpenAI-compatible APIs without dedicated adapters.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any
-from langchain_openai import ChatOpenAI
-from langchain_openai.chat_models.base import BaseChatOpenAI
+from collections.abc import AsyncIterator
+from typing import Any
 from urllib.parse import urlparse
 
+from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.base import BaseChatOpenAI
+
 from ..base import BaseLLMAdapter
-from ..types import CallMode, StreamChunk, LLMResponse, TokenUsage
 from ..model_capability_rules import apply_model_capability_hints
+from ..types import CallMode, LLMResponse, StreamChunk, TokenUsage
 from .reasoning_openai import ChatReasoningOpenAI, inject_tool_call_reasoning_content
 from .utils import extract_tool_calls
 
@@ -64,7 +67,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         return value.get_secret_value() if hasattr(value, "get_secret_value") else value
 
     @staticmethod
-    def _unwrap_chat_openai(llm: Any) -> tuple[BaseChatOpenAI, Dict[str, Any], Dict[str, Any]]:
+    def _unwrap_chat_openai(llm: Any) -> tuple[BaseChatOpenAI, dict[str, Any], dict[str, Any]]:
         """
         Unwrap a ChatOpenAI or ChatOpenAI-bound runnable to its base model.
 
@@ -87,7 +90,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         source_llm, bind_kwargs, bind_config = self._unwrap_chat_openai(llm)
         data = source_llm.model_dump()
         model_name = data.get("model_name") or getattr(source_llm, "model_name", None)
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model_name,
             "base_url": data.get("openai_api_base") or getattr(source_llm, "openai_api_base", None),
             "api_key": self._secret_to_plain(
@@ -136,7 +139,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ) -> BaseChatOpenAI:
         """
         Create a ChatOpenAI instance.
@@ -156,7 +159,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         call_mode = self._normalize_call_mode(kwargs.get("call_mode"))
         use_responses_api = self._mode_uses_responses(call_mode)
 
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -168,7 +171,7 @@ class OpenAIAdapter(BaseLLMAdapter):
 
         # For OpenAI o1/o3 models, enable reasoning via responses API
         if thinking_enabled:
-            reasoning_payload: Dict[str, Any] = {"summary": "auto"}
+            reasoning_payload: dict[str, Any] = {"summary": "auto"}
             reasoning_option = str(kwargs.get("reasoning_option") or "").strip().lower()
             reasoning_effort = str(kwargs.get("reasoning_effort") or "").strip().lower()
             if reasoning_option and reasoning_option not in {"enabled", "on", "true"}:
@@ -204,12 +207,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             object.__setattr__(llm, "_requires_interleaved_thinking", True)
         return llm
 
-    async def stream(
-        self,
-        llm: Any,
-        messages: List[Any],
-        **kwargs
-    ) -> AsyncIterator[StreamChunk]:
+    async def stream(self, llm: Any, messages: list[Any], **kwargs) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from OpenAI.
 
@@ -229,12 +227,12 @@ class OpenAIAdapter(BaseLLMAdapter):
 
         try:
             async for chunk in llm.astream(messages):
-                content = chunk.content if hasattr(chunk, 'content') else ""
+                content = chunk.content if hasattr(chunk, "content") else ""
                 thinking = ""
 
                 # Check for reasoning content in additional_kwargs (OpenAI responses API)
-                if hasattr(chunk, 'additional_kwargs'):
-                    thinking = chunk.additional_kwargs.get('reasoning_content', '')
+                if hasattr(chunk, "additional_kwargs"):
+                    thinking = chunk.additional_kwargs.get("reasoning_content", "")
 
                 # Extract usage from chunk (usually only in final chunk)
                 extracted = TokenUsage.extract_from_chunk(chunk)
@@ -268,12 +266,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                 return
             raise
 
-    async def invoke(
-        self,
-        llm: Any,
-        messages: List[Any],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm: Any, messages: list[Any], **kwargs) -> LLMResponse:
         """
         Invoke OpenAI and get complete response.
 
@@ -301,12 +294,12 @@ class OpenAIAdapter(BaseLLMAdapter):
                 raise
 
         thinking = ""
-        if hasattr(response, 'additional_kwargs'):
-            thinking = response.additional_kwargs.get('reasoning_content', '')
+        if hasattr(response, "additional_kwargs"):
+            thinking = response.additional_kwargs.get("reasoning_content", "")
 
         usage = None
-        if hasattr(response, 'response_metadata'):
-            raw_usage = response.response_metadata.get('usage')
+        if hasattr(response, "response_metadata"):
+            raw_usage = response.response_metadata.get("usage")
             usage = TokenUsage.from_dict(raw_usage)
 
         return LLMResponse(
@@ -320,14 +313,9 @@ class OpenAIAdapter(BaseLLMAdapter):
         """OpenAI o1/o3 models support reasoning."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """Get parameters for OpenAI reasoning mode."""
-        return {
-            "reasoning": {
-                "effort": effort,
-                "summary": "auto"
-            }
-        }
+        return {"reasoning": {"effort": effort, "summary": "auto"}}
 
     @staticmethod
     def _infer_provider_hint_from_base_url(base_url: str) -> str | None:
@@ -378,7 +366,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         has_file_upload = "file" in input_modalities
         has_streaming = True  # Assumed for OpenAI-compatible APIs
 
-        capabilities: Dict[str, Any] = {
+        capabilities: dict[str, Any] = {
             "context_length": context_length or 4096,
             "vision": has_vision,
             "function_calling": has_function_calling,
@@ -412,11 +400,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             capabilities = hinted_capabilities
         return {"capabilities": capabilities, "tags": tags}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available models from OpenAI-compatible API.
 
@@ -432,8 +416,8 @@ class OpenAIAdapter(BaseLLMAdapter):
         try:
             provider_hint = self._infer_provider_hint_from_base_url(base_url)
             # Normalize base URL
-            url = base_url.rstrip('/')
-            if not url.endswith('/v1'):
+            url = base_url.rstrip("/")
+            if not url.endswith("/v1"):
                 url = f"{url}/v1"
             models_url = f"{url}/models"
 

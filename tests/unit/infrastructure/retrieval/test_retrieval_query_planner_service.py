@@ -3,7 +3,9 @@
 import asyncio
 from types import SimpleNamespace
 
-from src.infrastructure.retrieval.retrieval_query_planner_service import RetrievalQueryPlannerService
+from src.infrastructure.retrieval.retrieval_query_planner_service import (
+    RetrievalQueryPlannerService,
+)
 
 
 class _FakeLLM:
@@ -42,7 +44,9 @@ def test_plan_queries_parses_json_and_deduplicates(monkeypatch):
     monkeypatch.setattr(
         service.model_config_service,
         "get_llm_instance",
-        lambda **kwargs: _FakeLLM('{"queries":["what is rag","rag retrieval architecture","what is rag"]}'),
+        lambda **kwargs: _FakeLLM(
+            '{"queries":["what is rag","rag retrieval architecture","what is rag"]}'
+        ),
     )
 
     result = asyncio.run(
@@ -69,9 +73,7 @@ def test_plan_queries_recovers_json_from_mixed_output(monkeypatch):
     monkeypatch.setattr(
         service.model_config_service,
         "get_llm_instance",
-        lambda **kwargs: _FakeLLM(
-            'Plan:\n{"queries":["alpha query","beta query"]}\nDone.'
-        ),
+        lambda **kwargs: _FakeLLM('Plan:\n{"queries":["alpha query","beta query"]}\nDone.'),
     )
 
     result = asyncio.run(

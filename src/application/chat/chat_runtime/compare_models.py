@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any
 
 from src.application.orchestration import (
     ActorEmit,
@@ -32,13 +33,13 @@ from .terminal import build_compare_complete_event, cancellation_reason
 class CompareModelsSettings:
     """Settings for one compare-models orchestration run."""
 
-    messages: List[Dict[str, Any]]
-    model_ids: List[str]
-    system_prompt: Optional[str]
-    max_rounds: Optional[int]
-    context_segments: Dict[str, Optional[str]] = field(default_factory=dict)
-    assistant_params: Dict[str, Any] = field(default_factory=dict)
-    reasoning_effort: Optional[str] = None
+    messages: list[dict[str, Any]]
+    model_ids: list[str]
+    system_prompt: str | None
+    max_rounds: int | None
+    context_segments: dict[str, str | None] = field(default_factory=dict)
+    assistant_params: dict[str, Any] = field(default_factory=dict)
+    reasoning_effort: str | None = None
 
 
 class CompareModelsOrchestrator(BaseChatOrchestrator):
@@ -52,8 +53,8 @@ class CompareModelsOrchestrator(BaseChatOrchestrator):
         call_llm_stream: Callable[..., AsyncIterator[Any]],
         pricing_service: Any,
         file_service: Any,
-        resolve_model_name: Optional[Callable[[str], str]] = None,
-        orchestration_engine: Optional[OrchestrationEngine] = None,
+        resolve_model_name: Callable[[str], str] | None = None,
+        orchestration_engine: OrchestrationEngine | None = None,
     ):
         self.call_llm_stream = call_llm_stream
         self.pricing_service = pricing_service
@@ -65,7 +66,7 @@ class CompareModelsOrchestrator(BaseChatOrchestrator):
         self,
         request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
     ) -> AsyncIterator[ChatOrchestrationEvent]:
         if request.mode and request.mode != self.mode:
             raise ValueError(f"CompareModelsOrchestrator only supports mode={self.mode}")
@@ -111,7 +112,9 @@ class CompareModelsOrchestrator(BaseChatOrchestrator):
                     yield normalized
                 continue
             if event_type in {"failed", "cancelled"} and not completion_emitted:
-                reason = str(runtime_event.get("terminal_reason") or cancellation_reason(cancel_token))
+                reason = str(
+                    runtime_event.get("terminal_reason") or cancellation_reason(cancel_token)
+                )
                 completion_emitted = True
                 yield self.normalize_event(
                     build_compare_complete_event(
@@ -134,23 +137,27 @@ class CompareModelsOrchestrator(BaseChatOrchestrator):
         execution_context: ActorExecutionContext,
         request: ChatOrchestrationRequest,
         settings: CompareModelsSettings,
-        cancel_token: Optional[ChatOrchestrationCancelToken],
+        cancel_token: ChatOrchestrationCancelToken | None,
     ) -> AsyncIterator[Any]:
         queue: asyncio.Queue = asyncio.Queue()
-        tasks: List[asyncio.Task] = []
-        model_results: Dict[str, Dict[str, Any]] = {}
+        tasks: list[asyncio.Task] = []
+        model_results: dict[str, dict[str, Any]] = {}
         finished = 0
 
         async def _stream_model(model_id: str) -> None:
             model_name = self._resolve_model_name(model_id)
             full_response = ""
-            usage_data: Optional[TokenUsage] = None
+            usage_data: TokenUsage | None = None
             cost_data = None
             try:
                 await queue.put(
                     {
                         "kind": "event",
-                        "event": {"type": "model_start", "model_id": model_id, "model_name": model_name},
+                        "event": {
+                            "type": "model_start",
+                            "model_id": model_id,
+                            "model_name": model_name,
+                        },
                     }
                 )
 

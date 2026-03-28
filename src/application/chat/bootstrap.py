@@ -5,21 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
-from src.llm_runtime import call_llm, call_llm_stream
-from src.core.config import settings
 from src.application.chat.chat_input_service import ChatInputService
-from src.application.chat.file_reference_context_builder import FileReferenceContextBuilder
-from src.application.chat.rag_context_builder_service import RagContextBuilderService
-from src.application.chat.source_context_service import SourceContextService
-from src.infrastructure.compression.compression_config_service import CompressionConfigService
-from src.infrastructure.compression.compression_service import CompressionService
-from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
-from src.infrastructure.config.project_service import ProjectService
-from src.infrastructure.config.pricing_service import PricingService
-from src.infrastructure.files.file_service import FileService
-from src.infrastructure.memory.memory_service import MemoryService
 from src.application.chat.chat_runtime import (
     CommitteePolicy,
     CompareModelsOrchestrator,
@@ -28,29 +16,41 @@ from src.application.chat.chat_runtime.log_utils import (
     build_messages_preview_for_log,
     truncate_log_text,
 )
+from src.application.chat.file_reference_context_builder import FileReferenceContextBuilder
+from src.application.chat.rag_context_builder_service import RagContextBuilderService
+from src.application.chat.source_context_service import SourceContextService
+from src.core.config import settings
+from src.infrastructure.compression.compression_config_service import CompressionConfigService
+from src.infrastructure.compression.compression_service import CompressionService
+from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
+from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.config.pricing_service import PricingService
+from src.infrastructure.config.project_service import ProjectService
+from src.infrastructure.config.rag_config_service import RagConfigService
+from src.infrastructure.files.file_service import FileService
+from src.infrastructure.memory.memory_service import MemoryService
 from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
 from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
-from src.infrastructure.config.rag_config_service import RagConfigService
-from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.web.search_service import SearchService
 from src.infrastructure.web.web_tool_service import WebToolService
 from src.infrastructure.web.webpage_service import WebpageService
+from src.llm_runtime import call_llm, call_llm_stream
 from src.tools.registry import get_tool_registry
 
+from .context_assembly_service import ContextAssemblyService
 from .factory import (
     build_chat_application_service,
     build_compare_flow_service,
     build_single_chat_flow_service,
 )
-from .context_assembly_service import ContextAssemblyService
 from .group_chat_service import GroupChatDeps, GroupChatService
 from .group_orchestration_support_service import GroupOrchestrationSupportService
 from .group_runtime_support_service import GroupRuntimeSupportService
 from .post_turn_service import PostTurnService
-from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 from .service import ChatApplicationService
+from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _is_group_trace_enabled() -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
-def _log_group_trace(trace_id: str, stage: str, payload: Dict[str, Any]) -> None:
+def _log_group_trace(trace_id: str, stage: str, payload: dict[str, Any]) -> None:
     if not _is_group_trace_enabled():
         return
     try:
@@ -86,7 +86,7 @@ def _resolve_compare_model_name(model_id: str) -> str:
 def build_default_chat_application_service(
     *,
     storage: Any,
-    file_service: Optional[FileService] = None,
+    file_service: FileService | None = None,
 ) -> ChatApplicationService:
     """Build the production chat application service graph directly."""
     pricing_service = PricingService()
@@ -150,17 +150,23 @@ def build_default_chat_application_service(
             search_service=search_service,
             build_file_context_block=file_reference_context_builder.build_context_block,
             build_group_runtime_assistant=group_runtime_support_service.build_group_runtime_assistant,
-            resolve_group_settings=lambda **kwargs: group_runtime_support_service.resolve_group_settings(
-                **kwargs,
-                resolve_round_policy=CommitteePolicy.resolve_committee_round_policy,
+            resolve_group_settings=lambda **kwargs: (
+                group_runtime_support_service.resolve_group_settings(
+                    **kwargs,
+                    resolve_round_policy=CommitteePolicy.resolve_committee_round_policy,
+                )
             ),
-            create_committee_orchestrator=lambda: group_orchestration_support_service.create_committee_orchestrator(
-                llm_call=call_llm,
-                stream_group_assistant_turn=committee_turn_executor.stream_group_assistant_turn,
-                get_message_content_by_id=committee_turn_executor.get_message_content_by_id,
+            create_committee_orchestrator=lambda: (
+                group_orchestration_support_service.create_committee_orchestrator(
+                    llm_call=call_llm,
+                    stream_group_assistant_turn=committee_turn_executor.stream_group_assistant_turn,
+                    get_message_content_by_id=committee_turn_executor.get_message_content_by_id,
+                )
             ),
-            create_round_robin_orchestrator=lambda: group_orchestration_support_service.create_round_robin_orchestrator(
-                stream_group_assistant_turn=committee_turn_executor.stream_group_assistant_turn,
+            create_round_robin_orchestrator=lambda: (
+                group_orchestration_support_service.create_round_robin_orchestrator(
+                    stream_group_assistant_turn=committee_turn_executor.stream_group_assistant_turn,
+                )
             ),
             is_group_trace_enabled=_is_group_trace_enabled,
             log_group_trace=_log_group_trace,

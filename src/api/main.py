@@ -17,15 +17,16 @@ from .logging_config import setup_logging
 setup_logging()
 
 from src.core.config import settings
-from .errors import register_exception_handlers
 from src.core.paths import repo_root, resolve_user_data_path
+
+from .errors import register_exception_handlers
 from .routers import (
     assistants,
     chat,
     compression_config,
     file_reference_config,
-    followup,
     folders,
+    followup,
     knowledge_base,
     memory,
     models,
@@ -41,8 +42,8 @@ from .routers import (
     translation_config,
     tts,
     tts_config,
-    workflows,
     webpage_config,
+    workflows,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,15 +136,15 @@ async def startup_event():
     settings.projects_config_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Initialize model/assistant configuration files if missing.
-    from src.infrastructure.config.model_config_service import ModelConfigService
     from src.infrastructure.config.assistant_config_service import AssistantConfigService
+    from src.infrastructure.config.model_config_service import ModelConfigService
 
     ModelConfigService()
     AssistantConfigService()
 
     # Initialize prompt templates and chat folders configs if missing.
-    from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
     from src.infrastructure.config.folder_service import FolderService
+    from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
     from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 
     PromptTemplateConfigService()
@@ -174,7 +175,9 @@ async def startup_event():
 
     try:
         rag_cfg = RagConfigService()
-        backend = str(getattr(rag_cfg.config.storage, "vector_store_backend", "chroma") or "chroma").lower()
+        backend = str(
+            getattr(rag_cfg.config.storage, "vector_store_backend", "chroma") or "chroma"
+        ).lower()
         if backend == "sqlite_vec":
             from src.infrastructure.retrieval.sqlite_vec_service import SqliteVecService
 

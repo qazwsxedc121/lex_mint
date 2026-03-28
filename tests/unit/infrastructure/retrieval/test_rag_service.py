@@ -665,7 +665,9 @@ def test_retrieve_query_planner_failure_falls_back_to_effective_query(monkeypatc
 
     monkeypatch.setattr(service, "_search_collection", fake_search_collection)
 
-    results, diagnostics = asyncio.run(service.retrieve_with_diagnostics("original question", ["kb_a"]))
+    results, diagnostics = asyncio.run(
+        service.retrieve_with_diagnostics("original question", ["kb_a"])
+    )
 
     assert len(results) == 1
     assert seen_queries == ["original question"]

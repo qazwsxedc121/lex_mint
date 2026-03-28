@@ -9,7 +9,7 @@ from src.domain.models.model_config import (
     ProviderEndpointProbeRequest,
 )
 from src.infrastructure.config.provider_probe_service import ProviderProbeService
-from src.providers.types import ApiProtocol, CallMode, ProviderType, EndpointProfile
+from src.providers.types import ApiProtocol, CallMode, EndpointProfile, ProviderType
 
 
 def _provider() -> Provider:
@@ -46,7 +46,9 @@ def _provider() -> Provider:
 @pytest.mark.asyncio
 async def test_probe_auto_recommends_region_matched_profile():
     model_service = Mock()
-    model_service.get_endpoint_profiles_for_provider = Mock(return_value=_provider().endpoint_profiles)
+    model_service.get_endpoint_profiles_for_provider = Mock(
+        return_value=_provider().endpoint_profiles
+    )
     probe_service = ProviderProbeService(model_service)
     probe_service._probe_openai_models = AsyncMock(  # type: ignore[method-assign]
         return_value={
@@ -72,7 +74,9 @@ async def test_probe_auto_recommends_region_matched_profile():
 @pytest.mark.asyncio
 async def test_probe_manual_unknown_profile_raises_value_error():
     model_service = Mock()
-    model_service.get_endpoint_profiles_for_provider = Mock(return_value=_provider().endpoint_profiles)
+    model_service.get_endpoint_profiles_for_provider = Mock(
+        return_value=_provider().endpoint_profiles
+    )
     probe_service = ProviderProbeService(model_service)
 
     with pytest.raises(ValueError, match="Unknown endpoint profile"):
@@ -85,4 +89,3 @@ async def test_probe_manual_unknown_profile_raises_value_error():
             ),
             api_key="test-key",
         )
-

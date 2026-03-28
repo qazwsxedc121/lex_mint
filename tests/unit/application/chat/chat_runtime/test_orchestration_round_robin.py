@@ -7,8 +7,8 @@ import pytest
 from src.application.chat.chat_runtime import (
     ChatOrchestrationCancelToken,
     ChatOrchestrationRequest,
-    RoundRobinSettings,
     RoundRobinOrchestrator,
+    RoundRobinSettings,
 )
 
 

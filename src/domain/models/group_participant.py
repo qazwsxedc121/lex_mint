@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-
 ASSISTANT_PREFIX = "assistant::"
 MODEL_PREFIX = "model::"
 
@@ -33,13 +32,13 @@ def parse_group_participant(raw_value: str) -> GroupParticipant:
         raise ValueError("Group participant token cannot be empty")
 
     if cleaned.startswith(MODEL_PREFIX):
-        model_id = cleaned[len(MODEL_PREFIX):].strip()
+        model_id = cleaned[len(MODEL_PREFIX) :].strip()
         if not model_id:
             raise ValueError("Model participant token is missing model id")
         return GroupParticipant(raw=cleaned, kind="model", value=model_id)
 
     if cleaned.startswith(ASSISTANT_PREFIX):
-        assistant_id = cleaned[len(ASSISTANT_PREFIX):].strip()
+        assistant_id = cleaned[len(ASSISTANT_PREFIX) :].strip()
         if not assistant_id:
             raise ValueError("Assistant participant token is missing assistant id")
         return GroupParticipant(raw=cleaned, kind="assistant", value=assistant_id)

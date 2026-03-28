@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import yaml
 
@@ -17,7 +16,7 @@ from src.core.paths import data_state_dir, ensure_local_file
 logger = logging.getLogger(__name__)
 
 
-def _default_instruction_markers() -> List[str]:
+def _default_instruction_markers() -> list[str]:
     return [
         "please respond",
         "please reply",
@@ -47,7 +46,7 @@ def _default_instruction_markers() -> List[str]:
     ]
 
 
-def _default_fact_markers() -> List[str]:
+def _default_fact_markers() -> list[str]:
     return [
         "i am ",
         "i'm ",
@@ -79,8 +78,8 @@ class MemoryExtractionConfig:
     enabled: bool = True
     min_text_length: int = 8
     max_items_per_turn: int = 3
-    instruction_markers: List[str] = field(default_factory=_default_instruction_markers)
-    fact_markers: List[str] = field(default_factory=_default_fact_markers)
+    instruction_markers: list[str] = field(default_factory=_default_instruction_markers)
+    fact_markers: list[str] = field(default_factory=_default_fact_markers)
     instruction_confidence: float = 0.92
     instruction_importance: float = 0.75
     fact_confidence: float = 0.82
@@ -98,7 +97,7 @@ class MemoryConfig:
     enabled: bool = False
     profile_id: str = "local-default"
     collection_name: str = "memory_main"
-    enabled_layers: List[str] = field(default_factory=lambda: ["fact", "instruction"])
+    enabled_layers: list[str] = field(default_factory=lambda: ["fact", "instruction"])
     retrieval: MemoryRetrievalConfig = field(default_factory=MemoryRetrievalConfig)
     extraction: MemoryExtractionConfig = field(default_factory=MemoryExtractionConfig)
     scopes: MemoryScopeConfig = field(default_factory=MemoryScopeConfig)
@@ -107,7 +106,7 @@ class MemoryConfig:
 class MemoryConfigService:
     """Service for loading and updating memory settings."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         if config_path is None:
             path = data_state_dir() / "memory_config.yaml"
         else:
@@ -160,7 +159,7 @@ class MemoryConfigService:
 
     def _load_config(self) -> MemoryConfig:
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
             memory_data = data.get("memory", {}) or {}
@@ -185,7 +184,9 @@ class MemoryConfigService:
                     max_items_per_turn=int(extraction.get("max_items_per_turn", 3)),
                     instruction_markers=[
                         str(marker)
-                        for marker in extraction.get("instruction_markers", _default_instruction_markers())
+                        for marker in extraction.get(
+                            "instruction_markers", _default_instruction_markers()
+                        )
                         if str(marker).strip()
                     ],
                     fact_markers=[
@@ -210,9 +211,9 @@ class MemoryConfigService:
     def reload_config(self) -> None:
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict) -> None:
+    def save_config(self, updates: dict) -> None:
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
             if "memory" not in data:
@@ -240,7 +241,7 @@ class MemoryConfigService:
             logger.error("Failed to save memory config: %s", e)
             raise
 
-    def get_flat_config(self) -> Dict:
+    def get_flat_config(self) -> dict:
         cfg = self.config
         return {
             "enabled": cfg.enabled,
@@ -258,8 +259,8 @@ class MemoryConfigService:
             "assistant_enabled": cfg.scopes.assistant_enabled,
         }
 
-    def save_flat_config(self, flat_updates: Dict) -> None:
-        nested: Dict[str, Dict] = {}
+    def save_flat_config(self, flat_updates: dict) -> None:
+        nested: dict[str, dict] = {}
         mapping = {
             "enabled": (None, "enabled"),
             "profile_id": (None, "profile_id"),

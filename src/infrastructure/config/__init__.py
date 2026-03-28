@@ -4,11 +4,11 @@ from .assistant_config_service import AssistantConfigService
 from .file_reference_config_service import FileReferenceConfigService
 from .folder_service import Folder, FoldersConfig, FolderService
 from .memory_config_service import MemoryConfigService
-from .project_service import ProjectService, ProjectConflictError
-from .model_config_service import ModelConfigService
 from .model_config_repository import ModelConfigRepository
+from .model_config_service import ModelConfigService
 from .model_runtime_service import ModelRuntimeService
 from .pricing_service import PricingService
+from .project_service import ProjectConflictError, ProjectService
 from .prompt_template_service import PromptTemplateConfigService
 from .provider_probe_service import ProviderProbeService
 from .rag_config_service import RagConfigService

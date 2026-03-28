@@ -1,29 +1,32 @@
 """完全不用 uvicorn - 使用 hypercorn (另一个 ASGI 服务器)"""
 
-import sys
 import io
-import asyncio
 import os
 import socket
+import sys
 
 # Fix encoding
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from src.api.logging_config import setup_logging
+
 setup_logging()
 
 print("=" * 80)
 print("使用内置服务器运行 (调试模式)")
 print("=" * 80)
 
+
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('localhost', port)) == 0
+        return s.connect_ex(("localhost", port)) == 0
+
 
 if __name__ == "__main__":
     # 从环境变量读取端口配置（必须设置 API_PORT）
@@ -31,14 +34,16 @@ if __name__ == "__main__":
     if not port_value:
         print("❌ 未设置 API_PORT，请在根目录 .env 中配置")
         import sys
+
         sys.exit(1)
     port = int(port_value)
 
     if is_port_in_use(port):
         print(f"⚠️  警告: 端口 {port} 已被占用!")
-        print(f"   请先关闭占用端口的进程")
-        print(f"   或在 .env 文件中修改 API_PORT")
+        print("   请先关闭占用端口的进程")
+        print("   或在 .env 文件中修改 API_PORT")
         import sys
+
         sys.exit(1)
 
     print(f"\n✅ 端口 {port} 可用")

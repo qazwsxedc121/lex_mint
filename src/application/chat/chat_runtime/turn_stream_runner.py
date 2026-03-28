@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Dict, Optional
+from typing import Any
 
 from src.llm_runtime import call_llm_stream
 
@@ -13,9 +14,9 @@ class GroupTurnStreamState:
     """Mutable stream state collected during one turn."""
 
     full_response: str = ""
-    usage_data: Optional[Any] = None
-    cost_data: Optional[Any] = None
-    tool_diagnostics: Optional[Dict[str, Any]] = None
+    usage_data: Any | None = None
+    cost_data: Any | None = None
+    tool_diagnostics: dict[str, Any] | None = None
 
 
 class GroupTurnStreamRunner:
@@ -26,7 +27,7 @@ class GroupTurnStreamRunner:
         *,
         pricing_service: Any,
         file_service: Any,
-        assistant_params_from_config: Callable[[Any], Dict[str, Any]],
+        assistant_params_from_config: Callable[[Any], dict[str, Any]],
     ):
         self.pricing_service = pricing_service
         self.file_service = file_service
@@ -43,8 +44,8 @@ class GroupTurnStreamRunner:
         model_id: str,
         messages: Any,
         system_prompt: str,
-        reasoning_effort: Optional[str],
-    ) -> AsyncIterator[Dict[str, Any]]:
+        reasoning_effort: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Run streaming model call for one group assistant turn."""
         assistant_params = self.assistant_params_from_config(assistant_obj)
         max_rounds = assistant_obj.max_rounds

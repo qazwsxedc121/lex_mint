@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
+def truncate_log_text(text: str | None, max_chars: int = 1600) -> str:
     """Trim text for debug logs while preserving head and tail context."""
     content = (text or "").replace("\r", "")
     if len(content) <= max_chars:
@@ -16,13 +16,13 @@ def truncate_log_text(text: Optional[str], max_chars: int = 1600) -> str:
 
 
 def build_messages_preview_for_log(
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     *,
     max_messages: int = 10,
     max_chars: int = 220,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Build a compact recent message view for group context debugging."""
-    preview: List[Dict[str, Any]] = []
+    preview: list[dict[str, Any]] = []
     for msg in messages[-max_messages:]:
         preview.append(
             {

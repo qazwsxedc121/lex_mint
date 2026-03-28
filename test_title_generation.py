@@ -3,6 +3,7 @@ Test script for Title Generation feature
 
 This script tests the title generation functionality end-to-end.
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -11,8 +12,8 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.infrastructure.storage.conversation_storage import ConversationStorage
 from src.application.chat.title_generation_service import TitleGenerationService
+from src.infrastructure.storage.conversation_storage import ConversationStorage
 
 
 async def test_title_generation():
@@ -41,22 +42,22 @@ async def test_title_generation():
     # Test case 1: Default title, threshold met
     should_gen = title_service.should_generate_title(2, "New Conversation")
     print(f"  - Default title, 2 messages (1 round): {should_gen}")
-    assert should_gen == True, "Should generate for default title"
+    assert should_gen, "Should generate for default title"
 
     # Test case 2: Truncated title
     should_gen = title_service.should_generate_title(2, "This is a very long title...")
     print(f"  - Truncated title, 2 messages: {should_gen}")
-    assert should_gen == True, "Should generate for truncated title"
+    assert should_gen, "Should generate for truncated title"
 
     # Test case 3: Already has good title
     should_gen = title_service.should_generate_title(2, "Good Title")
     print(f"  - Good title, 2 messages: {should_gen}")
-    assert should_gen == False, "Should not regenerate good title"
+    assert not should_gen, "Should not regenerate good title"
 
     # Test case 4: Below threshold
     should_gen = title_service.should_generate_title(0, "New Conversation")
     print(f"  - Default title, 0 messages: {should_gen}")
-    assert should_gen == False, "Should not generate below threshold"
+    assert not should_gen, "Should not generate below threshold"
 
     print("[OK] Trigger logic working correctly")
 
@@ -64,9 +65,9 @@ async def test_title_generation():
     print("\n[Step 3] Testing config save/reload...")
     original_threshold = config.trigger_threshold
     try:
-        title_service.save_config({'trigger_threshold': 2})
+        title_service.save_config({"trigger_threshold": 2})
         assert title_service.config.trigger_threshold == 2, "Config not updated"
-        print(f"  - Saved new threshold: 2")
+        print("  - Saved new threshold: 2")
 
         # Reload
         title_service.reload_config()
@@ -74,7 +75,7 @@ async def test_title_generation():
         print(f"  - Reloaded config: threshold = {title_service.config.trigger_threshold}")
 
         # Restore original
-        title_service.save_config({'trigger_threshold': original_threshold})
+        title_service.save_config({"trigger_threshold": original_threshold})
         print(f"  - Restored original threshold: {original_threshold}")
         print("[OK] Config save/reload working")
     except Exception as e:

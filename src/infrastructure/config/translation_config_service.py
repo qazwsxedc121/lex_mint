@@ -3,18 +3,23 @@ Translation Config Service
 
 Manages configuration for Q&A translation.
 """
+
 import logging
-from pathlib import Path
-from typing import Dict, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
-from .yaml_config_utils import load_default_yaml_section, load_layered_yaml_section, save_yaml_section_updates
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     ensure_local_file,
+)
+
+from .yaml_config_utils import (
+    load_default_yaml_section,
+    load_layered_yaml_section,
+    save_yaml_section_updates,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,6 +34,7 @@ Text to translate:
 @dataclass
 class TranslationConfig:
     """Configuration for translation"""
+
     enabled: bool
     target_language: str
     input_target_language: str
@@ -47,8 +53,8 @@ class TranslationConfig:
 class TranslationConfigService:
     """Service for managing translation configuration"""
 
-    def __init__(self, config_path: Optional[str] = None):
-        self.defaults_path: Optional[Path] = config_defaults_dir() / "translation_config.yaml"
+    def __init__(self, config_path: str | None = None):
+        self.defaults_path: Path | None = config_defaults_dir() / "translation_config.yaml"
 
         if config_path is None:
             self.config_path = config_local_dir() / "translation_config.yaml"
@@ -65,51 +71,57 @@ class TranslationConfigService:
             initial_text=yaml.safe_dump({"translation": {}}, allow_unicode=True, sort_keys=False),
         )
 
-    def _load_default_section(self) -> Dict:
+    def _load_default_section(self) -> dict:
         """Load fallback defaults from the repo default config file."""
-        return load_default_yaml_section(self.defaults_path, 'translation')
+        return load_default_yaml_section(self.defaults_path, "translation")
 
     def _load_config(self) -> TranslationConfig:
         """Load configuration from YAML file"""
         default_config, config_data = load_layered_yaml_section(
             config_path=self.config_path,
             defaults_path=self.defaults_path,
-            section_name='translation',
+            section_name="translation",
             logger=logger,
-            error_label='translation config',
+            error_label="translation config",
         )
 
         return TranslationConfig(
-            enabled=config_data.get('enabled', default_config.get('enabled', True)),
-            target_language=config_data.get('target_language', default_config.get('target_language', 'Chinese')),
+            enabled=config_data.get("enabled", default_config.get("enabled", True)),
+            target_language=config_data.get(
+                "target_language", default_config.get("target_language", "Chinese")
+            ),
             input_target_language=config_data.get(
-                'input_target_language',
-                default_config.get('input_target_language', 'English'),
+                "input_target_language",
+                default_config.get("input_target_language", "English"),
             ),
-            provider=config_data.get('provider', default_config.get('provider', 'model_config')),
-            model_id=config_data.get('model_id', default_config.get('model_id', '')),
+            provider=config_data.get("provider", default_config.get("provider", "model_config")),
+            model_id=config_data.get("model_id", default_config.get("model_id", "")),
             local_gguf_model_path=config_data.get(
-                'local_gguf_model_path',
-                default_config.get('local_gguf_model_path', 'models/llm/local-translate.gguf'),
+                "local_gguf_model_path",
+                default_config.get("local_gguf_model_path", "models/llm/local-translate.gguf"),
             ),
-            local_gguf_n_ctx=config_data.get('local_gguf_n_ctx', default_config.get('local_gguf_n_ctx', 8192)),
+            local_gguf_n_ctx=config_data.get(
+                "local_gguf_n_ctx", default_config.get("local_gguf_n_ctx", 8192)
+            ),
             local_gguf_n_threads=config_data.get(
-                'local_gguf_n_threads',
-                default_config.get('local_gguf_n_threads', 0),
+                "local_gguf_n_threads",
+                default_config.get("local_gguf_n_threads", 0),
             ),
             local_gguf_n_gpu_layers=config_data.get(
-                'local_gguf_n_gpu_layers',
-                default_config.get('local_gguf_n_gpu_layers', 0),
+                "local_gguf_n_gpu_layers",
+                default_config.get("local_gguf_n_gpu_layers", 0),
             ),
             local_gguf_max_tokens=config_data.get(
-                'local_gguf_max_tokens',
-                default_config.get('local_gguf_max_tokens', 2048),
+                "local_gguf_max_tokens",
+                default_config.get("local_gguf_max_tokens", 2048),
             ),
-            temperature=config_data.get('temperature', default_config.get('temperature', 0.3)),
-            timeout_seconds=config_data.get('timeout_seconds', default_config.get('timeout_seconds', 30)),
+            temperature=config_data.get("temperature", default_config.get("temperature", 0.3)),
+            timeout_seconds=config_data.get(
+                "timeout_seconds", default_config.get("timeout_seconds", 30)
+            ),
             prompt_template=config_data.get(
-                'prompt_template',
-                default_config.get('prompt_template', DEFAULT_PROMPT_TEMPLATE),
+                "prompt_template",
+                default_config.get("prompt_template", DEFAULT_PROMPT_TEMPLATE),
             ),
         )
 
@@ -117,12 +129,12 @@ class TranslationConfigService:
         """Reload configuration from file"""
         self.config = self._load_config()
 
-    def save_config(self, updates: Dict):
+    def save_config(self, updates: dict):
         """Save updated configuration to file"""
         try:
             save_yaml_section_updates(
                 config_path=self.config_path,
-                section_name='translation',
+                section_name="translation",
                 updates=updates,
             )
             self.reload_config()

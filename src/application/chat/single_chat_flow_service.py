@@ -4,11 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 import time
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+
+from src.application.chat.rag_tool_service import RagToolService
+from src.application.chat.service_contracts import (
+    AssistantLike,
+    ContextPayload,
+    MessagePayload,
+    SourcePayload,
+    StreamEvent,
+    StreamItem,
+)
+from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
 from src.application.orchestration import (
     ActorEmit,
     ActorExecutionContext,
@@ -20,8 +33,6 @@ from src.application.orchestration import (
     RunContext,
     RunSpec,
 )
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-
 from src.llm_runtime import (
     build_context_info_event,
     build_context_plan,
@@ -36,18 +47,7 @@ from src.llm_runtime import (
 from src.llm_runtime.stream_call_policy import build_stream_kwargs, select_stream_llm
 from src.llm_runtime.streaming_client import _resolve_streaming_runtime
 from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
-from src.application.chat.rag_tool_service import RagToolService
-from src.application.chat.service_contracts import (
-    AssistantLike,
-    ContextPayload,
-    MessagePayload,
-    SourcePayload,
-    StreamEvent,
-    StreamItem,
-)
-from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
 from src.providers.types import CostInfo, TokenUsage
-
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,9 @@ def _default_project_document_tool_service_factory(**kwargs: Any) -> Any:
 
 
 def _default_project_knowledge_base_resolver_factory() -> Any:
-    from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
+    from src.infrastructure.projects.project_knowledge_base_resolver import (
+        ProjectKnowledgeBaseResolver,
+    )
 
     return ProjectKnowledgeBaseResolver()
 
@@ -117,13 +119,21 @@ class SingleChatFlowDeps:
     pricing_service: Any
     file_service: Any
     prepare_context: Callable[..., Awaitable[ContextPayload]]
-    build_file_context_block: Callable[[Optional[List[Dict[str, str]]]], Awaitable[str]]
+    build_file_context_block: Callable[[list[dict[str, str]] | None], Awaitable[str]]
     model_service_factory: Callable[[], Any] = _default_model_service_factory
-    compression_config_service_factory: Callable[[], Any] = _default_compression_config_service_factory
+    compression_config_service_factory: Callable[[], Any] = (
+        _default_compression_config_service_factory
+    )
     compression_service_factory: Callable[[Any], Any] = _default_compression_service_factory
-    project_document_tool_service_factory: Callable[..., Any] = _default_project_document_tool_service_factory
-    project_knowledge_base_resolver_factory: Callable[[], Any] = _default_project_knowledge_base_resolver_factory
-    project_tool_policy_resolver_factory: Callable[[], Any] = _default_project_tool_policy_resolver_factory
+    project_document_tool_service_factory: Callable[..., Any] = (
+        _default_project_document_tool_service_factory
+    )
+    project_knowledge_base_resolver_factory: Callable[[], Any] = (
+        _default_project_knowledge_base_resolver_factory
+    )
+    project_tool_policy_resolver_factory: Callable[[], Any] = (
+        _default_project_tool_policy_resolver_factory
+    )
     web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
     tool_registry_getter: Callable[[], Any] = _default_tool_registry_getter
     llm_logger_factory: Callable[[], Any] = _default_llm_logger_factory
@@ -135,22 +145,22 @@ class SingleChatRuntime:
 
     session_id: str
     context_type: str
-    project_id: Optional[str]
+    project_id: str | None
     raw_user_message: str
-    user_message_id: Optional[str]
-    messages: List[MessagePayload]
-    assistant_id: Optional[str]
-    assistant_obj: Optional[AssistantLike]
+    user_message_id: str | None
+    messages: list[MessagePayload]
+    assistant_id: str | None
+    assistant_obj: AssistantLike | None
     model_id: str
-    system_prompt: Optional[str]
-    context_segments: Dict[str, Optional[str]]
-    assistant_params: Dict[str, Any]
-    all_sources: List[SourcePayload]
-    max_rounds: Optional[int]
+    system_prompt: str | None
+    context_segments: dict[str, str | None]
+    assistant_params: dict[str, Any]
+    all_sources: list[SourcePayload]
+    max_rounds: int | None
     assistant_memory_enabled: bool
-    active_file_path: Optional[str] = None
-    active_file_hash: Optional[str] = None
-    compression_event: Optional[StreamEvent] = None
+    active_file_path: str | None = None
+    active_file_hash: str | None = None
+    compression_event: StreamEvent | None = None
 
 
 @dataclass
@@ -158,9 +168,9 @@ class SingleTurnOutcome:
     """Collected outputs from one single-turn orchestration stream."""
 
     full_response: str = ""
-    usage_data: Optional[TokenUsage] = None
-    cost_data: Optional[CostInfo] = None
-    tool_diagnostics: Optional[SourcePayload] = None
+    usage_data: TokenUsage | None = None
+    cost_data: CostInfo | None = None
+    tool_diagnostics: SourcePayload | None = None
 
 
 @dataclass
@@ -171,16 +181,16 @@ class SingleChatToolLoopRuntime:
     llm_for_tools: Any
     tool_loop_runner: ToolLoopRunner
     tool_loop_state: ToolLoopState
-    prompt_messages: List[Any]
+    prompt_messages: list[Any]
     context_info_event: StreamEvent
     tools_enabled: bool
-    final_usage: Optional[TokenUsage] = None
+    final_usage: TokenUsage | None = None
     full_reasoning: str = ""
     round_content: str = ""
     round_reasoning: str = ""
     round_reasoning_details: Any = None
     merged_chunk: Any = None
-    pending_tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    pending_tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
 class SingleChatFlowService:
@@ -196,16 +206,16 @@ class SingleChatFlowService:
         session_id: str,
         user_message: str,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
-    ) -> Tuple[str, List[SourcePayload]]:
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
+    ) -> tuple[str, list[SourcePayload]]:
         """Collect the single-chat stream into one final response payload."""
-        response_chunks: List[str] = []
-        latest_sources: List[SourcePayload] = []
+        response_chunks: list[str] = []
+        latest_sources: list[SourcePayload] = []
 
         async for event in self.process_message_stream(
             session_id=session_id,
@@ -234,18 +244,18 @@ class SingleChatFlowService:
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
-        reasoning_effort: Optional[str] = None,
-        attachments: Optional[List[SourcePayload]] = None,
+        reasoning_effort: str | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         use_web_search: bool = False,
-        search_query: Optional[str] = None,
-        file_references: Optional[List[Dict[str, str]]] = None,
-        active_file_path: Optional[str] = None,
-        active_file_hash: Optional[str] = None,
+        search_query: str | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
     ) -> AsyncIterator[StreamItem]:
         """Prepare context, run single-turn orchestration, and persist final outputs."""
-        runtime_state: Dict[str, Any] = {
+        runtime_state: dict[str, Any] = {
             "runtime": None,
             "llm_tools": None,
             "rag_tool_executor": None,
@@ -278,8 +288,8 @@ class SingleChatFlowService:
                     }
                 )
             else:
-                print(f"[Step 1] Skipping user message save (regeneration mode)")
-                logger.info(f"[Step 1] Skipping user message save")
+                print("[Step 1] Skipping user message save (regeneration mode)")
+                logger.info("[Step 1] Skipping user message save")
 
             if runtime.all_sources:
                 yield self._emit_single_chat_event(
@@ -474,14 +484,26 @@ class SingleChatFlowService:
             edges=(
                 EdgeSpec(source_id="prepare_runtime", target_id="resolve_tools"),
                 EdgeSpec(source_id="resolve_tools", target_id="choose_stream_path"),
-                EdgeSpec(source_id="choose_stream_path", target_id="stream_direct", branch="direct"),
-                EdgeSpec(source_id="choose_stream_path", target_id="prepare_tool_loop", branch="tool_loop"),
+                EdgeSpec(
+                    source_id="choose_stream_path", target_id="stream_direct", branch="direct"
+                ),
+                EdgeSpec(
+                    source_id="choose_stream_path",
+                    target_id="prepare_tool_loop",
+                    branch="tool_loop",
+                ),
                 EdgeSpec(source_id="stream_direct", target_id="persist_result"),
                 EdgeSpec(source_id="prepare_tool_loop", target_id="stream_tool_round"),
                 EdgeSpec(source_id="stream_tool_round", target_id="decide_tool_round"),
-                EdgeSpec(source_id="decide_tool_round", target_id="execute_tools", branch="execute_tools"),
-                EdgeSpec(source_id="decide_tool_round", target_id="stream_tool_round", branch="continue"),
-                EdgeSpec(source_id="decide_tool_round", target_id="finalize_tool_loop", branch="finalize"),
+                EdgeSpec(
+                    source_id="decide_tool_round", target_id="execute_tools", branch="execute_tools"
+                ),
+                EdgeSpec(
+                    source_id="decide_tool_round", target_id="stream_tool_round", branch="continue"
+                ),
+                EdgeSpec(
+                    source_id="decide_tool_round", target_id="finalize_tool_loop", branch="finalize"
+                ),
                 EdgeSpec(source_id="execute_tools", target_id="stream_tool_round"),
                 EdgeSpec(source_id="finalize_tool_loop", target_id="persist_result"),
             ),
@@ -491,7 +513,10 @@ class SingleChatFlowService:
 
         async for runtime_event in self._orchestration_engine.run_stream(spec, context):
             event_type = str(runtime_event.get("type") or "")
-            if event_type == "node_event" and runtime_event.get("event_type") == "single_chat_event":
+            if (
+                event_type == "node_event"
+                and runtime_event.get("event_type") == "single_chat_event"
+            ):
                 payload = runtime_event.get("payload") or {}
                 if isinstance(payload, dict) and "event" in payload:
                     yield payload["event"]
@@ -506,21 +531,21 @@ class SingleChatFlowService:
         return ActorEmit(event_type="single_chat_event", payload={"event": event})
 
     @staticmethod
-    def _require_runtime_state(runtime_state: Dict[str, Any]) -> SingleChatRuntime:
+    def _require_runtime_state(runtime_state: dict[str, Any]) -> SingleChatRuntime:
         runtime = runtime_state.get("runtime")
         if not isinstance(runtime, SingleChatRuntime):
             raise RuntimeError("single chat runtime was not prepared before node execution")
         return runtime
 
     @staticmethod
-    def _require_outcome_state(runtime_state: Dict[str, Any]) -> SingleTurnOutcome:
+    def _require_outcome_state(runtime_state: dict[str, Any]) -> SingleTurnOutcome:
         outcome = runtime_state.get("outcome")
         if not isinstance(outcome, SingleTurnOutcome):
             raise RuntimeError("single chat outcome state is unavailable")
         return outcome
 
     @staticmethod
-    def _require_tool_loop_state(runtime_state: Dict[str, Any]) -> SingleChatToolLoopRuntime:
+    def _require_tool_loop_state(runtime_state: dict[str, Any]) -> SingleChatToolLoopRuntime:
         tool_loop = runtime_state.get("tool_loop")
         if not isinstance(tool_loop, SingleChatToolLoopRuntime):
             raise RuntimeError("single chat tool loop state is unavailable")
@@ -532,14 +557,14 @@ class SingleChatFlowService:
         session_id: str,
         user_message: str,
         skip_user_append: bool,
-        attachments: Optional[List[SourcePayload]],
+        attachments: list[SourcePayload] | None,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
         use_web_search: bool,
-        search_query: Optional[str],
-        file_references: Optional[List[Dict[str, str]]],
-        active_file_path: Optional[str],
-        active_file_hash: Optional[str],
+        search_query: str | None,
+        file_references: list[dict[str, str]] | None,
+        active_file_path: str | None,
+        active_file_hash: str | None,
     ) -> SingleChatRuntime:
         original_user_message = user_message
         file_context_block = await self.deps.build_file_context_block(file_references)
@@ -556,8 +581,8 @@ class SingleChatFlowService:
             project_id=project_id,
         )
 
-        print(f"[Step 2] Loading session state...")
-        logger.info(f"[Step 2] Loading session state")
+        print("[Step 2] Loading session state...")
+        logger.info("[Step 2] Loading session state")
         prefer_web_tools = await self._should_prefer_web_tools(
             session_id=session_id,
             context_type=context_type,
@@ -620,16 +645,20 @@ class SingleChatFlowService:
         )
 
     @staticmethod
-    def _compose_system_prompt(*segments: Optional[str]) -> Optional[str]:
-        parts = [str(segment).strip() for segment in segments if isinstance(segment, str) and segment.strip()]
+    def _compose_system_prompt(*segments: str | None) -> str | None:
+        parts = [
+            str(segment).strip()
+            for segment in segments
+            if isinstance(segment, str) and segment.strip()
+        ]
         return "\n\n".join(parts) if parts else None
 
     def _strip_preloaded_web_context(
         self,
         *,
-        context_segments: Dict[str, Optional[str]],
-        all_sources: List[SourcePayload],
-    ) -> Tuple[Optional[str], Dict[str, Optional[str]], List[SourcePayload]]:
+        context_segments: dict[str, str | None],
+        all_sources: list[SourcePayload],
+    ) -> tuple[str | None, dict[str, str | None], list[SourcePayload]]:
         pruned_segments = dict(context_segments)
         pruned_segments["webpage_context"] = None
         pruned_segments["search_context"] = None
@@ -640,8 +669,7 @@ class SingleChatFlowService:
             pruned_segments.get("structured_source_context"),
         )
         filtered_sources = [
-            source for source in all_sources
-            if source.get("type") not in {"search", "webpage"}
+            source for source in all_sources if source.get("type") not in {"search", "webpage"}
         ]
         return system_prompt, pruned_segments, filtered_sources
 
@@ -650,7 +678,7 @@ class SingleChatFlowService:
         *,
         session_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
         use_web_search: bool,
     ) -> bool:
         if not use_web_search:
@@ -681,13 +709,13 @@ class SingleChatFlowService:
         self,
         *,
         runtime: SingleChatRuntime,
-        reasoning_effort: Optional[str],
-        llm_tools: Optional[List[Any]],
-        rag_tool_executor: Optional[Any],
+        reasoning_effort: str | None,
+        llm_tools: list[Any] | None,
+        rag_tool_executor: Any | None,
         outcome: SingleTurnOutcome,
     ) -> AsyncIterator[StreamItem]:
-        print(f"[Step 3] Streaming LLM call...")
-        logger.info(f"[Step 3] Streaming LLM call")
+        print("[Step 3] Streaming LLM call...")
+        logger.info("[Step 3] Streaming LLM call")
 
         try:
             async for chunk in self.deps.call_llm_stream(
@@ -715,7 +743,12 @@ class SingleChatFlowService:
                             usage_data=usage_data,
                         )
                         continue
-                    if chunk_type in ("context_info", "thinking_duration", "tool_calls", "tool_results"):
+                    if chunk_type in (
+                        "context_info",
+                        "thinking_duration",
+                        "tool_calls",
+                        "tool_results",
+                    ):
                         yield chunk
                         continue
                     if chunk_type == "tool_diagnostics":
@@ -725,11 +758,11 @@ class SingleChatFlowService:
                 text_chunk = str(chunk)
                 outcome.full_response += text_chunk
                 yield text_chunk
-            print(f"[OK] LLM streaming complete")
-            logger.info(f"[OK] LLM streaming complete")
+            print("[OK] LLM streaming complete")
+            logger.info("[OK] LLM streaming complete")
             print(f"[MSG] AI response length: {len(outcome.full_response)} chars")
         except asyncio.CancelledError:
-            print(f"[WARN] Stream generation cancelled, saving partial content...")
+            print("[WARN] Stream generation cancelled, saving partial content...")
             logger.warning(
                 "Stream generation cancelled, saving partial content (%s chars)",
                 len(outcome.full_response),
@@ -741,15 +774,15 @@ class SingleChatFlowService:
                 project_id=runtime.project_id,
             )
             if outcome.full_response:
-                print(f"[OK] Partial AI response saved")
+                print("[OK] Partial AI response saved")
             raise
 
     async def _prepare_tool_loop_runtime(
         self,
         *,
         runtime: SingleChatRuntime,
-        reasoning_effort: Optional[str],
-        llm_tools: Optional[List[Any]],
+        reasoning_effort: str | None,
+        llm_tools: list[Any] | None,
     ) -> SingleChatToolLoopRuntime:
         assistant_params = runtime.assistant_params or {}
         streaming_runtime = _resolve_streaming_runtime(
@@ -780,7 +813,7 @@ class SingleChatFlowService:
             context_budget_tokens=max_input_tokens,
         )
 
-        langchain_messages: List[BaseMessage] = [
+        langchain_messages: list[BaseMessage] = [
             SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
             for segment in context_plan.system_segments
         ]
@@ -796,7 +829,9 @@ class SingleChatFlowService:
             for message in context_plan.chat_messages:
                 role = str(message.get("role") or "").strip().lower()
                 if role == "user":
-                    langchain_messages.append(HumanMessage(content=str(message.get("content") or "")))
+                    langchain_messages.append(
+                        HumanMessage(content=str(message.get("content") or ""))
+                    )
                 elif role == "assistant":
                     langchain_messages.append(AIMessage(content=str(message.get("content") or "")))
 
@@ -824,11 +859,15 @@ class SingleChatFlowService:
                 latest_user_text = str(raw_message.get("content") or "")
                 break
 
-        tool_names = {
-            str(getattr(tool, "name", "") or "").strip()
-            for tool in (llm_tools or [])
-            if str(getattr(tool, "name", "") or "").strip()
-        } if tools_enabled else set()
+        tool_names = (
+            {
+                str(getattr(tool, "name", "") or "").strip()
+                for tool in (llm_tools or [])
+                if str(getattr(tool, "name", "") or "").strip()
+            }
+            if tools_enabled
+            else set()
+        )
         max_tool_rounds = ToolLoopRunner.resolve_max_tool_rounds(
             tool_names=tool_names,
             latest_user_text=latest_user_text,
@@ -859,7 +898,7 @@ class SingleChatFlowService:
         tool_loop: SingleChatToolLoopRuntime,
         outcome: SingleTurnOutcome,
     ) -> AsyncIterator[StreamItem]:
-        print(f"[Step 3] Streaming tool-aware LLM round...")
+        print("[Step 3] Streaming tool-aware LLM round...")
         logger.info("Streaming single-chat tool-aware LLM round")
 
         try:
@@ -875,7 +914,7 @@ class SingleChatFlowService:
 
             in_thinking_phase = False
             thinking_ended = False
-            thinking_start_time: Optional[float] = None
+            thinking_start_time: float | None = None
             tool_loop.round_content = ""
             tool_loop.round_reasoning = ""
             tool_loop.round_reasoning_details = None
@@ -893,7 +932,10 @@ class SingleChatFlowService:
                 if chunk_usage is not None:
                     tool_loop.final_usage = chunk_usage
 
-                if chunk.thinking and not tool_loop.streaming_runtime.reasoning_decision.disable_thinking:
+                if (
+                    chunk.thinking
+                    and not tool_loop.streaming_runtime.reasoning_decision.disable_thinking
+                ):
                     tool_loop.full_reasoning += chunk.thinking
                     tool_loop.round_reasoning += chunk.thinking
                     if not in_thinking_phase:
@@ -960,7 +1002,7 @@ class SingleChatFlowService:
 
             outcome.full_response += tool_loop.round_content
         except asyncio.CancelledError:
-            print(f"[WARN] Stream generation cancelled, saving partial content...")
+            print("[WARN] Stream generation cancelled, saving partial content...")
             logger.warning(
                 "Tool-loop stream generation cancelled, saving partial content (%s chars)",
                 len(outcome.full_response),
@@ -985,7 +1027,7 @@ class SingleChatFlowService:
             round_tool_calls=round_tool_calls,
         ):
             if tool_loop.round_content and outcome.full_response.endswith(tool_loop.round_content):
-                outcome.full_response = outcome.full_response[:-len(tool_loop.round_content)]
+                outcome.full_response = outcome.full_response[: -len(tool_loop.round_content)]
             logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
             tool_loop.tool_loop_runner.apply_read_compensation_prompt(tool_loop.tool_loop_state)
             return "continue"
@@ -995,7 +1037,7 @@ class SingleChatFlowService:
             round_tool_calls=round_tool_calls,
         ):
             if tool_loop.round_content and outcome.full_response.endswith(tool_loop.round_content):
-                outcome.full_response = outcome.full_response[:-len(tool_loop.round_content)]
+                outcome.full_response = outcome.full_response[: -len(tool_loop.round_content)]
             logger.info("Injecting read_webpage compensation prompt for web research request")
             tool_loop.tool_loop_runner.apply_web_read_compensation_prompt(tool_loop.tool_loop_state)
             return "continue"
@@ -1022,7 +1064,7 @@ class SingleChatFlowService:
         self,
         *,
         tool_loop: SingleChatToolLoopRuntime,
-        tool_executor: Optional[Any],
+        tool_executor: Any | None,
     ) -> AsyncIterator[StreamEvent]:
         round_tool_calls = list(tool_loop.pending_tool_calls)
         if not round_tool_calls:
@@ -1092,7 +1134,7 @@ class SingleChatFlowService:
         *,
         runtime: SingleChatRuntime,
         outcome: SingleTurnOutcome,
-        usage_data: Optional[TokenUsage],
+        usage_data: TokenUsage | None,
     ) -> None:
         if not isinstance(usage_data, TokenUsage):
             return
@@ -1115,7 +1157,7 @@ class SingleChatFlowService:
         tool_loop: SingleChatToolLoopRuntime,
     ) -> None:
         response_msg = AIMessage(content=outcome.full_response)
-        log_extra_params: Dict[str, Any] = {
+        log_extra_params: dict[str, Any] = {
             "request_params": tool_loop.streaming_runtime.request_params,
             "call_mode": tool_loop.streaming_runtime.effective_call_mode.value,
             "responses_fallback_enabled": tool_loop.streaming_runtime.allow_responses_fallback,
@@ -1150,8 +1192,8 @@ class SingleChatFlowService:
         runtime: SingleChatRuntime,
         outcome: SingleTurnOutcome,
     ) -> AsyncIterator[StreamEvent]:
-        print(f"[Step 4] Saving complete AI response to file...")
-        logger.info(f"[Step 4] Saving complete AI response")
+        print("[Step 4] Saving complete AI response to file...")
+        logger.info("[Step 4] Saving complete AI response")
         if outcome.tool_diagnostics:
             runtime.all_sources = merge_tool_diagnostics_into_sources(
                 runtime.all_sources,
@@ -1202,10 +1244,10 @@ class SingleChatFlowService:
         *,
         session_id: str,
         model_id: str,
-        messages: List[MessagePayload],
+        messages: list[MessagePayload],
         context_type: str,
-        project_id: Optional[str],
-    ) -> Tuple[List[MessagePayload], Optional[StreamEvent]]:
+        project_id: str | None,
+    ) -> tuple[list[MessagePayload], StreamEvent | None]:
         """Apply automatic compression when token estimate exceeds configured threshold."""
         try:
             compression_config_svc = self.deps.compression_config_service_factory()
@@ -1241,7 +1283,9 @@ class SingleChatFlowService:
                 project_id=project_id,
             )
             if not result:
-                print("[AUTO-COMPRESS] Compression returned no result, continuing without compression")
+                print(
+                    "[AUTO-COMPRESS] Compression returned no result, continuing without compression"
+                )
                 return messages, None
 
             compress_msg_id, compressed_count = result
@@ -1265,19 +1309,19 @@ class SingleChatFlowService:
     async def _resolve_tools(
         self,
         *,
-        assistant_id: Optional[str],
-        assistant_obj: Optional[AssistantLike],
+        assistant_id: str | None,
+        assistant_obj: AssistantLike | None,
         model_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
         session_id: str,
-        active_file_path: Optional[str],
-        active_file_hash: Optional[str],
+        active_file_path: str | None,
+        active_file_hash: str | None,
         use_web_search: bool,
-    ) -> Tuple[Optional[List[Any]], Optional[Any]]:
+    ) -> tuple[list[Any] | None, Any | None]:
         """Resolve function-calling tools and optional assistant-scoped RAG tool executor."""
-        llm_tools: Optional[List[Any]] = None
-        tool_executors: List[Any] = []
+        llm_tools: list[Any] | None = None
+        tool_executors: list[Any] = []
         allowed_tool_names: set[str] = set()
         try:
             model_service = self.deps.model_service_factory()
@@ -1295,15 +1339,18 @@ class SingleChatFlowService:
                     tool_executors.append(web_tool_service.execute_tool)
                     print(f"[TOOLS] Added web tools: {len(web_tools)}")
 
-            kb_ids_for_tools = await self.deps.project_knowledge_base_resolver_factory().resolve_effective_kb_ids(
-                assistant_id=assistant_id,
-                assistant_obj=assistant_obj,
-                context_type=context_type,
-                project_id=project_id,
+            kb_ids_for_tools = (
+                await self.deps.project_knowledge_base_resolver_factory().resolve_effective_kb_ids(
+                    assistant_id=assistant_id,
+                    assistant_obj=assistant_obj,
+                    context_type=context_type,
+                    project_id=project_id,
+                )
             )
             if kb_ids_for_tools:
                 rag_tool_service = RagToolService(
-                    assistant_id=assistant_id or (f"project::{project_id}" if project_id else "project::default"),
+                    assistant_id=assistant_id
+                    or (f"project::{project_id}" if project_id else "project::default"),
                     allowed_kb_ids=kb_ids_for_tools,
                     runtime_model_id=model_id,
                 )
@@ -1333,10 +1380,12 @@ class SingleChatFlowService:
                         f"(project={project_id}, file={active_file_log})"
                     )
 
-            allowed_tool_names = await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
-                context_type=context_type,
-                project_id=project_id,
-                candidate_tool_names=[tool.name for tool in llm_tools],
+            allowed_tool_names = (
+                await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
+                    context_type=context_type,
+                    project_id=project_id,
+                    candidate_tool_names=[tool.name for tool in llm_tools],
+                )
             )
             if context_type == "project" and project_id:
                 llm_tools = [tool for tool in llm_tools if tool.name in allowed_tool_names]
@@ -1347,7 +1396,7 @@ class SingleChatFlowService:
         if not tool_executors:
             return llm_tools, None
 
-        async def _combined_tool_executor(name: str, args: Dict[str, Any]) -> Optional[str]:
+        async def _combined_tool_executor(name: str, args: dict[str, Any]) -> str | None:
             if context_type == "project" and project_id and name not in allowed_tool_names:
                 logger.info("Blocked project tool by policy: %s (project=%s)", name, project_id)
                 return f"Error: Tool '{name}' is disabled for this project"

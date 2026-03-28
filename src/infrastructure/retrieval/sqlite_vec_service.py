@@ -4,17 +4,19 @@ SQLite vector store service for RAG chunks.
 This backend stores chunk metadata/content and embedding vectors in SQLite,
 and uses sqlite-vec acceleration when available.
 """
+
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 import math
-import importlib
 import sqlite3
 import struct
+from collections.abc import Sequence
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 from src.core.paths import resolve_user_data_path
 
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 class SqliteVecService:
     """Service for chunk-level vector storage and retrieval in SQLite."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         if db_path is None:
             from src.infrastructure.config.rag_config_service import RagConfigService
 
@@ -93,9 +95,7 @@ class SqliteVecService:
                 conn.execute("ALTER TABLE rag_vec_chunks ADD COLUMN embedding_blob BLOB")
             if "embedding_dim" not in existing_cols:
                 conn.execute("ALTER TABLE rag_vec_chunks ADD COLUMN embedding_dim INTEGER")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rag_vec_kb ON rag_vec_chunks (kb_id)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_vec_kb ON rag_vec_chunks (kb_id)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_rag_vec_kb_doc ON rag_vec_chunks (kb_id, doc_id)"
             )
@@ -105,7 +105,7 @@ class SqliteVecService:
             conn.commit()
 
     @staticmethod
-    def _normalize_vector(vector: Sequence[float]) -> List[float]:
+    def _normalize_vector(vector: Sequence[float]) -> list[float]:
         return [float(item) for item in vector]
 
     @staticmethod
@@ -116,7 +116,7 @@ class SqliteVecService:
         return struct.pack(f"<{len(normalized)}f", *normalized)
 
     @staticmethod
-    def _unpack_vector_float32(blob: bytes, expected_dim: Optional[int] = None) -> List[float]:
+    def _unpack_vector_float32(blob: bytes, expected_dim: int | None = None) -> list[float]:
         if not blob or len(blob) % 4 != 0:
             return []
         dim = len(blob) // 4
@@ -131,7 +131,7 @@ class SqliteVecService:
         dot = 0.0
         q_norm = 0.0
         c_norm = 0.0
-        for q_val, c_val in zip(query, candidate):
+        for q_val, c_val in zip(query, candidate, strict=True):
             dot += q_val * c_val
             q_norm += q_val * q_val
             c_norm += c_val * c_val
@@ -147,7 +147,7 @@ class SqliteVecService:
         filename: str,
         file_type: str,
         ingest_id: str,
-        chunk_rows: List[Dict[str, Any]],
+        chunk_rows: list[dict[str, Any]],
     ) -> bool:
         """Upsert chunk rows for one document generation.
 
@@ -157,7 +157,7 @@ class SqliteVecService:
         if not chunk_rows:
             return False
 
-        prepared_rows: List[tuple[object, ...]] = []
+        prepared_rows: list[tuple[object, ...]] = []
         for row in chunk_rows:
             chunk_id = str(row.get("chunk_id") or "")
             if not chunk_id:
@@ -165,7 +165,9 @@ class SqliteVecService:
             chunk_index = int(row.get("chunk_index", 0) or 0)
             content = str(row.get("content") or "")
             raw_embedding = row.get("embedding", []) or []
-            if not isinstance(raw_embedding, Sequence) or isinstance(raw_embedding, (str, bytes, bytearray)):
+            if not isinstance(raw_embedding, Sequence) or isinstance(
+                raw_embedding, (str, bytes, bytearray)
+            ):
                 raw_embedding = []
             embedding = self._normalize_vector(raw_embedding)
             embedding_json = json.dumps(embedding, separators=(",", ":"))
@@ -193,10 +195,13 @@ class SqliteVecService:
             cursor = conn.cursor()
             cursor.execute("BEGIN")
             try:
-                had_existing = cursor.execute(
-                    "SELECT 1 FROM rag_vec_chunks WHERE kb_id = ? AND doc_id = ? LIMIT 1",
-                    (kb_id, doc_id),
-                ).fetchone() is not None
+                had_existing = (
+                    cursor.execute(
+                        "SELECT 1 FROM rag_vec_chunks WHERE kb_id = ? AND doc_id = ? LIMIT 1",
+                        (kb_id, doc_id),
+                    ).fetchone()
+                    is not None
+                )
                 cursor.executemany(
                     """
                     INSERT OR REPLACE INTO rag_vec_chunks (
@@ -212,7 +217,7 @@ class SqliteVecService:
                 conn.rollback()
                 raise
 
-    def delete_chunks_by_ids(self, *, kb_id: str, chunk_ids: List[str]) -> None:
+    def delete_chunks_by_ids(self, *, kb_id: str, chunk_ids: list[str]) -> None:
         if not chunk_ids:
             return
         with self._lock, self._connect() as conn:
@@ -228,7 +233,7 @@ class SqliteVecService:
         *,
         kb_id: str,
         doc_id: str,
-        keep_chunk_ids: List[str],
+        keep_chunk_ids: list[str],
     ) -> int:
         """Delete chunks in one document except current generation ids."""
         with self._lock, self._connect() as conn:
@@ -275,9 +280,9 @@ class SqliteVecService:
         self,
         *,
         kb_id: str,
-        doc_id: Optional[str] = None,
+        doc_id: str | None = None,
         limit: int = 200,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 2000))
         with self._connect() as conn:
             if doc_id:
@@ -303,7 +308,7 @@ class SqliteVecService:
                     (kb_id, safe_limit),
                 ).fetchall()
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -325,7 +330,7 @@ class SqliteVecService:
         start_index: int,
         end_index: int,
         limit: int = 256,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List chunks for one document within an inclusive chunk index range."""
         safe_start = max(0, int(start_index))
         safe_end = max(safe_start, int(end_index))
@@ -343,7 +348,7 @@ class SqliteVecService:
                 (kb_id, doc_id, safe_start, safe_end, safe_limit),
             ).fetchall()
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -377,7 +382,7 @@ class SqliteVecService:
             if not rows:
                 return 0
 
-            updates: List[tuple[bytes, int, str]] = []
+            updates: list[tuple[bytes, int, str]] = []
             for row in rows:
                 try:
                     vector = self._normalize_vector(json.loads(row["embedding_json"] or "[]"))
@@ -385,7 +390,9 @@ class SqliteVecService:
                     continue
                 if not vector:
                     continue
-                updates.append((self._pack_vector_float32(vector), len(vector), str(row["chunk_id"])))
+                updates.append(
+                    (self._pack_vector_float32(vector), len(vector), str(row["chunk_id"]))
+                )
 
             if not updates:
                 return 0
@@ -407,7 +414,7 @@ class SqliteVecService:
         kb_id: str,
         query_vector: Sequence[float],
         top_k: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not self._sqlite_vec_available:
             return []
 
@@ -439,7 +446,7 @@ class SqliteVecService:
                 self._sqlite_vec_available = False
                 return []
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for row in rows:
             items.append(
                 {
@@ -460,7 +467,7 @@ class SqliteVecService:
         kb_id: str,
         query_embedding: Sequence[float],
         top_k: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         query_vector = self._normalize_vector(query_embedding)
         if not query_vector:
             return []
@@ -500,17 +507,21 @@ class SqliteVecService:
         if not rows:
             return []
 
-        ranked: List[Dict[str, Any]] = []
+        ranked: list[dict[str, Any]] = []
         for row in rows:
-            candidate_vector: List[float] = []
+            candidate_vector: list[float] = []
             blob = row["embedding_blob"]
             dim = row["embedding_dim"]
             if blob and isinstance(blob, (bytes, bytearray)):
                 expected_dim = int(dim) if dim is not None else query_dim
-                candidate_vector = self._unpack_vector_float32(bytes(blob), expected_dim=expected_dim)
+                candidate_vector = self._unpack_vector_float32(
+                    bytes(blob), expected_dim=expected_dim
+                )
             if not candidate_vector:
                 try:
-                    candidate_vector = self._normalize_vector(json.loads(row["embedding_json"] or "[]"))
+                    candidate_vector = self._normalize_vector(
+                        json.loads(row["embedding_json"] or "[]")
+                    )
                 except Exception:
                     continue
             score = self._cosine_similarity(query_vector, candidate_vector)
@@ -528,5 +539,3 @@ class SqliteVecService:
 
         ranked.sort(key=lambda item: float(item.get("score", 0.0) or 0.0), reverse=True)
         return ranked[:safe_top_k]
-
-

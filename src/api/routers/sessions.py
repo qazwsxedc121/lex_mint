@@ -1,23 +1,25 @@
 """Session management API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Depends, Body, Query, UploadFile, File
-from fastapi.responses import Response
-from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel
+import io
+import json
 import logging
 import re
-import json
-import io
 import zipfile
+from typing import Any, Literal
 from urllib.parse import quote
+
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel
 
 from src.application.chat import SessionApplicationService
 from src.application.chat.chatgpt_import_service import ChatGPTImportService
 from src.application.chat.markdown_import_service import MarkdownImportService
-from ..dependencies import get_storage as get_shared_storage
-from ..dependencies import get_session_application_service as get_shared_session_application_service
-from src.infrastructure.storage.conversation_storage import ConversationStorage
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
+from src.infrastructure.storage.conversation_storage import ConversationStorage
+
+from ..dependencies import get_session_application_service as get_shared_session_application_service
+from ..dependencies import get_storage as get_shared_storage
 
 logger = logging.getLogger(__name__)
 
@@ -26,50 +28,58 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 class CreateSessionRequest(BaseModel):
     """创建会话请求"""
-    model_id: Optional[str] = None  # 向后兼容
-    assistant_id: Optional[str] = None  # 新方式：使用助手
-    target_type: Optional[Literal["assistant", "model"]] = None
+
+    model_id: str | None = None  # 向后兼容
+    assistant_id: str | None = None  # 新方式：使用助手
+    target_type: Literal["assistant", "model"] | None = None
     temporary: bool = False
-    group_assistants: Optional[List[str]] = None  # Group chat: list of assistant IDs
-    group_mode: Optional[str] = None  # Group chat mode: "round_robin" | "committee"
-    group_settings: Optional[Dict[str, Any]] = None  # Structured orchestration settings
+    group_assistants: list[str] | None = None  # Group chat: list of assistant IDs
+    group_mode: str | None = None  # Group chat mode: "round_robin" | "committee"
+    group_settings: dict[str, Any] | None = None  # Structured orchestration settings
 
 
 class UpdateModelRequest(BaseModel):
     """更新模型请求"""
+
     model_id: str
 
 
 class UpdateAssistantRequest(BaseModel):
     """更新助手请求"""
+
     assistant_id: str
 
 
 class UpdateTargetRequest(BaseModel):
     """更新会话对话目标请求"""
+
     target_type: Literal["assistant", "model"]
-    assistant_id: Optional[str] = None
-    model_id: Optional[str] = None
+    assistant_id: str | None = None
+    model_id: str | None = None
 
 
 class UpdateTitleRequest(BaseModel):
     """更新标题请求"""
+
     title: str
 
 
 class UpdateParamOverridesRequest(BaseModel):
     """更新参数覆盖请求"""
-    param_overrides: Dict
+
+    param_overrides: dict
 
 
 class TransferSessionRequest(BaseModel):
     """Move or copy session request."""
+
     target_context_type: str
-    target_project_id: Optional[str] = None
+    target_project_id: str | None = None
 
 
 class ImportChatGPTSession(BaseModel):
     """Imported session summary."""
+
     session_id: str
     title: str
     message_count: int
@@ -77,10 +87,11 @@ class ImportChatGPTSession(BaseModel):
 
 class ImportChatGPTResponse(BaseModel):
     """ChatGPT import response."""
+
     imported: int
     skipped: int
-    sessions: List[ImportChatGPTSession]
-    errors: List[str]
+    sessions: list[ImportChatGPTSession]
+    errors: list[str]
 
 
 def get_storage() -> ConversationStorage:
@@ -93,11 +104,11 @@ def get_session_application_service() -> SessionApplicationService:
     return get_shared_session_application_service()
 
 
-@router.post("", response_model=Dict[str, str])
+@router.post("", response_model=dict[str, str])
 async def create_session(
-    request: Optional[CreateSessionRequest] = None,
+    request: CreateSessionRequest | None = None,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Create a new conversation session.
@@ -149,11 +160,11 @@ async def create_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("", response_model=Dict[str, List[Dict]])
+@router.get("", response_model=dict[str, list[dict]])
 async def list_sessions(
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
 ):
     """List all conversation sessions.
 
@@ -191,12 +202,12 @@ async def list_sessions(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/search", response_model=Dict[str, List[Dict]])
+@router.get("/search", response_model=dict[str, list[dict]])
 async def search_sessions(
     q: str = Query(""),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
 ):
     """Search sessions by title and message content.
 
@@ -218,12 +229,12 @@ async def search_sessions(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{session_id}", response_model=Dict)
+@router.get("/{session_id}", response_model=dict)
 async def get_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
 ):
     """Get a specific conversation session with full history.
 
@@ -253,18 +264,22 @@ async def get_session(
 
     logger.info(f"📂 获取会话: {session_id[:16]}...")
     try:
-        session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
+        session = await storage.get_session(
+            session_id, context_type=context_type, project_id=project_id
+        )
 
         # Load comparison data if it exists
         try:
             comparison_storage = ComparisonStorage(storage)
-            compare_data = await comparison_storage.load(session_id, context_type=context_type, project_id=project_id)
+            compare_data = await comparison_storage.load(
+                session_id, context_type=context_type, project_id=project_id
+            )
             if compare_data:
                 session["compare_data"] = compare_data
         except Exception as e:
             logger.warning(f"Failed to load comparison data: {e}")
 
-        msg_count = len(session.get('state', {}).get('messages', []))
+        msg_count = len(session.get("state", {}).get("messages", []))
         logger.info(f"✅ 会话加载成功，包含 {msg_count} 条消息")
         return session
     except FileNotFoundError:
@@ -275,11 +290,11 @@ async def get_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.delete("/{session_id}", response_model=Dict[str, str])
+@router.delete("/{session_id}", response_model=dict[str, str])
 async def delete_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Delete a conversation session.
@@ -307,7 +322,7 @@ async def delete_session(
             context_type=context_type,
             project_id=project_id,
         )
-        logger.info(f"✅ 会话已删除")
+        logger.info("✅ 会话已删除")
         return {"message": "Session deleted"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
@@ -317,11 +332,11 @@ async def delete_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{session_id}/save", response_model=Dict[str, str])
+@router.post("/{session_id}/save", response_model=dict[str, str])
 async def save_temporary_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Convert a temporary session to a permanent one.
@@ -348,7 +363,7 @@ async def save_temporary_session(
             context_type=context_type,
             project_id=project_id,
         )
-        logger.info(f"Session saved successfully")
+        logger.info("Session saved successfully")
         return {"message": "Session saved"}
     except FileNotFoundError:
         logger.error(f"Session not found: {session_id}")
@@ -358,12 +373,12 @@ async def save_temporary_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/{session_id}/model", response_model=Dict[str, str])
+@router.put("/{session_id}/model", response_model=dict[str, str])
 async def update_session_model(
     session_id: str,
     request: UpdateModelRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """更新会话使用的模型.
@@ -394,7 +409,7 @@ async def update_session_model(
             context_type=context_type,
             project_id=project_id,
         )
-        logger.info(f"✅ 模型更新成功")
+        logger.info("✅ 模型更新成功")
         return {"message": "Model updated successfully"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
@@ -404,12 +419,12 @@ async def update_session_model(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/{session_id}/assistant", response_model=Dict[str, str])
+@router.put("/{session_id}/assistant", response_model=dict[str, str])
 async def update_session_assistant(
     session_id: str,
     request: UpdateAssistantRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """更新会话使用的助手.
@@ -440,7 +455,7 @@ async def update_session_assistant(
             context_type=context_type,
             project_id=project_id,
         )
-        logger.info(f"✅ 助手更新成功")
+        logger.info("✅ 助手更新成功")
         return {"message": "Assistant updated successfully"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
@@ -450,12 +465,12 @@ async def update_session_assistant(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/{session_id}/target", response_model=Dict[str, str])
+@router.put("/{session_id}/target", response_model=dict[str, str])
 async def update_session_target(
     session_id: str,
     request: UpdateTargetRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update session chat target (assistant or model)."""
@@ -487,23 +502,24 @@ async def update_session_target(
 
 class UpdateGroupAssistantsRequest(BaseModel):
     """Update group assistants request"""
-    group_assistants: List[str]
+
+    group_assistants: list[str]
 
 
 class UpdateGroupSettingsRequest(BaseModel):
     """Update group chat structured settings."""
 
-    group_assistants: Optional[List[str]] = None
-    group_mode: Optional[str] = None
-    group_settings: Optional[Dict[str, Any]] = None
+    group_assistants: list[str] | None = None
+    group_mode: str | None = None
+    group_settings: dict[str, Any] | None = None
 
 
-@router.put("/{session_id}/group-assistants", response_model=Dict[str, str])
+@router.put("/{session_id}/group-assistants", response_model=dict[str, str])
 async def update_group_assistants(
     session_id: str,
     request: UpdateGroupAssistantsRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update the group assistants list for a session.
@@ -524,7 +540,9 @@ async def update_group_assistants(
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
-    logger.info(f"Updating group assistants for session {session_id[:16]}: {request.group_assistants}")
+    logger.info(
+        f"Updating group assistants for session {session_id[:16]}: {request.group_assistants}"
+    )
     try:
         await session_service.update_group_assistants(
             session_id=session_id,
@@ -539,11 +557,11 @@ async def update_group_assistants(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{session_id}/group-settings", response_model=Dict[str, Any])
+@router.get("/{session_id}/group-settings", response_model=dict[str, Any])
 async def get_group_settings(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Read structured group settings with effective runtime values."""
@@ -562,12 +580,12 @@ async def get_group_settings(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/{session_id}/group-settings", response_model=Dict[str, Any])
+@router.put("/{session_id}/group-settings", response_model=dict[str, Any])
 async def update_group_settings(
     session_id: str,
     request: UpdateGroupSettingsRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update group_mode/group_assistants/group_settings for one session."""
@@ -589,12 +607,12 @@ async def update_group_settings(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/{session_id}/title", response_model=Dict[str, str])
+@router.put("/{session_id}/title", response_model=dict[str, str])
 async def update_session_title(
     session_id: str,
     request: UpdateTitleRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """更新会话标题.
@@ -624,7 +642,7 @@ async def update_session_title(
             context_type=context_type,
             project_id=project_id,
         )
-        logger.info(f"✅ 标题更新成功")
+        logger.info("✅ 标题更新成功")
         return {"message": "Title updated successfully"}
     except FileNotFoundError:
         logger.error(f"❌ 会话未找到: {session_id}")
@@ -634,12 +652,12 @@ async def update_session_title(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/{session_id}/param-overrides", response_model=Dict[str, str])
+@router.put("/{session_id}/param-overrides", response_model=dict[str, str])
 async def update_param_overrides(
     session_id: str,
     request: UpdateParamOverridesRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Update per-session parameter overrides.
@@ -674,15 +692,16 @@ async def update_param_overrides(
 
 class BranchSessionRequest(BaseModel):
     """Branch session request"""
+
     message_id: str
 
 
-@router.post("/{session_id}/branch", response_model=Dict[str, str])
+@router.post("/{session_id}/branch", response_model=dict[str, str])
 async def branch_session(
     session_id: str,
     request: BranchSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Branch a session from a specific message.
@@ -724,11 +743,11 @@ async def branch_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{session_id}/duplicate", response_model=Dict[str, str])
+@router.post("/{session_id}/duplicate", response_model=dict[str, str])
 async def duplicate_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """复制会话.
@@ -766,12 +785,12 @@ async def duplicate_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{session_id}/move", response_model=Dict[str, str])
+@router.post("/{session_id}/move", response_model=dict[str, str])
 async def move_session(
     session_id: str,
     request: TransferSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Move a session between chat/projects context."""
@@ -779,19 +798,23 @@ async def move_session(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     if request.target_context_type == "project" and not request.target_project_id:
-        raise HTTPException(status_code=400, detail="target_project_id is required for project context")
+        raise HTTPException(
+            status_code=400, detail="target_project_id is required for project context"
+        )
 
     if request.target_context_type not in ["chat", "project"]:
         raise HTTPException(status_code=400, detail="Invalid target_context_type")
 
-    logger.info(f"📦 移动会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}")
+    logger.info(
+        f"📦 移动会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}"
+    )
     try:
         await session_service.move_session(
             session_id=session_id,
             source_context_type=context_type,
             source_project_id=project_id,
             target_context_type=request.target_context_type,
-            target_project_id=request.target_project_id
+            target_project_id=request.target_project_id,
         )
         return {"session_id": session_id, "message": "Session moved successfully"}
     except FileNotFoundError:
@@ -805,12 +828,12 @@ async def move_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{session_id}/copy", response_model=Dict[str, str])
+@router.post("/{session_id}/copy", response_model=dict[str, str])
 async def copy_session(
     session_id: str,
     request: TransferSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """Copy a session between chat/projects context."""
@@ -818,19 +841,23 @@ async def copy_session(
         raise HTTPException(status_code=400, detail="project_id is required for project context")
 
     if request.target_context_type == "project" and not request.target_project_id:
-        raise HTTPException(status_code=400, detail="target_project_id is required for project context")
+        raise HTTPException(
+            status_code=400, detail="target_project_id is required for project context"
+        )
 
     if request.target_context_type not in ["chat", "project"]:
         raise HTTPException(status_code=400, detail="Invalid target_context_type")
 
-    logger.info(f"📄 复制会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}")
+    logger.info(
+        f"📄 复制会话: {session_id[:16]} -> {request.target_context_type}:{request.target_project_id or '-'}"
+    )
     try:
         new_session_id = await session_service.copy_session(
             session_id=session_id,
             source_context_type=context_type,
             source_project_id=project_id,
             target_context_type=request.target_context_type,
-            target_project_id=request.target_project_id
+            target_project_id=request.target_project_id,
         )
         return {"session_id": new_session_id, "message": "Session copied successfully"}
     except FileNotFoundError:
@@ -843,59 +870,54 @@ async def copy_session(
 
 def _format_thinking_block(content: str) -> str:
     """Extract thinking blocks from content and format as collapsible details."""
-    think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
+    think_pattern = re.compile(r"<think>(.*?)</think>", re.DOTALL)
     match = think_pattern.search(content)
     if not match:
         return content
 
     thinking_text = match.group(1).strip()
     # Remove the <think>...</think> from main content
-    main_content = think_pattern.sub('', content).strip()
+    main_content = think_pattern.sub("", content).strip()
 
     # Build collapsible thinking block
-    thinking_html = (
-        '<details>\n'
-        '<summary>Thinking</summary>\n\n'
-        f'{thinking_text}\n\n'
-        '</details>\n'
-    )
+    thinking_html = f"<details>\n<summary>Thinking</summary>\n\n{thinking_text}\n\n</details>\n"
 
-    return f'{thinking_html}\n{main_content}'
+    return f"{thinking_html}\n{main_content}"
 
 
 def _build_export_markdown(session: dict) -> str:
     """Build clean export markdown from a session."""
-    title = session.get('title', 'Untitled')
-    messages = session.get('state', {}).get('messages', [])
+    title = session.get("title", "Untitled")
+    messages = session.get("state", {}).get("messages", [])
 
-    lines = [f'# {title}\n']
+    lines = [f"# {title}\n"]
 
     for msg in messages:
-        role = msg.get('role', '')
-        content = msg.get('content', '')
+        role = msg.get("role", "")
+        content = msg.get("content", "")
 
-        if role == 'user':
-            lines.append('---')
-            lines.append('## User\n')
+        if role == "user":
+            lines.append("---")
+            lines.append("## User\n")
             lines.append(content)
-            lines.append('')
-        elif role == 'assistant':
-            lines.append('---')
-            lines.append('## Assistant\n')
+            lines.append("")
+        elif role == "assistant":
+            lines.append("---")
+            lines.append("## Assistant\n")
             formatted = _format_thinking_block(content)
             lines.append(formatted)
-            lines.append('')
+            lines.append("")
         # Skip separator and summary messages
 
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 @router.get("/{session_id}/export")
 async def export_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
 ):
     """Export a conversation session as a clean Markdown file.
 
@@ -916,24 +938,24 @@ async def export_session(
 
     logger.info(f"Exporting session: {session_id[:16]}...")
     try:
-        session = await storage.get_session(session_id, context_type=context_type, project_id=project_id)
+        session = await storage.get_session(
+            session_id, context_type=context_type, project_id=project_id
+        )
         markdown_content = _build_export_markdown(session)
 
         # Build filename from title
-        title = session.get('title', 'conversation')
+        title = session.get("title", "conversation")
         # Sanitize title for filename
-        safe_title = re.sub(r'[\\/*?:"<>|]', '_', title).strip()
+        safe_title = re.sub(r'[\\/*?:"<>|]', "_", title).strip()
         if not safe_title:
-            safe_title = 'conversation'
-        filename = f'{safe_title}.md'
+            safe_title = "conversation"
+        filename = f"{safe_title}.md"
         encoded_filename = quote(filename)
 
         return Response(
-            content=markdown_content.encode('utf-8'),
-            media_type='text/markdown; charset=utf-8',
-            headers={
-                'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
-            }
+            content=markdown_content.encode("utf-8"),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
         )
     except FileNotFoundError:
         logger.error(f"Session not found: {session_id}")
@@ -947,8 +969,8 @@ async def export_session(
 async def import_chatgpt_conversations(
     file: UploadFile = File(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
 ):
     """Import ChatGPT conversations from exported conversations.json."""
     if context_type == "project" and not project_id:
@@ -967,7 +989,9 @@ async def import_chatgpt_conversations(
                         json_name = name
                         break
                 if not json_name:
-                    raise HTTPException(status_code=400, detail="ZIP does not contain conversations.json")
+                    raise HTTPException(
+                        status_code=400, detail="ZIP does not contain conversations.json"
+                    )
                 json_bytes = zip_file.read(json_name)
         except zipfile.BadZipFile as exc:
             raise HTTPException(status_code=400, detail="Invalid ZIP file") from exc
@@ -978,7 +1002,9 @@ async def import_chatgpt_conversations(
             text = json_bytes.decode("utf-8-sig", errors="replace")
     else:
         if filename and not filename.endswith(".json"):
-            raise HTTPException(status_code=400, detail="Please upload a ChatGPT .json or .zip export file")
+            raise HTTPException(
+                status_code=400, detail="Please upload a ChatGPT .json or .zip export file"
+            )
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -994,9 +1020,7 @@ async def import_chatgpt_conversations(
 
     importer = ChatGPTImportService(storage)
     result = await importer.import_conversations(
-        payload,
-        context_type=context_type,
-        project_id=project_id
+        payload, context_type=context_type, project_id=project_id
     )
     return result
 
@@ -1005,8 +1029,8 @@ async def import_chatgpt_conversations(
 async def import_markdown_conversation(
     file: UploadFile = File(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage)
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    storage: ConversationStorage = Depends(get_storage),
 ):
     """Import a Markdown conversation file."""
     if context_type == "project" and not project_id:
@@ -1024,10 +1048,7 @@ async def import_markdown_conversation(
 
     importer = MarkdownImportService(storage)
     result = await importer.import_markdown(
-        text,
-        filename=file.filename,
-        context_type=context_type,
-        project_id=project_id
+        text, filename=file.filename, context_type=context_type, project_id=project_id
     )
     return result
 
@@ -1035,9 +1056,9 @@ async def import_markdown_conversation(
 @router.put("/{session_id}/folder", status_code=204)
 async def update_session_folder(
     session_id: str,
-    request: Dict = Body(...),
+    request: dict = Body(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
-    project_id: Optional[str] = Query(None, description="Project ID (required for project context)"),
+    project_id: str | None = Query(None, description="Project ID (required for project context)"),
     session_service: SessionApplicationService = Depends(get_session_application_service),
 ):
     """
@@ -1062,7 +1083,7 @@ async def update_session_folder(
             session_id=session_id,
             folder_id=folder_id,
             context_type=context_type,
-            project_id=project_id
+            project_id=project_id,
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")

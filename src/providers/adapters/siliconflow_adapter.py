@@ -5,15 +5,17 @@ Adapter for SiliconFlow models via OpenAI-compatible API.
 Supports thinking mode (`enable_thinking`, `thinking_budget`), tool calls,
 and streaming through pass-through request parameters.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langchain_core.messages import BaseMessage
 
+from ..base import BaseLLMAdapter
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .reasoning_openai import ChatReasoningOpenAI
 from .utils import extract_tool_calls
-from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +43,10 @@ class SiliconFlowAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ) -> ChatReasoningOpenAI:
         """Create ChatReasoningOpenAI client for SiliconFlow endpoint."""
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "base_url": base_url,
@@ -57,12 +59,14 @@ class SiliconFlowAdapter(BaseLLMAdapter):
             if key in kwargs and kwargs[key] is not None:
                 llm_kwargs[key] = kwargs[key]
 
-        model_kwargs: Dict[str, Any] = {}
-        extra_body: Dict[str, Any] = {}
+        model_kwargs: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
 
         disable_thinking = bool(kwargs.get("disable_thinking", False))
         reasoning_effort = kwargs.get("reasoning_effort")
-        budget = self._THINKING_BUDGETS.get(str(reasoning_effort or "").lower(), self._THINKING_BUDGETS["medium"])
+        budget = self._THINKING_BUDGETS.get(
+            str(reasoning_effort or "").lower(), self._THINKING_BUDGETS["medium"]
+        )
 
         if disable_thinking:
             extra_body["enable_thinking"] = False
@@ -102,10 +106,7 @@ class SiliconFlowAdapter(BaseLLMAdapter):
         return ChatReasoningOpenAI(**llm_kwargs)
 
     async def stream(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """Stream SiliconFlow responses, including reasoning and tool-call chunks."""
         usage_data = None
@@ -132,10 +133,7 @@ class SiliconFlowAdapter(BaseLLMAdapter):
             )
 
     async def invoke(
-        self,
-        llm: ChatReasoningOpenAI,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
     ) -> LLMResponse:
         """Invoke SiliconFlow and return normalized full response."""
         response = await llm.ainvoke(messages)
@@ -163,7 +161,7 @@ class SiliconFlowAdapter(BaseLLMAdapter):
         """SiliconFlow supports thinking mode on compatible models."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """Map reasoning effort to SiliconFlow thinking parameters."""
         budget = self._THINKING_BUDGETS.get(effort, self._THINKING_BUDGETS["medium"])
         return {
@@ -171,11 +169,7 @@ class SiliconFlowAdapter(BaseLLMAdapter):
             "thinking_budget": budget,
         }
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         Fetch available text models from SiliconFlow /models endpoint.
 
@@ -206,10 +200,12 @@ class SiliconFlowAdapter(BaseLLMAdapter):
                     if model_type and model_type != "text":
                         continue
 
-                    models.append({
-                        "id": model_id,
-                        "name": model.get("name", model_id),
-                    })
+                    models.append(
+                        {
+                            "id": model_id,
+                            "name": model.get("name", model_id),
+                        }
+                    )
 
                 return sorted(models, key=lambda x: x["id"])
 
@@ -218,10 +214,7 @@ class SiliconFlowAdapter(BaseLLMAdapter):
             return []
 
     async def test_connection(
-        self,
-        base_url: str,
-        api_key: str,
-        model_id: Optional[str] = None
+        self, base_url: str, api_key: str, model_id: str | None = None
     ) -> tuple[bool, str]:
         """
         Test connection via lightweight model-list call (no generation quota).

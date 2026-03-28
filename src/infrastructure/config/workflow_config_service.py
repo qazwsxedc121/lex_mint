@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
 
 import aiofiles
 import yaml
 
+from src.core.paths import data_state_dir, ensure_local_file
 from src.domain.models.workflow import (
     ArtifactNode,
     EndNode,
@@ -19,7 +19,6 @@ from src.domain.models.workflow import (
     WorkflowInputDef,
     WorkflowsConfig,
 )
-from src.core.paths import data_state_dir, ensure_local_file
 
 
 class WorkflowConfigService:
@@ -33,7 +32,7 @@ class WorkflowConfigService:
     _locks: dict[str, asyncio.Lock] = {}
     _locks_guard = asyncio.Lock()
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         if config_path is None:
             config_path = data_state_dir() / "workflows_config.yaml"
         self.config_path = Path(config_path)
@@ -61,7 +60,7 @@ class WorkflowConfigService:
 
     async def load_config(self) -> WorkflowsConfig:
         """Load workflow config from YAML file."""
-        async with aiofiles.open(self.config_path, "r", encoding="utf-8") as f:
+        async with aiofiles.open(self.config_path, encoding="utf-8") as f:
             content = await f.read()
         data = yaml.safe_load(content) or {}
         if "workflows" not in data:
@@ -73,10 +72,10 @@ class WorkflowConfigService:
         *,
         artifact_type: str,
         chapter_expr: str,
-        upstream_lines: List[str],
+        upstream_lines: list[str],
         objective: str,
-        context_lines: List[str],
-        section_lines: List[str],
+        context_lines: list[str],
+        section_lines: list[str],
         quality_gate_note: str,
     ) -> str:
         upstream_block = "\n".join([f"- {line}" for line in upstream_lines]) or "-"
@@ -110,8 +109,8 @@ class WorkflowConfigService:
             f"{section_block}\n"
         )
 
-    def _build_novel_system_workflows(self, now: datetime) -> List[Workflow]:
-        workflows: List[Workflow] = []
+    def _build_novel_system_workflows(self, now: datetime) -> list[Workflow]:
+        workflows: list[Workflow] = []
 
         workflows.append(
             Workflow(
@@ -143,7 +142,9 @@ class WorkflowConfigService:
                         required=False,
                         default="60000-80000 words",
                     ),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -209,7 +210,9 @@ class WorkflowConfigService:
                 template_version=self.NOVEL_TEMPLATE_VERSION,
                 input_schema=[
                     WorkflowInputDef(key="charter_text", type="string", required=True),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -246,7 +249,11 @@ class WorkflowConfigService:
                         output_key="world_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -265,7 +272,9 @@ class WorkflowConfigService:
                 input_schema=[
                     WorkflowInputDef(key="charter_text", type="string", required=True),
                     WorkflowInputDef(key="world_text", type="string", required=True),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -305,7 +314,11 @@ class WorkflowConfigService:
                         output_key="characters_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -325,8 +338,12 @@ class WorkflowConfigService:
                     WorkflowInputDef(key="charter_text", type="string", required=True),
                     WorkflowInputDef(key="world_text", type="string", required=True),
                     WorkflowInputDef(key="characters_text", type="string", required=True),
-                    WorkflowInputDef(key="chapter_count", type="number", required=False, default=24),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="chapter_count", type="number", required=False, default=24
+                    ),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -371,7 +388,11 @@ class WorkflowConfigService:
                         output_key="plot_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -400,7 +421,9 @@ class WorkflowConfigService:
                     WorkflowInputDef(key="plot_text", type="string", required=True),
                     WorkflowInputDef(key="characters_text", type="string", required=True),
                     WorkflowInputDef(key="world_text", type="string", required=True),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -446,7 +469,11 @@ class WorkflowConfigService:
                         output_key="chapter_plan_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -479,7 +506,9 @@ class WorkflowConfigService:
                         required=False,
                         default="Keep narrative vivid and character-consistent.",
                     ),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -516,7 +545,11 @@ class WorkflowConfigService:
                         output_key="chapter_draft_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -546,7 +579,9 @@ class WorkflowConfigService:
                     WorkflowInputDef(key="world_text", type="string", required=True),
                     WorkflowInputDef(key="characters_text", type="string", required=True),
                     WorkflowInputDef(key="plot_text", type="string", required=True),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -596,7 +631,11 @@ class WorkflowConfigService:
                         output_key="continuity_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -635,7 +674,9 @@ class WorkflowConfigService:
                         required=False,
                         default="",
                     ),
-                    WorkflowInputDef(key="language", type="string", required=False, default="zh-CN"),
+                    WorkflowInputDef(
+                        key="language", type="string", required=False, default="zh-CN"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -679,7 +720,11 @@ class WorkflowConfigService:
                         output_key="style_artifact",
                         next_id="end_1",
                     ),
-                    EndNode(id="end_1", type="end", result_template="Wrote {{ctx.last_artifact.file_path}}"),
+                    EndNode(
+                        id="end_1",
+                        type="end",
+                        result_template="Wrote {{ctx.last_artifact.file_path}}",
+                    ),
                 ],
                 created_at=now,
                 updated_at=now,
@@ -688,7 +733,7 @@ class WorkflowConfigService:
 
         return workflows
 
-    def _build_system_workflows(self, now: datetime) -> List[Workflow]:
+    def _build_system_workflows(self, now: datetime) -> list[Workflow]:
         inline_rewrite_prompt = (
             "Task: Rewrite only the selected text using the instruction and surrounding context.\n"
             "Instruction: {{inputs.instruction}}\n"
@@ -717,10 +762,18 @@ class WorkflowConfigService:
                         required=False,
                         default="Improve clarity while preserving meaning and style.",
                     ),
-                    WorkflowInputDef(key="_context_before", type="string", required=False, default=""),
-                    WorkflowInputDef(key="_context_after", type="string", required=False, default=""),
-                    WorkflowInputDef(key="_file_path", type="string", required=False, default="(unknown)"),
-                    WorkflowInputDef(key="_language", type="string", required=False, default="(unknown)"),
+                    WorkflowInputDef(
+                        key="_context_before", type="string", required=False, default=""
+                    ),
+                    WorkflowInputDef(
+                        key="_context_after", type="string", required=False, default=""
+                    ),
+                    WorkflowInputDef(
+                        key="_file_path", type="string", required=False, default="(unknown)"
+                    ),
+                    WorkflowInputDef(
+                        key="_language", type="string", required=False, default="(unknown)"
+                    ),
                 ],
                 entry_node_id="start_1",
                 nodes=[
@@ -793,12 +846,12 @@ class WorkflowConfigService:
             await f.write(content)
         temp_path.replace(self.config_path)
 
-    async def get_workflows(self) -> List[Workflow]:
+    async def get_workflows(self) -> list[Workflow]:
         await self.ensure_system_workflows()
         config = await self.load_config()
         return config.workflows
 
-    async def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
+    async def get_workflow(self, workflow_id: str) -> Workflow | None:
         await self.ensure_system_workflows()
         config = await self.load_config()
         for workflow in config.workflows:

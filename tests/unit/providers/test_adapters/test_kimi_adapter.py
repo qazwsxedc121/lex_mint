@@ -175,7 +175,9 @@ def test_chat_kimi_payload_keeps_reasoning_content_for_tool_call_messages():
         HumanMessage(content="What is 1+1?"),
         AIMessage(
             content="",
-            tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
+            tool_calls=[
+                {"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}
+            ],
             additional_kwargs={"reasoning_content": "I should calculate first."},
         ),
         ToolMessage(content="2", tool_call_id="call_1"),
@@ -202,7 +204,9 @@ def test_chat_kimi_payload_skips_reasoning_when_interleaved_not_required():
         HumanMessage(content="What is 1+1?"),
         AIMessage(
             content="",
-            tool_calls=[{"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}],
+            tool_calls=[
+                {"name": "simple_calculator", "args": {"expression": "1+1"}, "id": "call_1"}
+            ],
             additional_kwargs={"reasoning_content": "I should calculate first."},
         ),
         ToolMessage(content="2", tool_call_id="call_1"),

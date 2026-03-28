@@ -1,10 +1,10 @@
 """Unit tests for document processing vector store writes."""
 
 import asyncio
+import shutil
 import sys
 import types
 import uuid
-import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -64,13 +64,13 @@ class _FakeChroma:
             raise RuntimeError("forced batch failure")
         if _FakeChroma.fail_on_call == _FakeChroma.call_count:
             raise RuntimeError("forced batch failure")
-        for text, chunk_id, metadata in zip(texts, ids, metadatas):
+        for text, chunk_id, metadata in zip(texts, ids, metadatas, strict=True):
             self._collection.docs[chunk_id] = {"text": text, "metadata": metadata}
 
 
 def _install_fake_vector_modules(monkeypatch):
     fake_langchain_chroma = types.ModuleType("langchain_chroma")
-    setattr(fake_langchain_chroma, "Chroma", _FakeChroma)
+    fake_langchain_chroma.Chroma = _FakeChroma
     monkeypatch.setitem(sys.modules, "langchain_chroma", fake_langchain_chroma)
 
     fake_chromadb_errors = types.ModuleType("chromadb.errors")
@@ -78,7 +78,7 @@ def _install_fake_vector_modules(monkeypatch):
     class _InvalidArgumentError(Exception):
         pass
 
-    setattr(fake_chromadb_errors, "InvalidArgumentError", _InvalidArgumentError)
+    fake_chromadb_errors.InvalidArgumentError = _InvalidArgumentError
     monkeypatch.setitem(sys.modules, "chromadb.errors", fake_chromadb_errors)
 
 

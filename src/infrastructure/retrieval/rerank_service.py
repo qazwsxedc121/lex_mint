@@ -3,13 +3,12 @@ Rerank Service
 
 Optional API-based reranking for retrieved RAG chunks.
 """
+
 from __future__ import annotations
 
-from typing import Dict, List
 import logging
 
 import httpx
-
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +20,12 @@ class RerankService:
         self,
         *,
         query: str,
-        documents: List[str],
+        documents: list[str],
         model: str,
         base_url: str,
         api_key: str,
         timeout_seconds: int,
-    ) -> Dict[int, float]:
+    ) -> dict[int, float]:
         if not query or not documents:
             return {}
 
@@ -51,12 +50,12 @@ class RerankService:
         return self._normalize_scores(scores)
 
     @staticmethod
-    def _extract_scores(data: dict) -> Dict[int, float]:
+    def _extract_scores(data: dict) -> dict[int, float]:
         rows = data.get("results") or data.get("data") or []
         if not isinstance(rows, list):
             raise ValueError("Rerank response missing results list.")
 
-        scores: Dict[int, float] = {}
+        scores: dict[int, float] = {}
         for item in rows:
             if not isinstance(item, dict):
                 continue
@@ -69,7 +68,7 @@ class RerankService:
         return scores
 
     @staticmethod
-    def _normalize_scores(scores: Dict[int, float]) -> Dict[int, float]:
+    def _normalize_scores(scores: dict[int, float]) -> dict[int, float]:
         if not scores:
             return {}
 
@@ -81,5 +80,5 @@ class RerankService:
         min_val = min(values)
         max_val = max(values)
         if max_val - min_val <= 1e-12:
-            return {idx: 1.0 for idx in scores}
+            return dict.fromkeys(scores, 1.0)
         return {idx: (val - min_val) / (max_val - min_val) for idx, val in scores.items()}

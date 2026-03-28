@@ -2,10 +2,12 @@
 """
 Check for duplicate session IDs in conversations directory
 """
-import os
-import yaml
-from pathlib import Path
+
 from collections import Counter
+from pathlib import Path
+
+import yaml
+
 
 def check_duplicates():
     """Check for duplicate session IDs in markdown files."""
@@ -19,14 +21,14 @@ def check_duplicates():
 
     for md_file in conversations_dir.glob("*.md"):
         try:
-            with open(md_file, 'r', encoding='utf-8') as f:
+            with open(md_file, encoding="utf-8") as f:
                 content = f.read()
                 # Extract frontmatter
-                if content.startswith('---'):
-                    parts = content.split('---', 2)
+                if content.startswith("---"):
+                    parts = content.split("---", 2)
                     if len(parts) >= 3:
                         frontmatter = yaml.safe_load(parts[1])
-                        session_id = frontmatter.get('session_id')
+                        session_id = frontmatter.get("session_id")
                         if session_id:
                             session_ids.append((session_id, md_file.name))
         except Exception as e:
@@ -48,6 +50,7 @@ def check_duplicates():
     else:
         print("No duplicate session IDs found.")
         print(f"Total sessions checked: {len(session_ids)}")
+
 
 if __name__ == "__main__":
     check_duplicates()

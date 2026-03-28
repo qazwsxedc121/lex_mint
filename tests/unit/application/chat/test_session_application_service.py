@@ -191,5 +191,7 @@ async def test_copy_session_copies_attachments_without_temp_directory(tmp_path: 
         target_project_id="proj-1",
     )
     assert (attachments_dir / "copy-1" / "0" / "note.txt").read_text(encoding="utf-8") == "note"
-    assert (attachments_dir / "copy-1" / "nested" / "image.txt").read_text(encoding="utf-8") == "image"
+    assert (attachments_dir / "copy-1" / "nested" / "image.txt").read_text(
+        encoding="utf-8"
+    ) == "image"
     assert not (attachments_dir / "copy-1" / "temp").exists()

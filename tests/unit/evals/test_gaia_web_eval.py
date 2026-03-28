@@ -8,8 +8,8 @@ from pathlib import Path
 from src.evals.gaia_web_eval import (
     EvalCase,
     _parse_tool_result,
-    extract_final_answer,
     evaluate_answer,
+    extract_final_answer,
     load_cases,
     render_markdown_report,
     select_cases,
@@ -92,7 +92,9 @@ def test_summarize_case_result_counts_web_tools() -> None:
         "tool_results": [
             _parse_tool_result(json.dumps({"ok": True, "preview": "ok"}), "web_search"),
             _parse_tool_result(
-                json.dumps({"ok": False, "error": {"code": "READ_WEBPAGE_FAILED", "message": "HTTP 403"}}),
+                json.dumps(
+                    {"ok": False, "error": {"code": "READ_WEBPAGE_FAILED", "message": "HTTP 403"}}
+                ),
                 "read_webpage",
             ),
         ],

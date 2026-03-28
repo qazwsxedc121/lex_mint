@@ -3,13 +3,14 @@ OpenRouter SDK Adapter
 
 Adapter for OpenRouter API with provider-native reasoning controls.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, cast
+from typing import Any, cast
 
-from .reasoning_openai import inject_tool_call_reasoning_content
 from .openai_adapter import OpenAIAdapter
+from .reasoning_openai import inject_tool_call_reasoning_content
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ except Exception:  # pragma: no cover - fallback keeps app usable without extra 
 
 
 if ChatOpenRouter is not None:
+
     class ChatOpenRouterInterleaved(ChatOpenRouter):
         """ChatOpenRouter wrapper with conditional interleaved payload patching."""
 
@@ -58,7 +60,7 @@ class OpenRouterAdapter(OpenAIAdapter):
         disable_thinking: bool,
         reasoning_option: str,
         reasoning_effort: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if disable_thinking:
             return {"enabled": False}
         if not thinking_enabled:
@@ -100,7 +102,7 @@ class OpenRouterAdapter(OpenAIAdapter):
                 **kwargs,
             )
 
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
             "api_key": api_key,

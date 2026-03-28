@@ -1,7 +1,8 @@
 """Unit tests for context assembly service."""
 
+from collections.abc import Sequence
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,10 +11,10 @@ from src.application.chat.context_assembly_service import ContextAssemblyService
 
 
 class _Source:
-    def __init__(self, payload: Dict[str, Any]):
+    def __init__(self, payload: dict[str, Any]):
         self.payload = payload
 
-    def model_dump(self) -> Dict[str, Any]:
+    def model_dump(self) -> dict[str, Any]:
         return self.payload
 
 
@@ -21,8 +22,8 @@ class _FakeStorage:
     def __init__(
         self,
         *,
-        param_overrides: Optional[Dict[str, Any]] = None,
-        assistant_id: Optional[str] = None,
+        param_overrides: dict[str, Any] | None = None,
+        assistant_id: str | None = None,
     ):
         self.param_overrides = param_overrides or {}
         self.assistant_id = assistant_id
@@ -32,8 +33,8 @@ class _FakeStorage:
         session_id: str,
         *,
         context_type: str = "chat",
-        project_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
         _ = session_id, context_type, project_id
         return {
             "state": {"messages": [{"role": "user", "content": "hi"}]},
@@ -45,16 +46,16 @@ class _FakeStorage:
 
 class _FakeMemoryService:
     def __init__(self):
-        self.calls: List[Dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
     def build_memory_context(
         self,
         *,
         query: str,
-        assistant_id: Optional[str],
+        assistant_id: str | None,
         include_global: bool,
         include_assistant: bool,
-    ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+    ) -> tuple[str | None, list[dict[str, Any]]]:
         self.calls.append(
             {
                 "query": query,
@@ -67,18 +68,18 @@ class _FakeMemoryService:
 
 
 class _FakeWebpageService:
-    async def build_context(self, query: str) -> Tuple[Optional[str], List[_Source]]:
+    async def build_context(self, query: str) -> tuple[str | None, list[_Source]]:
         _ = query
         return "WEB", [_Source({"type": "webpage"})]
 
 
 class _FakeSearchService:
-    async def search(self, query: str) -> List[_Source]:
+    async def search(self, query: str) -> list[_Source]:
         _ = query
         return [_Source({"type": "search"})]
 
     @staticmethod
-    def build_search_context(query: str, sources: Sequence[Any]) -> Optional[str]:
+    def build_search_context(query: str, sources: Sequence[Any]) -> str | None:
         _ = query, sources
         return "SEARCH"
 

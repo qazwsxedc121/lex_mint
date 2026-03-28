@@ -106,8 +106,12 @@ def test_context_planner_policy_can_raise_sources_minimum_budget():
         structured_source_context=large_sources,
     )
 
-    default_sources = next(segment for segment in default_plan.segment_reports if segment.name == "sources")
-    strict_sources = next(segment for segment in strict_plan.segment_reports if segment.name == "sources")
+    default_sources = next(
+        segment for segment in default_plan.segment_reports if segment.name == "sources"
+    )
+    strict_sources = next(
+        segment for segment in strict_plan.segment_reports if segment.name == "sources"
+    )
 
     assert default_sources.included is True
     assert strict_sources.included is False

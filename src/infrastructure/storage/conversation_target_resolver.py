@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import frontmatter
 
@@ -13,7 +13,7 @@ class ResolvedSessionTarget:
     """Resolved session target metadata."""
 
     target_type: str
-    assistant_id: Optional[str]
+    assistant_id: str | None
     model_id: str
     param_overrides: dict[str, Any]
 
@@ -21,16 +21,18 @@ class ResolvedSessionTarget:
 class ConversationSessionTargetResolver:
     """Resolve assistant/model session targets without embedding storage logic."""
 
-    def __init__(self, assistant_service: object | None = None, model_service: object | None = None):
+    def __init__(
+        self, assistant_service: object | None = None, model_service: object | None = None
+    ):
         self.assistant_service = assistant_service
         self.model_service = model_service
 
     async def resolve_target(
         self,
         *,
-        target_type: Optional[str],
-        assistant_id: Optional[str] = None,
-        model_id: Optional[str] = None,
+        target_type: str | None,
+        assistant_id: str | None = None,
+        model_id: str | None = None,
     ) -> ResolvedSessionTarget:
         normalized_target_type = (target_type or "").strip().lower() if target_type else None
         if normalized_target_type not in {None, "assistant", "model"}:
@@ -83,8 +85,8 @@ class ConversationSessionTargetResolver:
         post: frontmatter.Post,
         *,
         target_type: str,
-        assistant_id: Optional[str] = None,
-        model_id: Optional[str] = None,
+        assistant_id: str | None = None,
+        model_id: str | None = None,
     ) -> None:
         resolved = await self.resolve_target(
             target_type=target_type,

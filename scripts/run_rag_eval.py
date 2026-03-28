@@ -29,11 +29,12 @@ import asyncio
 import json
 import math
 import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -46,12 +47,12 @@ from src.infrastructure.retrieval.rag_service import RagResult, RagService
 class EvalCase:
     case_id: str
     query: str
-    kb_ids: List[str]
-    top_k: Optional[int]
-    score_threshold: Optional[float]
-    doc_ids: Set[str]
-    filenames: Set[str]
-    keywords: Set[str]
+    kb_ids: list[str]
+    top_k: int | None
+    score_threshold: float | None
+    doc_ids: set[str]
+    filenames: set[str]
+    keywords: set[str]
     expect_none: bool
 
     @property
@@ -70,10 +71,10 @@ class EvalCase:
         return len(self.keywords)
 
 
-def _as_lower_set(values: Optional[Iterable[Any]]) -> Set[str]:
+def _as_lower_set(values: Iterable[Any] | None) -> set[str]:
     if not values:
         return set()
-    items: Set[str] = set()
+    items: set[str] = set()
     for item in values:
         text = str(item or "").strip().lower()
         if text:
@@ -81,13 +82,13 @@ def _as_lower_set(values: Optional[Iterable[Any]]) -> Set[str]:
     return items
 
 
-def _load_cases(dataset_path: Path) -> Tuple[Dict[str, Any], List[EvalCase]]:
+def _load_cases(dataset_path: Path) -> tuple[dict[str, Any], list[EvalCase]]:
     raw = json.loads(dataset_path.read_text(encoding="utf-8"))
     raw_cases = raw.get("cases", [])
     if not isinstance(raw_cases, list) or not raw_cases:
         raise ValueError("Dataset must include a non-empty 'cases' array.")
 
-    normalized: List[EvalCase] = []
+    normalized: list[EvalCase] = []
     default_kb_ids = raw.get("default_kb_ids", [])
     for index, item in enumerate(raw_cases, start=1):
         if not isinstance(item, dict):
@@ -139,8 +140,8 @@ def _load_cases(dataset_path: Path) -> Tuple[Dict[str, Any], List[EvalCase]]:
     return raw, normalized
 
 
-def _match_targets(case: EvalCase, result: RagResult) -> Set[str]:
-    matched: Set[str] = set()
+def _match_targets(case: EvalCase, result: RagResult) -> set[str]:
+    matched: set[str] = set()
     doc_id = (result.doc_id or "").strip().lower()
     filename = (result.filename or "").strip().lower()
     content = (result.content or "").strip().lower()
@@ -160,7 +161,7 @@ def _match_targets(case: EvalCase, result: RagResult) -> Set[str]:
     return matched
 
 
-def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> Dict[str, Any]:
+def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> dict[str, Any]:
     capped = list(results[: max(1, int(top_k))])
     if case.expect_none:
         no_answer_success = 1.0 if len(capped) == 0 else 0.0
@@ -183,8 +184,8 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
         }
 
     total_targets = case.target_count()
-    seen_targets: Set[str] = set()
-    relevant_ranks: List[int] = []
+    seen_targets: set[str] = set()
+    relevant_ranks: list[int] = []
 
     for rank, item in enumerate(capped, start=1):
         matched = _match_targets(case, item)
@@ -195,11 +196,11 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
     hit = 1.0 if relevant_ranks else 0.0
     first_rank = relevant_ranks[0] if relevant_ranks else None
     mrr = (1.0 / first_rank) if first_rank else 0.0
-    precision_at_k = (len(relevant_ranks) / max(1, top_k))
-    recall_at_k = (len(seen_targets) / max(1, total_targets))
+    precision_at_k = len(relevant_ranks) / max(1, top_k)
+    recall_at_k = len(seen_targets) / max(1, total_targets)
     # Binary nDCG with one gain per newly matched target label.
     dcg = 0.0
-    seen_for_dcg: Set[str] = set()
+    seen_for_dcg: set[str] = set()
     for rank, item in enumerate(capped, start=1):
         matched = _match_targets(case, item) - seen_for_dcg
         if matched:
@@ -228,7 +229,7 @@ def _evaluate_case(case: EvalCase, results: Sequence[RagResult], top_k: int) -> 
     }
 
 
-def _summarize_mode(mode: str, case_rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def _summarize_mode(mode: str, case_rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     if not case_rows:
         return {
             "mode": mode,
@@ -292,7 +293,7 @@ def _build_report(
     *,
     dataset_name: str,
     dataset_path: Path,
-    summaries: Sequence[Dict[str, Any]],
+    summaries: Sequence[dict[str, Any]],
     output_dir: Path,
 ) -> str:
     lines = [
@@ -311,7 +312,9 @@ def _build_report(
     for item in summaries:
         lines.append(
             "| {mode} | {case_count} | {hit_rate:.3f} | {citation_hit_rate:.3f} | "
-            "{mean_mrr:.3f} | {mean_precision_at_k:.3f} | {mean_recall_at_k:.3f} | {mean_ndcg_at_k:.3f} |".format(**item)
+            "{mean_mrr:.3f} | {mean_precision_at_k:.3f} | {mean_recall_at_k:.3f} | {mean_ndcg_at_k:.3f} |".format(
+                **item
+            )
         )
 
     lines.extend(
@@ -348,12 +351,12 @@ async def _evaluate_mode(
     *,
     mode: str,
     cases: Sequence[EvalCase],
-    top_k_override: Optional[int],
-    score_threshold_override: Optional[float],
-    bm25_min_term_coverage_override: Optional[float],
-    runtime_model_id: Optional[str],
+    top_k_override: int | None,
+    score_threshold_override: float | None,
+    bm25_min_term_coverage_override: float | None,
+    runtime_model_id: str | None,
     benchmark_strict: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     service = RagService()
     retrieval_cfg = service.rag_config_service.config.retrieval
     retrieval_cfg.retrieval_mode = mode
@@ -368,7 +371,7 @@ async def _evaluate_mode(
             min(1.0, float(bm25_min_term_coverage_override)),
         )
 
-    case_outputs: List[Dict[str, Any]] = []
+    case_outputs: list[dict[str, Any]] = []
     for case in cases:
         local_top_k = (
             max(1, int(top_k_override))
@@ -503,13 +506,15 @@ async def _main() -> None:
     supported_modes = {"vector", "bm25", "hybrid"}
     for mode in modes:
         if mode not in supported_modes:
-            raise ValueError(f"Unsupported mode '{mode}', expected one of {sorted(supported_modes)}.")
+            raise ValueError(
+                f"Unsupported mode '{mode}', expected one of {sorted(supported_modes)}."
+            )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = args.output_dir or (Path("data") / "benchmarks" / f"rag_eval_{timestamp}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    mode_outputs: List[Dict[str, Any]] = []
+    mode_outputs: list[dict[str, Any]] = []
     for mode in modes:
         mode_result = await _evaluate_mode(
             mode=mode,

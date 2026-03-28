@@ -69,9 +69,11 @@ def test_stream_messages_passes_tools_to_chat_completion(monkeypatch, tmp_path):
     class FakeModel:
         def create_chat_completion(self, **kwargs):
             captured.update(kwargs)
-            return iter([
-                {"choices": [{"delta": {"content": "<tool_call>{}</tool_call>"}}]},
-            ])
+            return iter(
+                [
+                    {"choices": [{"delta": {"content": "<tool_call>{}</tool_call>"}}]},
+                ]
+            )
 
     monkeypatch.setattr(
         LocalLlamaCppService,
@@ -84,7 +86,12 @@ def test_stream_messages_passes_tools_to_chat_completion(monkeypatch, tmp_path):
     list(
         service.stream_messages(
             [{"role": "user", "content": "2+3"}],
-            tools=[{"type": "function", "function": {"name": "calculator", "parameters": {"type": "object"}}}],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {"name": "calculator", "parameters": {"type": "object"}},
+                }
+            ],
             tool_choice="auto",
         )
     )

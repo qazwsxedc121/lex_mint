@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from .flow_event_emitter import FlowEventEmitter
 from .flow_event_types import (
@@ -19,7 +19,7 @@ from .flow_event_types import (
 from .flow_events import FlowEventStage
 
 
-def _with_checkpoint(payload: Dict[str, Any], event: Dict[str, Any]) -> Dict[str, Any]:
+def _with_checkpoint(payload: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     checkpoint_id = event.get("checkpoint_id")
     if isinstance(checkpoint_id, str) and checkpoint_id:
         payload["checkpoint_id"] = checkpoint_id
@@ -28,8 +28,8 @@ def _with_checkpoint(payload: Dict[str, Any], event: Dict[str, Any]) -> Dict[str
 
 def map_workflow_event_to_flow_payload(
     emitter: FlowEventEmitter,
-    event: Dict[str, Any],
-) -> Dict[str, Any]:
+    event: dict[str, Any],
+) -> dict[str, Any]:
     """Convert workflow runtime event to canonical flow payload."""
     event_type = str(event.get("type") or "")
 

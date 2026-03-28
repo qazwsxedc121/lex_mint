@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
+from typing import Any
 
 import httpx
-
 
 DEFAULT_CASES_PATH = Path("scripts/eval_cases/gaia_level1_web_cases.json")
 DEFAULT_REPORTS_DIR = Path("docs/eval")
@@ -35,10 +35,10 @@ class EvalCase:
     title: str
     question: str
     source_url: str
-    expected_answer: Optional[str] = None
+    expected_answer: str | None = None
     match_type: str = "exact_ci"
     notes: str = ""
-    tags: List[str] | None = None
+    tags: list[str] | None = None
 
 
 @dataclass
@@ -47,7 +47,7 @@ class ToolCallRecord:
 
     name: str
     call_id: str = ""
-    args: Dict[str, Any] | None = None
+    args: dict[str, Any] | None = None
 
 
 @dataclass
@@ -55,8 +55,8 @@ class ToolResultRecord:
     """A tool result emitted by the backend stream."""
 
     name: str
-    ok: Optional[bool]
-    status_code: Optional[int]
+    ok: bool | None
+    status_code: int | None
     error_code: str = ""
     error_message: str = ""
     preview: str = ""
@@ -71,8 +71,8 @@ class EvalResult:
     source_question_id: str
     session_id: str
     final_answer: str
-    passed: Optional[bool]
-    expected_answer: Optional[str]
+    passed: bool | None
+    expected_answer: str | None
     match_type: str
     tool_rounds: int
     tool_call_count: int
@@ -81,12 +81,12 @@ class EvalResult:
     read_webpage_calls: int
     read_webpage_failures: int
     stream_error: str = ""
-    usage: Dict[str, Any] | None = None
-    tool_calls: List[ToolCallRecord] | None = None
-    tool_results: List[ToolResultRecord] | None = None
+    usage: dict[str, Any] | None = None
+    tool_calls: list[ToolCallRecord] | None = None
+    tool_results: list[ToolResultRecord] | None = None
 
 
-def load_cases(path: Path) -> List[EvalCase]:
+def load_cases(path: Path) -> list[EvalCase]:
     """Load evaluation cases from JSON."""
 
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -96,10 +96,10 @@ def load_cases(path: Path) -> List[EvalCase]:
 def select_cases(
     cases: Sequence[EvalCase],
     *,
-    case_ids: Optional[Sequence[str]] = None,
-    limit: Optional[int] = None,
+    case_ids: Sequence[str] | None = None,
+    limit: int | None = None,
     scored_only: bool = False,
-) -> List[EvalCase]:
+) -> list[EvalCase]:
     """Filter the full case catalog to the requested subset."""
 
     selected = list(cases)
@@ -143,7 +143,7 @@ def extract_final_answer(value: str) -> str:
     return last_line.strip().strip(". ")
 
 
-def evaluate_answer(actual: str, expected: Optional[str], match_type: str) -> Optional[bool]:
+def evaluate_answer(actual: str, expected: str | None, match_type: str) -> bool | None:
     """Evaluate a model answer against a reference answer."""
 
     if expected is None:
@@ -174,8 +174,8 @@ def _truncate(value: str, *, limit: int = 200) -> str:
 
 
 def _parse_tool_result(raw_result: str, tool_name: str) -> ToolResultRecord:
-    ok: Optional[bool] = None
-    status_code: Optional[int] = None
+    ok: bool | None = None
+    status_code: int | None = None
     error_code = ""
     error_message = ""
     preview = _truncate(raw_result)
@@ -216,7 +216,7 @@ def _parse_tool_result(raw_result: str, tool_name: str) -> ToolResultRecord:
     )
 
 
-async def iter_sse_flow_events(response: httpx.Response) -> AsyncIterator[Dict[str, Any]]:
+async def iter_sse_flow_events(response: httpx.Response) -> AsyncIterator[dict[str, Any]]:
     """Yield flow_event payloads from an SSE response."""
 
     async for line in response.aiter_lines():
@@ -251,9 +251,9 @@ class LexMintEvalClient:
         *,
         model_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> str:
-        params: Dict[str, Any] = {"context_type": context_type}
+        params: dict[str, Any] = {"context_type": context_type}
         if project_id:
             params["project_id"] = project_id
         request = {"target_type": "model", "model_id": model_id}
@@ -271,9 +271,9 @@ class LexMintEvalClient:
         *,
         session_id: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
     ) -> None:
-        params: Dict[str, Any] = {"context_type": context_type}
+        params: dict[str, Any] = {"context_type": context_type}
         if project_id:
             params["project_id"] = project_id
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
@@ -306,11 +306,11 @@ class LexMintEvalClient:
         session_id: str,
         question: str,
         context_type: str,
-        project_id: Optional[str],
+        project_id: str | None,
         use_web_search: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         wrapped_question = f"{_ANSWER_ONLY_PROMPT}\n\nQuestion:\n{question}"
-        request: Dict[str, Any] = {
+        request: dict[str, Any] = {
             "session_id": session_id,
             "message": wrapped_question,
             "context_type": context_type,
@@ -318,10 +318,10 @@ class LexMintEvalClient:
             "use_web_search": use_web_search,
         }
 
-        final_chunks: List[str] = []
-        tool_calls: List[ToolCallRecord] = []
-        tool_results: List[ToolResultRecord] = []
-        usage: Dict[str, Any] | None = None
+        final_chunks: list[str] = []
+        tool_calls: list[ToolCallRecord] = []
+        tool_results: list[ToolResultRecord] = []
+        usage: dict[str, Any] | None = None
         stream_error = ""
 
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
@@ -341,7 +341,9 @@ class LexMintEvalClient:
                                 ToolCallRecord(
                                     name=str(item.get("name") or ""),
                                     call_id=str(item.get("id") or ""),
-                                    args=item.get("args") if isinstance(item.get("args"), dict) else {},
+                                    args=item.get("args")
+                                    if isinstance(item.get("args"), dict)
+                                    else {},
                                 )
                             )
                         continue
@@ -372,7 +374,9 @@ class LexMintEvalClient:
         }
 
 
-def summarize_case_result(case: EvalCase, session_id: str, run_payload: Dict[str, Any]) -> EvalResult:
+def summarize_case_result(
+    case: EvalCase, session_id: str, run_payload: dict[str, Any]
+) -> EvalResult:
     """Convert a raw run payload into the persisted result model."""
 
     tool_calls = list(run_payload.get("tool_calls") or [])
@@ -381,9 +385,7 @@ def summarize_case_result(case: EvalCase, session_id: str, run_payload: Dict[str
     passed = evaluate_answer(final_answer, case.expected_answer, case.match_type)
 
     read_webpage_failures = sum(
-        1
-        for item in tool_results
-        if item.name == "read_webpage" and item.ok is False
+        1 for item in tool_results if item.name == "read_webpage" and item.ok is False
     )
 
     return EvalResult(
@@ -414,8 +416,8 @@ def build_report_payload(
     base_url: str,
     model_id: str,
     context_type: str,
-    project_id: Optional[str],
-) -> Dict[str, Any]:
+    project_id: str | None,
+) -> dict[str, Any]:
     """Build the report JSON payload."""
 
     result_map = {result.case_id: result for result in results}
@@ -444,7 +446,7 @@ def build_report_payload(
     }
 
 
-def render_markdown_report(report: Dict[str, Any]) -> str:
+def render_markdown_report(report: dict[str, Any]) -> str:
     """Render a concise markdown report."""
 
     summary = report["summary"]
@@ -499,7 +501,9 @@ def render_markdown_report(report: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_report_files(report: Dict[str, Any], *, output_dir: Path, run_name: str) -> Dict[str, Path]:
+def write_report_files(
+    report: dict[str, Any], *, output_dir: Path, run_name: str
+) -> dict[str, Path]:
     """Write JSON and markdown reports."""
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -514,13 +518,13 @@ def write_report_files(report: Dict[str, Any], *, output_dir: Path, run_name: st
 async def run_eval(
     *,
     base_url: str,
-    model_id: Optional[str],
+    model_id: str | None,
     context_type: str,
-    project_id: Optional[str],
+    project_id: str | None,
     cases: Sequence[EvalCase],
     cleanup_sessions: bool,
     ensure_project_web_tools: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run the selected evaluation cases end to end."""
 
     client = LexMintEvalClient(base_url=base_url)
@@ -529,7 +533,7 @@ async def run_eval(
     if context_type == "project" and project_id and ensure_project_web_tools:
         await client.ensure_project_web_tools_enabled(project_id)
 
-    results: List[EvalResult] = []
+    results: list[EvalResult] = []
     for case in cases:
         session_id = await client.create_session(
             model_id=resolved_model_id,

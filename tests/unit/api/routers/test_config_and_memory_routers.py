@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -42,15 +42,15 @@ class _CompressionConfig:
 class _CompressionService:
     def __init__(self):
         self.config = _CompressionConfig()
-        self.saved: Dict[str, Any] | None = None
+        self.saved: dict[str, Any] | None = None
 
-    def save_config(self, updates: Dict[str, Any]) -> None:
+    def save_config(self, updates: dict[str, Any]) -> None:
         self.saved = updates
 
 
 class _RagService:
     def __init__(self):
-        self.saved: Dict[str, Any] | None = None
+        self.saved: dict[str, Any] | None = None
         self.flat = {
             "embedding_provider": "api",
             "embedding_api_model": "text-embedding-3-small",
@@ -111,18 +111,18 @@ class _RagService:
             "bm25_sqlite_path": "bm25.db",
         }
 
-    def get_flat_config(self) -> Dict[str, Any]:
+    def get_flat_config(self) -> dict[str, Any]:
         return dict(self.flat)
 
-    def save_flat_config(self, updates: Dict[str, Any]) -> None:
+    def save_flat_config(self, updates: dict[str, Any]) -> None:
         self.saved = updates
 
 
 class _MemoryConfigService:
     def __init__(self):
-        self.saved: Dict[str, Any] | None = None
+        self.saved: dict[str, Any] | None = None
 
-    def get_flat_config(self) -> Dict[str, Any]:
+    def get_flat_config(self) -> dict[str, Any]:
         return {
             "enabled": True,
             "profile_id": "default",
@@ -139,13 +139,13 @@ class _MemoryConfigService:
             "assistant_enabled": True,
         }
 
-    def save_flat_config(self, updates: Dict[str, Any]) -> None:
+    def save_flat_config(self, updates: dict[str, Any]) -> None:
         self.saved = updates
 
 
 class _MemoryService:
     def __init__(self):
-        self.calls: List[tuple[str, Any]] = []
+        self.calls: list[tuple[str, Any]] = []
         self.fail_with: Exception | None = None
 
     def list_memories(self, **kwargs):

@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+
 def view_logs(lines: int = 50):
     """View the latest server logs.
 
@@ -20,7 +21,7 @@ def view_logs(lines: int = 50):
     print("=" * 80)
 
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, encoding="utf-8") as f:
             if lines == 0:
                 # Read all lines
                 content = f.read()
@@ -29,9 +30,10 @@ def view_logs(lines: int = 50):
                 # Read last N lines
                 all_lines = f.readlines()
                 recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-                print(''.join(recent_lines))
+                print("".join(recent_lines))
     except Exception as e:
         print(f"Error reading log file: {e}")
+
 
 if __name__ == "__main__":
     # Parse command line arguments

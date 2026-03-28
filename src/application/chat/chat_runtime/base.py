@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 from .events import normalize_orchestration_event
 
@@ -15,7 +16,7 @@ ChatOrchestrationMode = Literal["round_robin", "committee", "compare_models"]
 class RoundRobinSettings:
     """Settings for deterministic participant-by-participant execution."""
 
-    max_turns: Optional[int] = None
+    max_turns: int | None = None
 
 
 @dataclass
@@ -25,7 +26,7 @@ class ChatOrchestrationCancelToken:
     is_cancelled: bool = False
     reason: str = "cancelled"
 
-    def cancel(self, reason: Optional[str] = None) -> None:
+    def cancel(self, reason: str | None = None) -> None:
         """Mark the token as cancelled with an optional reason."""
         self.is_cancelled = True
         if reason:
@@ -53,18 +54,19 @@ class ChatOrchestrationRequest:
     session_id: str
     mode: ChatOrchestrationMode
     user_message: str
-    participants: List[str]
-    assistant_name_map: Dict[str, str]
-    assistant_config_map: Dict[str, Any]
+    participants: list[str]
+    assistant_name_map: dict[str, str]
+    assistant_config_map: dict[str, Any]
     settings: ChatOrchestrationSettings
-    reasoning_effort: Optional[str] = None
+    reasoning_effort: str | None = None
     context_type: str = "chat"
-    project_id: Optional[str] = None
-    search_context: Optional[str] = None
-    search_sources: List[Dict[str, Any]] = field(default_factory=list)
-    trace_id: Optional[str] = None
+    project_id: str | None = None
+    search_context: str | None = None
+    search_sources: list[dict[str, Any]] = field(default_factory=list)
+    trace_id: str | None = None
 
-ChatOrchestrationEvent = Dict[str, Any]
+
+ChatOrchestrationEvent = dict[str, Any]
 
 
 class BaseChatOrchestrator(ABC):
@@ -77,7 +79,7 @@ class BaseChatOrchestrator(ABC):
         self,
         request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
     ) -> AsyncIterator[ChatOrchestrationEvent]:
         """Run orchestration and yield streaming events."""
         raise NotImplementedError
@@ -86,20 +88,20 @@ class BaseChatOrchestrator(ABC):
         self,
         request: ChatOrchestrationRequest,
         *,
-        cancel_token: Optional[ChatOrchestrationCancelToken] = None,
-    ) -> List[ChatOrchestrationEvent]:
+        cancel_token: ChatOrchestrationCancelToken | None = None,
+    ) -> list[ChatOrchestrationEvent]:
         """Collect all streamed events into a materialized result."""
-        events: List[ChatOrchestrationEvent] = []
+        events: list[ChatOrchestrationEvent] = []
         async for event in self.stream(request, cancel_token=cancel_token):
             events.append(event)
         return events
 
     @staticmethod
-    def is_cancelled(cancel_token: Optional[ChatOrchestrationCancelToken]) -> bool:
+    def is_cancelled(cancel_token: ChatOrchestrationCancelToken | None) -> bool:
         """Return True when cooperative cancellation was requested."""
         return bool(cancel_token and cancel_token.is_cancelled)
 
     @staticmethod
-    def normalize_event(event: Dict[str, Any]) -> ChatOrchestrationEvent:
+    def normalize_event(event: dict[str, Any]) -> ChatOrchestrationEvent:
         """Validate one event against the shared event schema."""
         return normalize_orchestration_event(event)

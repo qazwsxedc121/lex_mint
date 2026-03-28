@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from src.core.config import Settings
 from src.core import paths
+from src.core.config import Settings
 from src.infrastructure.llm.local_llama_cpp_service import discover_local_gguf_models
 
 
@@ -37,7 +37,9 @@ def test_packaged_mode_uses_localappdata_for_runtime_writes(monkeypatch):
     settings = Settings(api_port=18000)
     assert settings.conversations_dir == expected_root / "conversations"
     assert settings.attachments_dir == expected_root / "attachments"
-    assert settings.projects_config_path == expected_root / "data" / "state" / "projects_config.yaml"
+    assert (
+        settings.projects_config_path == expected_root / "data" / "state" / "projects_config.yaml"
+    )
 
 
 def test_resolve_model_path_prefers_explicit_models_root(monkeypatch, tmp_path):

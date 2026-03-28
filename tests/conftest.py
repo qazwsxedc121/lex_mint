@@ -1,11 +1,11 @@
 """Shared pytest fixtures for all tests."""
 
-import pytest
 import shutil
 import uuid
 from pathlib import Path
-from typing import Dict, Any
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 
 def _create_workspace_temp_dir(kind: str) -> Path:
@@ -53,10 +53,9 @@ def mock_llm_response():
 @pytest.fixture
 def mock_streaming_llm_response():
     """Mock streaming LLM response chunks."""
+
     async def async_generator():
-        test_chunks = [
-            "Hello", " this", " is", " a", " test", " response"
-        ]
+        test_chunks = ["Hello", " this", " is", " a", " test", " response"]
         for chunk in test_chunks:
             mock_chunk = Mock()
             mock_chunk.content = chunk
@@ -71,7 +70,7 @@ def sample_messages():
     return [
         {"role": "user", "content": "What is Python?"},
         {"role": "assistant", "content": "Python is a high-level programming language."},
-        {"role": "user", "content": "What are its main features?"}
+        {"role": "user", "content": "What are its main features?"},
     ]
 
 
@@ -79,10 +78,7 @@ def sample_messages():
 def sample_model_config():
     """Sample model configuration for testing."""
     return {
-        "default": {
-            "provider": "deepseek",
-            "model": "deepseek-chat"
-        },
+        "default": {"provider": "deepseek", "model": "deepseek-chat"},
         "providers": [
             {
                 "id": "deepseek",
@@ -91,7 +87,7 @@ def sample_model_config():
                 "protocol": "openai",
                 "base_url": "https://api.deepseek.com",
                 "enabled": True,
-                "sdk_class": "deepseek"
+                "sdk_class": "deepseek",
             }
         ],
         "models": [
@@ -100,9 +96,9 @@ def sample_model_config():
                 "name": "DeepSeek Chat",
                 "provider_id": "deepseek",
                 "tags": ["chat"],
-                "enabled": True
+                "enabled": True,
             }
-        ]
+        ],
     }
 
 
@@ -118,7 +114,7 @@ def sample_assistant_config():
                 "system_prompt": "You are a helpful AI assistant.",
                 "model_id": "deepseek:deepseek-chat",
                 "temperature": 0.7,
-                "max_rounds": -1
+                "max_rounds": -1,
             }
         ]
     }

@@ -9,8 +9,8 @@ sends test prompts with tools bound, and verifies the pipeline.
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,8 +32,6 @@ async def run_provider_check(model_id: str) -> dict:
     collected_chunks = []
     tool_calls_events = []
     tool_results_events = []
-    usage_event = None
-
     try:
         async for chunk in call_llm_stream(
             messages,
@@ -48,8 +46,6 @@ async def run_provider_check(model_id: str) -> dict:
                 elif chunk.get("type") == "tool_results":
                     tool_results_events.append(chunk)
                     print(f"    [TOOL_RESULTS] {[r['result'][:80] for r in chunk['results']]}")
-                elif chunk.get("type") == "usage":
-                    usage_event = chunk
                 # Skip other dict events
             else:
                 collected_chunks.append(chunk)

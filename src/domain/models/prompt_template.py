@@ -1,11 +1,11 @@
 """
 Prompt template configuration data models
 """
+
 import re
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-
 
 _VARIABLE_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _RESERVED_VARIABLE_KEYS = {"cursor"}
@@ -14,16 +14,16 @@ _TRIGGER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 class PromptTemplateVariable(BaseModel):
     """Schema for one template variable."""
+
     key: str = Field(..., description="Variable key used in template placeholders")
-    label: Optional[str] = Field(default=None, description="Display label in fill form")
-    description: Optional[str] = Field(default=None, description="Variable help text")
+    label: str | None = Field(default=None, description="Display label in fill form")
+    description: str | None = Field(default=None, description="Variable help text")
     type: Literal["text", "number", "boolean", "select"] = Field(
-        default="text",
-        description="Input type used for this variable"
+        default="text", description="Input type used for this variable"
     )
     required: bool = Field(default=False, description="Whether variable value is required")
-    default: Optional[Any] = Field(default=None, description="Default value for this variable")
-    options: List[str] = Field(default_factory=list, description="Allowed values when type=select")
+    default: Any | None = Field(default=None, description="Default value for this variable")
+    options: list[str] = Field(default_factory=list, description="Allowed values when type=select")
 
     @field_validator("key")
     @classmethod
@@ -37,7 +37,7 @@ class PromptTemplateVariable(BaseModel):
 
     @field_validator("options")
     @classmethod
-    def validate_options(cls, value: List[str]) -> List[str]:
+    def validate_options(cls, value: list[str]) -> list[str]:
         normalized = [item.strip() for item in value if item and item.strip()]
         if len(normalized) != len(set(normalized)):
             raise ValueError("Variable options must be unique")
@@ -72,7 +72,9 @@ class PromptTemplateVariable(BaseModel):
         return self
 
 
-def _validate_unique_variable_keys(variables: List[PromptTemplateVariable]) -> List[PromptTemplateVariable]:
+def _validate_unique_variable_keys(
+    variables: list[PromptTemplateVariable],
+) -> list[PromptTemplateVariable]:
     seen = set()
     for variable in variables:
         if variable.key in seen:
@@ -81,7 +83,7 @@ def _validate_unique_variable_keys(variables: List[PromptTemplateVariable]) -> L
     return variables
 
 
-def _normalize_trigger(value: Optional[str]) -> Optional[str]:
+def _normalize_trigger(value: str | None) -> str | None:
     if value is None:
         return None
     stripped = value.strip()
@@ -92,8 +94,8 @@ def _normalize_trigger(value: Optional[str]) -> Optional[str]:
     return stripped
 
 
-def _normalize_aliases(aliases: List[str]) -> List[str]:
-    normalized: List[str] = []
+def _normalize_aliases(aliases: list[str]) -> list[str]:
+    normalized: list[str] = []
     seen = set()
     for item in aliases:
         if not isinstance(item, str):
@@ -113,31 +115,33 @@ def _normalize_aliases(aliases: List[str]) -> List[str]:
 
 class PromptTemplate(BaseModel):
     """Reusable prompt template definition."""
+
     id: str = Field(..., description="Template unique identifier")
     name: str = Field(..., description="Template display name")
-    description: Optional[str] = Field(default=None, description="Template description")
-    trigger: Optional[str] = Field(default=None, description="Slash trigger for exact matching")
-    aliases: List[str] = Field(default_factory=list, description="Optional trigger aliases")
+    description: str | None = Field(default=None, description="Template description")
+    trigger: str | None = Field(default=None, description="Slash trigger for exact matching")
+    aliases: list[str] = Field(default_factory=list, description="Optional trigger aliases")
     content: str = Field(..., description="Prompt template content")
     enabled: bool = Field(default=True, description="Whether template is enabled")
-    variables: List[PromptTemplateVariable] = Field(
-        default_factory=list,
-        description="Optional variable schema for template parameters"
+    variables: list[PromptTemplateVariable] = Field(
+        default_factory=list, description="Optional variable schema for template parameters"
     )
 
     @field_validator("variables")
     @classmethod
-    def validate_variables(cls, value: List[PromptTemplateVariable]) -> List[PromptTemplateVariable]:
+    def validate_variables(
+        cls, value: list[PromptTemplateVariable]
+    ) -> list[PromptTemplateVariable]:
         return _validate_unique_variable_keys(value)
 
     @field_validator("trigger")
     @classmethod
-    def validate_trigger(cls, value: Optional[str]) -> Optional[str]:
+    def validate_trigger(cls, value: str | None) -> str | None:
         return _normalize_trigger(value)
 
     @field_validator("aliases")
     @classmethod
-    def validate_aliases(cls, value: List[str]) -> List[str]:
+    def validate_aliases(cls, value: list[str]) -> list[str]:
         return _normalize_aliases(value)
 
     @model_validator(mode="after")
@@ -153,36 +157,41 @@ class PromptTemplate(BaseModel):
 
 class PromptTemplatesConfig(BaseModel):
     """Complete prompt templates configuration."""
-    templates: List[PromptTemplate] = Field(default_factory=list)
+
+    templates: list[PromptTemplate] = Field(default_factory=list)
 
 
 class PromptTemplateCreate(BaseModel):
     """Create prompt template request."""
-    id: Optional[str] = Field(default=None, description="Template unique identifier (optional, auto-generated)")
+
+    id: str | None = Field(
+        default=None, description="Template unique identifier (optional, auto-generated)"
+    )
     name: str = Field(..., description="Template display name")
-    description: Optional[str] = Field(default=None, description="Template description")
-    trigger: Optional[str] = Field(default=None, description="Slash trigger for exact matching")
-    aliases: List[str] = Field(default_factory=list, description="Optional trigger aliases")
+    description: str | None = Field(default=None, description="Template description")
+    trigger: str | None = Field(default=None, description="Slash trigger for exact matching")
+    aliases: list[str] = Field(default_factory=list, description="Optional trigger aliases")
     content: str = Field(..., description="Prompt template content")
     enabled: bool = Field(default=True, description="Whether template is enabled")
-    variables: List[PromptTemplateVariable] = Field(
-        default_factory=list,
-        description="Optional variable schema for template parameters"
+    variables: list[PromptTemplateVariable] = Field(
+        default_factory=list, description="Optional variable schema for template parameters"
     )
 
     @field_validator("variables")
     @classmethod
-    def validate_variables(cls, value: List[PromptTemplateVariable]) -> List[PromptTemplateVariable]:
+    def validate_variables(
+        cls, value: list[PromptTemplateVariable]
+    ) -> list[PromptTemplateVariable]:
         return _validate_unique_variable_keys(value)
 
     @field_validator("trigger")
     @classmethod
-    def validate_trigger(cls, value: Optional[str]) -> Optional[str]:
+    def validate_trigger(cls, value: str | None) -> str | None:
         return _normalize_trigger(value)
 
     @field_validator("aliases")
     @classmethod
-    def validate_aliases(cls, value: List[str]) -> List[str]:
+    def validate_aliases(cls, value: list[str]) -> list[str]:
         return _normalize_aliases(value)
 
     @model_validator(mode="after")
@@ -198,29 +207,29 @@ class PromptTemplateCreate(BaseModel):
 
 class PromptTemplateUpdate(BaseModel):
     """Update prompt template request."""
-    name: Optional[str] = Field(default=None, description="Template display name")
-    description: Optional[str] = Field(default=None, description="Template description")
-    trigger: Optional[str] = Field(default=None, description="Slash trigger for exact matching")
-    aliases: Optional[List[str]] = Field(default=None, description="Optional trigger aliases")
-    content: Optional[str] = Field(default=None, description="Prompt template content")
-    enabled: Optional[bool] = Field(default=None, description="Whether template is enabled")
-    variables: Optional[List[PromptTemplateVariable]] = Field(
-        default=None,
-        description="Optional variable schema for template parameters"
+
+    name: str | None = Field(default=None, description="Template display name")
+    description: str | None = Field(default=None, description="Template description")
+    trigger: str | None = Field(default=None, description="Slash trigger for exact matching")
+    aliases: list[str] | None = Field(default=None, description="Optional trigger aliases")
+    content: str | None = Field(default=None, description="Prompt template content")
+    enabled: bool | None = Field(default=None, description="Whether template is enabled")
+    variables: list[PromptTemplateVariable] | None = Field(
+        default=None, description="Optional variable schema for template parameters"
     )
 
     @field_validator("variables")
     @classmethod
     def validate_variables(
-        cls, value: Optional[List[PromptTemplateVariable]]
-    ) -> Optional[List[PromptTemplateVariable]]:
+        cls, value: list[PromptTemplateVariable] | None
+    ) -> list[PromptTemplateVariable] | None:
         if value is None:
             return value
         return _validate_unique_variable_keys(value)
 
     @field_validator("trigger")
     @classmethod
-    def validate_trigger(cls, value: Optional[str]) -> Optional[str]:
+    def validate_trigger(cls, value: str | None) -> str | None:
         if value is None:
             return value
         stripped = value.strip()
@@ -232,9 +241,7 @@ class PromptTemplateUpdate(BaseModel):
 
     @field_validator("aliases")
     @classmethod
-    def validate_aliases(
-        cls, value: Optional[List[str]]
-    ) -> Optional[List[str]]:
+    def validate_aliases(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return value
         return _normalize_aliases(value)

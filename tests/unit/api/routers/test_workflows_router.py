@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
 
 from src.api.routers import workflows as workflows_router
 from src.domain.models.async_run import AsyncRunRecord
-from src.domain.models.workflow import EndNode, LlmNode, StartNode, Workflow, WorkflowCreate, WorkflowRunRecord, WorkflowUpdate
+from src.domain.models.workflow import (
+    EndNode,
+    LlmNode,
+    StartNode,
+    Workflow,
+    WorkflowCreate,
+    WorkflowRunRecord,
+    WorkflowUpdate,
+)
 
 
-async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]:
-    payloads: List[Dict[str, Any]] = []
+async def _collect_sse_payloads(streaming_response: Any) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
     async for chunk in streaming_response.body_iterator:
         text = chunk.decode("utf-8") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
         for line in text.splitlines():
@@ -24,7 +32,9 @@ async def _collect_sse_payloads(streaming_response: Any) -> List[Dict[str, Any]]
     return payloads
 
 
-def _workflow(*, workflow_id: str = "wf_1", enabled: bool = True, is_system: bool = False) -> Workflow:
+def _workflow(
+    *, workflow_id: str = "wf_1", enabled: bool = True, is_system: bool = False
+) -> Workflow:
     now = datetime.now(timezone.utc)
     return Workflow(
         id=workflow_id,
@@ -167,7 +177,9 @@ class _AsyncRunService:
 async def test_workflow_router_crud_routes(monkeypatch):
     service = _WorkflowConfigService()
     history_service = _WorkflowHistoryService()
-    monkeypatch.setattr(workflows_router.uuid, "uuid4", lambda: type("U", (), {"hex": "abcdef1234567890"})())
+    monkeypatch.setattr(
+        workflows_router.uuid, "uuid4", lambda: type("U", (), {"hex": "abcdef1234567890"})()
+    )
 
     listed = await workflows_router.list_workflows(service=service)  # type: ignore[arg-type]
     assert listed[0].id == "wf_1"

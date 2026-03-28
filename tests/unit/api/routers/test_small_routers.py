@@ -6,9 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from fastapi import HTTPException
-
 from edge_tts.exceptions import NoAudioReceived
+from fastapi import HTTPException
 
 from src.api.routers import folders as folders_router
 from src.api.routers import followup as followup_router
@@ -40,7 +39,11 @@ async def test_folders_router_success_and_error_paths():
     storage.update_session_folder = AsyncMock(side_effect=[None, RuntimeError("clear failed")])
 
     assert (await folders_router.list_folders(service=service))[0].id == "folder-1"  # type: ignore[arg-type]
-    assert (await folders_router.create_folder(folders_router.CreateFolderRequest(name="Inbox"), service=service)).id == "folder-1"  # type: ignore[arg-type]
+    assert (
+        await folders_router.create_folder(
+            folders_router.CreateFolderRequest(name="Inbox"), service=service
+        )
+    ).id == "folder-1"  # type: ignore[arg-type]
     assert (
         await folders_router.update_folder(
             "folder-1",
@@ -50,8 +53,12 @@ async def test_folders_router_success_and_error_paths():
     ).name == "Inbox"
 
     await folders_router.delete_folder("folder-1", service=service, storage=storage)  # type: ignore[arg-type]
-    storage.update_session_folder.assert_any_await(session_id="s1", folder_id=None, context_type="chat")
-    storage.update_session_folder.assert_any_await(session_id="s2", folder_id=None, context_type="chat")
+    storage.update_session_folder.assert_any_await(
+        session_id="s1", folder_id=None, context_type="chat"
+    )
+    storage.update_session_folder.assert_any_await(
+        session_id="s2", folder_id=None, context_type="chat"
+    )
     service.delete_folder.assert_awaited_once_with("folder-1")
 
     reordered = await folders_router.reorder_folder(
@@ -113,7 +120,9 @@ async def test_followup_router_paths():
     service.save_config = Mock()
     service.generate_followups_async = AsyncMock(return_value=["q1", "q2"])
     storage = Mock()
-    storage.get_session = AsyncMock(return_value={"state": {"messages": [{"role": "user", "content": "hi"}]}})
+    storage.get_session = AsyncMock(
+        return_value={"state": {"messages": [{"role": "user", "content": "hi"}]}}
+    )
 
     response = await followup_router.get_config(service=service)  # type: ignore[arg-type]
     assert response.model_id == "model-1"
@@ -183,7 +192,9 @@ async def test_followup_router_paths():
         )
     assert exc_info.value.status_code == 404
 
-    broken_storage.get_session = AsyncMock(return_value={"state": {"messages": [{"role": "user", "content": "x"}]}})
+    broken_storage.get_session = AsyncMock(
+        return_value={"state": {"messages": [{"role": "user", "content": "x"}]}}
+    )
     service.generate_followups_async = AsyncMock(side_effect=RuntimeError("generate failed"))
     with pytest.raises(HTTPException) as exc_info:
         await followup_router.generate_followups(
@@ -274,10 +285,14 @@ async def test_tts_router_paths(monkeypatch):
     config_service = Mock()
     config_service.reload_config = Mock()
     config_service.config = SimpleNamespace(enabled=True)
-    fake_tts_service = SimpleNamespace(config_service=config_service, synthesize=AsyncMock(return_value=b"audio"))
+    fake_tts_service = SimpleNamespace(
+        config_service=config_service, synthesize=AsyncMock(return_value=b"audio")
+    )
     monkeypatch.setattr(tts_router, "tts_service", fake_tts_service)
 
-    response = await tts_router.synthesize(tts_router.TTSSynthesizeRequest(text="hello", voice="voice", rate="+0%"))
+    response = await tts_router.synthesize(
+        tts_router.TTSSynthesizeRequest(text="hello", voice="voice", rate="+0%")
+    )
     assert response.media_type == "audio/mpeg"
     assert response.body == b"audio"
 
@@ -356,10 +371,18 @@ async def test_search_config_and_tools_router_paths(monkeypatch):
         )
     assert exc_info.value.status_code == 500
 
-    monkeypatch.setattr(tools_router.ToolCatalogService, "build_catalog", lambda: {"builtin_tools": [], "request_scoped_tools": []})
+    monkeypatch.setattr(
+        tools_router.ToolCatalogService,
+        "build_catalog",
+        lambda: {"builtin_tools": [], "request_scoped_tools": []},
+    )
     assert (await tools_router.get_tool_catalog())["builtin_tools"] == []
 
-    monkeypatch.setattr(tools_router.ToolCatalogService, "build_catalog", lambda: (_ for _ in ()).throw(RuntimeError("catalog failed")))
+    monkeypatch.setattr(
+        tools_router.ToolCatalogService,
+        "build_catalog",
+        lambda: (_ for _ in ()).throw(RuntimeError("catalog failed")),
+    )
     with pytest.raises(HTTPException) as exc_info:
         await tools_router.get_tool_catalog()
     assert exc_info.value.status_code == 500

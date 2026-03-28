@@ -38,8 +38,7 @@ def test_normalize_group_settings_strips_invalid_fields():
     assert normalized["committee"]["actions"]["allow_parallel_speak"] is False
     assert "allow_finish" not in normalized["committee"]["actions"]
     assert (
-        normalized["committee"]["prompting"]["supervisor_system_prompt_template"]
-        == "custom prompt"
+        normalized["committee"]["prompting"]["supervisor_system_prompt_template"] == "custom prompt"
     )
     assert "summary_instruction_template" not in normalized["committee"]["prompting"]
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, trim_messages
 
@@ -27,7 +27,7 @@ def calculate_output_reserve(context_length: int, from_profile: bool) -> int:
     return max(MIN_OUTPUT_RESERVE, min(MAX_OUTPUT_RESERVE, reserve))
 
 
-def get_context_limit(llm: Any, capabilities: Any) -> Tuple[int, int]:
+def get_context_limit(llm: Any, capabilities: Any) -> tuple[int, int]:
     """Determine the max input tokens allowed before calling the LLM."""
     profile_limit = None
     try:
@@ -71,7 +71,7 @@ def get_context_limit(llm: Any, capabilities: Any) -> Tuple[int, int]:
     return budget, DEFAULT_CONTEXT_LENGTH
 
 
-def trim_to_context_limit(messages: List[BaseMessage], max_input_tokens: int) -> List[BaseMessage]:
+def trim_to_context_limit(messages: list[BaseMessage], max_input_tokens: int) -> list[BaseMessage]:
     """Trim messages to fit within the token budget using approximate counting."""
     trimmed = trim_messages(
         messages,
@@ -96,7 +96,7 @@ def trim_to_context_limit(messages: List[BaseMessage], max_input_tokens: int) ->
     return trimmed
 
 
-def estimate_total_tokens(messages: List[Dict[str, Any]]) -> int:
+def estimate_total_tokens(messages: list[dict[str, Any]]) -> int:
     """Estimate total token count for raw message dicts."""
     total = 0
     for msg in messages:
@@ -118,7 +118,7 @@ def estimate_total_tokens(messages: List[Dict[str, Any]]) -> int:
     return total
 
 
-def estimate_langchain_messages_tokens(messages: List[BaseMessage]) -> int:
+def estimate_langchain_messages_tokens(messages: list[BaseMessage]) -> int:
     """Estimate prompt tokens for LangChain messages using the same rough heuristic."""
     total = 0
     for msg in messages:
@@ -132,11 +132,11 @@ def estimate_langchain_messages_tokens(messages: List[BaseMessage]) -> int:
 
 def build_context_plan(
     *,
-    messages: List[Dict[str, Any]],
-    system_prompt: Optional[str],
-    context_segments: Optional[Dict[str, Optional[str]]],
-    summary_content: Optional[str],
-    max_rounds: Optional[int],
+    messages: list[dict[str, Any]],
+    system_prompt: str | None,
+    context_segments: dict[str, str | None] | None,
+    summary_content: str | None,
+    max_rounds: int | None,
     context_budget_tokens: int,
 ) -> ContextPlan:
     """Build the ordered context plan for a model call."""
@@ -162,7 +162,7 @@ def build_context_info_event(
     context_budget: int,
     context_window: int,
     estimated_prompt_tokens: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the frontend-facing context budget event."""
     return {
         "type": "context_info",
@@ -182,20 +182,19 @@ def context_segment_to_system_content(name: str, content: str) -> str:
 
 
 def truncate_by_rounds(
-    messages: List[Any],
+    messages: list[Any],
     max_rounds: int,
-    system_prompt: Optional[str] = None,
-) -> List[Any]:
+    system_prompt: str | None = None,
+) -> list[Any]:
     """Truncate message list by conversation rounds."""
     _ = system_prompt
-    system_messages: List[Any] = []
+    system_messages: list[Any] = []
     conversation_messages = list(messages)
     while conversation_messages and isinstance(conversation_messages[0], SystemMessage):
         system_messages.append(conversation_messages.pop(0))
 
     human_indexes = [
-        index for index, msg in enumerate(conversation_messages)
-        if isinstance(msg, HumanMessage)
+        index for index, msg in enumerate(conversation_messages) if isinstance(msg, HumanMessage)
     ]
     current_rounds = len(human_indexes)
 
@@ -210,17 +209,19 @@ def truncate_by_rounds(
     start_index = human_indexes[-max_rounds]
     kept_conversation = conversation_messages[start_index:]
 
-    result: List[Any] = []
+    result: list[Any] = []
     result.extend(system_messages)
     result.extend(kept_conversation)
 
-    print(f"      Truncation complete: kept {len(kept_conversation)} messages ({max_rounds} rounds)")
+    print(
+        f"      Truncation complete: kept {len(kept_conversation)} messages ({max_rounds} rounds)"
+    )
     return result
 
 
 def filter_messages_by_context_boundary(
-    messages: List[Dict[str, Any]],
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str | None]:
     """Keep only messages after the last summary/separator boundary."""
     last_boundary_index = -1
     boundary_is_summary = False
@@ -239,4 +240,4 @@ def filter_messages_by_context_boundary(
     if boundary_is_summary:
         summary_content = messages[last_boundary_index].get("content", "")
 
-    return messages[last_boundary_index + 1:], summary_content
+    return messages[last_boundary_index + 1 :], summary_content

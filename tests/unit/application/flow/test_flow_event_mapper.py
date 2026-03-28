@@ -79,7 +79,9 @@ def test_mapper_unknown_event_type_maps_to_stream_error():
 def test_mapper_maps_compare_events():
     mapper = FlowEventMapper(stream_id="stream-6")
 
-    start_payload = mapper.to_sse_payload({"type": "model_start", "model_id": "m1", "model_name": "Model-1"})
+    start_payload = mapper.to_sse_payload(
+        {"type": "model_start", "model_id": "m1", "model_name": "Model-1"}
+    )
     chunk_payload = mapper.to_sse_payload({"type": "model_chunk", "model_id": "m1", "chunk": "A"})
     done_payload = mapper.to_sse_payload(
         {
@@ -91,7 +93,11 @@ def test_mapper_maps_compare_events():
         }
     )
     complete_payload = mapper.to_sse_payload(
-        {"type": "compare_complete", "model_results": {"m1": {"content": "Answer A"}}, "reason": "completed"}
+        {
+            "type": "compare_complete",
+            "model_results": {"m1": {"content": "Answer A"}},
+            "reason": "completed",
+        }
     )
 
     assert start_payload["flow_event"]["event_type"] == "compare_model_started"

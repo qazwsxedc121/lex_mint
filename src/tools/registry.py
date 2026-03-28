@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
 
 from langchain_core.tools import BaseTool
 
@@ -17,26 +16,26 @@ class ToolRegistry:
     """Central registry for globally available builtin tools."""
 
     def __init__(self) -> None:
-        self._definitions: List[ToolDefinition] = list(BUILTIN_TOOL_DEFINITIONS)
-        self._definition_map: Dict[str, ToolDefinition] = {
+        self._definitions: list[ToolDefinition] = list(BUILTIN_TOOL_DEFINITIONS)
+        self._definition_map: dict[str, ToolDefinition] = {
             definition.name: definition for definition in self._definitions
         }
-        self._tools: List[BaseTool] = build_builtin_tools()
+        self._tools: list[BaseTool] = build_builtin_tools()
         self._tool_map = {tool.name: tool for tool in self._tools}
 
-    def get_all_tools(self) -> List[BaseTool]:
+    def get_all_tools(self) -> list[BaseTool]:
         """Return all registered tool objects for LangChain bind_tools()."""
         return list(self._tools)
 
-    def get_all_definitions(self) -> List[ToolDefinition]:
+    def get_all_definitions(self) -> list[ToolDefinition]:
         """Return tool definition metadata for registry consumers."""
         return list(self._definitions)
 
-    def get_tool_by_name(self, name: str) -> Optional[BaseTool]:
+    def get_tool_by_name(self, name: str) -> BaseTool | None:
         """Look up a tool by name."""
         return self._tool_map.get(name)
 
-    def get_definition_by_name(self, name: str) -> Optional[ToolDefinition]:
+    def get_definition_by_name(self, name: str) -> ToolDefinition | None:
         """Look up tool metadata by name."""
         return self._definition_map.get(name)
 
@@ -53,15 +52,12 @@ class ToolRegistry:
             logger.error("Tool execution error (%s): %s", name, exc, exc_info=True)
             return f"Error executing {name}: {exc}"
 
-    def get_default_project_enabled_map(self) -> Dict[str, bool]:
+    def get_default_project_enabled_map(self) -> dict[str, bool]:
         """Default per-project enablement state for builtin tools."""
-        return {
-            definition.name: definition.enabled_by_default
-            for definition in self._definitions
-        }
+        return {definition.name: definition.enabled_by_default for definition in self._definitions}
 
 
-_registry: Optional[ToolRegistry] = None
+_registry: ToolRegistry | None = None
 
 
 def get_tool_registry() -> ToolRegistry:

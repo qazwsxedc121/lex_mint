@@ -1,6 +1,5 @@
 """File reference config API router."""
 
-from typing import Optional
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,13 +26,13 @@ class FileReferenceConfigResponse(BaseModel):
 class FileReferenceConfigUpdate(BaseModel):
     """Update payload for file reference configuration."""
 
-    ui_preview_max_chars: Optional[int] = Field(None, ge=100, le=10000)
-    ui_preview_max_lines: Optional[int] = Field(None, ge=1, le=300)
-    injection_preview_max_chars: Optional[int] = Field(None, ge=100, le=5000)
-    injection_preview_max_lines: Optional[int] = Field(None, ge=1, le=500)
-    chunk_size: Optional[int] = Field(None, ge=200, le=20000)
-    max_chunks: Optional[int] = Field(None, ge=1, le=50)
-    total_budget_chars: Optional[int] = Field(None, ge=1000, le=500000)
+    ui_preview_max_chars: int | None = Field(None, ge=100, le=10000)
+    ui_preview_max_lines: int | None = Field(None, ge=1, le=300)
+    injection_preview_max_chars: int | None = Field(None, ge=100, le=5000)
+    injection_preview_max_lines: int | None = Field(None, ge=1, le=500)
+    chunk_size: int | None = Field(None, ge=200, le=20000)
+    max_chunks: int | None = Field(None, ge=1, le=50)
+    total_budget_chars: int | None = Field(None, ge=1000, le=500000)
 
 
 def get_file_reference_config_service() -> FileReferenceConfigService:
@@ -79,4 +78,3 @@ async def update_config(
     except Exception as e:
         logger.error("Failed to update file reference config: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
-

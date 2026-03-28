@@ -19,7 +19,9 @@ from src.domain.models.model_config import (
 from src.providers.types import ApiProtocol, CallMode, ModelCapabilities, ProviderType
 
 
-def _provider(provider_id: str = "custom-provider", *, base_url: str = "https://example.com/v1") -> Provider:
+def _provider(
+    provider_id: str = "custom-provider", *, base_url: str = "https://example.com/v1"
+) -> Provider:
     return Provider(
         id=provider_id,
         name=provider_id,
@@ -59,7 +61,9 @@ async def test_provider_crud_routes_and_endpoint_profile_paths():
     providers = await models_router.list_providers(enabled_only=True, service=service)  # type: ignore[arg-type]
     assert providers[0].id == "custom-provider"
 
-    got = await models_router.get_provider("custom-provider", include_masked_key=True, service=service)  # type: ignore[arg-type]
+    got = await models_router.get_provider(
+        "custom-provider", include_masked_key=True, service=service
+    )  # type: ignore[arg-type]
     assert got.id == "custom-provider"
 
     created = await models_router.create_provider(
@@ -176,7 +180,9 @@ async def test_provider_route_errors_and_probe_paths(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await models_router.probe_provider_endpoints(
             "custom-provider",
-            models_router.ProviderEndpointProbeRequest(mode="auto", strict=True, use_stored_key=True),
+            models_router.ProviderEndpointProbeRequest(
+                mode="auto", strict=True, use_stored_key=True
+            ),
             service=service,  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 400
@@ -193,7 +199,9 @@ async def test_provider_route_errors_and_probe_paths(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await models_router.probe_provider_endpoints(
             "custom-provider",
-            models_router.ProviderEndpointProbeRequest(mode="auto", strict=True, use_stored_key=False, api_key="secret"),
+            models_router.ProviderEndpointProbeRequest(
+                mode="auto", strict=True, use_stored_key=False, api_key="secret"
+            ),
             service=service,  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 400
@@ -219,17 +227,23 @@ async def test_model_crud_default_and_capabilities_routes():
 
     service.get_model = AsyncMock(side_effect=_get_model)
     service.add_model = AsyncMock()
-    service.update_model = AsyncMock(side_effect=[None, ValueError("Model not found"), ValueError("invalid model")])
+    service.update_model = AsyncMock(
+        side_effect=[None, ValueError("Model not found"), ValueError("invalid model")]
+    )
     service.delete_model = AsyncMock(side_effect=[None, ValueError("delete failed")])
     service.test_provider_connection = AsyncMock(return_value=(True, "connected"))
     service.get_provider = AsyncMock(side_effect=_get_provider)
     service.get_api_key = AsyncMock(side_effect=["stored-key", None])
-    service.get_default_config = AsyncMock(return_value=DefaultConfig(provider="custom-provider", model="model-1"))
+    service.get_default_config = AsyncMock(
+        return_value=DefaultConfig(provider="custom-provider", model="model-1")
+    )
     service.set_default_model = AsyncMock(side_effect=[None, ValueError("bad default")])
     service.get_reasoning_supported_patterns = AsyncMock(return_value=["gpt-*"])
     service.get_merged_capabilities = Mock(return_value=ModelCapabilities(reasoning=True))
 
-    listed = await models_router.list_models(provider_id="custom-provider", enabled_only=True, service=service)  # type: ignore[arg-type]
+    listed = await models_router.list_models(
+        provider_id="custom-provider", enabled_only=True, service=service
+    )  # type: ignore[arg-type]
     assert listed[0].id == "model-1"
 
     got = await models_router.get_model("model-1", service=service)  # type: ignore[arg-type]
@@ -295,7 +309,9 @@ async def test_model_crud_default_and_capabilities_routes():
     defaults = await models_router.get_default_config(service=service)  # type: ignore[arg-type]
     assert defaults.provider == "custom-provider"
 
-    updated_default = await models_router.set_default_config("custom-provider", "model-1", service=service)  # type: ignore[arg-type]
+    updated_default = await models_router.set_default_config(
+        "custom-provider", "model-1", service=service
+    )  # type: ignore[arg-type]
     assert updated_default["message"] == "Default model updated successfully"
 
     with pytest.raises(HTTPException) as exc_info:
@@ -340,7 +356,11 @@ async def test_fetch_provider_models_and_protocol_routes(monkeypatch):
     service.provider_requires_api_key = Mock(return_value=True)
 
     builtin_definition = Mock(supports_model_list=True)
-    monkeypatch.setattr(models_router, "get_builtin_provider", lambda provider_id: builtin_definition if provider_id == "fetchable" else None)
+    monkeypatch.setattr(
+        models_router,
+        "get_builtin_provider",
+        lambda provider_id: builtin_definition if provider_id == "fetchable" else None,
+    )
 
     fetched = await models_router.fetch_provider_models("fetchable", service=service)  # type: ignore[arg-type]
     assert [item.id for item in fetched] == ["model-a", "model-b"]

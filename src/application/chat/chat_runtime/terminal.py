@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .base import ChatOrchestrationCancelToken
 
 
 def cancellation_reason(
-    cancel_token: Optional[ChatOrchestrationCancelToken],
+    cancel_token: ChatOrchestrationCancelToken | None,
     *,
     default: str = "cancelled",
 ) -> str:
@@ -20,7 +20,7 @@ def cancellation_reason(
     return default
 
 
-def build_group_done_event(*, mode: str, rounds: int, reason: str) -> Dict[str, Any]:
+def build_group_done_event(*, mode: str, rounds: int, reason: str) -> dict[str, Any]:
     """Build canonical group terminal event."""
     return {
         "type": "group_done",
@@ -32,9 +32,9 @@ def build_group_done_event(*, mode: str, rounds: int, reason: str) -> Dict[str, 
 
 def build_compare_complete_event(
     *,
-    model_results: Dict[str, Dict[str, Any]],
+    model_results: dict[str, dict[str, Any]],
     reason: str = "completed",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build canonical compare terminal event."""
     return {
         "type": "compare_complete",

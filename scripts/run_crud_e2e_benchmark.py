@@ -10,10 +10,11 @@ import math
 import re
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any
 
 import jieba
 import yaml
@@ -26,8 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 from src.infrastructure.config.model_config_service import ModelConfigService  # noqa: E402
 from src.infrastructure.retrieval.rag_service import RagResult, RagService  # noqa: E402
 
-
-TASK_TO_QUERY_FIELD: Dict[str, str] = {
+TASK_TO_QUERY_FIELD: dict[str, str] = {
     "event_summary": "event",
     "continuing_writing": "beginning",
     "hallu_modified": "newsBeginning",
@@ -36,7 +36,7 @@ TASK_TO_QUERY_FIELD: Dict[str, str] = {
     "questanswer_3docs": "questions",
 }
 
-TASK_TO_GT_FIELD: Dict[str, str] = {
+TASK_TO_GT_FIELD: dict[str, str] = {
     "event_summary": "summary",
     "continuing_writing": "continuing",
     "hallu_modified": "hallucinatedMod",
@@ -45,7 +45,7 @@ TASK_TO_GT_FIELD: Dict[str, str] = {
     "questanswer_3docs": "answers",
 }
 
-TASK_TO_PROMPT_TEMPLATE: Dict[str, str] = {
+TASK_TO_PROMPT_TEMPLATE: dict[str, str] = {
     "event_summary": "summary.txt",
     "continuing_writing": "continue_writing.txt",
     "hallu_modified": "hallu_mod.txt",
@@ -55,7 +55,7 @@ TASK_TO_PROMPT_TEMPLATE: Dict[str, str] = {
 }
 
 
-def _split_csv(value: str) -> List[str]:
+def _split_csv(value: str) -> list[str]:
     return [part.strip() for part in str(value or "").split(",") if part.strip()]
 
 
@@ -66,22 +66,22 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _load_yaml(path: Path) -> Dict[str, Any]:
+def _load_yaml(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise ValueError(f"YAML must be an object: {path}")
     return data
 
 
-def _load_json(path: Path) -> Dict[str, Any]:
+def _load_json(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"JSON must be an object: {path}")
     return data
 
 
-def _read_prompt_templates(prompt_dir: Path) -> Dict[str, str]:
-    templates: Dict[str, str] = {}
+def _read_prompt_templates(prompt_dir: Path) -> dict[str, str]:
+    templates: dict[str, str] = {}
     needed = set(TASK_TO_PROMPT_TEMPLATE.values()) | {"quest_eval_gen.txt", "quest_eval_answer.txt"}
     for filename in sorted(needed):
         file_path = prompt_dir / filename
@@ -102,7 +102,7 @@ def _extract_response_text(raw: str) -> str:
     return text
 
 
-def _extract_response_blocks(raw: str) -> List[str]:
+def _extract_response_blocks(raw: str) -> list[str]:
     pattern = re.compile(r"<response>\s*(.*?)\s*</response>", flags=re.IGNORECASE | re.DOTALL)
     blocks = [m.strip() for m in pattern.findall(str(raw or "")) if m.strip()]
     if blocks:
@@ -111,11 +111,13 @@ def _extract_response_blocks(raw: str) -> List[str]:
     return [text] if text else []
 
 
-def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
+def _extract_first_json_object(text: str) -> dict[str, Any] | None:
     content = str(text or "").strip()
     if not content:
         return None
-    fenced = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE | re.DOTALL).strip()
+    fenced = re.sub(
+        r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE | re.DOTALL
+    ).strip()
     content = fenced or content
     try:
         parsed = json.loads(content)
@@ -145,7 +147,7 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _tokenize_zh(text: str) -> List[str]:
+def _tokenize_zh(text: str) -> list[str]:
     return [tok for tok in jieba.cut(str(text or "")) if tok.strip()]
 
 
@@ -155,13 +157,13 @@ def _get_ngrams(tokens: Sequence[str], n: int) -> Counter:
     return Counter(tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1))
 
 
-def _bleu_scores(pred: str, ref: str) -> Dict[str, float]:
+def _bleu_scores(pred: str, ref: str) -> dict[str, float]:
     pred_tokens = _tokenize_zh(pred)
     ref_tokens = _tokenize_zh(ref)
     if not pred_tokens or not ref_tokens:
         return {"bleu": 0.0, "bleu_1": 0.0, "bleu_2": 0.0, "bleu_3": 0.0, "bleu_4": 0.0}
 
-    precisions: List[float] = []
+    precisions: list[float] = []
     for n in (1, 2, 3, 4):
         pred_ngrams = _get_ngrams(pred_tokens, n)
         ref_ngrams = _get_ngrams(ref_tokens, n)
@@ -241,7 +243,7 @@ def _word_f1(reference: str, prediction: str) -> float:
 
 
 def _build_search_documents(results: Sequence[RagResult]) -> str:
-    parts: List[str] = []
+    parts: list[str] = []
     for idx, item in enumerate(results, start=1):
         body = str(item.content or "").strip()
         if not body:
@@ -286,9 +288,9 @@ class QuestEvalScorer:
         self,
         *,
         llm: LlmCaller,
-        templates: Dict[str, str],
-        cache: Optional[Dict[str, Any]] = None,
-        max_questions: Optional[int] = None,
+        templates: dict[str, str],
+        cache: dict[str, Any] | None = None,
+        max_questions: int | None = None,
     ) -> None:
         self.llm = llm
         self.templates = templates
@@ -299,7 +301,7 @@ class QuestEvalScorer:
             '"question": ["2014年中国新增并网光伏发电容量是多少？", "2014年新增容量约占全球的几分之几？"]}'
         )
 
-    def _question_generation(self, ground_truth_text: str) -> Dict[str, Any]:
+    def _question_generation(self, ground_truth_text: str) -> dict[str, Any]:
         prompt = self.templates["quest_eval_gen.txt"].format(
             json_response=self.json_response_example,
             news=ground_truth_text,
@@ -317,7 +319,7 @@ class QuestEvalScorer:
         parsed["question"] = cleaned_questions
         return parsed
 
-    def _question_answer(self, context_text: str, questions: Sequence[str]) -> List[str]:
+    def _question_answer(self, context_text: str, questions: Sequence[str]) -> list[str]:
         prompt = self.templates["quest_eval_answer.txt"].format(
             context=context_text,
             questions=json.dumps(list(questions), ensure_ascii=False),
@@ -336,7 +338,7 @@ class QuestEvalScorer:
         cache_key: str,
         ground_truth_text: str,
         generated_text: str,
-    ) -> Tuple[float, float, Dict[str, Any]]:
+    ) -> tuple[float, float, dict[str, Any]]:
         if cache_key in self.cache:
             payload = dict(self.cache[cache_key])
         else:
@@ -346,7 +348,9 @@ class QuestEvalScorer:
             payload["answers"] = answers_gt4gt
             self.cache[cache_key] = payload
 
-        questions = [str(item).strip() for item in (payload.get("question") or []) if str(item).strip()]
+        questions = [
+            str(item).strip() for item in (payload.get("question") or []) if str(item).strip()
+        ]
         answers_gt4gt = [str(item).strip() for item in (payload.get("answers") or [])]
         if len(answers_gt4gt) != len(questions):
             answers_gt4gt = self._question_answer(ground_truth_text, questions)
@@ -356,20 +360,28 @@ class QuestEvalScorer:
 
         valid_indices = [idx for idx, value in enumerate(answers_gt4gt) if value != "无法推断"]
         if not valid_indices:
-            return 0.0, 0.0, {
-                "questions_gt": questions,
-                "answers_gt4gt": answers_gt4gt,
-                "answers_gm4gt": answers_gm4gt,
-            }
+            return (
+                0.0,
+                0.0,
+                {
+                    "questions_gt": questions,
+                    "answers_gt4gt": answers_gt4gt,
+                    "answers_gm4gt": answers_gm4gt,
+                },
+            )
 
         gt_filtered = [answers_gt4gt[idx] for idx in valid_indices]
         gm_filtered = [answers_gm4gt[idx] for idx in valid_indices]
         if not gm_filtered:
-            return 0.0, 0.0, {
-                "questions_gt": questions,
-                "answers_gt4gt": answers_gt4gt,
-                "answers_gm4gt": answers_gm4gt,
-            }
+            return (
+                0.0,
+                0.0,
+                {
+                    "questions_gt": questions,
+                    "answers_gt4gt": answers_gt4gt,
+                    "answers_gm4gt": answers_gm4gt,
+                },
+            )
 
         undetermined_ratio = gm_filtered.count("无法推断") / max(1, len(gm_filtered))
         recall = 1.0 - undetermined_ratio
@@ -380,32 +392,42 @@ class QuestEvalScorer:
         else:
             gt_answered = [gt_filtered[idx] for idx in non_undetermined_idx]
             gm_answered = [gm_filtered[idx] for idx in non_undetermined_idx]
-            avg_f1 = mean(_word_f1(gt, gm) for gt, gm in zip(gt_answered, gm_answered))
+            avg_f1 = mean(_word_f1(gt, gm) for gt, gm in zip(gt_answered, gm_answered, strict=True))
 
-        return float(avg_f1), float(recall), {
-            "questions_gt": questions,
-            "answers_gt4gt": answers_gt4gt,
-            "answers_gm4gt": answers_gm4gt,
-        }
+        return (
+            float(avg_f1),
+            float(recall),
+            {
+                "questions_gt": questions,
+                "answers_gt4gt": answers_gt4gt,
+                "answers_gm4gt": answers_gm4gt,
+            },
+        )
 
 
-def _build_task_prompt(task_name: str, row: Dict[str, Any], search_documents: str, templates: Dict[str, str]) -> str:
+def _build_task_prompt(
+    task_name: str, row: dict[str, Any], search_documents: str, templates: dict[str, str]
+) -> str:
     filename = TASK_TO_PROMPT_TEMPLATE[task_name]
     template = templates[filename]
     if task_name == "event_summary":
         return template.format(event=str(row.get("event", "")), search_documents=search_documents)
     if task_name == "continuing_writing":
-        return template.format(beginning_text=str(row.get("beginning", "")), search_documents=search_documents)
+        return template.format(
+            beginning_text=str(row.get("beginning", "")), search_documents=search_documents
+        )
     if task_name == "hallu_modified":
         return template.format(
             begin=str(row.get("newsBeginning", "")),
             hallu_continue=str(row.get("hallucinatedContinuation", "")),
             search_documents=search_documents,
         )
-    return template.format(question=str(row.get("questions", "")), search_documents=search_documents)
+    return template.format(
+        question=str(row.get("questions", "")), search_documents=search_documents
+    )
 
 
-def _summarize_cases(cases: Sequence[Dict[str, Any]]) -> Dict[str, float]:
+def _summarize_cases(cases: Sequence[dict[str, Any]]) -> dict[str, float]:
     valid = [row for row in cases if not row.get("error")]
     if not valid:
         return {
@@ -435,15 +457,27 @@ def _summarize_cases(cases: Sequence[Dict[str, Any]]) -> Dict[str, float]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run CRUD end-to-end benchmark.")
     parser.add_argument("--config", type=Path, default=Path("config/benchmarks/crud_e2e_v1.yaml"))
-    parser.add_argument("--tasks", type=str, default=None, help="Comma-separated task names override.")
-    parser.add_argument("--per-task-max", type=int, default=None, help="Cap number of samples per task.")
+    parser.add_argument(
+        "--tasks", type=str, default=None, help="Comma-separated task names override."
+    )
+    parser.add_argument(
+        "--per-task-max", type=int, default=None, help="Cap number of samples per task."
+    )
     parser.add_argument("--modes", type=str, default=None, help="Comma-separated retrieval modes.")
     parser.add_argument("--model-id", type=str, default="qwen3.5-plus", help="Generation model id.")
-    parser.add_argument("--questeval-model-id", type=str, default=None, help="Judge model id, default=model-id.")
-    parser.add_argument("--disable-thinking", action="store_true", help="Force disable model thinking mode.")
-    parser.add_argument("--max-questions", type=int, default=None, help="Optional max questions in quest-eval.")
+    parser.add_argument(
+        "--questeval-model-id", type=str, default=None, help="Judge model id, default=model-id."
+    )
+    parser.add_argument(
+        "--disable-thinking", action="store_true", help="Force disable model thinking mode."
+    )
+    parser.add_argument(
+        "--max-questions", type=int, default=None, help="Optional max questions in quest-eval."
+    )
     parser.add_argument("--output-dir", type=Path, default=None, help="Output directory.")
-    parser.add_argument("--disable-ragquesteval", action="store_true", help="Skip quest-eval scoring.")
+    parser.add_argument(
+        "--disable-ragquesteval", action="store_true", help="Skip quest-eval scoring."
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate setup only, skip calls.")
     return parser.parse_args()
 
@@ -454,14 +488,25 @@ def main() -> None:
 
     protocol_cfg = cfg_all.get("protocol", {}) if isinstance(cfg_all.get("protocol"), dict) else {}
     dataset_cfg = cfg_all.get("dataset", {}) if isinstance(cfg_all.get("dataset"), dict) else {}
-    retrieval_cfg = cfg_all.get("retrieval", {}) if isinstance(cfg_all.get("retrieval"), dict) else {}
-    generation_cfg = cfg_all.get("generation", {}) if isinstance(cfg_all.get("generation"), dict) else {}
+    retrieval_cfg = (
+        cfg_all.get("retrieval", {}) if isinstance(cfg_all.get("retrieval"), dict) else {}
+    )
+    generation_cfg = (
+        cfg_all.get("generation", {}) if isinstance(cfg_all.get("generation"), dict) else {}
+    )
     metrics_cfg = cfg_all.get("metrics", {}) if isinstance(cfg_all.get("metrics"), dict) else {}
 
     protocol_name = str(protocol_cfg.get("name") or "crud_e2e_v1")
-    dataset_path = Path(str(dataset_cfg.get("split_dataset_path") or "learn_proj/CRUD_RAG/data/crud_split/split_merged.json"))
+    dataset_path = Path(
+        str(
+            dataset_cfg.get("split_dataset_path")
+            or "learn_proj/CRUD_RAG/data/crud_split/split_merged.json"
+        )
+    )
     prompt_dir = REPO_ROOT / "learn_proj" / "CRUD_RAG" / "src" / "prompts"
-    kb_ids = [str(item).strip() for item in (retrieval_cfg.get("kb_ids") or []) if str(item).strip()]
+    kb_ids = [
+        str(item).strip() for item in (retrieval_cfg.get("kb_ids") or []) if str(item).strip()
+    ]
     if not kb_ids:
         raise ValueError("retrieval.kb_ids must not be empty.")
 
@@ -474,7 +519,15 @@ def main() -> None:
         cfg_max = dataset_cfg.get("per_task_max")
         per_task_max = int(cfg_max) if cfg_max is not None else 20
 
-    modes = _split_csv(args.modes) if args.modes else [str(item).strip() for item in (retrieval_cfg.get("modes") or ["hybrid"]) if str(item).strip()]
+    modes = (
+        _split_csv(args.modes)
+        if args.modes
+        else [
+            str(item).strip()
+            for item in (retrieval_cfg.get("modes") or ["hybrid"])
+            if str(item).strip()
+        ]
+    )
     if not modes:
         modes = ["hybrid"]
 
@@ -495,7 +548,9 @@ def main() -> None:
 
     eval_model_id = args.model_id
     questeval_model_id = args.questeval_model_id or eval_model_id
-    ragquesteval_enabled = not args.disable_ragquesteval and bool((metrics_cfg.get("ragquesteval") or {}).get("enabled", True))
+    ragquesteval_enabled = not args.disable_ragquesteval and bool(
+        (metrics_cfg.get("ragquesteval") or {}).get("enabled", True)
+    )
 
     manifest = {
         "protocol_name": protocol_name,
@@ -516,7 +571,9 @@ def main() -> None:
         "runtime_model_id": runtime_model_id,
         "ragquesteval_enabled": ragquesteval_enabled,
     }
-    (output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     if args.dry_run:
         print(f"dry_run_ok output_dir={output_dir}")
@@ -536,11 +593,15 @@ def main() -> None:
         max_tokens=max_new_tokens,
         disable_thinking=disable_thinking,
     )
-    questeval_llm = llm if questeval_model_id == eval_model_id else LlmCaller(
-        model_id=questeval_model_id,
-        temperature=temperature,
-        max_tokens=max_new_tokens,
-        disable_thinking=disable_thinking,
+    questeval_llm = (
+        llm
+        if questeval_model_id == eval_model_id
+        else LlmCaller(
+            model_id=questeval_model_id,
+            temperature=temperature,
+            max_tokens=max_new_tokens,
+            disable_thinking=disable_thinking,
+        )
     )
     try:
         _ = llm.invoke("Reply with OK.")
@@ -551,7 +612,7 @@ def main() -> None:
         ) from exc
 
     cache_path = output_dir / "questeval_cache.json"
-    questeval_cache: Dict[str, Any] = {}
+    questeval_cache: dict[str, Any] = {}
     if cache_path.exists():
         try:
             loaded = _load_json(cache_path)
@@ -570,7 +631,7 @@ def main() -> None:
     asyncio.set_event_loop(loop)
 
     try:
-        global_summary: Dict[str, Any] = {
+        global_summary: dict[str, Any] = {
             "protocol_name": protocol_name,
             "model_id": eval_model_id,
             "questeval_model_id": questeval_model_id,
@@ -580,14 +641,14 @@ def main() -> None:
 
         for mode in modes:
             retrieval_runtime_cfg.retrieval_mode = mode
-            mode_cases: Dict[str, List[Dict[str, Any]]] = {}
-            mode_task_metrics: Dict[str, Dict[str, float]] = {}
+            mode_cases: dict[str, list[dict[str, Any]]] = {}
+            mode_task_metrics: dict[str, dict[str, float]] = {}
             mode_valid_cases = 0
 
             for task_name in tasks:
                 rows = list(split_data.get(task_name) or [])
                 rows = rows[: max(1, int(per_task_max))]
-                task_cases: List[Dict[str, Any]] = []
+                task_cases: list[dict[str, Any]] = []
                 print(f"mode={mode} task={task_name} cases={len(rows)}")
 
                 for idx, row in enumerate(rows, start=1):
@@ -600,7 +661,10 @@ def main() -> None:
                         task_cases.append({"id": case_id, "error": "missing query or ground_truth"})
                         continue
 
-                    if task_name == "hallu_modified" and ground_truth == '\",\"msg\":\"request openai failed\"':
+                    if (
+                        task_name == "hallu_modified"
+                        and ground_truth == '","msg":"request openai failed"'
+                    ):
                         task_cases.append({"id": case_id, "error": "invalid ground_truth marker"})
                         continue
 
@@ -623,7 +687,7 @@ def main() -> None:
                         rouge_l = _rouge_l(generated_text, ground_truth)
                         quest_f1 = 0.0
                         quest_recall = 0.0
-                        quest_log: Dict[str, Any] = {}
+                        quest_log: dict[str, Any] = {}
                         if ragquesteval_enabled:
                             try:
                                 quest_f1, quest_recall, quest_log = quest_scorer.score(
@@ -661,7 +725,9 @@ def main() -> None:
                 mode_cases[task_name] = task_cases
                 mode_task_metrics[task_name] = _summarize_cases(task_cases)
                 mode_valid_cases += int(mode_task_metrics[task_name]["case_count"])
-                cache_path.write_text(json.dumps(questeval_cache, ensure_ascii=False, indent=2), encoding="utf-8")
+                cache_path.write_text(
+                    json.dumps(questeval_cache, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
                 print(
                     "mode={mode} task={task} bleu={bleu:.4f} rouge_l={rouge:.4f} ragquesteval_recall={recall:.4f}".format(
                         mode=mode,
@@ -676,10 +742,25 @@ def main() -> None:
                 "mode": mode,
                 "task_metrics": mode_task_metrics,
                 "overall": {
-                    "bleu": mean(_safe_float(v.get("bleu")) for v in mode_task_metrics.values()) if mode_task_metrics else 0.0,
-                    "rouge_l": mean(_safe_float(v.get("rouge_l")) for v in mode_task_metrics.values()) if mode_task_metrics else 0.0,
-                    "ragquesteval_f1": mean(_safe_float(v.get("ragquesteval_f1")) for v in mode_task_metrics.values()) if mode_task_metrics else 0.0,
-                    "ragquesteval_recall": mean(_safe_float(v.get("ragquesteval_recall")) for v in mode_task_metrics.values()) if mode_task_metrics else 0.0,
+                    "bleu": mean(_safe_float(v.get("bleu")) for v in mode_task_metrics.values())
+                    if mode_task_metrics
+                    else 0.0,
+                    "rouge_l": mean(
+                        _safe_float(v.get("rouge_l")) for v in mode_task_metrics.values()
+                    )
+                    if mode_task_metrics
+                    else 0.0,
+                    "ragquesteval_f1": mean(
+                        _safe_float(v.get("ragquesteval_f1")) for v in mode_task_metrics.values()
+                    )
+                    if mode_task_metrics
+                    else 0.0,
+                    "ragquesteval_recall": mean(
+                        _safe_float(v.get("ragquesteval_recall"))
+                        for v in mode_task_metrics.values()
+                    )
+                    if mode_task_metrics
+                    else 0.0,
                     "task_count": len(mode_task_metrics),
                 },
             }

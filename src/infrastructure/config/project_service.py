@@ -1,29 +1,30 @@
 """Service for managing projects and file operations."""
 
-import yaml
+import asyncio
+import fnmatch
+import hashlib
 import logging
 import os
-import asyncio
-import shutil
-import hashlib
-import fnmatch
 import re
-from pathlib import Path
-from typing import Optional, List, Dict, Any, cast
+import shutil
 from datetime import datetime
+from pathlib import Path
+from typing import Any, cast
 
-from src.core.errors import ConflictError
-from src.domain.models.project_config import (
-    Project,
-    ProjectSettings,
-    ProjectsConfig,
-    FileNode,
-    FileContent,
-    FileRenameResult,
-    DirectoryEntry,
-)
+import yaml
+
 from src.core.config import settings
-from src.core.paths import ensure_local_file, repo_root
+from src.core.errors import ConflictError
+from src.core.paths import ensure_local_file
+from src.domain.models.project_config import (
+    DirectoryEntry,
+    FileContent,
+    FileNode,
+    FileRenameResult,
+    Project,
+    ProjectsConfig,
+    ProjectSettings,
+)
 
 logger = logging.getLogger(__name__)
 _TEXT_SEARCH_MAX_FILES = 5000
@@ -39,7 +40,7 @@ class ProjectConflictError(ConflictError):
 class ProjectService:
     """Service for managing projects and file operations."""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         """Initialize project service.
 
         Args:
@@ -67,45 +68,47 @@ class ProjectService:
                 return ProjectsConfig(projects=[])
 
             try:
-                with open(self.config_path, 'r', encoding='utf-8') as f:
+                with open(self.config_path, encoding="utf-8") as f:
                     data = yaml.safe_load(f)
                     if data is None:
                         return ProjectsConfig(projects=[])
-                    raw_projects = data.get('projects', [])
-                    valid_projects: List[Project] = []
+                    raw_projects = data.get("projects", [])
+                    valid_projects: list[Project] = []
                     if isinstance(raw_projects, list):
                         for index, raw in enumerate(raw_projects):
                             try:
                                 valid_projects.append(Project.model_validate(raw))
                             except Exception as e:
-                                logger.warning(f"Skipping invalid project entry at index {index}: {e}")
+                                logger.warning(
+                                    f"Skipping invalid project entry at index {index}: {e}"
+                                )
                     return ProjectsConfig(projects=valid_projects)
             except Exception as e:
                 raise ValueError(f"Failed to load config: {e}")
 
-    def resolve_project_root(self, project_id: str) -> Optional[str]:
+    def resolve_project_root(self, project_id: str) -> str | None:
         """Resolve a project id to its root path without async orchestration."""
         if not project_id or not self.config_path.exists():
             return None
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception:
             return None
-        projects = data.get('projects', []) if isinstance(data, dict) else []
+        projects = data.get("projects", []) if isinstance(data, dict) else []
         if not isinstance(projects, list):
             return None
         for raw_project in projects:
             if not isinstance(raw_project, dict):
                 continue
-            if raw_project.get('id') == project_id:
-                root_path = raw_project.get('root_path')
+            if raw_project.get("id") == project_id:
+                root_path = raw_project.get("root_path")
                 return str(root_path) if isinstance(root_path, str) and root_path.strip() else None
         return None
 
-    def _resolve_browse_roots(self) -> List[Path]:
+    def _resolve_browse_roots(self) -> list[Path]:
         roots = settings.projects_browse_roots or [Path(".")]
-        resolved: List[Path] = []
+        resolved: list[Path] = []
         for root in roots:
             expanded = Path(os.path.expandvars(str(root))).expanduser()
             if not expanded.is_absolute():
@@ -126,15 +129,15 @@ class ProjectService:
         except ValueError:
             return False
 
-    def list_browse_roots(self) -> List[DirectoryEntry]:
+    def list_browse_roots(self) -> list[DirectoryEntry]:
         roots = self._resolve_browse_roots()
-        entries: List[DirectoryEntry] = []
+        entries: list[DirectoryEntry] = []
         for root in roots:
             name = root.name or str(root)
             entries.append(DirectoryEntry(name=name, path=str(root), is_dir=True))
         return entries
 
-    def list_directories(self, path: str) -> List[DirectoryEntry]:
+    def list_directories(self, path: str) -> list[DirectoryEntry]:
         if not path:
             raise ValueError("Path is required")
         expanded = Path(os.path.expandvars(path)).expanduser()
@@ -148,12 +151,14 @@ class ProjectService:
         if not any(self._is_within_root(target, root) for root in roots):
             raise ValueError("Path is outside allowed roots")
 
-        entries: List[DirectoryEntry] = []
+        entries: list[DirectoryEntry] = []
         try:
             for child in sorted(target.iterdir(), key=lambda p: p.name.lower()):
                 try:
                     if child.is_dir():
-                        entries.append(DirectoryEntry(name=child.name, path=str(child), is_dir=True))
+                        entries.append(
+                            DirectoryEntry(name=child.name, path=str(child), is_dir=True)
+                        )
                 except PermissionError:
                     continue
         except PermissionError as e:
@@ -214,15 +219,15 @@ class ProjectService:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Atomic write: write to temp file first, then rename
-            temp_path = self.config_path.with_suffix('.tmp')
+            temp_path = self.config_path.with_suffix(".tmp")
             try:
-                with open(temp_path, 'w', encoding='utf-8') as f:
+                with open(temp_path, "w", encoding="utf-8") as f:
                     yaml.safe_dump(
                         config.model_dump(),
                         f,
                         default_flow_style=False,
                         allow_unicode=True,
-                        sort_keys=False
+                        sort_keys=False,
                     )
                 # Atomic rename
                 temp_path.replace(self.config_path)
@@ -232,7 +237,7 @@ class ProjectService:
                     temp_path.unlink()
                 raise ValueError(f"Failed to save config: {e}")
 
-    async def get_projects(self) -> List[Project]:
+    async def get_projects(self) -> list[Project]:
         """Get all projects.
 
         Returns:
@@ -241,7 +246,7 @@ class ProjectService:
         config = await self.load_config()
         return config.projects
 
-    async def get_project(self, project_id: str) -> Optional[Project]:
+    async def get_project(self, project_id: str) -> Project | None:
         """Get a single project by ID.
 
         Args:
@@ -283,11 +288,11 @@ class ProjectService:
     async def update_project(
         self,
         project_id: str,
-        name: Optional[str] = None,
-        root_path: Optional[str] = None,
-        description: Optional[str] = None,
-        settings: Optional[ProjectSettings] = None,
-    ) -> Optional[Project]:
+        name: str | None = None,
+        root_path: str | None = None,
+        description: str | None = None,
+        settings: ProjectSettings | None = None,
+    ) -> Project | None:
         """Update an existing project.
 
         Args:
@@ -306,18 +311,18 @@ class ProjectService:
         for i, project in enumerate(config.projects):
             if project.id == project_id:
                 # Update fields
-                update_data: Dict[str, object] = {}
+                update_data: dict[str, object] = {}
                 if name is not None:
-                    update_data['name'] = name
+                    update_data["name"] = name
                 if root_path is not None:
-                    update_data['root_path'] = root_path
+                    update_data["root_path"] = root_path
                 if description is not None:
-                    update_data['description'] = description
+                    update_data["description"] = description
                 if settings is not None:
-                    update_data['settings'] = settings
+                    update_data["settings"] = settings
 
                 # Update timestamp
-                update_data['updated_at'] = datetime.now().isoformat()
+                update_data["updated_at"] = datetime.now().isoformat()
 
                 # Create updated project
                 updated_project = project.model_copy(update=update_data)
@@ -350,11 +355,7 @@ class ProjectService:
     # Placeholder methods for Phase 3, 4, 5
     # These will be implemented in later phases
 
-    async def get_file_tree(
-        self,
-        project_id: str,
-        relative_path: str = ""
-    ) -> FileNode:
+    async def get_file_tree(self, project_id: str, relative_path: str = "") -> FileNode:
         """Get file tree for a project directory.
 
         Args:
@@ -378,11 +379,7 @@ class ProjectService:
         return self._build_tree_node(root_path, target_path, relative_path)
 
     async def create_file(
-        self,
-        project_id: str,
-        relative_path: str,
-        content: str = "",
-        encoding: str = "utf-8"
+        self, project_id: str, relative_path: str, content: str = "", encoding: str = "utf-8"
     ) -> FileContent:
         """Create a new file in a project.
 
@@ -459,14 +456,10 @@ class ProjectService:
             content_hash=self._compute_content_hash(content),
             encoding=encoding,
             size=file_size,
-            mime_type=mime_type
+            mime_type=mime_type,
         )
 
-    async def create_directory(
-        self,
-        project_id: str,
-        relative_path: str
-    ) -> FileNode:
+    async def create_directory(self, project_id: str, relative_path: str) -> FileNode:
         """Create a new directory in a project.
 
         Args:
@@ -517,7 +510,7 @@ class ProjectService:
             type="directory",
             size=None,
             modified_at=None,
-            children=[]
+            children=[],
         )
 
     def _build_tree_node(self, root_path: Path, current_path: Path, relative_path: str) -> FileNode:
@@ -537,7 +530,7 @@ class ProjectService:
 
         if is_dir:
             # Get children, excluding hidden files
-            children: List[FileNode] = []
+            children: list[FileNode] = []
             try:
                 for child in sorted(current_path.iterdir()):
                     # Skip hidden files (starting with .)
@@ -545,8 +538,12 @@ class ProjectService:
                         continue
 
                     # Calculate relative path for child
-                    child_relative = str(Path(relative_path) / child.name) if relative_path else child.name
-                    child_relative = child_relative.replace("\\\\", "/")  # Normalize to forward slashes
+                    child_relative = (
+                        str(Path(relative_path) / child.name) if relative_path else child.name
+                    )
+                    child_relative = child_relative.replace(
+                        "\\\\", "/"
+                    )  # Normalize to forward slashes
 
                     # Recursively build child node
                     child_node = self._build_tree_node(root_path, child, child_relative)
@@ -564,8 +561,8 @@ class ProjectService:
             )
         else:
             # For files, add size and modified time
-            size: Optional[int] = None
-            modified_at: Optional[str] = None
+            size: int | None = None
+            modified_at: str | None = None
             try:
                 stat = current_path.stat()
                 size = stat.st_size
@@ -582,11 +579,7 @@ class ProjectService:
                 children=None,
             )
 
-    async def read_file(
-        self,
-        project_id: str,
-        relative_path: str
-    ) -> FileContent:
+    async def read_file(self, project_id: str, relative_path: str) -> FileContent:
         """Read file content from a project.
 
         Args:
@@ -611,8 +604,7 @@ class ProjectService:
         max_size_bytes = settings.max_file_read_size_mb * 1024 * 1024
         if file_size > max_size_bytes:
             raise ValueError(
-                f"File size ({file_size} bytes) exceeds limit "
-                f"({settings.max_file_read_size_mb}MB)"
+                f"File size ({file_size} bytes) exceeds limit ({settings.max_file_read_size_mb}MB)"
             )
 
         # Detect encoding and read content
@@ -621,7 +613,7 @@ class ProjectService:
             content = target_path.read_text(encoding=encoding)
         except UnicodeDecodeError:
             # If UTF-8 fails, try with errors='replace'
-            content = target_path.read_text(encoding=encoding, errors='replace')
+            content = target_path.read_text(encoding=encoding, errors="replace")
 
         # Determine MIME type (basic implementation)
         file_ext = target_path.suffix.lower()
@@ -633,14 +625,11 @@ class ProjectService:
             content_hash=self._compute_content_hash(content),
             encoding=encoding,
             size=file_size,
-            mime_type=mime_type
+            mime_type=mime_type,
         )
 
     async def delete_directory(
-        self,
-        project_id: str,
-        relative_path: str,
-        recursive: bool = False
+        self, project_id: str, relative_path: str, recursive: bool = False
     ) -> None:
         """Delete a directory in a project.
 
@@ -676,10 +665,7 @@ class ProjectService:
             raise ValueError(f"Failed to delete directory: {e}")
 
     async def rename_path(
-        self,
-        project_id: str,
-        source_path: str,
-        target_path: str
+        self, project_id: str, source_path: str, target_path: str
     ) -> FileRenameResult:
         """Rename or move a file/directory within a project.
 
@@ -748,16 +734,12 @@ class ProjectService:
             new_path=normalized_target,
             type=node_type,
             size=size,
-            modified_at=modified_at
+            modified_at=modified_at,
         )
 
     async def search_files_with_proximity(
-        self,
-        project_id: str,
-        query: str,
-        current_file_path: Optional[str] = None,
-        limit: int = 20
-    ) -> List[Dict[str, Any]]:
+        self, project_id: str, query: str, current_file_path: str | None = None, limit: int = 20
+    ) -> list[dict[str, Any]]:
         """
         Search files with context-aware proximity scoring.
 
@@ -778,28 +760,26 @@ class ProjectService:
 
         # Build file list
         all_files = []
-        for file_path in root_path.rglob('*'):
-            if file_path.is_file() and not file_path.name.startswith('.'):
+        for file_path in root_path.rglob("*"):
+            if file_path.is_file() and not file_path.name.startswith("."):
                 relative_path = file_path.relative_to(root_path)
-                all_files.append({
-                    'path': str(relative_path).replace('\\', '/'),
-                    'name': file_path.name,
-                    'directory': str(relative_path.parent).replace('\\', '/') if relative_path.parent != Path('.') else '',
-                    'extension': file_path.suffix,
-                })
+                all_files.append(
+                    {
+                        "path": str(relative_path).replace("\\", "/"),
+                        "name": file_path.name,
+                        "directory": str(relative_path.parent).replace("\\", "/")
+                        if relative_path.parent != Path(".")
+                        else "",
+                        "extension": file_path.suffix,
+                    }
+                )
 
         # Score and filter files
         scored_files = []
         for file_info in all_files:
-            score, reason = self._calculate_file_score(
-                file_info, query, current_file_path
-            )
+            score, reason = self._calculate_file_score(file_info, query, current_file_path)
             if score > 0:  # Only include matches
-                scored_files.append({
-                    **file_info,
-                    'score': score,
-                    'proximityReason': reason
-                })
+                scored_files.append({**file_info, "score": score, "proximityReason": reason})
 
         # Sort by score and limit
         scored_files.sort(
@@ -809,14 +789,11 @@ class ProjectService:
         return scored_files[:limit]
 
     def _calculate_file_score(
-        self,
-        file_info: Dict[str, str],
-        query: str,
-        current_file_path: Optional[str]
+        self, file_info: dict[str, str], query: str, current_file_path: str | None
     ) -> tuple[int, str]:
         """Calculate match score with proximity weighting."""
-        file_path = file_info['path']
-        file_name = file_info['name']
+        file_path = file_info["path"]
+        file_name = file_info["name"]
         query_lower = query.lower()
 
         # Fuzzy match score (0-500)
@@ -839,37 +816,37 @@ class ProjectService:
 
         # If no match, return 0
         if fuzzy_score == 0:
-            return 0, 'no-match'
+            return 0, "no-match"
 
         # Proximity score (0-1000)
         if not current_file_path:
             # No current file: prefer shallow files
-            depth = file_path.count('/')
+            depth = file_path.count("/")
             proximity_score = max(100, 500 - depth * 50)
-            proximity_reason = 'project-wide'
+            proximity_reason = "project-wide"
         else:
-            current_file_path = current_file_path.replace('\\', '/')
-            current_dir = str(Path(current_file_path).parent).replace('\\', '/')
-            file_dir = file_info['directory']
+            current_file_path = current_file_path.replace("\\", "/")
+            current_dir = str(Path(current_file_path).parent).replace("\\", "/")
+            file_dir = file_info["directory"]
 
             if file_dir == current_dir:
                 proximity_score = 1000
-                proximity_reason = 'same-dir'
-            elif file_path.startswith(current_dir + '/'):
+                proximity_reason = "same-dir"
+            elif file_path.startswith(current_dir + "/"):
                 # Child directory
                 proximity_score = 800
-                proximity_reason = 'child-dir'
-            elif current_dir.startswith(file_dir + '/'):
+                proximity_reason = "child-dir"
+            elif current_dir.startswith(file_dir + "/"):
                 # Parent directory
                 proximity_score = 600
-                proximity_reason = 'parent-dir'
+                proximity_reason = "parent-dir"
             elif Path(current_dir).parent == Path(file_dir).parent:
                 # Sibling directory
                 proximity_score = 400
-                proximity_reason = 'sibling'
+                proximity_reason = "sibling"
             else:
                 proximity_score = 200
-                proximity_reason = 'project-wide'
+                proximity_reason = "project-wide"
 
         total_score = proximity_score + fuzzy_score
         return total_score, proximity_reason
@@ -975,11 +952,7 @@ class ProjectService:
         except (ValueError, OSError):
             return False
 
-    async def _validate_path(
-        self,
-        project_id: str,
-        relative_path: str
-    ) -> tuple[Path, Path]:
+    async def _validate_path(self, project_id: str, relative_path: str) -> tuple[Path, Path]:
         """Validate and resolve a path within a project.
 
         Args:
@@ -1026,7 +999,7 @@ class ProjectService:
         relative_path: str,
         content: str,
         encoding: str = "utf-8",
-        expected_hash: Optional[str] = None,
+        expected_hash: str | None = None,
     ) -> FileContent:
         """Write content to a file in a project.
 
@@ -1100,7 +1073,7 @@ class ProjectService:
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Atomic write: write to temp file first, then rename
-        temp_path = target_path.with_suffix(target_path.suffix + '.tmp')
+        temp_path = target_path.with_suffix(target_path.suffix + ".tmp")
         try:
             temp_path.write_text(content, encoding=encoding)
             # Atomic rename
@@ -1122,7 +1095,7 @@ class ProjectService:
             content_hash=self._compute_content_hash(content),
             encoding=encoding,
             size=file_size,
-            mime_type=mime_type
+            mime_type=mime_type,
         )
 
     async def search_project_text(
@@ -1132,12 +1105,12 @@ class ProjectService:
         *,
         case_sensitive: bool = False,
         use_regex: bool = False,
-        include_glob: Optional[str] = None,
-        exclude_glob: Optional[str] = None,
+        include_glob: str | None = None,
+        exclude_glob: str | None = None,
         max_results: int = 30,
         context_lines: int = 0,
         max_chars_per_line: int = 300,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search text across project files for user-facing discovery."""
         project = await self.get_project(project_id)
         if project is None:
@@ -1153,7 +1126,7 @@ class ProjectService:
         context_lines = max(0, min(int(context_lines), 3))
         max_chars_per_line = max(80, min(int(max_chars_per_line), 1200))
 
-        regex: Optional[re.Pattern[str]] = None
+        regex: re.Pattern[str] | None = None
         if use_regex:
             flags = 0 if case_sensitive else re.IGNORECASE
             try:
@@ -1163,7 +1136,7 @@ class ProjectService:
 
         root_path = Path(project.root_path)
         max_file_bytes = settings.max_file_read_size_mb * 1024 * 1024
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         scanned_files = 0
         skipped_hidden_files = 0
         skipped_binary_files = 0
@@ -1260,11 +1233,7 @@ class ProjectService:
             "results": results,
         }
 
-    async def delete_file(
-        self,
-        project_id: str,
-        relative_path: str
-    ) -> None:
+    async def delete_file(self, project_id: str, relative_path: str) -> None:
         """Delete a file in a project.
 
         Args:

@@ -1,16 +1,17 @@
 """Unit tests for committee orchestration behavior."""
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 import pytest
 
-from src.application.chat.group_orchestration_support_service import GroupOrchestrationSupportService
 from src.application.chat.chat_runtime import (
+    ChatOrchestrationRequest,
     CommitteeOrchestrator,
     CommitteePolicy,
-    ChatOrchestrationRequest,
     ResolvedCommitteeSettings,
+)
+from src.application.chat.group_orchestration_support_service import (
+    GroupOrchestrationSupportService,
 )
 from src.application.chat.service_contracts import AssistantLike
 
@@ -21,16 +22,16 @@ class _AssistantStub:
     name: str
     model_id: str
     icon: str
-    system_prompt: Optional[str]
-    temperature: Optional[float]
-    max_tokens: Optional[int]
-    top_p: Optional[float]
-    top_k: Optional[int]
-    frequency_penalty: Optional[float]
-    presence_penalty: Optional[float]
-    max_rounds: Optional[int]
+    system_prompt: str | None
+    temperature: float | None
+    max_tokens: int | None
+    top_p: float | None
+    top_k: int | None
+    frequency_penalty: float | None
+    presence_penalty: float | None
+    max_rounds: int | None
     memory_enabled: bool = True
-    knowledge_base_ids: Optional[List[str]] = None
+    knowledge_base_ids: list[str] | None = None
     enabled: bool = True
 
 
@@ -86,10 +87,10 @@ def _build_orchestrator(*, llm_call, stream_group_assistant_turn, get_message_co
 def _build_request(
     *,
     raw_user_message: str,
-    group_assistants: List[str],
+    group_assistants: list[str],
     assistant_name_map,
     assistant_config_map,
-    settings: Optional[ResolvedCommitteeSettings] = None,
+    settings: ResolvedCommitteeSettings | None = None,
 ):
     return ChatOrchestrationRequest(
         session_id="s1",
@@ -146,7 +147,11 @@ async def test_committee_orchestrator_speak_then_finish():
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
-        yield {"type": "assistant_message_id", "assistant_id": assistant_id, "message_id": message_id}
+        yield {
+            "type": "assistant_message_id",
+            "assistant_id": assistant_id,
+            "message_id": message_id,
+        }
         yield {"type": "assistant_done", "assistant_id": assistant_id}
 
     async def fake_get_message_content_by_id(**kwargs):
@@ -188,7 +193,10 @@ async def test_committee_orchestrator_speak_then_finish():
     assert turn_calls[0]["assistant_id"] == "a2"
     assert turn_calls[0]["instruction"] == "Focus on backend risks."
     assert turn_calls[1]["assistant_id"] == "a1"
-    assert "Committee orchestration is ending (reason: discussion_complete)." in turn_calls[1]["instruction"]
+    assert (
+        "Committee orchestration is ending (reason: discussion_complete)."
+        in turn_calls[1]["instruction"]
+    )
 
     assert events[-1] == {
         "type": "group_done",
@@ -210,7 +218,11 @@ async def test_committee_orchestrator_invalid_supervisor_output_uses_fallback():
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
-        yield {"type": "assistant_message_id", "assistant_id": assistant_id, "message_id": message_id}
+        yield {
+            "type": "assistant_message_id",
+            "assistant_id": assistant_id,
+            "message_id": message_id,
+        }
         yield {"type": "assistant_done", "assistant_id": assistant_id}
 
     async def fake_get_message_content_by_id(**_kwargs):
@@ -255,7 +267,10 @@ async def test_committee_orchestrator_invalid_supervisor_output_uses_fallback():
     assert len(turn_calls) == 2
     assert turn_calls[0]["assistant_id"] == "a2"
     assert turn_calls[1]["assistant_id"] == "a1"
-    assert "Committee orchestration is ending (reason: max_rounds_reached)." in turn_calls[1]["instruction"]
+    assert (
+        "Committee orchestration is ending (reason: max_rounds_reached)."
+        in turn_calls[1]["instruction"]
+    )
 
     assert events[-1]["type"] == "group_done"
     assert events[-1]["reason"] == "max_rounds_reached"
@@ -325,7 +340,11 @@ async def test_committee_orchestrator_role_drift_retries_once():
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
-        yield {"type": "assistant_message_id", "assistant_id": assistant_id, "message_id": message_id}
+        yield {
+            "type": "assistant_message_id",
+            "assistant_id": assistant_id,
+            "message_id": message_id,
+        }
         yield {"type": "assistant_done", "assistant_id": assistant_id}
 
     async def fake_get_message_content_by_id(**kwargs):
@@ -356,7 +375,9 @@ async def test_committee_orchestrator_role_drift_retries_once():
         )
     )
 
-    retry_events = [e for e in events if e.get("type") == "group_action" and e.get("action") == "role_retry"]
+    retry_events = [
+        e for e in events if e.get("type") == "group_action" and e.get("action") == "role_retry"
+    ]
     assert len(retry_events) == 1
     assert retry_events[0]["assistant_id"] == "a2"
     assert retry_events[0]["reason"] == "role_drift_claimed_a1"
@@ -396,14 +417,22 @@ async def test_committee_orchestrator_parallel_speak_then_finish():
         idx = call_index["value"]
         assistant_id = kwargs["assistant_id"]
         message_id = f"{assistant_id}-m-{idx}"
-        yield {"type": "assistant_start", "assistant_id": assistant_id, "assistant_turn_id": f"t-{idx}"}
+        yield {
+            "type": "assistant_start",
+            "assistant_id": assistant_id,
+            "assistant_turn_id": f"t-{idx}",
+        }
         yield {
             "type": "assistant_message_id",
             "assistant_id": assistant_id,
             "assistant_turn_id": f"t-{idx}",
             "message_id": message_id,
         }
-        yield {"type": "assistant_done", "assistant_id": assistant_id, "assistant_turn_id": f"t-{idx}"}
+        yield {
+            "type": "assistant_done",
+            "assistant_id": assistant_id,
+            "assistant_turn_id": f"t-{idx}",
+        }
 
     async def fake_get_message_content_by_id(**kwargs):
         return f"parallel content for {kwargs['message_id']}"

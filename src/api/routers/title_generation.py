@@ -3,17 +3,17 @@ Title Generation API Router
 
 Provides endpoints for configuring and triggering title generation.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Optional
+
 import logging
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
 from src.application.chat.title_generation_service import TitleGenerationService
+from src.core.config import settings
 from src.infrastructure.storage.conversation_storage import (
-    ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/title-generation", tags=["title-generation"])
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/title-generation", tags=["title-generation"])
 # Pydantic models
 class TitleGenerationConfigResponse(BaseModel):
     """Response model for title generation configuration"""
+
     enabled: bool
     trigger_threshold: int
     model_id: str
@@ -32,16 +33,18 @@ class TitleGenerationConfigResponse(BaseModel):
 
 class TitleGenerationConfigUpdate(BaseModel):
     """Request model for updating title generation configuration"""
-    enabled: Optional[bool] = None
-    trigger_threshold: Optional[int] = Field(None, ge=1, le=10)
-    model_id: Optional[str] = None
-    prompt_template: Optional[str] = None
-    max_context_rounds: Optional[int] = Field(None, ge=1, le=10)
-    timeout_seconds: Optional[int] = Field(None, ge=5, le=60)
+
+    enabled: bool | None = None
+    trigger_threshold: int | None = Field(None, ge=1, le=10)
+    model_id: str | None = None
+    prompt_template: str | None = None
+    max_context_rounds: int | None = Field(None, ge=1, le=10)
+    timeout_seconds: int | None = Field(None, ge=5, le=60)
 
 
 class ManualGenerateRequest(BaseModel):
     """Request model for manual title generation"""
+
     session_id: str
 
 
@@ -54,9 +57,7 @@ def get_title_service() -> TitleGenerationService:
 
 # Endpoints
 @router.get("/config", response_model=TitleGenerationConfigResponse)
-async def get_config(
-    service: TitleGenerationService = Depends(get_title_service)
-):
+async def get_config(service: TitleGenerationService = Depends(get_title_service)):
     """Get current title generation configuration"""
     try:
         config = service.config
@@ -66,7 +67,7 @@ async def get_config(
             model_id=config.model_id,
             prompt_template=config.prompt_template,
             max_context_rounds=config.max_context_rounds,
-            timeout_seconds=config.timeout_seconds
+            timeout_seconds=config.timeout_seconds,
         )
     except Exception as e:
         logger.error(f"Failed to get title generation config: {e}")
@@ -76,7 +77,7 @@ async def get_config(
 @router.put("/config")
 async def update_config(
     updates: TitleGenerationConfigUpdate,
-    service: TitleGenerationService = Depends(get_title_service)
+    service: TitleGenerationService = Depends(get_title_service),
 ):
     """Update title generation configuration"""
     try:
@@ -99,8 +100,7 @@ async def update_config(
 
 @router.post("/generate")
 async def generate_title(
-    request: ManualGenerateRequest,
-    service: TitleGenerationService = Depends(get_title_service)
+    request: ManualGenerateRequest, service: TitleGenerationService = Depends(get_title_service)
 ):
     """Manually trigger title generation for a session"""
     try:
@@ -108,14 +108,10 @@ async def generate_title(
         title = await service.generate_title_async(request.session_id)
 
         if title:
-            return {
-                "message": "Title generated successfully",
-                "title": title
-            }
+            return {"message": "Title generated successfully", "title": title}
         else:
             raise HTTPException(
-                status_code=500,
-                detail="Title generation failed. Check server logs for details."
+                status_code=500, detail="Title generation failed. Check server logs for details."
             )
     except HTTPException:
         raise

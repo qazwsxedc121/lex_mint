@@ -71,16 +71,30 @@ def test_record_round_activity_tracks_stalled_web_research():
     runner = ToolLoopRunner(max_tool_rounds=5)
     state = ToolLoopState(current_messages=[], web_research_enabled=True, max_tool_rounds=5)
 
-    first_round_calls = [{"name": "web_search", "args": {"query": "1928 olympics athletes"}, "id": "call_1"}]
-    first_round_results = [{"name": "web_search", "result": '{"ok": true, "results": []}', "tool_call_id": "call_1"}]
-    runner.record_round_activity(state, round_tool_calls=first_round_calls, tool_results=first_round_results)
+    first_round_calls = [
+        {"name": "web_search", "args": {"query": "1928 olympics athletes"}, "id": "call_1"}
+    ]
+    first_round_results = [
+        {"name": "web_search", "result": '{"ok": true, "results": []}', "tool_call_id": "call_1"}
+    ]
+    runner.record_round_activity(
+        state, round_tool_calls=first_round_calls, tool_results=first_round_results
+    )
 
     assert state.no_progress_rounds == 0
 
-    duplicate_calls = [{"name": "web_search", "args": {"query": "1928 olympics athletes"}, "id": "call_2"}]
-    duplicate_results = [{"name": "web_search", "result": '{"ok": true, "results": []}', "tool_call_id": "call_2"}]
-    runner.record_round_activity(state, round_tool_calls=duplicate_calls, tool_results=duplicate_results)
-    runner.record_round_activity(state, round_tool_calls=duplicate_calls, tool_results=duplicate_results)
+    duplicate_calls = [
+        {"name": "web_search", "args": {"query": "1928 olympics athletes"}, "id": "call_2"}
+    ]
+    duplicate_results = [
+        {"name": "web_search", "result": '{"ok": true, "results": []}', "tool_call_id": "call_2"}
+    ]
+    runner.record_round_activity(
+        state, round_tool_calls=duplicate_calls, tool_results=duplicate_results
+    )
+    runner.record_round_activity(
+        state, round_tool_calls=duplicate_calls, tool_results=duplicate_results
+    )
 
     assert state.no_progress_rounds == 2
 

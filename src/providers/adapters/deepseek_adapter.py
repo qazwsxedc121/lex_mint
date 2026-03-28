@@ -3,13 +3,16 @@ DeepSeek SDK Adapter
 
 Adapter for DeepSeek API with proper reasoning_content support.
 """
+
 import logging
-from typing import AsyncIterator, List, Dict, Any
+from collections.abc import AsyncIterator
+from typing import Any
+
 from langchain_core.messages import BaseMessage
 from langchain_deepseek import ChatDeepSeek
 
 from ..base import BaseLLMAdapter
-from ..types import StreamChunk, LLMResponse, TokenUsage
+from ..types import LLMResponse, StreamChunk, TokenUsage
 from .reasoning_openai import inject_tool_call_reasoning_content
 from .utils import extract_tool_calls
 
@@ -58,7 +61,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
         temperature: float = 0.7,
         streaming: bool = True,
         thinking_enabled: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         Create a ChatDeepSeek instance.
@@ -75,7 +78,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
         Returns:
             ChatDeepSeek instance
         """
-        llm_kwargs: Dict[str, Any] = {
+        llm_kwargs: dict[str, Any] = {
             "model": model,
             "api_key": api_key,
             "api_base": base_url,
@@ -102,7 +105,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
             llm_kwargs["max_tokens"] = kwargs["max_tokens"]
 
         # Add sampling parameters via model_kwargs.
-        extra_model_kwargs: Dict[str, Any] = {}
+        extra_model_kwargs: dict[str, Any] = {}
         for key in ["top_p", "frequency_penalty", "presence_penalty"]:
             if key in kwargs:
                 extra_model_kwargs[key] = kwargs[key]
@@ -118,10 +121,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
         return llm
 
     async def stream(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
+        self, llm, messages: list[BaseMessage], **kwargs
     ) -> AsyncIterator[StreamChunk]:
         """
         Stream responses from DeepSeek.
@@ -140,12 +140,12 @@ class DeepSeekAdapter(BaseLLMAdapter):
         usage_data = None
 
         async for chunk in llm.astream(messages):
-            content = chunk.content if hasattr(chunk, 'content') else ""
+            content = chunk.content if hasattr(chunk, "content") else ""
             thinking = ""
 
             # DeepSeek returns reasoning_content in additional_kwargs
-            if hasattr(chunk, 'additional_kwargs'):
-                thinking = chunk.additional_kwargs.get('reasoning_content', '')
+            if hasattr(chunk, "additional_kwargs"):
+                thinking = chunk.additional_kwargs.get("reasoning_content", "")
 
             # Extract usage from chunk (usually only in final chunk)
             extracted = TokenUsage.extract_from_chunk(chunk)
@@ -160,12 +160,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
                 raw=chunk,
             )
 
-    async def invoke(
-        self,
-        llm,
-        messages: List[BaseMessage],
-        **kwargs
-    ) -> LLMResponse:
+    async def invoke(self, llm, messages: list[BaseMessage], **kwargs) -> LLMResponse:
         """
         Invoke DeepSeek and get complete response.
 
@@ -180,12 +175,12 @@ class DeepSeekAdapter(BaseLLMAdapter):
         response = await llm.ainvoke(messages)
 
         thinking = ""
-        if hasattr(response, 'additional_kwargs'):
-            thinking = response.additional_kwargs.get('reasoning_content', '')
+        if hasattr(response, "additional_kwargs"):
+            thinking = response.additional_kwargs.get("reasoning_content", "")
 
         usage = None
-        if hasattr(response, 'response_metadata'):
-            raw_usage = response.response_metadata.get('usage')
+        if hasattr(response, "response_metadata"):
+            raw_usage = response.response_metadata.get("usage")
             usage = TokenUsage.from_dict(raw_usage)
 
         return LLMResponse(
@@ -199,21 +194,15 @@ class DeepSeekAdapter(BaseLLMAdapter):
         """DeepSeek supports thinking mode."""
         return True
 
-    def get_thinking_params(self, effort: str = "medium") -> Dict[str, Any]:
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
         """
         Get parameters for DeepSeek thinking mode.
 
         Note: DeepSeek doesn't use effort levels, it's either enabled or disabled.
         """
-        return {
-            "extra_body": {"thinking": {"type": "enabled"}}
-        }
+        return {"extra_body": {"thinking": {"type": "enabled"}}}
 
-    async def fetch_models(
-        self,
-        base_url: str,
-        api_key: str
-    ) -> List[Dict[str, str]]:
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
         """
         DeepSeek doesn't support model listing API.
 

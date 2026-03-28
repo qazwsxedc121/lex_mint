@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import uuid
-from datetime import datetime, timezone
 import inspect
-from typing import Any, Awaitable, Dict, Literal, Optional, cast
+import uuid
+from collections.abc import Awaitable
+from datetime import datetime, timezone
+from typing import Any, Literal, cast
 
 from src.application.workflows import WorkflowExecutionService
-
 from src.domain.models.async_run import AsyncRunRecord
+from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 from src.infrastructure.storage.async_run_store_service import AsyncRunStoreService
+
 from .flow_event_emitter import FlowEventEmitter
 from .flow_event_types import STREAM_ENDED
 from .flow_stream_runtime import FlowStreamRuntime
-from src.infrastructure.config.workflow_config_service import WorkflowConfigService
 from .workflow_flow_event_mapper import map_workflow_event_to_flow_payload
 
 
@@ -26,30 +27,30 @@ class AsyncRunService:
     def __init__(
         self,
         *,
-        store: Optional[AsyncRunStoreService] = None,
-        runtime: Optional[FlowStreamRuntime] = None,
-        workflow_config_service: Optional[WorkflowConfigService] = None,
-        workflow_execution_service: Optional[WorkflowExecutionService] = None,
+        store: AsyncRunStoreService | None = None,
+        runtime: FlowStreamRuntime | None = None,
+        workflow_config_service: WorkflowConfigService | None = None,
+        workflow_execution_service: WorkflowExecutionService | None = None,
     ):
         self.store = store or AsyncRunStoreService()
         self.runtime = runtime or FlowStreamRuntime()
         self.workflow_config_service = workflow_config_service or WorkflowConfigService()
         self.workflow_execution_service = workflow_execution_service or WorkflowExecutionService()
 
-        self._tasks: Dict[str, asyncio.Task[Any]] = {}
-        self._cancel_flags: Dict[str, asyncio.Event] = {}
+        self._tasks: dict[str, asyncio.Task[Any]] = {}
+        self._cancel_flags: dict[str, asyncio.Event] = {}
 
     async def create_workflow_run(
         self,
         *,
         workflow_id: str,
-        inputs: Dict[str, Any],
-        session_id: Optional[str] = None,
+        inputs: dict[str, Any],
+        session_id: str | None = None,
         context_type: Literal["workflow", "chat", "project"] = "workflow",
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         stream_mode: str = "default",
-        artifact_target_path: Optional[str] = None,
-        write_mode: Optional[Literal["none", "create", "overwrite"]] = None,
+        artifact_target_path: str | None = None,
+        write_mode: Literal["none", "create", "overwrite"] | None = None,
     ) -> AsyncRunRecord:
         """Create one background workflow run and return the queued record."""
         workflow = await self.workflow_config_service.get_workflow(workflow_id)
@@ -149,7 +150,7 @@ class AsyncRunService:
         self,
         run_id: str,
         *,
-        checkpoint_id: Optional[str] = None,
+        checkpoint_id: str | None = None,
     ) -> AsyncRunRecord:
         """Resume one workflow run from latest or explicit checkpoint."""
         record = await self.store.get_run(run_id)
@@ -221,7 +222,7 @@ class AsyncRunService:
         task.add_done_callback(lambda _task: self._cleanup_task(run_id))
         return record
 
-    async def get_run(self, run_id: str) -> Optional[AsyncRunRecord]:
+    async def get_run(self, run_id: str) -> AsyncRunRecord | None:
         return await self.store.get_run(run_id)
 
     async def reconcile_orphaned_runs(self, runs: list[AsyncRunRecord]) -> list[AsyncRunRecord]:
@@ -243,15 +244,15 @@ class AsyncRunService:
         *,
         record: AsyncRunRecord,
         workflow_id: str,
-        inputs: Dict[str, Any],
-        session_id: Optional[str],
+        inputs: dict[str, Any],
+        session_id: str | None,
         context_type: Literal["workflow", "chat", "project"],
-        project_id: Optional[str],
+        project_id: str | None,
         stream_mode: str,
-        artifact_target_path: Optional[str],
-        write_mode: Optional[Literal["none", "create", "overwrite"]],
+        artifact_target_path: str | None,
+        write_mode: Literal["none", "create", "overwrite"] | None,
         cancel_flag: asyncio.Event,
-        resume_from_checkpoint_id: Optional[str] = None,
+        resume_from_checkpoint_id: str | None = None,
     ) -> None:
         if cancel_flag.is_set():
             record.status = "cancelled"
@@ -284,8 +285,8 @@ class AsyncRunService:
         )
 
         terminal_emitted = False
-        final_output: Optional[str] = None
-        final_error: Optional[str] = None
+        final_output: str | None = None
+        final_error: str | None = None
         stream = self.workflow_execution_service.execute_stream(
             workflow,
             inputs,
@@ -324,7 +325,9 @@ class AsyncRunService:
                     event_type = str(flow_event.get("event_type") or "")
                     if event_type == "stream_error":
                         record.status = "failed"
-                        final_error = str(flow_event.get("payload", {}).get("error") or "run failed")
+                        final_error = str(
+                            flow_event.get("payload", {}).get("error") or "run failed"
+                        )
                         terminal_emitted = True
                         break
                     if event_type == "workflow_run_finished":
@@ -385,7 +388,10 @@ class AsyncRunService:
                 has_stream_ended = False
                 for payload in reversed(events):
                     flow_event = payload.get("flow_event")
-                    if isinstance(flow_event, dict) and flow_event.get("event_type") == STREAM_ENDED:
+                    if (
+                        isinstance(flow_event, dict)
+                        and flow_event.get("event_type") == STREAM_ENDED
+                    ):
                         has_stream_ended = True
                         break
                 if not has_stream_ended:
@@ -394,7 +400,7 @@ class AsyncRunService:
                     self._sync_record_cursor(record, ended_payload)
                     await self.store.save_run(record)
 
-    def _sync_record_cursor(self, record: AsyncRunRecord, payload: Dict[str, Any]) -> None:
+    def _sync_record_cursor(self, record: AsyncRunRecord, payload: dict[str, Any]) -> None:
         flow_event = payload.get("flow_event")
         if not isinstance(flow_event, dict):
             return

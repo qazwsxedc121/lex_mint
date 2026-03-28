@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import re
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-
 
 _KEY_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
 _TEMPLATE_VAR_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}")
@@ -22,14 +21,14 @@ class WorkflowInputDef(BaseModel):
     key: str = Field(..., pattern=_KEY_PATTERN)
     type: Literal["string", "number", "boolean", "node"] = "string"
     required: bool = False
-    default: Optional[Union[str, int, float, bool]] = None
-    description: Optional[str] = None
-    allow_file_insert: Optional[bool] = None
-    max_length: Optional[int] = Field(default=None, ge=1, le=200000)
-    pattern: Optional[str] = None
+    default: str | int | float | bool | None = None
+    description: str | None = None
+    allow_file_insert: bool | None = None
+    max_length: int | None = Field(default=None, ge=1, le=200000)
+    pattern: str | None = None
 
     @model_validator(mode="after")
-    def validate_default_type(self) -> "WorkflowInputDef":
+    def validate_default_type(self) -> WorkflowInputDef:
         """Ensure default values match configured input type."""
         if self.default is None:
             return self
@@ -66,13 +65,9 @@ class WorkflowInputDef(BaseModel):
                 try:
                     compiled = re.compile(self.pattern)
                 except re.error as exc:
-                    raise ValueError(
-                        f"Input '{self.key}' has invalid pattern: {exc}"
-                    ) from exc
+                    raise ValueError(f"Input '{self.key}' has invalid pattern: {exc}") from exc
                 if not compiled.fullmatch(self.default):
-                    raise ValueError(
-                        f"Input '{self.key}' default does not match pattern"
-                    )
+                    raise ValueError(f"Input '{self.key}' default does not match pattern")
 
         return self
 
@@ -91,14 +86,14 @@ class LlmNode(BaseModel):
     id: str = Field(..., pattern=_KEY_PATTERN)
     type: Literal["llm"]
     prompt_template: str
-    model_id: Optional[str] = None
-    system_prompt: Optional[str] = None
-    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(default=None, ge=1)
-    timeout_ms: Optional[int] = Field(default=None, ge=1, le=900000)
-    retry_count: Optional[int] = Field(default=None, ge=0, le=10)
-    retry_backoff_ms: Optional[int] = Field(default=None, ge=0, le=120000)
-    output_key: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
+    model_id: str | None = None
+    system_prompt: str | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, ge=1)
+    timeout_ms: int | None = Field(default=None, ge=1, le=900000)
+    retry_count: int | None = Field(default=None, ge=0, le=10)
+    retry_backoff_ms: int | None = Field(default=None, ge=0, le=120000)
+    output_key: str | None = Field(default=None, pattern=_KEY_PATTERN)
     next_id: str = Field(..., pattern=_KEY_PATTERN)
 
     @field_validator("prompt_template")
@@ -133,7 +128,7 @@ class EndNode(BaseModel):
 
     id: str = Field(..., pattern=_KEY_PATTERN)
     type: Literal["end"]
-    result_template: Optional[str] = None
+    result_template: str | None = None
 
 
 class ArtifactNode(BaseModel):
@@ -144,7 +139,7 @@ class ArtifactNode(BaseModel):
     file_path_template: str
     content_template: str = "{{ctx.last_output}}"
     write_mode: Literal["create", "overwrite"] = "overwrite"
-    output_key: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
+    output_key: str | None = Field(default=None, pattern=_KEY_PATTERN)
     next_id: str = Field(..., pattern=_KEY_PATTERN)
 
     @field_validator("file_path_template")
@@ -165,7 +160,7 @@ class ArtifactNode(BaseModel):
 
 
 WorkflowNode = Annotated[
-    Union[StartNode, LlmNode, ConditionNode, ArtifactNode, EndNode],
+    StartNode | LlmNode | ConditionNode | ArtifactNode | EndNode,
     Field(discriminator="type"),
 ]
 
@@ -174,14 +169,14 @@ class WorkflowBase(BaseModel):
     """Shared workflow fields."""
 
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     enabled: bool = True
     scenario: Literal["general", "editor_rewrite", "project_pipeline"] = "general"
     is_system: bool = False
-    template_version: Optional[int] = Field(default=None, ge=1)
-    input_schema: List[WorkflowInputDef] = Field(default_factory=list)
+    template_version: int | None = Field(default=None, ge=1)
+    input_schema: list[WorkflowInputDef] = Field(default_factory=list)
     entry_node_id: str = Field(..., pattern=_KEY_PATTERN)
-    nodes: List[WorkflowNode] = Field(default_factory=list)
+    nodes: list[WorkflowNode] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -193,7 +188,7 @@ class WorkflowBase(BaseModel):
 
     @field_validator("input_schema")
     @classmethod
-    def validate_unique_input_keys(cls, value: List[WorkflowInputDef]) -> List[WorkflowInputDef]:
+    def validate_unique_input_keys(cls, value: list[WorkflowInputDef]) -> list[WorkflowInputDef]:
         seen = set()
         for item in value:
             key_lower = item.key.lower()
@@ -203,14 +198,14 @@ class WorkflowBase(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_graph(self) -> "WorkflowBase":
+    def validate_graph(self) -> WorkflowBase:
         if not self.nodes:
             raise ValueError("Workflow must include at least one node")
 
         node_ids: set[str] = set()
         input_keys = {item.key for item in self.input_schema}
         node_by_id: dict[str, WorkflowNode] = {}
-        adjacency: dict[str, List[str]] = {}
+        adjacency: dict[str, list[str]] = {}
         has_start = False
         has_end = False
 
@@ -234,12 +229,10 @@ class WorkflowBase(BaseModel):
 
         entry_node = node_by_id[self.entry_node_id]
         if not isinstance(entry_node, StartNode):
-            raise ValueError(
-                f"entry_node_id '{self.entry_node_id}' must reference a start node"
-            )
+            raise ValueError(f"entry_node_id '{self.entry_node_id}' must reference a start node")
 
         for node in self.nodes:
-            targets: List[str] = []
+            targets: list[str] = []
             if isinstance(node, StartNode):
                 targets = [node.next_id]
             elif isinstance(node, LlmNode):
@@ -252,9 +245,7 @@ class WorkflowBase(BaseModel):
 
             for target in targets:
                 if target not in node_ids:
-                    raise ValueError(
-                        f"Node '{node.id}' references missing next node '{target}'"
-                    )
+                    raise ValueError(f"Node '{node.id}' references missing next node '{target}'")
 
         self._validate_reachability(adjacency, node_ids)
         self._validate_acyclic(adjacency, node_ids)
@@ -263,7 +254,7 @@ class WorkflowBase(BaseModel):
 
         return self
 
-    def _validate_reachability(self, adjacency: Dict[str, List[str]], node_ids: set[str]) -> None:
+    def _validate_reachability(self, adjacency: dict[str, list[str]], node_ids: set[str]) -> None:
         reachable: set[str] = set()
         stack = [self.entry_node_id]
 
@@ -279,15 +270,14 @@ class WorkflowBase(BaseModel):
         unreachable = sorted(node_ids - reachable)
         if unreachable:
             raise ValueError(
-                "Workflow contains unreachable nodes from entry node: "
-                + ", ".join(unreachable)
+                "Workflow contains unreachable nodes from entry node: " + ", ".join(unreachable)
             )
 
         if not any(isinstance(node, EndNode) and node.id in reachable for node in self.nodes):
             raise ValueError("Workflow entry path must reach at least one end node")
 
-    def _validate_acyclic(self, adjacency: Dict[str, List[str]], node_ids: set[str]) -> None:
-        in_degree: Dict[str, int] = {node_id: 0 for node_id in node_ids}
+    def _validate_acyclic(self, adjacency: dict[str, list[str]], node_ids: set[str]) -> None:
+        in_degree: dict[str, int] = dict.fromkeys(node_ids, 0)
         for targets in adjacency.values():
             for target in targets:
                 in_degree[target] += 1
@@ -310,7 +300,7 @@ class WorkflowBase(BaseModel):
 
     def _validate_template_variables(self, *, input_keys: set[str]) -> None:
         for node in self.nodes:
-            template_fields: List[tuple[str, Optional[str]]] = []
+            template_fields: list[tuple[str, str | None]] = []
 
             if isinstance(node, LlmNode):
                 template_fields.append(("prompt_template", node.prompt_template))
@@ -361,17 +351,13 @@ class WorkflowBase(BaseModel):
             return
 
         if not path.startswith("inputs."):
-            raise ValueError(
-                f"{source} uses unsupported reference '{path}'. Use inputs.* or ctx.*"
-            )
+            raise ValueError(f"{source} uses unsupported reference '{path}'. Use inputs.* or ctx.*")
 
         input_key = path.split(".", maxsplit=2)[1].strip()
         if not input_key:
             raise ValueError(f"{source} contains invalid input reference '{path}'")
         if input_key not in input_keys:
-            raise ValueError(
-                f"{source} references unknown input '{input_key}' (from '{path}')"
-            )
+            raise ValueError(f"{source} references unknown input '{input_key}' (from '{path}')")
 
 
 class Workflow(WorkflowBase):
@@ -385,28 +371,28 @@ class Workflow(WorkflowBase):
 class WorkflowsConfig(BaseModel):
     """Workflow config file schema."""
 
-    workflows: List[Workflow] = Field(default_factory=list)
+    workflows: list[Workflow] = Field(default_factory=list)
 
 
 class WorkflowCreate(WorkflowBase):
     """Workflow create request model."""
 
-    id: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
+    id: str | None = Field(default=None, pattern=_KEY_PATTERN)
 
 
 class WorkflowUpdate(BaseModel):
     """Workflow update request model."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    enabled: Optional[bool] = None
-    scenario: Optional[Literal["general", "editor_rewrite", "project_pipeline"]] = None
-    input_schema: Optional[List[WorkflowInputDef]] = None
-    entry_node_id: Optional[str] = Field(default=None, pattern=_KEY_PATTERN)
-    nodes: Optional[List[WorkflowNode]] = None
+    name: str | None = None
+    description: str | None = None
+    enabled: bool | None = None
+    scenario: Literal["general", "editor_rewrite", "project_pipeline"] | None = None
+    input_schema: list[WorkflowInputDef] | None = None
+    entry_node_id: str | None = Field(default=None, pattern=_KEY_PATTERN)
+    nodes: list[WorkflowNode] | None = None
 
     @model_validator(mode="after")
-    def validate_non_empty(self) -> "WorkflowUpdate":
+    def validate_non_empty(self) -> WorkflowUpdate:
         if not self.model_fields_set:
             raise ValueError("At least one field must be provided for update")
         return self
@@ -421,13 +407,13 @@ class WorkflowRunRecord(BaseModel):
     started_at: datetime
     finished_at: datetime
     duration_ms: int = Field(ge=0)
-    inputs: Dict[str, Any] = Field(default_factory=dict)
-    output: Optional[str] = None
-    node_outputs: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    output: str | None = None
+    node_outputs: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
 
 
 class WorkflowRunHistory(BaseModel):
     """Workflow run history file schema."""
 
-    runs: List[WorkflowRunRecord] = Field(default_factory=list)
+    runs: list[WorkflowRunRecord] = Field(default_factory=list)

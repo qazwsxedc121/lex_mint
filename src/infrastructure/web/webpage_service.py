@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from html.parser import HTMLParser
-import importlib.util
 import html
+import importlib.util
 import ipaddress
 import json
 import logging
@@ -15,20 +13,23 @@ import re
 import socket
 import ssl
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 import yaml
 
-from src.domain.models.search import SearchSource
 from src.core.paths import (
     config_defaults_dir,
     config_local_dir,
     ensure_local_file,
 )
+from src.domain.models.search import SearchSource
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +53,29 @@ URL_PATTERN = re.compile(r"https?://[^\s<>()\"']+", re.IGNORECASE)
 TRAILING_PUNCTUATION = ".,);:]}>\"'"
 
 BLOCK_TAGS = {
-    "p", "div", "br", "hr", "section", "article", "header", "footer",
-    "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "table",
-    "tr", "td", "th", "blockquote", "pre"
+    "p",
+    "div",
+    "br",
+    "hr",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "li",
+    "ul",
+    "ol",
+    "table",
+    "tr",
+    "td",
+    "th",
+    "blockquote",
+    "pre",
 }
 SKIP_TAGS = {"script", "style", "noscript"}
 
@@ -67,7 +88,7 @@ class WebpageConfig:
     max_bytes: int = 3_000_000
     max_content_chars: int = 20_000
     user_agent: str = "lex_mint/1.0"
-    proxy: Optional[str] = None
+    proxy: str | None = None
     trust_env: bool = True
     diagnostics_enabled: bool = True
     diagnostics_timeout_seconds: float = 2.0
@@ -80,15 +101,15 @@ class WebpageResult:
     title: str
     text: str
     truncated: bool
-    error: Optional[str] = None
-    status_code: Optional[int] = None
-    content_type: Optional[str] = None
+    error: str | None = None
+    status_code: int | None = None
+    content_type: str | None = None
 
 
 @dataclass(frozen=True)
 class _FetchAttempt:
     name: str
-    proxy: Optional[str]
+    proxy: str | None
     trust_env: bool
     headers: dict[str, str]
 
@@ -106,15 +127,15 @@ class _FetchedPage:
 class _HTMLTextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self._lines: List[str] = []
-        self._current: List[str] = []
+        self._lines: list[str] = []
+        self._current: list[str] = []
         self._skip_depth = 0
         self._in_title = False
-        self._title_parts: List[str] = []
-        self._meta_title: Optional[str] = None
-        self._meta_description: Optional[str] = None
+        self._title_parts: list[str] = []
+        self._meta_title: str | None = None
+        self._meta_description: str | None = None
 
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag in SKIP_TAGS:
             self._skip_depth += 1
@@ -179,8 +200,8 @@ class _HTMLTextExtractor(HTMLParser):
 class WebpageService:
     """Service for fetching and parsing webpage content."""
 
-    def __init__(self, config_path: Optional[Path] = None) -> None:
-        self.defaults_path: Optional[Path] = None
+    def __init__(self, config_path: Path | None = None) -> None:
+        self.defaults_path: Path | None = None
 
         if config_path is None:
             self.defaults_path = config_defaults_dir() / "webpage_config.yaml"
@@ -215,7 +236,7 @@ class WebpageService:
     def _load_config(self) -> WebpageConfig:
         self._ensure_config_exists()
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             page_data = data.get("webpage", {})
             return WebpageConfig(
@@ -228,7 +249,9 @@ class WebpageService:
                 proxy=self._normalize_proxy(page_data.get("proxy")),
                 trust_env=bool(page_data.get("trust_env", True)),
                 diagnostics_enabled=bool(page_data.get("diagnostics_enabled", True)),
-                diagnostics_timeout_seconds=float(page_data.get("diagnostics_timeout_seconds", 2.0)),
+                diagnostics_timeout_seconds=float(
+                    page_data.get("diagnostics_timeout_seconds", 2.0)
+                ),
             )
         except Exception as e:
             logger.warning(f"Failed to load webpage config: {e}")
@@ -237,7 +260,7 @@ class WebpageService:
     def save_config(self, updates: dict) -> None:
         self._ensure_config_exists()
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception:
             data = {}
@@ -256,12 +279,12 @@ class WebpageService:
 
         self.config = self._load_config()
 
-    def extract_urls(self, text: str) -> List[str]:
+    def extract_urls(self, text: str) -> list[str]:
         if not text:
             return []
         matches = URL_PATTERN.findall(text)
         seen = set()
-        urls: List[str] = []
+        urls: list[str] = []
         for match in matches:
             url = match.strip().strip(TRAILING_PUNCTUATION)
             url = url.rstrip(TRAILING_PUNCTUATION)
@@ -275,7 +298,7 @@ class WebpageService:
                 break
         return urls
 
-    async def build_context(self, text: str) -> Tuple[Optional[str], List[SearchSource]]:
+    async def build_context(self, text: str) -> tuple[str | None, list[SearchSource]]:
         if not self.config.enabled:
             return None, []
         urls = self.extract_urls(text)
@@ -287,7 +310,7 @@ class WebpageService:
             return None, []
 
         context_lines = ["Webpage content (use for grounding; cite sources by URL):"]
-        sources: List[SearchSource] = []
+        sources: list[SearchSource] = []
 
         for index, result in enumerate(results, start=1):
             label = self._label_for_result(result)
@@ -301,7 +324,9 @@ class WebpageService:
             context_lines.append("Content:")
             context_lines.append(result.text)
             if result.truncated:
-                context_lines.append(f"[Content truncated to {self.config.max_content_chars} chars]")
+                context_lines.append(
+                    f"[Content truncated to {self.config.max_content_chars} chars]"
+                )
 
             snippet = result.text.replace("\n", " ").strip()
             if len(snippet) > 200:
@@ -333,7 +358,7 @@ class WebpageService:
 
         return "\n".join(context_lines).strip(), sources
 
-    async def _fetch_urls(self, urls: List[str]) -> List[WebpageResult]:
+    async def _fetch_urls(self, urls: list[str]) -> list[WebpageResult]:
         tasks = [self.fetch_and_parse(url) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=False)
         return [r for r in results if r]
@@ -357,8 +382,8 @@ class WebpageService:
         http2_enabled = self._http2_supported()
         verify = self._ssl_verify_context()
 
-        fetched: Optional[_FetchedPage] = None
-        last_error: Optional[WebpageResult] = None
+        fetched: _FetchedPage | None = None
+        last_error: WebpageResult | None = None
         attempts = self._build_fetch_attempts(url=url, headers=headers, proxy=proxy)
         for attempt in attempts:
             candidate = await self._fetch_once(
@@ -577,9 +602,9 @@ class WebpageService:
         *,
         url: str,
         headers: dict[str, str],
-        proxy: Optional[str],
-    ) -> List[_FetchAttempt]:
-        attempts: List[_FetchAttempt] = []
+        proxy: str | None,
+    ) -> list[_FetchAttempt]:
+        attempts: list[_FetchAttempt] = []
 
         if self._is_wikimedia_url(url):
             direct_headers = dict(headers)
@@ -603,8 +628,8 @@ class WebpageService:
             )
         )
 
-        deduped: List[_FetchAttempt] = []
-        seen: set[tuple[Optional[str], bool]] = set()
+        deduped: list[_FetchAttempt] = []
+        seen: set[tuple[str | None, bool]] = set()
         for attempt in attempts:
             key = (attempt.proxy, attempt.trust_env)
             if key in seen:
@@ -617,7 +642,7 @@ class WebpageService:
     def _should_try_curl_impersonation(
         *,
         url: str,
-        last_error: Optional[WebpageResult],
+        last_error: WebpageResult | None,
     ) -> bool:
         if WebpageService._is_wikimedia_url(url):
             return True
@@ -633,7 +658,7 @@ class WebpageService:
         self,
         *,
         url: str,
-        proxy: Optional[str],
+        proxy: str | None,
         timeout_seconds: float,
     ) -> _FetchedPage | WebpageResult | None:
         curl_client = curl_requests
@@ -729,7 +754,7 @@ class WebpageService:
             return True
         return False
 
-    def _extract_text(self, html_text: str, content_type: str) -> Tuple[str, str, str]:
+    def _extract_text(self, html_text: str, content_type: str) -> tuple[str, str, str]:
         if self._is_json_content_type(content_type):
             return self._extract_json_text(html_text)
         if "text/html" in content_type:
@@ -740,7 +765,7 @@ class WebpageService:
                         output_format="txt",
                         include_comments=False,
                         include_tables=False,
-                        include_images=False
+                        include_images=False,
                     )
                     if extracted:
                         logger.info("[Webpage] Extractor=trafilatura text_len=%s", len(extracted))
@@ -776,7 +801,7 @@ class WebpageService:
         return False
 
     @staticmethod
-    def _extract_json_text(raw_text: str) -> Tuple[str, str, str]:
+    def _extract_json_text(raw_text: str) -> tuple[str, str, str]:
         try:
             payload = json.loads(raw_text)
         except Exception:
@@ -863,7 +888,7 @@ class WebpageService:
         return " (" + ", ".join(parts) + ")"
 
     @staticmethod
-    def _normalize_proxy(value: object) -> Optional[str]:
+    def _normalize_proxy(value: object) -> str | None:
         if not value:
             return None
         if isinstance(value, str):
@@ -871,7 +896,7 @@ class WebpageService:
             return proxy or None
         return None
 
-    def _resolve_proxy(self) -> Optional[str]:
+    def _resolve_proxy(self) -> str | None:
         return self.config.proxy or None
 
     @staticmethod
@@ -903,7 +928,7 @@ class WebpageService:
         port = 443 if scheme == "https" else 80
         timeout = self._diagnostics_timeout()
 
-        parts: List[str] = []
+        parts: list[str] = []
         proxy_env = self._proxy_env_summary()
         proxy_cfg = self._resolve_proxy()
         if proxy_cfg:
@@ -914,7 +939,7 @@ class WebpageService:
         else:
             parts.append("proxy_env=none")
 
-        ips: List[str] = []
+        ips: list[str] = []
         try:
             loop = asyncio.get_running_loop()
             infos = await asyncio.wait_for(
@@ -982,8 +1007,8 @@ class WebpageService:
             value = 2.0
         return max(0.5, min(value, 5.0))
 
-    async def _proxy_diagnostics(self, proxy_url: str, timeout: float) -> List[str]:
-        parts: List[str] = []
+    async def _proxy_diagnostics(self, proxy_url: str, timeout: float) -> list[str]:
+        parts: list[str] = []
         parsed = urlparse(proxy_url)
         host = parsed.hostname or ""
         if not host:
@@ -992,7 +1017,7 @@ class WebpageService:
         scheme = parsed.scheme or "http"
         port = parsed.port or (443 if scheme == "https" else 80)
 
-        ips: List[str] = []
+        ips: list[str] = []
         try:
             loop = asyncio.get_running_loop()
             infos = await asyncio.wait_for(
@@ -1076,7 +1101,13 @@ class WebpageService:
             return False
         try:
             ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+            ):
                 return False
         except ValueError:
             pass

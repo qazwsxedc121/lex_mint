@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Union
+from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
+from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.files.file_service import FileService
 from src.llm_runtime.stream_call_policy import (
     build_stream_kwargs,
     select_stream_llm,
     should_allow_responses_fallback,
 )
 from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
-from src.infrastructure.config.model_config_service import ModelConfigService
-from src.infrastructure.files.file_service import FileService
 from src.providers.types import CallMode, TokenUsage
 from src.utils.llm_logger import get_llm_logger
 
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 ModelServiceFactory = Callable[[], ModelConfigService]
 LoggerFactory = Callable[[], Any]
-ToolExecutor = Callable[[str, Dict[str, Any]], Union[Optional[str], Awaitable[Optional[str]]]]
+ToolExecutor = Callable[[str, dict[str, Any]], str | None | Awaitable[str | None]]
 
 
 @dataclass(frozen=True)
@@ -54,21 +55,21 @@ class StreamingRuntime:
     actual_model_id: str
     effective_call_mode: CallMode
     allow_responses_fallback: bool
-    request_params: Dict[str, Any]
+    request_params: dict[str, Any]
     reasoning_decision: ReasoningDecision
 
 
 def _resolve_streaming_runtime(
     *,
-    model_id: Optional[str],
+    model_id: str | None,
     session_id: str,
-    temperature: Optional[float],
-    max_tokens: Optional[int],
-    top_p: Optional[float],
-    top_k: Optional[int],
-    frequency_penalty: Optional[float],
-    presence_penalty: Optional[float],
-    reasoning_effort: Optional[str],
+    temperature: float | None,
+    max_tokens: int | None,
+    top_p: float | None,
+    top_k: int | None,
+    frequency_penalty: float | None,
+    presence_penalty: float | None,
+    reasoning_effort: str | None,
     model_service_factory: ModelServiceFactory,
     llm_logger_factory: LoggerFactory,
 ) -> StreamingRuntime:
@@ -80,9 +81,7 @@ def _resolve_streaming_runtime(
     adapter = model_service.get_adapter_for_provider(provider_config)
     resolved_call_mode = model_service.resolve_effective_call_mode(provider_config)
     effective_call_mode = (
-        resolved_call_mode
-        if isinstance(resolved_call_mode, CallMode)
-        else CallMode.AUTO
+        resolved_call_mode if isinstance(resolved_call_mode, CallMode) else CallMode.AUTO
     )
     allow_responses_fallback = should_allow_responses_fallback(effective_call_mode)
 
@@ -94,7 +93,7 @@ def _resolve_streaming_runtime(
     reasoning_controls = getattr(capabilities, "reasoning_controls", None)
 
     api_key = model_service.resolve_provider_api_key_sync(provider_config)
-    extra_params: Dict[str, Any] = {}
+    extra_params: dict[str, Any] = {}
     for param_name, param_value in {
         "max_tokens": max_tokens,
         "top_p": top_p,
@@ -158,25 +157,25 @@ def _resolve_streaming_runtime(
 
 
 async def call_llm_stream(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     session_id: str = "unknown",
-    model_id: Optional[str] = None,
-    system_prompt: Optional[str] = None,
-    context_segments: Optional[Dict[str, Optional[str]]] = None,
-    max_rounds: Optional[int] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    top_p: Optional[float] = None,
-    top_k: Optional[int] = None,
-    frequency_penalty: Optional[float] = None,
-    presence_penalty: Optional[float] = None,
-    reasoning_effort: Optional[str] = None,
-    file_service: Optional[FileService] = None,
-    tools: Optional[List] = None,
-    tool_executor: Optional[ToolExecutor] = None,
+    model_id: str | None = None,
+    system_prompt: str | None = None,
+    context_segments: dict[str, str | None] | None = None,
+    max_rounds: int | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    frequency_penalty: float | None = None,
+    presence_penalty: float | None = None,
+    reasoning_effort: str | None = None,
+    file_service: FileService | None = None,
+    tools: list | None = None,
+    tool_executor: ToolExecutor | None = None,
     model_service_factory: ModelServiceFactory = ModelConfigService,
     llm_logger_factory: LoggerFactory = get_llm_logger,
-) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+) -> AsyncIterator[str | dict[str, Any]]:
     """Streaming LLM call, yielding text chunks and final metadata events."""
     runtime = _resolve_streaming_runtime(
         model_id=model_id,
@@ -240,7 +239,7 @@ async def call_llm_stream(
         context_budget_tokens=max_input_tokens,
     )
 
-    langchain_messages: List[BaseMessage] = [
+    langchain_messages: list[BaseMessage] = [
         SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
         for segment in context_plan.system_segments
     ]
@@ -297,7 +296,7 @@ async def call_llm_stream(
 
         full_response = ""
         full_reasoning = ""
-        final_usage: Optional[TokenUsage] = None
+        final_usage: TokenUsage | None = None
 
         latest_user_text = ""
         for raw_msg in reversed(messages):
@@ -326,7 +325,7 @@ async def call_llm_stream(
         while True:
             in_thinking_phase = False
             thinking_ended = False
-            thinking_start_time: Optional[float] = None
+            thinking_start_time: float | None = None
             round_content = ""
             round_reasoning = ""
             round_reasoning_details: Any = None
@@ -363,7 +362,11 @@ async def call_llm_stream(
                 if chunk.content:
                     if in_thinking_phase and not thinking_ended:
                         thinking_ended = True
-                        duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                        duration_ms = (
+                            int((time.time() - thinking_start_time) * 1000)
+                            if thinking_start_time
+                            else 0
+                        )
                         yield "</think>"
                         yield {"type": "thinking_duration", "duration_ms": duration_ms}
                     round_content += chunk.content
@@ -371,7 +374,9 @@ async def call_llm_stream(
 
                 if chunk.raw is not None:
                     try:
-                        merged_chunk = chunk.raw if merged_chunk is None else merged_chunk + chunk.raw
+                        merged_chunk = (
+                            chunk.raw if merged_chunk is None else merged_chunk + chunk.raw
+                        )
                     except Exception:
                         pass
 
@@ -399,7 +404,9 @@ async def call_llm_stream(
             )
 
             if in_thinking_phase and not thinking_ended:
-                duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                duration_ms = (
+                    int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                )
                 yield "</think>"
                 yield {"type": "thinking_duration", "duration_ms": duration_ms}
 
@@ -410,9 +417,13 @@ async def call_llm_stream(
                 round_tool_calls=round_tool_calls,
             ):
                 if round_content and full_response.endswith(round_content):
-                    full_response = full_response[:-len(round_content)]
-                print("[TOOLS] Evidence request detected, asking model to call read_knowledge before final answer")
-                logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
+                    full_response = full_response[: -len(round_content)]
+                print(
+                    "[TOOLS] Evidence request detected, asking model to call read_knowledge before final answer"
+                )
+                logger.info(
+                    "Injecting read_knowledge compensation prompt for evidence-focused request"
+                )
                 tool_loop_runner.apply_read_compensation_prompt(tool_loop_state)
                 continue
 
@@ -421,7 +432,7 @@ async def call_llm_stream(
                 round_tool_calls=round_tool_calls,
             ):
                 if round_content and full_response.endswith(round_content):
-                    full_response = full_response[:-len(round_content)]
+                    full_response = full_response[: -len(round_content)]
                 print("[TOOLS] Web research needs a webpage read before final answer")
                 logger.info("Injecting read_webpage compensation prompt for web research request")
                 tool_loop_runner.apply_web_read_compensation_prompt(tool_loop_state)
@@ -440,11 +451,15 @@ async def call_llm_stream(
                 round_reasoning=round_reasoning,
                 round_reasoning_details=round_reasoning_details,
             ):
-                print(f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping")
+                print(
+                    f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping"
+                )
                 logger.warning("Max tool call rounds reached")
                 continue
 
-            print(f"[TOOLS] Round {tool_loop_state.tool_round}: executing {len(round_tool_calls)} tool(s)")
+            print(
+                f"[TOOLS] Round {tool_loop_state.tool_round}: executing {len(round_tool_calls)} tool(s)"
+            )
             logger.info(
                 "Tool call round %s: %s",
                 tool_loop_state.tool_round,
@@ -492,11 +507,13 @@ async def call_llm_stream(
         if full_reasoning:
             print(f"[THINK] Reasoning content length: {len(full_reasoning)} chars")
         if final_usage:
-            print(f"[USAGE] Tokens: {final_usage.prompt_tokens} in / {final_usage.completion_tokens} out")
+            print(
+                f"[USAGE] Tokens: {final_usage.prompt_tokens} in / {final_usage.completion_tokens} out"
+            )
         logger.info("Streaming complete: %s chars", len(full_response))
 
         response_msg = AIMessage(content=full_response)
-        log_extra_params: Dict[str, Any] = {
+        log_extra_params: dict[str, Any] = {
             "request_params": runtime.request_params,
             "call_mode": runtime.effective_call_mode.value,
             "responses_fallback_enabled": runtime.allow_responses_fallback,
@@ -507,9 +524,13 @@ async def call_llm_stream(
         elif runtime.reasoning_decision.thinking_enabled:
             log_extra_params["thinking_enabled"] = True
             if runtime.reasoning_decision.effective_reasoning_option:
-                log_extra_params["reasoning_option"] = runtime.reasoning_decision.effective_reasoning_option
+                log_extra_params["reasoning_option"] = (
+                    runtime.reasoning_decision.effective_reasoning_option
+                )
             if runtime.reasoning_decision.effective_reasoning_effort:
-                log_extra_params["reasoning_effort"] = runtime.reasoning_decision.effective_reasoning_effort
+                log_extra_params["reasoning_effort"] = (
+                    runtime.reasoning_decision.effective_reasoning_effort
+                )
         if full_reasoning:
             log_extra_params["reasoning_content"] = full_reasoning
         if final_usage:

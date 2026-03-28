@@ -1,7 +1,5 @@
 """Unit tests for MemoryConfigService."""
 
-from pathlib import Path
-
 from src.infrastructure.config.memory_config_service import MemoryConfigService
 
 

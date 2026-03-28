@@ -57,7 +57,7 @@ async def test_file_service_reads_content_and_rejects_invalid_files(tmp_path: Pa
         await service.validate_file(huge_file)
 
     text_path = tmp_path / "latin1.txt"
-    text_path.write_bytes("hello".encode("utf-8"))
+    text_path.write_bytes(b"hello")
     assert await service.get_file_content(text_path) == "hello"
 
     encoded = await service.get_file_as_base64(text_path)

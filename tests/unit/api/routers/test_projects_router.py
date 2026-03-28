@@ -15,7 +15,13 @@ from src.infrastructure.projects.project_document_tool_service import ProjectDoc
 class _ProjectService:
     def __init__(self):
         self.fail_with: Exception | None = None
-        self.project = {"id": "proj_123", "name": "Demo", "root_path": "/tmp/demo", "description": None, "settings": {}}
+        self.project = {
+            "id": "proj_123",
+            "name": "Demo",
+            "root_path": "/tmp/demo",
+            "description": None,
+            "settings": {},
+        }
 
     def _maybe_raise(self):
         if self.fail_with:
@@ -69,13 +75,29 @@ class _ProjectService:
         self._maybe_raise()
         return {"name": path, "path": path, "type": "directory", "children": []}
 
-    async def write_file(self, project_id: str, path: str, content: str, encoding: str | None, expected_hash: str | None):
+    async def write_file(
+        self,
+        project_id: str,
+        path: str,
+        content: str,
+        encoding: str | None,
+        expected_hash: str | None,
+    ):
         self._maybe_raise()
-        return {"path": path, "content": content, "encoding": encoding or "utf-8", "hash": expected_hash}
+        return {
+            "path": path,
+            "content": content,
+            "encoding": encoding or "utf-8",
+            "hash": expected_hash,
+        }
 
     async def rename_path(self, project_id: str, source_path: str, target_path: str):
         self._maybe_raise()
-        return {"source_path": source_path, "target_path": target_path, "updated_paths": [target_path]}
+        return {
+            "source_path": source_path,
+            "target_path": target_path,
+            "updated_paths": [target_path],
+        }
 
     async def delete_file(self, project_id: str, path: str):
         self._maybe_raise()
@@ -106,7 +128,9 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
     workspace = _WorkspaceService()
     monkeypatch.setattr(projects_router, "get_project_service", lambda: service)
     monkeypatch.setattr(projects_router, "get_project_workspace_state_service", lambda: workspace)
-    monkeypatch.setattr(projects_router.uuid, "uuid4", lambda: SimpleNamespace(hex="abcdef1234567890"))
+    monkeypatch.setattr(
+        projects_router.uuid, "uuid4", lambda: SimpleNamespace(hex="abcdef1234567890")
+    )
     monkeypatch.setattr(
         projects_router,
         "confirm_pending_patch_apply",
@@ -125,7 +149,11 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
     assert projects[0]["id"] == "proj_123"
     assert (await projects_router.list_browse_roots())[0]["name"] == "tmp"
     assert (await projects_router.list_directories(path="/tmp"))[0]["path"] == "/tmp"
-    assert (await projects_router.create_browse_directory(projects_router.BrowseDirectoryCreate(parent_path="/tmp", name="demo")))["name"] == "demo"
+    assert (
+        await projects_router.create_browse_directory(
+            projects_router.BrowseDirectoryCreate(parent_path="/tmp", name="demo")
+        )
+    )["name"] == "demo"
 
     project_root = tmp_path / "demo_project"
     project_root.mkdir()
@@ -135,7 +163,11 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
     assert created.id == "proj_abcdef123456"
 
     assert (await projects_router.get_project("proj_123"))["id"] == "proj_123"
-    assert (await projects_router.update_project("proj_123", projects_router.ProjectUpdate(name="Updated")))["name"] == "Updated"
+    assert (
+        await projects_router.update_project(
+            "proj_123", projects_router.ProjectUpdate(name="Updated")
+        )
+    )["name"] == "Updated"
     await projects_router.delete_project("proj_123")
 
     workspace_state = await projects_router.get_workspace_state("proj_123")
@@ -189,7 +221,9 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
     await projects_router.delete_file("proj_123", path="src/main.py")
     await projects_router.delete_directory("proj_123", path="src/lib", recursive=True)
 
-    search_files = await projects_router.search_project_files("proj_123", query="app", current_file=None, limit=10)
+    search_files = await projects_router.search_project_files(
+        "proj_123", query="app", current_file=None, limit=10
+    )
     assert search_files[0]["score"] == 0.9
     search_text = await projects_router.search_project_text("proj_123", query="match")
     assert search_text["matches"][0]["line"] == 1
@@ -219,10 +253,12 @@ async def test_projects_router_error_mapping(monkeypatch):
 
     service.fail_with = ProjectConflictError("stale", "changed since last read", expected_hash="x")
     with pytest.raises(HTTPException) as exc_info:
-            await projects_router.write_file(
-                "proj_123",
-                projects_router.FileWrite(path="src/app.py", content="x", expected_hash="0123456789abcdef"),
-            )
+        await projects_router.write_file(
+            "proj_123",
+            projects_router.FileWrite(
+                path="src/app.py", content="x", expected_hash="0123456789abcdef"
+            ),
+        )
     assert exc_info.value.status_code == 409
 
     monkeypatch.setattr(

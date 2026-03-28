@@ -1,14 +1,13 @@
 """Unit tests for knowledge base upload persistence helpers."""
 
 import asyncio
-import sys
 import shutil
+import sys
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from fastapi import HTTPException
 
 from src.api.routers import knowledge_base as kb_router
@@ -142,7 +141,9 @@ class _FakeKnowledgeBaseService:
         if doc_id == "missing":
             raise ValueError("missing doc")
 
-    async def update_document_status(self, kb_id: str, doc_id: str, status: str, error_message=None):
+    async def update_document_status(
+        self, kb_id: str, doc_id: str, status: str, error_message=None
+    ):
         self.updated_status = (kb_id, doc_id, status, error_message)
 
 
@@ -176,7 +177,9 @@ async def test_knowledge_base_crud_and_document_routes(monkeypatch, tmp_path):
     assert documents[0].id == "doc1"
 
     monkeypatch.setattr(kb_router.uuid, "uuid4", lambda: "docuuid12")
-    monkeypatch.setattr(kb_router, "_persist_upload_file", lambda *args, **kwargs: asyncio.sleep(0, result=12))
+    monkeypatch.setattr(
+        kb_router, "_persist_upload_file", lambda *args, **kwargs: asyncio.sleep(0, result=12)
+    )
     queued: list[object] = []
 
     def _capture_task(coro):
@@ -260,7 +263,11 @@ async def test_knowledge_base_router_error_mapping_and_chunk_listing(monkeypatch
     monkeypatch.setattr(
         rag_config_module,
         "RagConfigService",
-        lambda: SimpleNamespace(config=SimpleNamespace(storage=SimpleNamespace(vector_store_backend="sqlite_vec", persist_directory="."))),
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(
+                storage=SimpleNamespace(vector_store_backend="sqlite_vec", persist_directory=".")
+            )
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -268,7 +275,14 @@ async def test_knowledge_base_router_error_mapping_and_chunk_listing(monkeypatch
         SimpleNamespace(
             SqliteVecService=lambda: SimpleNamespace(
                 list_chunks=lambda **kwargs: [
-                    {"id": "c1", "kb_id": "kb1", "doc_id": "doc1", "filename": "doc.md", "chunk_index": 1, "content": "chunk"}
+                    {
+                        "id": "c1",
+                        "kb_id": "kb1",
+                        "doc_id": "doc1",
+                        "filename": "doc.md",
+                        "chunk_index": 1,
+                        "content": "chunk",
+                    }
                 ]
             )
         ),
@@ -294,7 +308,13 @@ async def test_knowledge_base_router_error_mapping_and_chunk_listing(monkeypatch
     monkeypatch.setattr(
         rag_config_module,
         "RagConfigService",
-        lambda: SimpleNamespace(config=SimpleNamespace(storage=SimpleNamespace(vector_store_backend="chroma", persist_directory=str(tmp_path)))),
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(
+                storage=SimpleNamespace(
+                    vector_store_backend="chroma", persist_directory=str(tmp_path)
+                )
+            )
+        ),
     )
     chunks = await kb_router.list_chunks("kb1", doc_id="doc1", limit=200, service=service)  # type: ignore[arg-type]
     assert chunks[0].chunk_index == 2
