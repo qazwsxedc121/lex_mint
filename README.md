@@ -4,6 +4,7 @@ Developer-first AI agent workspace built with FastAPI, React, and LangGraph.
 
 [Chinese README](README.zh-CN.md) | [Current Features Summary](docs/current_features_summary.md)
 
+[![CI](https://github.com/qazwsxedc121/lex_mint/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/qazwsxedc121/lex_mint/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
 ![React](https://img.shields.io/badge/React-19-61DAFB)

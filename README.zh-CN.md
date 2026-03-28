@@ -4,6 +4,8 @@
 
 [English README](README.md) | [当前功能总结](docs/current_features_summary.md)
 
+[![CI](https://github.com/qazwsxedc121/lex_mint/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/qazwsxedc121/lex_mint/actions/workflows/ci.yml)
+
 ## 项目亮点
 
 - 对话可读可控：会话以 Markdown 存储，便于备份、同步和版本管理。

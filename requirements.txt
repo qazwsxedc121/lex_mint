@@ -37,6 +37,7 @@ python-docx>=1.0.0
 jieba>=0.42.1
 pytest-asyncio>=0.23.0
 pytest-cov>=7.1.0
+ruff>=0.15.0
 mypy>=1.19.1
 types-PyYAML>=6.0.12
 types-aiofiles>=25.1.0
