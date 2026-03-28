@@ -20,13 +20,17 @@ from ..model_capability_rules import apply_model_capability_hints
 from ..types import LLMResponse, StreamChunk, TokenUsage
 
 try:  # pragma: no cover - optional dependency
-    import lmstudio as lms
-    from lmstudio import history as lm_history
-    from lmstudio.json_api import ToolFunctionDef
+    import lmstudio as _lms
+    from lmstudio import history as _lm_history
+    from lmstudio.json_api import ToolFunctionDef as _ToolFunctionDef
 except Exception:  # pragma: no cover - keep import-time optional
-    lms = SimpleNamespace(AsyncClient=None)
-    lm_history = SimpleNamespace(Chat=None)
-    ToolFunctionDef = None
+    lms: Any = SimpleNamespace(AsyncClient=None)
+    lm_history: Any = SimpleNamespace(Chat=None)
+    ToolFunctionDef: Any = None
+else:
+    lms = _lms
+    lm_history = _lm_history
+    ToolFunctionDef = _ToolFunctionDef
 
 _ToolFunctionDefT = TypeVar("_ToolFunctionDefT")
 
