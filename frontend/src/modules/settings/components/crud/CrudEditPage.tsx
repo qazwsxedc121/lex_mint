@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage } from '../common';
 import { CrudForm } from './CrudForm';
-import type { CrudSettingsConfig, CrudHook, ConfigContext } from '../../config/types';
+import type { ConfigContext, ConfigFormData, ConfigRecord, CrudHook, CrudSettingsConfig } from '../../config/types';
 
 interface CrudEditPageProps<T> {
   /** Page configuration */
@@ -27,15 +27,18 @@ interface CrudEditPageProps<T> {
   backPath: string;
 }
 
-export function CrudEditPage<T = any>({
+export function CrudEditPage<T = unknown>({
   config,
   hook,
   itemId,
   context = {},
-  getItemId = (item: any) => item.id,
+  getItemId = (item: T) => {
+    const id = (item as ConfigRecord).id;
+    return typeof id === 'string' ? id : '';
+  },
   backPath
 }: CrudEditPageProps<T>) {
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<ConfigFormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const navigate = useNavigate();
@@ -50,7 +53,8 @@ export function CrudEditPage<T = any>({
   );
 
   const initializeFormData = useCallback((source?: T) => {
-    const data: any = source ? { ...source } : {};
+    const data: ConfigFormData =
+      source && typeof source === 'object' && source !== null ? { ...(source as ConfigRecord) } : {};
 
     fields.forEach((field) => {
       if (data[field.name] === undefined && 'defaultValue' in field) {
@@ -106,7 +110,7 @@ export function CrudEditPage<T = any>({
 
     try {
       setIsSubmitting(true);
-      await hook.updateItem(itemId, formData);
+      await hook.updateItem(itemId, formData as T);
       navigate(backPath, { replace: true });
     } catch (err) {
       console.error('Submit error:', err);
@@ -150,7 +154,9 @@ export function CrudEditPage<T = any>({
         description={
           typeof pageMeta?.description === 'function'
             ? pageMeta.description(item)
-            : (pageMeta?.description || ((item as any)?.name ? t('crud.editingItem', { name: (item as any).name }) : undefined))
+            : (pageMeta?.description || (typeof (item as ConfigRecord).name === 'string'
+              ? t('crud.editingItem', { name: String((item as ConfigRecord).name) })
+              : undefined))
         }
         actions={(
           <button

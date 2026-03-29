@@ -12,7 +12,7 @@ import { PlusIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage, SettingsHelp } from '../common';
 import { CrudTable } from './CrudTable';
 import { CrudModal } from './CrudModal';
-import type { CrudSettingsConfig, CrudHook, ConfigContext } from '../../config/types';
+import type { ConfigContext, ConfigFormData, ConfigRecord, CrudHook, CrudSettingsConfig } from '../../config/types';
 
 interface CrudSettingsPageProps<T> {
   /** Page configuration */
@@ -25,15 +25,18 @@ interface CrudSettingsPageProps<T> {
   getItemId?: (item: T) => string;
 }
 
-export function CrudSettingsPage<T = any>({
+export function CrudSettingsPage<T = unknown>({
   config,
   hook,
   context = {},
-  getItemId = (item: any) => item.id
+  getItemId = (item: T) => {
+    const id = (item as ConfigRecord).id;
+    return typeof id === 'string' ? id : '';
+  }
 }: CrudSettingsPageProps<T>) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingItem, setEditingItem] = useState<T | null>(null);
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<ConfigFormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -60,7 +63,8 @@ export function CrudSettingsPage<T = any>({
 
   // Initialize form data with defaults
   const initializeFormData = (item?: T) => {
-    const data: any = item ? { ...item } : {};
+    const data: ConfigFormData =
+      item && typeof item === 'object' && item !== null ? { ...(item as ConfigRecord) } : {};
 
     // Set default values from field configs
     fields.forEach((field) => {
@@ -104,7 +108,7 @@ export function CrudSettingsPage<T = any>({
   // Handle delete button
   const handleDelete = async (item: T) => {
     const itemId = getItemId(item);
-    const itemName = (item as any).name || itemId;
+    const itemName = typeof (item as ConfigRecord).name === 'string' ? String((item as ConfigRecord).name) : itemId;
 
     if (!confirm(t('crud.confirmDelete', { name: itemName }))) {
       return;
@@ -140,7 +144,9 @@ export function CrudSettingsPage<T = any>({
 
     setTogglingIds(prev => new Set(prev).add(itemId));
     try {
-      const updated = { ...item, [config.statusKey!]: !(item as any)[config.statusKey!] };
+      const itemRecord = item as ConfigRecord;
+      const currentStatus = Boolean(itemRecord[config.statusKey!]);
+      const updated = { ...itemRecord, [config.statusKey!]: !currentStatus } as T;
       await hook.updateItem(itemId, updated);
     } catch (err) {
       console.error('Toggle status error:', err);
@@ -237,7 +243,7 @@ export function CrudSettingsPage<T = any>({
             {config.globalActions?.map((action) => (
               <button
                 key={action.id}
-                onClick={() => action.onClick(null as any, pageContext)}
+                onClick={() => action.onClick({} as T, pageContext)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md ${
                   action.variant === 'danger'
                     ? 'text-white bg-red-600 hover:bg-red-700'

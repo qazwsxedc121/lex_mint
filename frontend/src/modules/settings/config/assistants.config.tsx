@@ -196,7 +196,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
       get label() { return i18n.t('settings:assistants.col.temperature'); },
       sortable: true,
       hideOnMobile: true,
-      render: (value) => value ?? 0.7
+      render: (value) => (typeof value === 'number' ? value : 0.7)
     },
     {
       key: 'max_rounds',
@@ -207,7 +207,7 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
         if (value === -1 || value === null || value === undefined) {
           return i18n.t('settings:configField.unlimited');
         }
-        return value;
+        return typeof value === 'number' ? value : String(value);
       }
     },
     {

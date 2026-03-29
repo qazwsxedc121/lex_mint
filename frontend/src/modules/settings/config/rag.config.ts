@@ -5,6 +5,7 @@
  */
 
 import type { SimpleConfigSettingsConfig } from './types';
+import type { ConfigFormData } from './types';
 import i18n from '../../../i18n';
 
 export const ragConfig: SimpleConfigSettingsConfig = {
@@ -646,7 +647,7 @@ export const ragConfig: SimpleConfigSettingsConfig = {
     }
   ],
 
-  transformSave: (data: any) => {
+  transformSave: (data: ConfigFormData) => {
     const rest = { ...data };
     delete rest.retrieval_preset;
     return rest;

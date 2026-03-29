@@ -43,7 +43,7 @@ export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
       get label() { return i18n.t('settings:knowledgeBases.col.documents'); },
       sortable: true,
       hideOnMobile: true,
-      render: (value) => value || 0
+      render: (value) => (typeof value === 'number' ? value : 0)
     },
     {
       key: 'created_at',
@@ -53,9 +53,12 @@ export const knowledgeBasesConfig: CrudSettingsConfig<KnowledgeBase> = {
       render: (value) => {
         if (!value) return '';
         try {
-          return new Date(value).toLocaleDateString();
+          if (typeof value === 'string' || typeof value === 'number' || value instanceof Date) {
+            return new Date(value).toLocaleDateString();
+          }
+          return String(value);
         } catch {
-          return value;
+          return String(value);
         }
       }
     }

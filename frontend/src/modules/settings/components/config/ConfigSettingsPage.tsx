@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, LoadingSpinner, ErrorMessage, SuccessMessage, SettingsHelp } from '../common';
 import { ConfigForm } from './ConfigForm';
-import type { SimpleConfigSettingsConfig, ConfigContext } from '../../config/types';
+import type { ConfigContext, ConfigFormData, ConfigRecord, SimpleConfigSettingsConfig } from '../../config/types';
 import { API_BASE } from '../../../../services/apiBase';
 
 interface ConfigSettingsPageProps {
@@ -19,8 +19,8 @@ interface ConfigSettingsPageProps {
   context?: ConfigContext;
   /** API client (defaults to fetch) */
   apiClient?: {
-    get: (url: string) => Promise<any>;
-    post: (url: string, data: any) => Promise<any>;
+    get: (url: string) => Promise<ConfigRecord>;
+    post: (url: string, data: ConfigRecord) => Promise<ConfigRecord>;
   };
 }
 
@@ -29,7 +29,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
   context = {},
   apiClient
 }) => {
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<ConfigFormData>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +89,7 @@ export const ConfigSettingsPage: React.FC<ConfigSettingsPageProps> = ({
       const transformed = config.transformLoad ? config.transformLoad(data) : data;
 
       // Initialize form data with defaults
-      const initialData: any = { ...transformed };
+      const initialData: ConfigFormData = { ...transformed };
       config.fields.forEach((field) => {
         if (initialData[field.name] === undefined && 'defaultValue' in field) {
           initialData[field.name] = field.defaultValue;

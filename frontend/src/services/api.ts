@@ -176,6 +176,54 @@ import type {
   WorkflowRunCallbacks,
 } from '../types/workflow';
 
+interface FileReferenceInput {
+  path: string;
+  project_id: string;
+}
+
+interface UploadedFilePayload {
+  filename: string;
+  size: number;
+  mime_type: string;
+  temp_path: string;
+}
+
+interface ChatStreamRequestBody {
+  session_id: string;
+  message: string;
+  truncate_after_index: number | null;
+  skip_user_message: boolean;
+  context_type: string;
+  reasoning_effort?: string;
+  project_id?: string;
+  use_web_search?: boolean;
+  attachments?: UploadedFilePayload[];
+  file_references?: FileReferenceInput[];
+  active_file_path?: string;
+  active_file_hash?: string;
+}
+
+interface CompareStreamRequestBody {
+  session_id: string;
+  message: string;
+  model_ids: string[];
+  context_type: string;
+  use_web_search: boolean;
+  reasoning_effort?: string;
+  project_id?: string;
+  attachments?: UploadedFilePayload[];
+  file_references?: FileReferenceInput[];
+}
+
+function toUploadedFilePayload(attachments: UploadedFile[]): UploadedFilePayload[] {
+  return attachments.map((attachment) => ({
+    filename: attachment.filename,
+    size: attachment.size,
+    mime_type: attachment.mime_type,
+    temp_path: attachment.temp_path,
+  }));
+}
+
 export {
   addProjectWorkspaceItem,
   applyProjectChatDiff,
@@ -542,7 +590,7 @@ export async function sendMessageStream(
   onFollowupQuestions?: (questions: string[]) => void,
   onContextInfo?: (info: ContextInfo) => void,
   onThinkingDuration?: (durationMs: number) => void,
-  fileReferences?: Array<{ path: string; project_id: string }>,
+  fileReferences?: FileReferenceInput[],
   onToolCalls?: (calls: Array<{ id?: string; name: string; args: Record<string, unknown> }>) => void,
   onToolResults?: (results: Array<{ name: string; result: string; tool_call_id: string }>) => void,
   onAssistantStart?: (assistantId: string, name: string, icon?: string) => void,
@@ -762,7 +810,7 @@ export async function sendMessageStream(
   };
 
   try {
-    const requestBody: any = {
+    const requestBody: ChatStreamRequestBody = {
       session_id: sessionId,
       message,
       truncate_after_index: truncateAfterIndex,
@@ -783,12 +831,7 @@ export async function sendMessageStream(
     }
 
     if (attachments && attachments.length > 0) {
-      requestBody.attachments = attachments.map(a => ({
-        filename: a.filename,
-        size: a.size,
-        mime_type: a.mime_type,
-        temp_path: a.temp_path,
-      }));
+      requestBody.attachments = toUploadedFilePayload(attachments);
     }
 
     if (fileReferences && fileReferences.length > 0) {
@@ -962,7 +1005,7 @@ export async function sendCompareStream(
     useWebSearch?: boolean;
     contextType?: string;
     projectId?: string;
-    fileReferences?: Array<{ path: string; project_id: string }>;
+    fileReferences?: FileReferenceInput[];
   }
 ): Promise<void> {
   const controller = new AbortController();
@@ -971,7 +1014,7 @@ export async function sendCompareStream(
   }
 
   try {
-    const requestBody: any = {
+    const requestBody: CompareStreamRequestBody = {
       session_id: sessionId,
       message,
       model_ids: modelIds,
@@ -988,12 +1031,7 @@ export async function sendCompareStream(
     }
 
     if (options?.attachments && options.attachments.length > 0) {
-      requestBody.attachments = options.attachments.map(a => ({
-        filename: a.filename,
-        size: a.size,
-        mime_type: a.mime_type,
-        temp_path: a.temp_path,
-      }));
+      requestBody.attachments = toUploadedFilePayload(options.attachments);
     }
 
     if (options?.fileReferences && options.fileReferences.length > 0) {

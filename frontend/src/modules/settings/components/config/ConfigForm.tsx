@@ -7,15 +7,15 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormField } from '../common';
-import type { FieldConfig, ConfigContext } from '../../config/types';
+import type { ConfigContext, ConfigFormData, ConfigRecord, FieldConfig } from '../../config/types';
 
 interface ConfigFormProps {
   /** Form fields configuration */
   fields: FieldConfig[];
   /** Current form data */
-  formData: any;
+  formData: ConfigFormData;
   /** Form data change handler */
-  onChange: (data: any) => void;
+  onChange: (data: ConfigFormData) => void;
   /** Context for dynamic options */
   context: ConfigContext;
   /** Show validation errors */
@@ -43,10 +43,10 @@ export const ConfigForm: React.FC<ConfigFormProps> = ({
 }) => {
   const { t } = useTranslation('settings');
   const resolvedSubmitLabel = submitLabel ?? t('config.saveSettings');
-  const handleFieldChange = (field: FieldConfig, value: any) => {
+  const handleFieldChange = (field: FieldConfig, value: unknown) => {
     if (field.type === 'preset') {
       // Preset fields emit an effects object -- spread all effects into formData
-      onChange({ ...formData, ...value });
+      onChange({ ...formData, ...(value as ConfigRecord) });
     } else {
       onChange({ ...formData, [field.name]: value });
     }

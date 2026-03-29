@@ -9,6 +9,44 @@ import type { ProjectWorkspaceOutletContext } from './workspace';
 import { getProjectWorkspacePath } from './workspace';
 import { buildSearchAgentContextItem } from './agentContext';
 
+function getProjectSearchErrorMessage(error: unknown, fallback: string): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null &&
+    'detail' in error.response &&
+    typeof error.response.detail === 'string'
+  ) {
+    return error.response.detail;
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null &&
+    'detail' in error.response.data &&
+    typeof error.response.data.detail === 'string'
+  ) {
+    return error.response.data.detail;
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export const ProjectSearchView: React.FC = () => {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
@@ -41,8 +79,8 @@ export const ProjectSearchView: React.FC = () => {
         });
         setResults(payload.results || []);
         setTruncated(Boolean(payload.truncated));
-      } catch (err: any) {
-        const message = err?.response?.data?.detail || err?.message || t('fileTree.textSearch.error');
+      } catch (err: unknown) {
+        const message = getProjectSearchErrorMessage(err, t('fileTree.textSearch.error'));
         setError(String(message));
         setResults([]);
         setTruncated(false);

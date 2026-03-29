@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PageHeader, LoadingSpinner, ErrorMessage } from '../common';
 import { CrudForm } from './CrudForm';
-import type { CrudSettingsConfig, CrudHook, ConfigContext } from '../../config/types';
+import type { ConfigContext, ConfigFormData, CrudHook, CrudSettingsConfig } from '../../config/types';
 
 interface CrudCreatePageProps<T> {
   /** Page configuration */
@@ -23,7 +23,7 @@ interface CrudCreatePageProps<T> {
   backPath: string;
 }
 
-export function CrudCreatePage<T = any>({
+export function CrudCreatePage<T = unknown>({
   config,
   hook,
   context = {},
@@ -38,7 +38,7 @@ export function CrudCreatePage<T = any>({
     return state.prefill;
   }, [location.state]);
   const initialFormData = useMemo(() => {
-    const data: any = {};
+    const data: ConfigFormData = {};
     config.createFields.forEach((field) => {
       if (data[field.name] === undefined && 'defaultValue' in field) {
         const skipDefault = field.type === 'slider' && field.allowEmpty;
@@ -52,7 +52,7 @@ export function CrudCreatePage<T = any>({
     }
     return data;
   }, [config.createFields, prefillData]);
-  const [formData, setFormData] = useState<any>(initialFormData);
+  const [formData, setFormData] = useState<ConfigFormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const navigate = useNavigate();
@@ -99,7 +99,7 @@ export function CrudCreatePage<T = any>({
 
     try {
       setIsSubmitting(true);
-      await hook.createItem(formData);
+      await hook.createItem(formData as T);
       navigate(backPath, { replace: true });
     } catch (err) {
       console.error('Submit error:', err);

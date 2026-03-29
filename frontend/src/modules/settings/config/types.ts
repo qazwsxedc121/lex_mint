@@ -7,6 +7,20 @@
  */
 
 import type { ReactNode } from 'react';
+import type { Assistant } from '../../../types/assistant';
+import type { BuiltinProviderInfo, Model, Provider } from '../../../types/model';
+
+export type ConfigScalar = string | number | boolean | null | undefined;
+export type ConfigValue = ConfigScalar | ConfigRecord | ConfigValue[];
+export interface ConfigRecord {
+  [key: string]: unknown;
+}
+export type ConfigFormData = ConfigRecord;
+export interface ConfigOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
 
 // ==================== Field Configuration ====================
 
@@ -27,9 +41,9 @@ export interface BaseFieldConfig {
   /** Placeholder text */
   placeholder?: string;
   /** Custom validation function */
-  validate?: (value: any) => string | undefined;
+  validate?: (value: unknown) => string | undefined;
   /** Conditional rendering function */
-  condition?: (formData: any, context: any) => boolean;
+  condition?: (formData: ConfigFormData, context: ConfigContext) => boolean;
 }
 
 /**
@@ -70,11 +84,11 @@ export interface SelectFieldConfig extends BaseFieldConfig {
   /** Default value */
   defaultValue?: string;
   /** Static options */
-  options?: Array<{ value: string; label: string; disabled?: boolean }>;
+  options?: ConfigOption[];
   /** Dynamic options from context */
-  dynamicOptions?: (context: any, formData?: any) => Array<{ value: string; label: string; disabled?: boolean }>;
+  dynamicOptions?: (context: ConfigContext, formData?: ConfigFormData) => ConfigOption[];
   /** Optional side effects when value changes, merged into form state */
-  onChangeEffect?: (value: string, formData: any, context: any) => Record<string, any> | undefined;
+  onChangeEffect?: (value: string, formData: ConfigFormData, context: ConfigContext) => ConfigRecord | undefined;
   /** Allow empty selection */
   allowEmpty?: boolean;
   /** Empty option label */
@@ -155,9 +169,9 @@ export interface MultiSelectFieldConfig extends BaseFieldConfig {
   /** Default value */
   defaultValue?: string[];
   /** Static options */
-  options?: Array<{ value: string; label: string; disabled?: boolean }>;
+  options?: ConfigOption[];
   /** Dynamic options from context */
-  dynamicOptions?: (context: any, formData?: any) => Array<{ value: string; label: string; disabled?: boolean }>;
+  dynamicOptions?: (context: ConfigContext, formData?: ConfigFormData) => ConfigOption[];
 }
 
 /**
@@ -166,7 +180,7 @@ export interface MultiSelectFieldConfig extends BaseFieldConfig {
 export interface TemplateVariablesFieldConfig extends BaseFieldConfig {
   type: 'template-variables';
   /** Default value */
-  defaultValue?: Array<Record<string, any>>;
+  defaultValue?: ConfigRecord[];
 }
 
 /**
@@ -184,7 +198,7 @@ export interface PresetFieldConfig extends BaseFieldConfig {
     /** Short description shown below label */
     description?: string;
     /** Field values to apply when this preset is selected */
-    effects: Record<string, any>;
+    effects: ConfigRecord;
   }>;
 }
 
@@ -238,7 +252,7 @@ export type FieldConfig =
 /**
  * Table column configuration
  */
-export interface TableColumnConfig<T = any> {
+export interface TableColumnConfig<T = ConfigRecord> {
   /** Column key (maps to data property) */
   key: string;
   /** Column header label */
@@ -246,7 +260,7 @@ export interface TableColumnConfig<T = any> {
   /** Column width (Tailwind class) */
   width?: string;
   /** Custom cell renderer */
-  render?: (value: any, row: T, context: any) => ReactNode;
+  render?: (value: unknown, row: T, context: ConfigContext) => ReactNode;
   /** Whether column is sortable */
   sortable?: boolean;
   /** Custom sort function */
@@ -262,7 +276,7 @@ export interface TableColumnConfig<T = any> {
 /**
  * Action button configuration
  */
-export interface ActionConfig<T = any> {
+export interface ActionConfig<T = ConfigRecord> {
   /** Action identifier */
   id: string;
   /** Button label or icon */
@@ -270,9 +284,9 @@ export interface ActionConfig<T = any> {
   /** Button icon (Heroicon component) */
   icon?: React.ComponentType<{ className?: string }>;
   /** Action handler */
-  onClick: (item: T, context: any) => void | Promise<void>;
+  onClick: (item: T, context: ConfigContext) => void | Promise<void>;
   /** Whether action is disabled */
-  disabled?: (item: T, context: any) => boolean;
+  disabled?: (item: T, context: ConfigContext) => boolean;
   /** Button color variant */
   variant?: 'primary' | 'secondary' | 'danger' | 'warning' | 'success';
   /** Tooltip text */
@@ -313,7 +327,7 @@ export interface SettingsHelpConfig {
 /**
  * Complete configuration for CRUD settings page
  */
-export interface CrudSettingsConfig<T = any> {
+export interface CrudSettingsConfig<T = ConfigRecord> {
   /** Config type identifier */
   type: 'crud';
   /** Page title */
@@ -348,9 +362,9 @@ export interface CrudSettingsConfig<T = any> {
   editFields?: FieldConfig[];
   /** Custom form renderer */
   customFormRenderer?: (
-    formData: any,
-    setFormData: (data: any) => void,
-    context: any,
+    formData: ConfigFormData,
+    setFormData: (data: ConfigFormData) => void,
+    context: ConfigContext,
     isEdit: boolean
   ) => ReactNode;
   /** Create page metadata */
@@ -401,7 +415,7 @@ export interface CrudSettingsConfig<T = any> {
 
   // Validation
   /** Validate form data before submit */
-  validateForm?: (formData: any, isEdit: boolean) => string | undefined;
+  validateForm?: (formData: ConfigFormData, isEdit: boolean) => string | undefined;
 
   // Custom components
   /** Custom empty state */
@@ -444,27 +458,27 @@ export interface SimpleConfigSettingsConfig {
   fields: FieldConfig[];
   /** Custom form renderer */
   customFormRenderer?: (
-    formData: any,
-    setFormData: (data: any) => void,
-    context: any
+    formData: ConfigFormData,
+    setFormData: (data: ConfigFormData) => void,
+    context: ConfigContext
   ) => ReactNode;
 
   // Validation
   /** Validate form data before submit */
-  validateForm?: (formData: any) => string | undefined;
+  validateForm?: (formData: ConfigFormData) => string | undefined;
 
   // Transform functions
   /** Transform data from API response to form state */
-  transformLoad?: (data: any) => any;
+  transformLoad?: (data: ConfigRecord) => ConfigFormData;
   /** Transform form state to API request */
-  transformSave?: (data: any) => any;
+  transformSave?: (data: ConfigFormData) => ConfigRecord;
 
   // Custom actions
   /** Additional action buttons */
   customActions?: Array<{
     label: string;
     icon?: React.ComponentType<{ className?: string }>;
-    onClick: (formData: any, context: any) => void | Promise<void>;
+    onClick: (formData: ConfigFormData, context: ConfigContext) => void | Promise<void>;
     variant?: 'primary' | 'secondary' | 'danger';
   }>;
 
@@ -481,17 +495,17 @@ export interface SimpleConfigSettingsConfig {
  */
 export interface ConfigContext {
   /** Available models for model selection */
-  models?: any[];
+  models?: Model[];
   /** Available assistants */
-  assistants?: any[];
+  assistants?: Assistant[];
   /** Available providers */
-  providers?: any[];
+  providers?: Provider[];
   /** Available builtin providers */
-  builtinProviders?: any[];
+  builtinProviders?: BuiltinProviderInfo[];
   /** Current user preferences */
-  preferences?: any;
+  preferences?: ConfigRecord;
   /** Any additional context data */
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ==================== Utility Types ====================

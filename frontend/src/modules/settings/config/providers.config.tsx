@@ -183,7 +183,7 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       hideOnMobile: true,
       render: (value) => (
         <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
-          {value}
+          {typeof value === 'string' ? value : String(value ?? '')}
         </span>
       )
     }

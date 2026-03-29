@@ -29,7 +29,7 @@ export function makeCrudPages<T>(options: CrudPagesFactoryOptions<T>) {
   const CreatePage: React.FC = () => {
     const { hook, context } = options.useData();
     return (
-      <CrudCreatePage
+      <CrudCreatePage<T>
         config={options.config}
         hook={hook}
         context={context}
@@ -56,7 +56,7 @@ export function makeCrudPages<T>(options: CrudPagesFactoryOptions<T>) {
     const itemId = options.decodeId ? options.decodeId(rawId) : rawId;
 
     return (
-      <CrudEditPage
+      <CrudEditPage<T>
         config={options.config}
         hook={hook}
         itemId={itemId}

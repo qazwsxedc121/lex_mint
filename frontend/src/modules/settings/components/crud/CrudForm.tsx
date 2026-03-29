@@ -7,15 +7,15 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormField } from '../common';
-import type { FieldConfig, ConfigContext } from '../../config/types';
+import type { ConfigContext, ConfigFormData, ConfigRecord, FieldConfig } from '../../config/types';
 
 interface CrudFormProps {
   /** Form fields configuration */
   fields: FieldConfig[];
   /** Current form data */
-  formData: any;
+  formData: ConfigFormData;
   /** Form data change handler */
-  onChange: (data: any) => void;
+  onChange: (data: ConfigFormData) => void;
   /** Context for dynamic options */
   context: ConfigContext;
   /** Whether this is edit mode */
@@ -50,10 +50,10 @@ export const CrudForm: React.FC<CrudFormProps> = ({
   const { t } = useTranslation('common');
   const resolvedCancelLabel = cancelLabel ?? t('cancel');
 
-  const handleFieldChange = (fieldName: string, value: any) => {
+  const handleFieldChange = (fieldName: string, value: unknown) => {
     // Support batch field updates (e.g., from model-id field selecting a model)
-    if (value && typeof value === 'object' && value.__batchUpdate) {
-      const nextFields = { ...value };
+    if (value && typeof value === 'object' && '__batchUpdate' in value) {
+      const nextFields = { ...(value as ConfigRecord) };
       delete nextFields.__batchUpdate;
       onChange({ ...formData, ...nextFields });
     } else {
