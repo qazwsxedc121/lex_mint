@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+const isWindows = process.platform === 'win32';
 
 function loadRootEnv(): Record<string, string> {
   const envPath = path.resolve(configDir, '..', '.env');
@@ -51,6 +52,14 @@ const backendPort = parsePort(process.env.API_PORT ?? rootEnv.API_PORT, 'API_POR
 process.env.FRONTEND_PORT = String(frontendPort);
 process.env.API_PORT = String(backendPort);
 
+const backendCommand = isWindows
+  ? `.\\venv\\Scripts\\python.exe -m uvicorn src.api.main:app --host 127.0.0.1 --port ${backendPort}`
+  : `./venv/bin/python -m uvicorn src.api.main:app --host 127.0.0.1 --port ${backendPort}`;
+
+const frontendCommand = isWindows
+  ? `cmd /c npm run dev -- --host 127.0.0.1 --port ${frontendPort}`
+  : `npm run dev -- --host 127.0.0.1 --port ${frontendPort}`;
+
 export default defineConfig({
   testDir: './tests/e2e/specs',
   fullyParallel: true,
@@ -77,14 +86,14 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `.\\venv\\Scripts\\python.exe -m uvicorn src.api.main:app --host 127.0.0.1 --port ${backendPort}`,
+      command: backendCommand,
       cwd: '..',
       url: `http://127.0.0.1:${backendPort}/api/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
     {
-      command: `cmd /c npm run dev -- --host 127.0.0.1 --port ${frontendPort}`,
+      command: frontendCommand,
       url: `http://127.0.0.1:${frontendPort}`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
