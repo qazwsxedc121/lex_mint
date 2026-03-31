@@ -11,20 +11,20 @@ const TEMPLATE_CURSOR_VARIABLE = 'cursor';
 const TEMPLATE_VARIABLE_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const TEMPLATE_TRIGGER_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-interface SlashCommandMatch {
+export interface SlashCommandMatch {
   query: string;
   start: number;
   end: number;
 }
 
-interface TemplateReplacementRange {
+export interface TemplateReplacementRange {
   start: number;
   end: number;
 }
 
 type TemplateVariableResolvedType = NonNullable<PromptTemplateVariableType>;
 
-interface TemplateVariableDefinition {
+export interface TemplateVariableDefinition {
   key: string;
   label: string;
   description?: string;
@@ -34,7 +34,7 @@ interface TemplateVariableDefinition {
   options: string[];
 }
 
-interface PendingTemplateInsert {
+export interface PendingTemplateInsert {
   template: PromptTemplate;
   variables: TemplateVariableDefinition[];
   values: Record<string, string>;
