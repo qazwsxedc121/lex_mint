@@ -83,6 +83,15 @@ class _WorkflowRunState:
     write_mode: Literal["none", "create", "overwrite"] | None
 
 
+@dataclass
+class _ExecutionProgress:
+    normalized_inputs: dict[str, Any]
+    ctx: dict[str, Any]
+    output_text: str | None = None
+    status: str = "error"
+    error_message: str | None = None
+
+
 class _ConditionParser:
     """Small parser/evaluator for safe condition expressions."""
 
@@ -276,6 +285,365 @@ class WorkflowExecutionService:
         self.default_llm_retry_backoff_ms = max(0, int(default_llm_retry_backoff_ms))
         self.max_llm_retry_backoff_ms = max(0, int(max_llm_retry_backoff_ms))
 
+    def _build_checkpoint_payload(self, runtime_event: dict[str, Any]) -> dict[str, Any]:
+        checkpoint_id = runtime_event.get("checkpoint_id")
+        if isinstance(checkpoint_id, str) and checkpoint_id:
+            return {"checkpoint_id": checkpoint_id}
+        return {}
+
+    def _runtime_stream(
+        self,
+        *,
+        run_spec: RunSpec,
+        run_context: RunContext,
+        resume_from_checkpoint_id: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        if resume_from_checkpoint_id:
+            return self.orchestration_engine.resume_stream(
+                run_spec,
+                context=run_context,
+                from_checkpoint_id=resume_from_checkpoint_id,
+            )
+        return self.orchestration_engine.run_stream(run_spec, run_context)
+
+    def _build_run_context(
+        self,
+        *,
+        run_id: str,
+        workflow: Workflow,
+        context_type: str,
+        project_id: str | None,
+        resume_from_checkpoint_id: str | None,
+    ) -> RunContext:
+        return RunContext(
+            run_id=run_id,
+            metadata={
+                "workflow_id": workflow.id,
+                "context_type": context_type,
+                "project_id": project_id or "",
+                "resume": bool(resume_from_checkpoint_id),
+            },
+            max_steps=self.max_steps,
+            context_manager=InMemoryContextManager(),
+        )
+
+    async def _append_run_record(
+        self,
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        started_at: datetime,
+        progress: _ExecutionProgress,
+    ) -> None:
+        finished_at = datetime.now(timezone.utc)
+        duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+        record = WorkflowRunRecord(
+            run_id=run_identifier,
+            workflow_id=workflow.id,
+            status="success" if progress.status == "success" else "error",
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+            inputs=progress.normalized_inputs,
+            output=progress.output_text,
+            node_outputs=progress.ctx,
+            error=progress.error_message,
+        )
+        await self.history_service.append_run(record)
+
+    def _require_runtime_node(
+        self,
+        *,
+        workflow: Workflow,
+        node_map: dict[str, Any],
+        runtime_event: dict[str, Any],
+    ) -> Any:
+        node_id = str(runtime_event.get("node_id") or "")
+        node = node_map.get(node_id)
+        if node is None:
+            raise ValueError(f"Unknown runtime node '{node_id}'")
+        return node
+
+    @staticmethod
+    def _runtime_payload(runtime_event: dict[str, Any]) -> dict[str, Any]:
+        payload = runtime_event.get("payload") or {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _translate_runtime_event(
+        self,
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        runtime_event: dict[str, Any],
+        node_map: dict[str, Any],
+        run_state: _WorkflowRunState,
+        progress: _ExecutionProgress,
+    ) -> dict[str, Any] | None:
+        event_type = str(runtime_event.get("type") or "")
+        checkpoint_payload = self._build_checkpoint_payload(runtime_event)
+
+        if event_type == "resumed":
+            progress.ctx["resumed_from_checkpoint_id"] = runtime_event.get("checkpoint_id")
+            progress.ctx["resume_step"] = runtime_event.get("step")
+            return None
+        if event_type == "started":
+            return self._workflow_run_started_event(
+                workflow=workflow,
+                run_identifier=run_identifier,
+                checkpoint_payload=checkpoint_payload,
+            )
+        if event_type == "node_started":
+            node = self._require_runtime_node(
+                workflow=workflow,
+                node_map=node_map,
+                runtime_event=runtime_event,
+            )
+            return self._workflow_node_started_event(
+                workflow=workflow,
+                run_identifier=run_identifier,
+                node=node,
+                checkpoint_payload=checkpoint_payload,
+            )
+        if event_type == "node_event":
+            return self._translate_node_runtime_event(
+                workflow=workflow,
+                run_identifier=run_identifier,
+                runtime_event=runtime_event,
+                checkpoint_payload=checkpoint_payload,
+                progress=progress,
+            )
+        if event_type == "node_retrying":
+            node = self._require_runtime_node(
+                workflow=workflow,
+                node_map=node_map,
+                runtime_event=runtime_event,
+            )
+            return self._workflow_node_retrying_event(
+                workflow=workflow,
+                run_identifier=run_identifier,
+                runtime_event=runtime_event,
+                node=node,
+                checkpoint_payload=checkpoint_payload,
+            )
+        if event_type == "node_finished":
+            node = self._require_runtime_node(
+                workflow=workflow,
+                node_map=node_map,
+                runtime_event=runtime_event,
+            )
+            return self._workflow_node_finished_event(
+                workflow=workflow,
+                run_identifier=run_identifier,
+                runtime_event=runtime_event,
+                node=node,
+                run_state=run_state,
+                progress=progress,
+                checkpoint_payload=checkpoint_payload,
+            )
+        if event_type == "completed":
+            progress.status = "success"
+            return self._workflow_run_finished_event(
+                workflow=workflow,
+                run_identifier=run_identifier,
+                runtime_event=runtime_event,
+                progress=progress,
+                checkpoint_payload=checkpoint_payload,
+            )
+        if event_type in {"failed", "cancelled"}:
+            reason = str(runtime_event.get("terminal_reason") or "workflow runtime error")
+            raise ValueError(reason)
+        raise ValueError(f"Unsupported orchestration runtime lifecycle '{event_type}'")
+
+    @staticmethod
+    def _workflow_run_started_event(
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        checkpoint_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = {
+            "type": "workflow_run_started",
+            "workflow_id": workflow.id,
+            "run_id": run_identifier,
+        }
+        payload.update(checkpoint_payload)
+        return payload
+
+    @staticmethod
+    def _workflow_node_started_event(
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        node: Any,
+        checkpoint_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = {
+            "type": "workflow_node_started",
+            "workflow_id": workflow.id,
+            "run_id": run_identifier,
+            "node_id": node.id,
+            "node_type": node.type,
+        }
+        payload.update(checkpoint_payload)
+        return payload
+
+    def _translate_node_runtime_event(
+        self,
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        runtime_event: dict[str, Any],
+        checkpoint_payload: dict[str, Any],
+        progress: _ExecutionProgress,
+    ) -> dict[str, Any]:
+        node_id = str(runtime_event.get("node_id") or "")
+        payload = self._runtime_payload(runtime_event)
+        emitted_type = str(runtime_event.get("event_type") or "")
+
+        if emitted_type == "text_delta":
+            event = {
+                "type": "text_delta",
+                "workflow_id": workflow.id,
+                "run_id": run_identifier,
+                "node_id": node_id,
+                "text": str(payload.get("text") or ""),
+            }
+        elif emitted_type == "workflow_condition_evaluated":
+            event = {
+                "type": "workflow_condition_evaluated",
+                "workflow_id": workflow.id,
+                "run_id": run_identifier,
+                "node_id": node_id,
+                "expression": payload.get("expression"),
+                "result": payload.get("result"),
+            }
+        elif emitted_type == "workflow_output_reported":
+            progress.output_text = str(payload.get("output") or "")
+            event = {
+                "type": "workflow_output_reported",
+                "workflow_id": workflow.id,
+                "run_id": run_identifier,
+                "node_id": node_id,
+                "output": progress.output_text,
+            }
+        elif emitted_type == "workflow_artifact_written":
+            event = {
+                "type": "workflow_artifact_written",
+                "workflow_id": workflow.id,
+                "run_id": run_identifier,
+                "node_id": node_id,
+                "file_path": payload.get("file_path"),
+                "write_mode": payload.get("write_mode"),
+                "written": payload.get("written"),
+                "output_key": payload.get("output_key"),
+                "content_hash": payload.get("content_hash"),
+            }
+        else:
+            raise ValueError(f"Unsupported workflow runtime event '{emitted_type}'")
+
+        event.update(checkpoint_payload)
+        return event
+
+    @staticmethod
+    def _workflow_node_retrying_event(
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        runtime_event: dict[str, Any],
+        node: Any,
+        checkpoint_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = {
+            "type": "workflow_node_retrying",
+            "workflow_id": workflow.id,
+            "run_id": run_identifier,
+            "node_id": node.id,
+            "node_type": node.type,
+            "attempt": runtime_event.get("attempt"),
+            "max_attempts": runtime_event.get("max_attempts"),
+            "delay_ms": runtime_event.get("delay_ms"),
+            "error": runtime_event.get("error"),
+        }
+        payload.update(checkpoint_payload)
+        return payload
+
+    def _workflow_node_finished_event(
+        self,
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        runtime_event: dict[str, Any],
+        node: Any,
+        run_state: _WorkflowRunState,
+        progress: _ExecutionProgress,
+        checkpoint_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = self._runtime_payload(runtime_event)
+        finish_payload: dict[str, Any] = {
+            "type": "workflow_node_finished",
+            "workflow_id": workflow.id,
+            "run_id": run_identifier,
+            "node_id": node.id,
+            "node_type": node.type,
+        }
+
+        if isinstance(node, LlmNode):
+            output_key = str(payload.get("output_key") or f"node_{node.id}_output")
+            node_output = str(payload.get("output") or "")
+            usage = payload.get("usage")
+            run_state.ctx[output_key] = node_output
+            run_state.ctx["last_output"] = node_output
+            progress.output_text = node_output
+            finish_payload["output_key"] = output_key
+            finish_payload["output"] = node_output
+            if isinstance(usage, dict):
+                finish_payload["usage"] = usage
+        elif isinstance(node, ConditionNode):
+            finish_payload["result"] = bool(payload.get("result"))
+        elif isinstance(node, ArtifactNode):
+            output_key = str(payload.get("output_key") or f"node_{node.id}_artifact")
+            artifact_data = payload.get("artifact")
+            if isinstance(artifact_data, dict):
+                run_state.ctx[output_key] = artifact_data
+                run_state.ctx["last_artifact"] = artifact_data
+                artifact_content = payload.get("artifact_content")
+                if isinstance(artifact_content, str):
+                    run_state.ctx["last_output"] = artifact_content
+                    progress.output_text = artifact_content
+                finish_payload["output_key"] = output_key
+                finish_payload["artifact"] = artifact_data
+        elif isinstance(node, EndNode) and progress.output_text is None:
+            progress.output_text = str(payload.get("output") or "")
+
+        finish_payload.update(checkpoint_payload)
+        return finish_payload
+
+    @staticmethod
+    def _workflow_run_finished_event(
+        *,
+        workflow: Workflow,
+        run_identifier: str,
+        runtime_event: dict[str, Any],
+        progress: _ExecutionProgress,
+        checkpoint_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = runtime_event.get("payload") or {}
+        if isinstance(payload, dict):
+            completed_output = payload.get("output")
+            if isinstance(completed_output, str):
+                progress.output_text = completed_output
+        if progress.output_text is None:
+            progress.output_text = ""
+        event = {
+            "type": "workflow_run_finished",
+            "workflow_id": workflow.id,
+            "run_id": run_identifier,
+            "status": progress.status,
+            "output": progress.output_text,
+        }
+        event.update(checkpoint_payload)
+        return event
+
     async def execute_stream(
         self,
         workflow: Workflow,
@@ -293,11 +661,7 @@ class WorkflowExecutionService:
         """Execute a workflow and stream runtime events."""
         run_identifier = run_id or str(uuid.uuid4())
         started_at = datetime.now(timezone.utc)
-        normalized_inputs: dict[str, Any] = {}
-        ctx: dict[str, Any] = {}
-        output_text: str | None = None
-        status: str = "error"
-        error_message: str | None = None
+        progress = _ExecutionProgress(normalized_inputs={}, ctx={})
 
         try:
             runtime = await self._resolve_runtime_config(
@@ -305,8 +669,8 @@ class WorkflowExecutionService:
                 context_type=context_type,
                 project_id=project_id,
             )
-            normalized_inputs = self._validate_and_normalize_inputs(workflow, inputs or {})
-            ctx = {
+            progress.normalized_inputs = self._validate_and_normalize_inputs(workflow, inputs or {})
+            progress.ctx = {
                 "run_id": run_identifier,
                 "workflow_id": workflow.id,
                 "started_at": started_at.isoformat(),
@@ -316,8 +680,8 @@ class WorkflowExecutionService:
             run_state = _WorkflowRunState(
                 run_id=run_identifier,
                 workflow=workflow,
-                inputs=normalized_inputs,
-                ctx=ctx,
+                inputs=progress.normalized_inputs,
+                ctx=progress.ctx,
                 runtime=runtime,
                 session_id=session_id,
                 context_type=context_type,
@@ -328,243 +692,46 @@ class WorkflowExecutionService:
             )
             run_spec = self._compile_workflow_run_spec(workflow, run_state)
             node_map = {node.id: node for node in workflow.nodes}
-            run_context = RunContext(
+            run_context = self._build_run_context(
                 run_id=run_identifier,
-                metadata={
-                    "workflow_id": workflow.id,
-                    "context_type": context_type,
-                    "project_id": project_id or "",
-                    "resume": bool(resume_from_checkpoint_id),
-                },
-                max_steps=self.max_steps,
-                context_manager=InMemoryContextManager(),
+                workflow=workflow,
+                context_type=context_type,
+                project_id=project_id,
+                resume_from_checkpoint_id=resume_from_checkpoint_id,
             )
-            runtime_stream = (
-                self.orchestration_engine.resume_stream(
-                    run_spec,
-                    context=run_context,
-                    from_checkpoint_id=resume_from_checkpoint_id,
-                )
-                if resume_from_checkpoint_id
-                else self.orchestration_engine.run_stream(run_spec, run_context)
+            runtime_stream = self._runtime_stream(
+                run_spec=run_spec,
+                run_context=run_context,
+                resume_from_checkpoint_id=resume_from_checkpoint_id,
             )
 
             async for runtime_event in runtime_stream:
-                event_type = str(runtime_event.get("type") or "")
-                checkpoint_id = runtime_event.get("checkpoint_id")
-                checkpoint_payload: dict[str, Any] = {}
-                if isinstance(checkpoint_id, str) and checkpoint_id:
-                    checkpoint_payload["checkpoint_id"] = checkpoint_id
-
-                if event_type == "resumed":
-                    ctx["resumed_from_checkpoint_id"] = runtime_event.get("checkpoint_id")
-                    ctx["resume_step"] = runtime_event.get("step")
-                    continue
-
-                if event_type == "started":
-                    payload = {
-                        "type": "workflow_run_started",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                    }
-                    payload.update(checkpoint_payload)
-                    yield payload
-                    continue
-
-                if event_type == "node_started":
-                    node_id = str(runtime_event.get("node_id") or "")
-                    node = node_map.get(node_id)
-                    if node is None:
-                        raise ValueError(f"Unknown runtime node '{node_id}'")
-                    payload = {
-                        "type": "workflow_node_started",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "node_type": node.type,
-                    }
-                    payload.update(checkpoint_payload)
-                    yield payload
-                    continue
-
-                if event_type == "node_event":
-                    node_id = str(runtime_event.get("node_id") or "")
-                    payload = runtime_event.get("payload") or {}
-                    if not isinstance(payload, dict):
-                        payload = {}
-                    emitted_type = str(runtime_event.get("event_type") or "")
-                    if emitted_type == "text_delta":
-                        payload = {
-                            "type": "text_delta",
-                            "workflow_id": workflow.id,
-                            "run_id": run_identifier,
-                            "node_id": node_id,
-                            "text": str(payload.get("text") or ""),
-                        }
-                        payload.update(checkpoint_payload)
-                        yield payload
-                        continue
-                    if emitted_type == "workflow_condition_evaluated":
-                        condition_payload = {
-                            "type": "workflow_condition_evaluated",
-                            "workflow_id": workflow.id,
-                            "run_id": run_identifier,
-                            "node_id": node_id,
-                            "expression": payload.get("expression"),
-                            "result": payload.get("result"),
-                        }
-                        condition_payload.update(checkpoint_payload)
-                        yield condition_payload
-                        continue
-                    if emitted_type == "workflow_output_reported":
-                        output_text = str(payload.get("output") or "")
-                        output_payload = {
-                            "type": "workflow_output_reported",
-                            "workflow_id": workflow.id,
-                            "run_id": run_identifier,
-                            "node_id": node_id,
-                            "output": output_text,
-                        }
-                        output_payload.update(checkpoint_payload)
-                        yield output_payload
-                        continue
-                    if emitted_type == "workflow_artifact_written":
-                        artifact_payload = {
-                            "type": "workflow_artifact_written",
-                            "workflow_id": workflow.id,
-                            "run_id": run_identifier,
-                            "node_id": node_id,
-                            "file_path": payload.get("file_path"),
-                            "write_mode": payload.get("write_mode"),
-                            "written": payload.get("written"),
-                            "output_key": payload.get("output_key"),
-                            "content_hash": payload.get("content_hash"),
-                        }
-                        artifact_payload.update(checkpoint_payload)
-                        yield artifact_payload
-                        continue
-                    raise ValueError(f"Unsupported workflow runtime event '{emitted_type}'")
-
-                if event_type == "node_retrying":
-                    node_id = str(runtime_event.get("node_id") or "")
-                    node = node_map.get(node_id)
-                    if node is None:
-                        raise ValueError(f"Unknown runtime node '{node_id}'")
-                    retry_payload: dict[str, Any] = {
-                        "type": "workflow_node_retrying",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node_id,
-                        "node_type": node.type,
-                        "attempt": runtime_event.get("attempt"),
-                        "max_attempts": runtime_event.get("max_attempts"),
-                        "delay_ms": runtime_event.get("delay_ms"),
-                        "error": runtime_event.get("error"),
-                    }
-                    retry_payload.update(checkpoint_payload)
-                    yield retry_payload
-                    continue
-
-                if event_type == "node_finished":
-                    node_id = str(runtime_event.get("node_id") or "")
-                    node = node_map.get(node_id)
-                    if node is None:
-                        raise ValueError(f"Unknown runtime node '{node_id}'")
-                    payload = runtime_event.get("payload") or {}
-                    if not isinstance(payload, dict):
-                        payload = {}
-
-                    finish_payload: dict[str, Any] = {
-                        "type": "workflow_node_finished",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "node_id": node.id,
-                        "node_type": node.type,
-                    }
-
-                    if isinstance(node, LlmNode):
-                        output_key = str(payload.get("output_key") or f"node_{node.id}_output")
-                        node_output = str(payload.get("output") or "")
-                        usage = payload.get("usage")
-                        run_state.ctx[output_key] = node_output
-                        run_state.ctx["last_output"] = node_output
-                        output_text = node_output
-                        finish_payload["output_key"] = output_key
-                        finish_payload["output"] = node_output
-                        if isinstance(usage, dict):
-                            finish_payload["usage"] = usage
-                    elif isinstance(node, ConditionNode):
-                        finish_payload["result"] = bool(payload.get("result"))
-                    elif isinstance(node, ArtifactNode):
-                        output_key = str(payload.get("output_key") or f"node_{node.id}_artifact")
-                        artifact_data = payload.get("artifact")
-                        if isinstance(artifact_data, dict):
-                            run_state.ctx[output_key] = artifact_data
-                            run_state.ctx["last_artifact"] = artifact_data
-                            artifact_content = payload.get("artifact_content")
-                            if isinstance(artifact_content, str):
-                                run_state.ctx["last_output"] = artifact_content
-                                output_text = artifact_content
-                            finish_payload["output_key"] = output_key
-                            finish_payload["artifact"] = artifact_data
-                    elif isinstance(node, EndNode):
-                        if output_text is None:
-                            output_text = str(payload.get("output") or "")
-
-                    finish_payload.update(checkpoint_payload)
-                    yield finish_payload
-                    continue
-
-                if event_type == "completed":
-                    status = "success"
-                    payload = runtime_event.get("payload") or {}
-                    if isinstance(payload, dict):
-                        completed_output = payload.get("output")
-                        if isinstance(completed_output, str):
-                            output_text = completed_output
-                    if output_text is None:
-                        output_text = ""
-                    payload = {
-                        "type": "workflow_run_finished",
-                        "workflow_id": workflow.id,
-                        "run_id": run_identifier,
-                        "status": status,
-                        "output": output_text,
-                    }
-                    payload.update(checkpoint_payload)
-                    yield payload
-                    continue
-
-                if event_type in {"failed", "cancelled"}:
-                    reason = str(runtime_event.get("terminal_reason") or "workflow runtime error")
-                    raise ValueError(reason)
-
-                raise ValueError(f"Unsupported orchestration runtime lifecycle '{event_type}'")
+                event = self._translate_runtime_event(
+                    workflow=workflow,
+                    run_identifier=run_identifier,
+                    runtime_event=runtime_event,
+                    node_map=node_map,
+                    run_state=run_state,
+                    progress=progress,
+                )
+                if event is not None:
+                    yield event
 
         except Exception as exc:
-            error_message = str(exc)
+            progress.error_message = str(exc)
             yield {
                 "type": "stream_error",
                 "workflow_id": workflow.id,
                 "run_id": run_identifier,
-                "error": error_message,
+                "error": progress.error_message,
             }
         finally:
-            finished_at = datetime.now(timezone.utc)
-            duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-            record = WorkflowRunRecord(
-                run_id=run_identifier,
-                workflow_id=workflow.id,
-                status="success" if status == "success" else "error",
+            await self._append_run_record(
+                workflow=workflow,
+                run_identifier=run_identifier,
                 started_at=started_at,
-                finished_at=finished_at,
-                duration_ms=duration_ms,
-                inputs=normalized_inputs,
-                output=output_text,
-                node_outputs=ctx,
-                error=error_message,
+                progress=progress,
             )
-            await self.history_service.append_run(record)
 
     def _compile_workflow_run_spec(
         self,
