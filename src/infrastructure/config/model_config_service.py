@@ -285,14 +285,7 @@ class ModelConfigService:
 
         return self._normalize_tag_list(tags)
 
-    def _sync_builtin_entries(self) -> None:
-        """
-        Refresh non-user-editable builtin metadata for providers already present in local config.
-        """
-        data = self._load_split_config()
-        if not isinstance(data, dict):
-            return
-
+    def _ensure_split_config_lists(self, data: dict[str, Any]) -> tuple[list[Any], list[Any]]:
         providers = data.get("providers")
         if not isinstance(providers, list):
             providers = []
@@ -303,11 +296,10 @@ class ModelConfigService:
             models = []
             data["models"] = models
 
+        return providers, models
+
+    def _sync_model_tags_and_groups(self, models: list[Any]) -> bool:
         changed = False
-
-        def _normalize_url(value: Any) -> str:
-            return str(value or "").strip().rstrip("/")
-
         for model in models:
             if not isinstance(model, dict):
                 continue
@@ -330,67 +322,101 @@ class ModelConfigService:
             if "group" in model:
                 model.pop("group", None)
                 changed = True
+        return changed
 
-        normalized_default = self._normalize_default_payload(data.get("default"))
-        default_provider = normalized_default["provider"]
-        default_model = normalized_default["model"]
-
+    def _sync_builtin_provider_metadata(self, providers: list[Any]) -> bool:
+        changed = False
         existing_providers = {
-            p.get("id"): p for p in providers if isinstance(p, dict) and p.get("id")
+            provider.get("id"): provider
+            for provider in providers
+            if isinstance(provider, dict) and provider.get("id")
         }
 
         for definition in get_all_builtin_providers().values():
             provider_entry = existing_providers.get(definition.id)
             if not (isinstance(provider_entry, dict) and provider_entry.get("type") == "builtin"):
                 continue
+            changed |= self._sync_single_builtin_provider_entry(provider_entry, definition)
 
-            current_base_url = _normalize_url(provider_entry.get("base_url"))
-            for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(
-                definition.id, {}
-            ).items():
-                if current_base_url == _normalize_url(legacy_url) and _normalize_url(
-                    definition.base_url
-                ) == _normalize_url(target_url):
-                    provider_entry["base_url"] = target_url
-                    current_base_url = _normalize_url(target_url)
-                    changed = True
+        return changed
 
-            if provider_entry.get("supports_model_list") != definition.supports_model_list:
-                provider_entry["supports_model_list"] = definition.supports_model_list
+    def _sync_single_builtin_provider_entry(
+        self, provider_entry: dict[str, Any], definition: ProviderConfig
+    ) -> bool:
+        changed = False
+        current_base_url = self._normalize_url(provider_entry.get("base_url"))
+
+        for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
+            if current_base_url == self._normalize_url(legacy_url) and self._normalize_url(
+                definition.base_url
+            ) == self._normalize_url(target_url):
+                provider_entry["base_url"] = target_url
+                current_base_url = self._normalize_url(target_url)
                 changed = True
-            if provider_entry.get("sdk_class") != definition.sdk_class:
-                provider_entry["sdk_class"] = definition.sdk_class
-                changed = True
-            profile_payload = [
-                profile.model_dump(mode="json") for profile in definition.endpoint_profiles
-            ]
-            if provider_entry.get("endpoint_profiles") != profile_payload:
-                provider_entry["endpoint_profiles"] = profile_payload
-                changed = True
-            if not provider_entry.get("endpoint_profile_id"):
-                resolved_profile = (
-                    self._resolve_endpoint_profile_id_by_url(
-                        definition.endpoint_profiles,
-                        str(provider_entry.get("base_url", "")),
-                    )
-                    or definition.default_endpoint_profile_id
+
+        if provider_entry.get("supports_model_list") != definition.supports_model_list:
+            provider_entry["supports_model_list"] = definition.supports_model_list
+            changed = True
+        if provider_entry.get("sdk_class") != definition.sdk_class:
+            provider_entry["sdk_class"] = definition.sdk_class
+            changed = True
+
+        profile_payload = [profile.model_dump(mode="json") for profile in definition.endpoint_profiles]
+        if provider_entry.get("endpoint_profiles") != profile_payload:
+            provider_entry["endpoint_profiles"] = profile_payload
+            changed = True
+
+        if not provider_entry.get("endpoint_profile_id"):
+            resolved_profile = (
+                self._resolve_endpoint_profile_id_by_url(
+                    definition.endpoint_profiles,
+                    str(provider_entry.get("base_url", "")),
                 )
-                if resolved_profile:
-                    provider_entry["endpoint_profile_id"] = resolved_profile
-                    changed = True
+                or definition.default_endpoint_profile_id
+            )
+            if resolved_profile:
+                provider_entry["endpoint_profile_id"] = resolved_profile
+                changed = True
 
-            provider_caps = provider_entry.get("default_capabilities")
-            if isinstance(provider_caps, dict):
-                if definition.id in self._MODEL_LEVEL_INTERLEAVED_PROVIDERS:
-                    if provider_caps.get("requires_interleaved_thinking") is not False:
-                        provider_caps["requires_interleaved_thinking"] = False
-                        changed = True
-                elif "requires_interleaved_thinking" not in provider_caps:
-                    provider_caps["requires_interleaved_thinking"] = (
-                        definition.default_capabilities.requires_interleaved_thinking
-                    )
-                    changed = True
+        provider_caps = provider_entry.get("default_capabilities")
+        if isinstance(provider_caps, dict):
+            changed |= self._sync_provider_interleaved_thinking_flag(
+                provider_caps=provider_caps,
+                provider_id=definition.id,
+                default_value=definition.default_capabilities.requires_interleaved_thinking,
+            )
 
+        return changed
+
+    def _sync_provider_interleaved_thinking_flag(
+        self,
+        *,
+        provider_caps: dict[str, Any],
+        provider_id: str,
+        default_value: bool,
+    ) -> bool:
+        if provider_id in self._MODEL_LEVEL_INTERLEAVED_PROVIDERS:
+            if provider_caps.get("requires_interleaved_thinking") is not False:
+                provider_caps["requires_interleaved_thinking"] = False
+                return True
+            return False
+
+        if "requires_interleaved_thinking" not in provider_caps:
+            provider_caps["requires_interleaved_thinking"] = default_value
+            return True
+        return False
+
+    def _sync_default_selection(self, data: dict[str, Any], providers: list[Any], models: list[Any]) -> bool:
+        changed = False
+        normalized_default = self._normalize_default_payload(data.get("default"))
+        default_provider = normalized_default["provider"]
+        default_model = normalized_default["model"]
+
+        existing_providers = {
+            provider.get("id"): provider
+            for provider in providers
+            if isinstance(provider, dict) and provider.get("id")
+        }
         default_provider_entry = existing_providers.get(default_provider)
         default_model_entry = next(
             (
@@ -402,6 +428,7 @@ class ModelConfigService:
             ),
             None,
         )
+
         default_is_configured = bool(default_provider and default_model)
         default_is_valid = (
             default_is_configured
@@ -416,14 +443,17 @@ class ModelConfigService:
         if default_is_configured and not default_is_valid:
             data["default"] = self._empty_default_payload()
             changed = True
+        return changed
 
+    def _ensure_reasoning_supported_patterns(self, data: dict[str, Any]) -> bool:
         reasoning_patterns = data.get("reasoning_supported_patterns")
-        if not isinstance(reasoning_patterns, list):
-            reasoning_patterns = self._get_default_reasoning_supported_patterns()
-            data["reasoning_supported_patterns"] = reasoning_patterns
-            changed = True
+        if isinstance(reasoning_patterns, list):
+            return False
+        data["reasoning_supported_patterns"] = self._get_default_reasoning_supported_patterns()
+        return True
 
-        # Backfill stale dynamic local GGUF capability flags when explicit metadata is absent.
+    def _backfill_local_gguf_capabilities(self, models: list[Any]) -> bool:
+        changed = False
         for model_entry in models:
             if not isinstance(model_entry, dict):
                 continue
@@ -445,10 +475,7 @@ class ModelConfigService:
             if not isinstance(model_caps, dict):
                 continue
 
-            if (
-                inferred.get("function_calling") is True
-                and model_caps.get("function_calling") is False
-            ):
+            if inferred.get("function_calling") is True and model_caps.get("function_calling") is False:
                 model_caps["function_calling"] = True
                 changed = True
             if inferred.get("reasoning") is True and model_caps.get("reasoning") is False:
@@ -465,6 +492,24 @@ class ModelConfigService:
             ):
                 model_caps["reasoning_controls"] = inferred["reasoning_controls"]
                 changed = True
+
+        return changed
+
+    def _sync_builtin_entries(self) -> None:
+        """
+        Refresh non-user-editable builtin metadata for providers already present in local config.
+        """
+        data = self._load_split_config()
+        if not isinstance(data, dict):
+            return
+
+        providers, models = self._ensure_split_config_lists(data)
+        changed = False
+        changed |= self._sync_model_tags_and_groups(models)
+        changed |= self._sync_builtin_provider_metadata(providers)
+        changed |= self._sync_default_selection(data, providers, models)
+        changed |= self._ensure_reasoning_supported_patterns(data)
+        changed |= self._backfill_local_gguf_capabilities(models)
 
         if changed:
             provider_data, catalog_data, app_data = self._split_aggregate_config(data)
