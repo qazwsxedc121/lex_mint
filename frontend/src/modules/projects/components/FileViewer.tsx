@@ -5,11 +5,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
@@ -19,119 +14,22 @@ import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { openSearchPanel, search } from '@codemirror/search';
-import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import type { FileContent } from '../../../types/project';
-import type { Workflow, WorkflowInputDef } from '../../../types/workflow';
-import { Breadcrumb } from './Breadcrumb';
-import { cancelAsyncRun, listWorkflows, readFile, runWorkflowStream, writeFile } from '../../../services/api';
-import { EditorToolbar } from './EditorToolbar';
+import { readFile, writeFile } from '../../../services/api';
 import { useChatComposer, useChatServices } from '../../../shared/chat';
-import { InlineRewritePanel } from './InlineRewritePanel';
-import { ProjectNotice } from './ProjectNotice';
 import { useEditorPreferences } from '../hooks/useEditorPreferences';
 import { useGlobalHotkey } from '../hooks/useGlobalHotkey';
 import { useProjectNotice } from '../hooks/useProjectNotice';
-import { useWorkflowLauncherStorage } from '../../../shared/workflow-launcher/storage';
-import type { LauncherRecommendationContext } from '../../../shared/workflow-launcher/types';
+import { useInlineRewriteController } from '../hooks/useInlineRewriteController';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import { getProjectWorkspacePath } from '../workspace';
 import { buildFileAgentContextItem } from '../agentContext';
-import { CodeBlock } from '../../../shared/chat/components/CodeBlock';
-import { MermaidBlock } from '../../../shared/chat/components/MermaidBlock';
-import { SvgBlock } from '../../../shared/chat/components/SvgBlock';
+import { FileViewerBreadcrumbBar } from './FileViewerBreadcrumbBar';
+import { FileViewerEditorContent } from './FileViewerEditorContent';
 import { normalizeMathDelimiters } from '../../../shared/chat/utils/markdownMath';
 import { extractSvgBlocks } from '../../../shared/chat/utils/svgMarkdown';
 
 const CHAT_CONTEXT_MAX_CHARS = 6000;
-const INLINE_REWRITE_CONTEXT_CHARS = 1200;
-const THINK_BLOCK_REGEX = /<think>[\s\S]*?<\/think>/g;
-const DEFAULT_INLINE_REWRITE_WORKFLOW_ID = 'wf_inline_rewrite_default';
-const PRIMARY_REWRITE_INPUT_KEYS = new Set(['input', 'text', 'selected_text']);
-const AUTO_SLICE_KEY_PATTERN = /^(head|tail)_(line|char|percent)_(\d+)$/i;
-const LEGACY_AUTO_REWRITE_INPUT_KEYS = new Set([
-  ...PRIMARY_REWRITE_INPUT_KEYS,
-  'context_before',
-  'context_after',
-  'file_path',
-  'language',
-  'project_id',
-  'session_id',
-  'selection_start',
-  'selection_end',
-  'source_mode',
-]);
-
-const normalizeAutoKey = (key: string): string => key.replace(/^_+/, '').toLowerCase();
-const isSelectionInputKey = (key: string): boolean => PRIMARY_REWRITE_INPUT_KEYS.has(normalizeAutoKey(key));
-const isSliceAutoKey = (key: string): boolean => {
-  const normalizedKey = normalizeAutoKey(key);
-  return normalizedKey === 'full_text' || AUTO_SLICE_KEY_PATTERN.test(normalizedKey);
-};
-const isAutoRewriteInputKey = (key: string): boolean =>
-  key.startsWith('_') || LEGACY_AUTO_REWRITE_INPUT_KEYS.has(key.toLowerCase()) || isSliceAutoKey(key);
-
-type RewriteSourceMode = 'selection' | 'empty' | 'full_file';
-
-const assignAutoValueWithAliases = (target: Record<string, unknown>, key: string, value: unknown) => {
-  const normalizedKey = normalizeAutoKey(key);
-  target[normalizedKey] = value;
-  target[`_${normalizedKey}`] = value;
-};
-
-const buildSlicedAutoValue = (fullText: string, key: string): string | null => {
-  const normalizedKey = normalizeAutoKey(key);
-  if (normalizedKey === 'full_text') {
-    return fullText;
-  }
-
-  const match = normalizedKey.match(AUTO_SLICE_KEY_PATTERN);
-  if (!match) {
-    return null;
-  }
-
-  const [, directionRaw, unitRaw, amountRaw] = match;
-  const direction = directionRaw.toLowerCase() as 'head' | 'tail';
-  const unit = unitRaw.toLowerCase() as 'line' | 'char' | 'percent';
-  const parsedAmount = Number(amountRaw);
-  if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
-    return null;
-  }
-
-  if (unit === 'line') {
-    const lines = fullText.split('\n');
-    const take = Math.max(0, Math.floor(parsedAmount));
-    const sliced = direction === 'head'
-      ? lines.slice(0, take)
-      : lines.slice(Math.max(lines.length - take, 0));
-    return sliced.join('\n');
-  }
-
-  if (unit === 'char') {
-    const take = Math.max(0, Math.floor(parsedAmount));
-    if (direction === 'head') {
-      return fullText.slice(0, take);
-    }
-    return fullText.slice(Math.max(fullText.length - take, 0));
-  }
-
-  const boundedPercent = Math.min(100, Math.max(0, Math.floor(parsedAmount)));
-  const take = Math.ceil(fullText.length * (boundedPercent / 100));
-  if (direction === 'head') {
-    return fullText.slice(0, take);
-  }
-  return fullText.slice(Math.max(fullText.length - take, 0));
-};
-
-interface RewriteSelectionSnapshot {
-  from: number;
-  to: number;
-  sourceMode: RewriteSourceMode;
-  selectedText: string;
-  contextBefore: string;
-  contextAfter: string;
-  filePath: string;
-  language: string;
-}
 
 interface SaveConflictState {
   code: string;
@@ -285,17 +183,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInsertingToChat, setIsInsertingToChat] = useState(false);
   const [refreshingProject, setRefreshingProject] = useState(false);
-  const [inlineRewriteOpen, setInlineRewriteOpen] = useState(false);
-  const [inlineRewriteStreaming, setInlineRewriteStreaming] = useState(false);
-  const [inlineRewriteError, setInlineRewriteError] = useState<string | null>(null);
-  const [inlineRewriteNoSelectionPromptOpen, setInlineRewriteNoSelectionPromptOpen] = useState(false);
-  const [inlineRewriteInputs, setInlineRewriteInputs] = useState<Record<string, unknown>>({});
-  const [inlineRewriteSourceText, setInlineRewriteSourceText] = useState('');
-  const [inlineRewritePreview, setInlineRewritePreview] = useState('');
-  const [inlineRewriteWorkflowId, setInlineRewriteWorkflowId] = useState(DEFAULT_INLINE_REWRITE_WORKFLOW_ID);
-  const [inlineRewriteWorkflows, setInlineRewriteWorkflows] = useState<Workflow[]>([]);
-  const [inlineRewriteWorkflowsLoading, setInlineRewriteWorkflowsLoading] = useState(false);
-  const [inlineRewriteRunId, setInlineRewriteRunId] = useState<string | null>(null);
   const {
     lineWrapping,
     setLineWrapping,
@@ -311,12 +198,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   const { currentSessionId, createSession, createTemporarySession, navigation } = useChatServices();
   const chatComposer = useChatComposer();
-  const { favoritesSet: launcherFavorites, recents: launcherRecents, toggleFavorite: toggleLauncherFavorite, addRecent: addLauncherRecent } = useWorkflowLauncherStorage();
 
   // Editor view reference
   const editorViewRef = useRef<EditorView | null>(null);
-  const inlineRewriteAbortRef = useRef<AbortController | null>(null);
-  const rewriteSelectionRef = useRef<RewriteSelectionSnapshot | null>(null);
   const pendingJumpRef = useRef<{ filePath: string; line: number } | null>(null);
 
   // Cursor position
@@ -337,23 +221,21 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       setSaveConflict(null);
       setConflictBusy(false);
       setSaveSuccess(false);
-      setInlineRewriteOpen(false);
-      setInlineRewriteStreaming(false);
-      setInlineRewriteError(null);
-      setInlineRewriteNoSelectionPromptOpen(false);
-      setInlineRewriteInputs({});
-      setInlineRewriteSourceText('');
-      setInlineRewritePreview('');
-      rewriteSelectionRef.current = null;
     }
   }, [content]);
 
-  useEffect(() => {
-    setInlineRewriteRunId(null);
-  }, [projectId]);
-
   // Check if content has unsaved changes
   const hasUnsavedChanges = value !== originalContent;
+  const inlineRewrite = useInlineRewriteController({
+    projectId,
+    content,
+    value,
+    editorViewRef,
+    currentSessionId,
+    createTemporarySession,
+    navigation,
+    queueWorkflowLaunch,
+  });
 
   // Update undo/redo state
   const updateUndoRedoState = useCallback(() => {
@@ -398,617 +280,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
       return null;
     }
   }, [currentSessionId, createSession, navigation, showNoticeError, t]);
-
-  const ensureInlineRewriteSession = useCallback(async () => {
-    if (currentSessionId) {
-      return currentSessionId;
-    }
-
-    try {
-      const newSessionId = await createTemporarySession();
-      navigation?.navigateToSession(newSessionId);
-      return newSessionId;
-    } catch (err) {
-      console.error('Failed to create temporary project session for inline rewrite:', err);
-      setInlineRewriteError(t('inlineRewrite.createSessionFailed'));
-      return null;
-    }
-  }, [currentSessionId, createTemporarySession, navigation, t]);
-
-  const getInlineRewriteSelectionSnapshot = useCallback((): RewriteSelectionSnapshot | null => {
-    if (!content || !editorViewRef.current) {
-      return null;
-    }
-
-    const view = editorViewRef.current;
-    const selection = view.state.selection.main;
-    if (selection.empty) {
-      return null;
-    }
-
-    const selectedText = view.state.doc.sliceString(selection.from, selection.to);
-    if (!selectedText.trim()) {
-      return null;
-    }
-
-    const contextBefore = view.state.doc.sliceString(
-      Math.max(0, selection.from - INLINE_REWRITE_CONTEXT_CHARS),
-      selection.from
-    );
-    const contextAfter = view.state.doc.sliceString(
-      selection.to,
-      Math.min(view.state.doc.length, selection.to + INLINE_REWRITE_CONTEXT_CHARS)
-    );
-
-    return {
-      from: selection.from,
-      to: selection.to,
-      sourceMode: 'selection',
-      selectedText,
-      contextBefore,
-      contextAfter,
-      filePath: content.path,
-      language: getLanguageTag(content.path),
-    };
-  }, [content]);
-
-  const getInlineRewriteSnapshotForNoSelection = useCallback(
-    (sourceMode: Exclude<RewriteSourceMode, 'selection'>): RewriteSelectionSnapshot | null => {
-      if (!content || !editorViewRef.current) {
-        return null;
-      }
-
-      const view = editorViewRef.current;
-      const docText = view.state.doc.toString();
-      const docLength = view.state.doc.length;
-      const cursor = view.state.selection.main.head;
-
-      if (sourceMode === 'full_file') {
-        return {
-          from: 0,
-          to: docLength,
-          sourceMode,
-          selectedText: docText,
-          contextBefore: '',
-          contextAfter: '',
-          filePath: content.path,
-          language: getLanguageTag(content.path),
-        };
-      }
-
-      const contextBefore = view.state.doc.sliceString(
-        Math.max(0, cursor - INLINE_REWRITE_CONTEXT_CHARS),
-        cursor
-      );
-      const contextAfter = view.state.doc.sliceString(
-        cursor,
-        Math.min(view.state.doc.length, cursor + INLINE_REWRITE_CONTEXT_CHARS)
-      );
-      return {
-        from: cursor,
-        to: cursor,
-        sourceMode,
-        selectedText: '',
-        contextBefore,
-        contextAfter,
-        filePath: content.path,
-        language: getLanguageTag(content.path),
-      };
-    },
-    [content]
-  );
-
-  const rewriteWorkflowOptions = useMemo(
-    () =>
-      inlineRewriteWorkflows.filter((workflow) => workflow.enabled && workflow.scenario === 'editor_rewrite'),
-    [inlineRewriteWorkflows]
-  );
-  const activeRewriteWorkflow = useMemo(() => {
-    if (rewriteWorkflowOptions.length === 0) {
-      return null;
-    }
-    return (
-      rewriteWorkflowOptions.find((workflow) => workflow.id === inlineRewriteWorkflowId) ||
-      rewriteWorkflowOptions[0]
-    );
-  }, [inlineRewriteWorkflowId, rewriteWorkflowOptions]);
-  const inlineRewriteWorkflowInputs = useMemo(() => {
-    if (!activeRewriteWorkflow) {
-      return [] as WorkflowInputDef[];
-    }
-    return activeRewriteWorkflow.input_schema.filter(
-      (inputDef) => !isAutoRewriteInputKey(inputDef.key)
-    );
-  }, [activeRewriteWorkflow]);
-  const inlineRewriteRecommendationContext = useMemo<LauncherRecommendationContext>(
-    () => ({
-      module: 'projects',
-      requiredScenario: 'editor_rewrite',
-      filePath: content?.path,
-      hasSelection: Boolean(inlineRewriteSourceText.trim()),
-    }),
-    [content?.path, inlineRewriteSourceText]
-  );
-  const inlineRewriteWorkflowNodeIds = useMemo(() => {
-    if (!activeRewriteWorkflow) {
-      return [] as string[];
-    }
-    const seen = new Set<string>();
-    const ids: string[] = [];
-    activeRewriteWorkflow.nodes.forEach((node) => {
-      const nodeId = node.id.trim();
-      if (!nodeId || seen.has(nodeId)) {
-        return;
-      }
-      seen.add(nodeId);
-      ids.push(nodeId);
-    });
-    return ids;
-  }, [activeRewriteWorkflow]);
-
-  const buildInlineRewriteDefaultInputs = useCallback((workflow: Workflow): Record<string, unknown> => {
-    const defaults: Record<string, unknown> = {};
-    for (const inputDef of workflow.input_schema) {
-      if (isAutoRewriteInputKey(inputDef.key)) {
-        continue;
-      }
-      if (inputDef.default !== undefined) {
-        defaults[inputDef.key] = inputDef.default;
-      }
-    }
-    return defaults;
-  }, []);
-  const buildInlineRewriteAutoInputs = useCallback(
-    (
-      workflow: Workflow,
-      snapshot: RewriteSelectionSnapshot,
-      fullText: string,
-      sessionId?: string | null
-    ): Record<string, unknown> => {
-      const autoValues: Record<string, unknown> = {};
-
-      assignAutoValueWithAliases(autoValues, 'input', snapshot.selectedText);
-      assignAutoValueWithAliases(autoValues, 'text', snapshot.selectedText);
-      assignAutoValueWithAliases(autoValues, 'selected_text', snapshot.selectedText);
-      assignAutoValueWithAliases(autoValues, 'context_before', snapshot.contextBefore);
-      assignAutoValueWithAliases(autoValues, 'context_after', snapshot.contextAfter);
-      assignAutoValueWithAliases(autoValues, 'file_path', snapshot.filePath);
-      assignAutoValueWithAliases(autoValues, 'language', snapshot.language);
-      assignAutoValueWithAliases(autoValues, 'selection_start', snapshot.from);
-      assignAutoValueWithAliases(autoValues, 'selection_end', snapshot.to);
-      assignAutoValueWithAliases(autoValues, 'source_mode', snapshot.sourceMode);
-      assignAutoValueWithAliases(autoValues, 'full_text', fullText);
-      if (projectId) {
-        assignAutoValueWithAliases(autoValues, 'project_id', projectId);
-      }
-      if (sessionId) {
-        assignAutoValueWithAliases(autoValues, 'session_id', sessionId);
-      }
-
-      for (const inputDef of workflow.input_schema) {
-        if (!isSliceAutoKey(inputDef.key)) {
-          continue;
-        }
-        const slicedValue = buildSlicedAutoValue(fullText, inputDef.key);
-        if (slicedValue === null) {
-          continue;
-        }
-        assignAutoValueWithAliases(autoValues, inputDef.key, slicedValue);
-      }
-
-      return autoValues;
-    },
-    [projectId]
-  );
-
-  const ensureInlineRewriteWorkflowsLoaded = useCallback(async (): Promise<Workflow[]> => {
-    if (inlineRewriteWorkflowsLoading) {
-      return rewriteWorkflowOptions;
-    }
-
-    setInlineRewriteWorkflowsLoading(true);
-    try {
-      const workflows = await listWorkflows();
-      const rewriteWorkflows = workflows.filter(
-        (workflow) => workflow.enabled && workflow.scenario === 'editor_rewrite'
-      );
-      setInlineRewriteWorkflows(workflows);
-
-      if (rewriteWorkflows.length === 0) {
-        setInlineRewriteWorkflowId('');
-        setInlineRewriteError((previous) => previous || t('inlineRewrite.noWorkflows'));
-        return [];
-      }
-
-      setInlineRewriteWorkflowId((previous) => {
-        if (previous && rewriteWorkflows.some((workflow) => workflow.id === previous)) {
-          return previous;
-        }
-        const defaultWorkflow = rewriteWorkflows.find(
-          (workflow) => workflow.id === DEFAULT_INLINE_REWRITE_WORKFLOW_ID
-        );
-        return defaultWorkflow?.id || rewriteWorkflows[0].id;
-      });
-      return rewriteWorkflows;
-    } catch (err) {
-      console.error('Failed to load inline rewrite workflows:', err);
-      setInlineRewriteError(t('inlineRewrite.loadWorkflowsFailed'));
-      return [];
-    } finally {
-      setInlineRewriteWorkflowsLoading(false);
-    }
-  }, [inlineRewriteWorkflowsLoading, rewriteWorkflowOptions, t]);
-  useEffect(() => {
-    if (!activeRewriteWorkflow) {
-      setInlineRewriteInputs({});
-      return;
-    }
-    setInlineRewriteInputs(buildInlineRewriteDefaultInputs(activeRewriteWorkflow));
-  }, [activeRewriteWorkflow, buildInlineRewriteDefaultInputs]);
-
-  const handleInlineRewriteWorkflowChange = useCallback((workflowId: string) => {
-    if (inlineRewriteStreaming) {
-      return;
-    }
-    setInlineRewriteWorkflowId(workflowId);
-    setInlineRewriteError(null);
-    setInlineRewritePreview('');
-  }, [inlineRewriteStreaming]);
-
-  const handleInlineRewriteInputChange = useCallback((key: string, value: unknown) => {
-    setInlineRewriteInputs((previous) => {
-      const next = { ...previous };
-      if (value === undefined) {
-        delete next[key];
-      } else {
-        next[key] = value;
-      }
-      return next;
-    });
-  }, []);
-  const workflowRequiresSelection = useCallback((workflow: Workflow): boolean => {
-    return workflow.input_schema.some(
-      (inputDef) => inputDef.required && isSelectionInputKey(inputDef.key)
-    );
-  }, []);
-
-  const buildInlineRewriteRunInputs = useCallback(
-    (
-      workflow: Workflow,
-      snapshot: RewriteSelectionSnapshot,
-      fullText: string,
-      sessionId?: string | null
-    ): { inputs: Record<string, unknown>; error?: string } => {
-      const autoInputs = buildInlineRewriteAutoInputs(workflow, snapshot, fullText, sessionId);
-      const runInputs: Record<string, unknown> = { ...inlineRewriteInputs, ...autoInputs };
-
-      for (const inputDef of workflow.input_schema) {
-        let value = runInputs[inputDef.key];
-        if (value === undefined && inputDef.default !== undefined) {
-          value = inputDef.default;
-        }
-
-        if (value === undefined || value === null || (inputDef.type !== 'string' && value === '')) {
-          if (inputDef.required) {
-            return {
-              inputs: runInputs,
-              error: t('inlineRewrite.missingRequiredInput', { key: inputDef.key }),
-            };
-          }
-          continue;
-        }
-
-        if (inputDef.type === 'string') {
-          const stringValue = typeof value === 'string' ? value : String(value);
-          if (typeof inputDef.max_length === 'number' && stringValue.length > inputDef.max_length) {
-            return {
-              inputs: runInputs,
-              error: `${inputDef.key} exceeds max length (${inputDef.max_length})`,
-            };
-          }
-          if (typeof inputDef.pattern === 'string' && inputDef.pattern.trim()) {
-            let matchesPattern = false;
-            try {
-              const regex = new RegExp(inputDef.pattern);
-              matchesPattern = regex.test(stringValue);
-            } catch {
-              return {
-                inputs: runInputs,
-                error: `${inputDef.key} has invalid pattern config`,
-              };
-            }
-            if (!matchesPattern) {
-              return {
-                inputs: runInputs,
-                error: `${inputDef.key} format is invalid`,
-              };
-            }
-          }
-          runInputs[inputDef.key] = stringValue;
-          continue;
-        }
-
-        if (inputDef.type === 'number') {
-          if (typeof value !== 'number' || Number.isNaN(value)) {
-            return {
-              inputs: runInputs,
-              error: t('inlineRewrite.invalidNumberInput', { key: inputDef.key }),
-            };
-          }
-          runInputs[inputDef.key] = value;
-          continue;
-        }
-
-        if (inputDef.type === 'boolean') {
-          if (typeof value !== 'boolean') {
-            return {
-              inputs: runInputs,
-              error: t('inlineRewrite.invalidBooleanInput', { key: inputDef.key }),
-            };
-          }
-          runInputs[inputDef.key] = value;
-          continue;
-        }
-
-        if (inputDef.type === 'node') {
-          if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-            return {
-              inputs: runInputs,
-              error: t('inlineRewrite.invalidNodeInput', { key: inputDef.key }),
-            };
-          }
-          const hasTargetNode = workflow.nodes.some((node) => node.id === value);
-          if (!hasTargetNode) {
-            return {
-              inputs: runInputs,
-              error: t('inlineRewrite.invalidNodeInput', { key: inputDef.key }),
-            };
-          }
-          runInputs[inputDef.key] = value;
-        }
-      }
-
-      return { inputs: runInputs };
-    },
-    [buildInlineRewriteAutoInputs, inlineRewriteInputs, t]
-  );
-  const handleOpenInlineRewrite = useCallback(() => {
-    void ensureInlineRewriteWorkflowsLoaded();
-    const snapshot = getInlineRewriteSelectionSnapshot();
-    setInlineRewriteOpen(true);
-    setInlineRewriteError(null);
-    setInlineRewriteNoSelectionPromptOpen(false);
-
-    if (activeRewriteWorkflow) {
-      const defaults = buildInlineRewriteDefaultInputs(activeRewriteWorkflow);
-      setInlineRewriteInputs(defaults);
-    }
-
-    setInlineRewriteSourceText(snapshot?.selectedText || '');
-    setInlineRewritePreview('');
-  }, [
-    ensureInlineRewriteWorkflowsLoaded,
-    getInlineRewriteSelectionSnapshot,
-    activeRewriteWorkflow,
-    buildInlineRewriteDefaultInputs,
-  ]);
-
-  const handleStopInlineRewrite = useCallback(() => {
-    inlineRewriteAbortRef.current?.abort();
-    inlineRewriteAbortRef.current = null;
-    setInlineRewriteStreaming(false);
-    const runId = inlineRewriteRunId;
-    setInlineRewriteRunId(null);
-    if (!runId) {
-      return;
-    }
-    void cancelAsyncRun(runId).catch(() => {
-      // Ignore cancel errors when run already finished.
-    });
-  }, [inlineRewriteRunId]);
-
-  const handleCloseInlineRewrite = useCallback(() => {
-    handleStopInlineRewrite();
-    setInlineRewriteOpen(false);
-    setInlineRewriteError(null);
-    setInlineRewriteNoSelectionPromptOpen(false);
-    setInlineRewritePreview('');
-    rewriteSelectionRef.current = null;
-  }, [handleStopInlineRewrite]);
-
-  const handleToggleInlineRewrite = useCallback(() => {
-    if (inlineRewriteOpen) {
-      handleCloseInlineRewrite();
-      return;
-    }
-    handleOpenInlineRewrite();
-  }, [inlineRewriteOpen, handleCloseInlineRewrite, handleOpenInlineRewrite]);
-
-  const handleOpenProjectWorkflowWorkspace = useCallback(() => {
-    if (!content) {
-      return;
-    }
-    const selectionSnapshot = getInlineRewriteSelectionSnapshot();
-    queueWorkflowLaunch(projectId, {
-      source: 'file-viewer',
-      filePath: content.path,
-      selectedText: selectionSnapshot?.selectedText,
-      selectionStart: selectionSnapshot?.from,
-      selectionEnd: selectionSnapshot?.to,
-    });
-    navigate(getProjectWorkspacePath(projectId, 'workflows'));
-  }, [content, getInlineRewriteSelectionSnapshot, navigate, projectId, queueWorkflowLaunch]);
-
-  const handleOpenWorkflowsPage = useCallback(() => {
-    navigate('/workflows');
-  }, [navigate]);
-
-  const handleStartInlineRewrite = useCallback(async (noSelectionMode: 'ask' | 'empty' | 'full_file' = 'ask') => {
-    if (inlineRewriteStreaming || !content) {
-      return;
-    }
-
-    const availableWorkflows =
-      rewriteWorkflowOptions.length > 0
-        ? rewriteWorkflowOptions
-        : await ensureInlineRewriteWorkflowsLoaded();
-    if (availableWorkflows.length === 0) {
-      setInlineRewriteOpen(true);
-      setInlineRewriteError(t('inlineRewrite.noWorkflows'));
-      return;
-    }
-    const workflowToRun =
-      availableWorkflows.find((workflow) => workflow.id === inlineRewriteWorkflowId) || availableWorkflows[0];
-    if (!workflowToRun) {
-      setInlineRewriteOpen(true);
-      setInlineRewriteError(t('inlineRewrite.noWorkflows'));
-      return;
-    }
-
-    let snapshot = getInlineRewriteSelectionSnapshot();
-    if (!snapshot) {
-      const requiresSelection = workflowRequiresSelection(workflowToRun);
-      if (requiresSelection && noSelectionMode === 'ask') {
-        setInlineRewriteNoSelectionPromptOpen(true);
-        setInlineRewriteError(null);
-        return;
-      }
-      const resolvedNoSelectionMode = noSelectionMode === 'full_file' ? 'full_file' : 'empty';
-      snapshot = getInlineRewriteSnapshotForNoSelection(resolvedNoSelectionMode);
-      if (!snapshot) {
-        setInlineRewriteError(t('inlineRewrite.selectionMissing'));
-        return;
-      }
-    }
-
-    const sessionId = await ensureInlineRewriteSession();
-    if (!sessionId) {
-      return;
-    }
-
-    const currentFullText = editorViewRef.current?.state.doc.toString() ?? value;
-    rewriteSelectionRef.current = snapshot;
-    setInlineRewriteSourceText(snapshot.selectedText);
-    setInlineRewritePreview('');
-    setInlineRewriteError(null);
-    setInlineRewriteNoSelectionPromptOpen(false);
-    setInlineRewriteStreaming(true);
-    setInlineRewriteRunId(null);
-
-    const prepared = buildInlineRewriteRunInputs(workflowToRun, snapshot, currentFullText, sessionId);
-    if (prepared.error) {
-      setInlineRewriteStreaming(false);
-      setInlineRewriteError(prepared.error);
-      return;
-    }
-
-    try {
-      await runWorkflowStream(
-        workflowToRun.id,
-        prepared.inputs,
-        {
-          onRunCreated: (runId) => {
-            setInlineRewriteRunId(runId);
-          },
-          onChunk: (chunk) => {
-            setInlineRewritePreview((prev) => prev + chunk);
-          },
-          onComplete: () => {
-            setInlineRewriteStreaming(false);
-            setInlineRewriteRunId(null);
-            addLauncherRecent(workflowToRun.id);
-          },
-          onError: (errorMessage) => {
-            setInlineRewriteStreaming(false);
-            setInlineRewriteRunId(null);
-            setInlineRewriteError(errorMessage);
-          },
-        },
-        inlineRewriteAbortRef,
-        {
-          sessionId,
-          contextType: 'project',
-          projectId,
-          streamMode: 'editor_rewrite',
-        }
-      );
-    } catch (err) {
-      console.error('Inline rewrite request failed:', err);
-      setInlineRewriteRunId(null);
-      setInlineRewriteError(err instanceof Error ? err.message : t('inlineRewrite.requestFailed'));
-    } finally {
-      setInlineRewriteStreaming(false);
-    }
-  }, [
-    inlineRewriteStreaming,
-    content,
-    rewriteWorkflowOptions,
-    ensureInlineRewriteWorkflowsLoaded,
-    inlineRewriteWorkflowId,
-    getInlineRewriteSelectionSnapshot,
-    workflowRequiresSelection,
-    getInlineRewriteSnapshotForNoSelection,
-    t,
-    ensureInlineRewriteSession,
-    value,
-    buildInlineRewriteRunInputs,
-    projectId,
-    addLauncherRecent,
-  ]);
-
-  const handleNoSelectionRunEmpty = useCallback(() => {
-    void handleStartInlineRewrite('empty');
-  }, [handleStartInlineRewrite]);
-
-  const handleNoSelectionRunFullFile = useCallback(() => {
-    void handleStartInlineRewrite('full_file');
-  }, [handleStartInlineRewrite]);
-
-  const handleNoSelectionRunCancel = useCallback(() => {
-    setInlineRewriteNoSelectionPromptOpen(false);
-  }, []);
-
-  const handleAcceptInlineRewrite = useCallback(() => {
-    if (!editorViewRef.current) {
-      return;
-    }
-    const selectionSnapshot = rewriteSelectionRef.current;
-    if (!selectionSnapshot) {
-      setInlineRewriteError(t('inlineRewrite.selectionMissing'));
-      return;
-    }
-
-    const rewrittenText = inlineRewritePreview.replace(THINK_BLOCK_REGEX, '');
-    if (!rewrittenText.trim()) {
-      setInlineRewriteError(t('inlineRewrite.emptyRewriteResult'));
-      return;
-    }
-
-    const view = editorViewRef.current;
-    const currentSelectedText = view.state.doc.sliceString(selectionSnapshot.from, selectionSnapshot.to);
-    if (currentSelectedText !== selectionSnapshot.selectedText) {
-      setInlineRewriteError(t('inlineRewrite.selectionChanged'));
-      return;
-    }
-
-    view.dispatch({
-      changes: {
-        from: selectionSnapshot.from,
-        to: selectionSnapshot.to,
-        insert: rewrittenText,
-      },
-      selection: {
-        anchor: selectionSnapshot.from,
-        head: selectionSnapshot.from + rewrittenText.length,
-      },
-    });
-    view.focus();
-
-    setInlineRewriteOpen(false);
-    setInlineRewriteError(null);
-    setInlineRewritePreview('');
-    rewriteSelectionRef.current = null;
-  }, [inlineRewritePreview, t]);
 
   const getEditorContext = useCallback(() => {
     if (!content) return null;
@@ -1382,7 +653,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   }, [hasUnsavedChanges, onRefreshProject, refreshingProject, t]);
 
   useGlobalHotkey({ key: 's', onTrigger: handleSave });
-  useGlobalHotkey({ key: 'k', onTrigger: handleToggleInlineRewrite });
+  useGlobalHotkey({ key: 'k', onTrigger: inlineRewrite.handleToggleInlineRewrite });
 
   useEffect(() => {
     const handler = (rawEvent: Event) => {
@@ -1418,13 +689,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [content, jumpToLine]);
-
-  useEffect(() => {
-    return () => {
-      inlineRewriteAbortRef.current?.abort();
-      inlineRewriteAbortRef.current = null;
-    };
-  }, []);
 
   // Detect dark mode from system preference (Tailwind defaults to media strategy)
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -1514,53 +778,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const isMarkdownFile = useMemo(() => isMarkdownFilePath(filePath), [filePath]);
   const showMarkdownPreview = isMarkdownFile && markdownViewMode === 'preview';
   const language = useMemo(() => getLanguageExtension(filePath), [filePath]);
-  const markdownPreviewComponents = useMemo(
-    () => ({
-      code({ inline, className, children, ...props }: any) {
-        const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
-        const languageName = match ? match[1].toLowerCase() : '';
-        const valueText = String(children).replace(/\n$/, '');
-        const isInline = typeof inline === 'boolean' ? inline : !className;
-
-        if (!isInline) {
-          if (languageName === 'mermaid') {
-            return <MermaidBlock value={valueText} />;
-          }
-          if (languageName === 'svg') {
-            return <SvgBlock value={valueText} />;
-          }
-          return <CodeBlock language={languageName || 'text'} value={valueText} />;
-        }
-
-        return (
-          <code
-            className="rounded bg-gray-100 px-1 py-0.5 text-[13px] text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-            {...props}
-          >
-            {children}
-          </code>
-        );
-      },
-      table({ children }: any) {
-        return (
-          <div className="my-4 overflow-x-auto rounded-lg border border-gray-300 dark:border-gray-600">
-            <table className="w-full min-w-[960px] border-collapse text-sm leading-6">{children}</table>
-          </div>
-        );
-      },
-      a({ href, children, ...props }: any) {
-        const isExternal = typeof href === 'string' && /^https?:\/\//i.test(href);
-        const externalProps = isExternal ? { target: '_blank', rel: 'noreferrer noopener' } : {};
-
-        return (
-          <a href={href} {...externalProps} {...props}>
-            {children}
-          </a>
-        );
-      },
-    }),
-    []
-  );
 
   // Build extensions array with conditional features (memoized to prevent re-creation)
   const extensions = useMemo(() => [
@@ -1579,55 +796,6 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   const refreshTitle = refreshingProject ? t('fileViewer.refreshing') : t('fileViewer.refresh');
   const inlineRewriteTitle = t('inlineRewrite.button');
   const sendToAgentTitle = t('workspace.agent.sendFileContextTitle');
-
-  const renderBreadcrumbBar = (filePath?: string) => (
-    <div data-name="file-viewer-breadcrumb-bar" className="border-b border-gray-300 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800">
-      <div data-name="file-viewer-breadcrumb-row" className="flex items-center gap-2 min-w-0">
-        <button
-          type="button"
-          title={fileTreeOpen ? t('fileViewer.hideTree') : t('fileViewer.showTree')}
-          aria-pressed={fileTreeOpen}
-          onClick={onToggleFileTree}
-          data-name="file-tree-toggle"
-          className={`p-1.5 rounded ${
-            fileTreeOpen
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-          }`}
-        >
-          {fileTreeOpen ? (
-            <ChevronDoubleLeftIcon className="h-4 w-4" />
-          ) : (
-            <ChevronDoubleRightIcon className="h-4 w-4" />
-          )}
-        </button>
-        <div className="min-w-0 flex-1">
-          {filePath ? (
-            <Breadcrumb projectName={projectName} filePath={filePath} />
-          ) : (
-            <div data-name="file-viewer-breadcrumb-placeholder" className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-              {projectName}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          title={refreshTitle}
-          aria-label={refreshTitle}
-          onClick={handleRefreshProject}
-          disabled={refreshingProject || !onRefreshProject}
-          data-name="project-refresh-button"
-          className={`p-1.5 rounded ${
-            refreshingProject || !onRefreshProject
-              ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60'
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-          }`}
-        >
-          <ArrowPathIcon className={`h-4 w-4 ${refreshingProject ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
-    </div>
-  );
 
   if (loading) {
     return (
@@ -1648,7 +816,16 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   if (!content) {
     return (
       <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden min-w-0">
-        {renderBreadcrumbBar()}
+        <FileViewerBreadcrumbBar
+          projectName={projectName}
+          fileTreeOpen={fileTreeOpen}
+          onToggleFileTree={onToggleFileTree}
+          refreshTitle={refreshTitle}
+          refreshDisabled={refreshingProject || !onRefreshProject}
+          refreshingProject={refreshingProject}
+          onRefreshProject={handleRefreshProject}
+          toggleTreeTitle={fileTreeOpen ? t('fileViewer.hideTree') : t('fileViewer.showTree')}
+        />
         <div className="flex-1 flex flex-col items-center justify-center">
           <p className="text-gray-500 dark:text-gray-400 mb-2">{t('fileViewer.emptyState')}</p>
         </div>
@@ -1658,14 +835,21 @@ export const FileViewer: React.FC<FileViewerProps> = ({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-gray-900 min-w-0">
-      {/* Breadcrumb */}
-      {renderBreadcrumbBar(content.path)}
-
-      {/* Toolbar */}
-      <ProjectNotice notice={notice} onDismiss={clearNotice} />
-      <EditorToolbar
-        onSave={handleSave}
-        onCancel={handleCancel}
+      <FileViewerBreadcrumbBar
+        projectName={projectName}
+        filePath={content.path}
+        fileTreeOpen={fileTreeOpen}
+        onToggleFileTree={onToggleFileTree}
+        refreshTitle={refreshTitle}
+        refreshDisabled={refreshingProject || !onRefreshProject}
+        refreshingProject={refreshingProject}
+        onRefreshProject={handleRefreshProject}
+        toggleTreeTitle={fileTreeOpen ? t('fileViewer.hideTree') : t('fileViewer.showTree')}
+      />
+      <FileViewerEditorContent
+        notice={notice}
+        onDismissNotice={clearNotice}
+        content={content}
         hasUnsavedChanges={hasUnsavedChanges}
         saving={saving}
         saveSuccess={saveSuccess}
@@ -1675,6 +859,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         onLoadLatestAfterConflict={saveConflict ? handleLoadLatestAfterConflict : undefined}
         onRestoreConflictDraft={saveConflict?.remoteLoaded ? handleRestoreConflictDraft : undefined}
         onCopyConflictDraft={saveConflict ? handleCopyConflictDraft : undefined}
+        onSave={handleSave}
+        onCancel={handleCancel}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onFind={handleFind}
@@ -1692,137 +878,56 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         autoSaveBeforeAgentSend={autoSaveBeforeAgentSend}
         onToggleAutoSaveBeforeAgentSend={setAutoSaveBeforeAgentSend}
         cursorPosition={cursorPosition}
-        fileInfo={{
-          encoding: content.encoding,
-          mimeType: content.mime_type,
-          size: formatFileSize(content.size)
-        }}
+        fileInfo={{ encoding: content.encoding, mimeType: content.mime_type, size: formatFileSize(content.size) }}
         chatSidebarOpen={chatSidebarOpen}
         onToggleChatSidebar={onToggleChatSidebar}
         onInsertToChat={handleInsertToChat}
-        insertToChatDisabled={!content || isInsertingToChat}
+        insertToChatDisabled={isInsertingToChat}
         insertToChatTitle={insertToChatTitle}
         onSendToAgent={handleSendToAgent}
-        sendToAgentDisabled={!content}
+        sendToAgentDisabled={false}
         sendToAgentTitle={sendToAgentTitle}
-        onInlineRewrite={handleToggleInlineRewrite}
-        inlineRewriteDisabled={!content || inlineRewriteStreaming}
+        onInlineRewrite={inlineRewrite.handleToggleInlineRewrite}
+        inlineRewriteDisabled={inlineRewrite.inlineRewriteStreaming}
         inlineRewriteTitle={inlineRewriteTitle}
-        onProjectWorkflow={handleOpenProjectWorkflowWorkspace}
-        projectWorkflowDisabled={!content || inlineRewriteStreaming}
+        onProjectWorkflow={inlineRewrite.handleOpenProjectWorkflowWorkspace}
+        projectWorkflowDisabled={inlineRewrite.inlineRewriteStreaming}
         projectWorkflowTitle={t('projectWorkflow.shortcutButton')}
-      />
-
-      <InlineRewritePanel
         projectId={projectId}
-        currentFilePath={content?.path || null}
-        isOpen={inlineRewriteOpen}
-        isStreaming={inlineRewriteStreaming}
-        sourceText={inlineRewriteSourceText}
-        rewrittenText={inlineRewritePreview}
-        error={inlineRewriteError}
-        workflows={rewriteWorkflowOptions}
-        selectedWorkflowId={inlineRewriteWorkflowId}
-        workflowLoading={inlineRewriteWorkflowsLoading}
-        workflowInputs={inlineRewriteWorkflowInputs}
-        workflowNodeIds={inlineRewriteWorkflowNodeIds}
-        inputValues={inlineRewriteInputs}
-        favorites={launcherFavorites}
-        recents={launcherRecents}
-        recommendationContext={inlineRewriteRecommendationContext}
-        onWorkflowChange={handleInlineRewriteWorkflowChange}
-        onToggleFavorite={toggleLauncherFavorite}
-        onInputChange={handleInlineRewriteInputChange}
-        onGenerate={handleStartInlineRewrite}
-        onStop={handleStopInlineRewrite}
-        showNoSelectionPrompt={inlineRewriteNoSelectionPromptOpen}
-        onNoSelectionRunEmpty={handleNoSelectionRunEmpty}
-        onNoSelectionRunFullFile={handleNoSelectionRunFullFile}
-        onNoSelectionRunCancel={handleNoSelectionRunCancel}
-        onAccept={handleAcceptInlineRewrite}
-        onReject={handleCloseInlineRewrite}
-        onClose={handleCloseInlineRewrite}
-        onOpenWorkflows={handleOpenWorkflowsPage}
+        inlineRewriteOpen={inlineRewrite.inlineRewriteOpen}
+        inlineRewriteStreaming={inlineRewrite.inlineRewriteStreaming}
+        inlineRewriteSourceText={inlineRewrite.inlineRewriteSourceText}
+        inlineRewritePreview={inlineRewrite.inlineRewritePreview}
+        inlineRewriteError={inlineRewrite.inlineRewriteError}
+        rewriteWorkflowOptions={inlineRewrite.rewriteWorkflowOptions}
+        selectedWorkflowId={inlineRewrite.selectedWorkflowId}
+        inlineRewriteWorkflowsLoading={inlineRewrite.inlineRewriteWorkflowsLoading}
+        inlineRewriteWorkflowInputs={inlineRewrite.inlineRewriteWorkflowInputs}
+        inlineRewriteWorkflowNodeIds={inlineRewrite.inlineRewriteWorkflowNodeIds}
+        inlineRewriteInputs={inlineRewrite.inlineRewriteInputs}
+        favorites={inlineRewrite.favorites}
+        recents={inlineRewrite.recents}
+        inlineRewriteRecommendationContext={inlineRewrite.inlineRewriteRecommendationContext}
+        onInlineRewriteWorkflowChange={inlineRewrite.handleInlineRewriteWorkflowChange}
+        onToggleInlineRewriteFavorite={inlineRewrite.toggleFavorite}
+        onInlineRewriteInputChange={inlineRewrite.handleInlineRewriteInputChange}
+        onStartInlineRewrite={() => void inlineRewrite.handleStartInlineRewrite()}
+        onStopInlineRewrite={inlineRewrite.handleStopInlineRewrite}
+        showInlineRewriteNoSelectionPrompt={inlineRewrite.inlineRewriteNoSelectionPromptOpen}
+        onRunInlineRewriteEmpty={inlineRewrite.handleNoSelectionRunEmpty}
+        onRunInlineRewriteFullFile={inlineRewrite.handleNoSelectionRunFullFile}
+        onCancelInlineRewriteNoSelection={inlineRewrite.handleNoSelectionRunCancel}
+        onAcceptInlineRewrite={inlineRewrite.handleAcceptInlineRewrite}
+        onCloseInlineRewrite={inlineRewrite.handleCloseInlineRewrite}
+        onOpenWorkflowsPage={inlineRewrite.handleOpenWorkflowsPage}
+        showMarkdownPreview={showMarkdownPreview}
+        value={value}
+        isDarkMode={isDarkMode}
+        extensions={extensions}
+        onEditorCreate={onEditorCreate}
+        onEditorChange={setValue}
+        prepareMarkdownForPreview={prepareMarkdownForPreview}
       />
-
-      {/* Editor */}
-      <div className="flex-1 min-h-0 w-full min-w-0 overflow-hidden">
-        <div className={showMarkdownPreview ? 'hidden h-full' : 'h-full'}>
-          <CodeMirror
-            className="h-full"
-            value={value}
-            height="100%"
-            theme={isDarkMode ? 'dark' : 'light'}
-            extensions={extensions}
-            onChange={(val) => setValue(val)}
-            onCreateEditor={onEditorCreate}
-            basicSetup={{
-              lineNumbers: lineNumbers,
-              highlightActiveLineGutter: true,
-              highlightSpecialChars: true,
-              foldGutter: true,
-              drawSelection: true,
-              dropCursor: true,
-              allowMultipleSelections: true,
-              indentOnInput: true,
-              syntaxHighlighting: true,
-              bracketMatching: true,
-              closeBrackets: true,
-              autocompletion: true,
-              rectangularSelection: true,
-              crosshairCursor: true,
-              highlightActiveLine: true,
-              highlightSelectionMatches: true,
-              closeBracketsKeymap: true,
-              searchKeymap: true,
-              foldKeymap: true,
-              completionKeymap: true,
-              lintKeymap: true,
-            }}
-          />
-        </div>
-        {showMarkdownPreview && (
-          <div
-            data-name="markdown-preview-pane"
-            className="h-full overflow-auto bg-gray-50 dark:bg-gray-950 px-5 py-4"
-          >
-            <div
-              className={`
-                mx-auto w-full max-w-5xl rounded-xl border border-gray-200 bg-white px-6 py-5 shadow-sm
-                dark:border-gray-700 dark:bg-gray-900
-                text-[15px] leading-8 text-gray-800 dark:text-gray-100 break-words
-                [&_h1:first-child]:mt-0 [&_h2:first-child]:mt-0 [&_h3:first-child]:mt-0
-                [&_h1]:mt-8 [&_h1]:mb-3 [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:border-b [&_h1]:border-gray-200 [&_h1]:pb-2 [&_h1]:dark:border-gray-700
-                [&_h2]:mt-7 [&_h2]:mb-3 [&_h2]:text-2xl [&_h2]:font-semibold
-                [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-xl [&_h3]:font-semibold
-                [&_p]:my-4 [&_p]:leading-8
-                [&_strong]:font-semibold
-                [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6
-                [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6
-                [&_li]:my-1.5
-                [&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:bg-gray-50 [&_blockquote]:px-3 [&_blockquote]:py-2 [&_blockquote]:text-gray-700 [&_blockquote]:dark:border-gray-600 [&_blockquote]:dark:bg-gray-800 [&_blockquote]:dark:text-gray-200
-                [&_hr]:my-6 [&_hr]:border-gray-200 [&_hr]:dark:border-gray-700
-                [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2 [&_a]:dark:text-blue-400
-                [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm
-                [&_thead]:bg-gray-100 [&_thead]:dark:bg-gray-800
-                [&_tbody_tr:nth-child(even)]:bg-gray-50 [&_tbody_tr:nth-child(even)]:dark:bg-gray-800/50
-                [&_th]:border [&_th]:border-gray-300 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:dark:border-gray-600
-                [&_td]:border [&_td]:border-gray-300 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:dark:border-gray-600
-                [&_pre]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-lg
-                [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-lg
-              `}
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={markdownPreviewComponents}
-              >
-                {prepareMarkdownForPreview(value)}
-              </ReactMarkdown>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
