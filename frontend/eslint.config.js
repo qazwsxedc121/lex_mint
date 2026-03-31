@@ -30,15 +30,4 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
-  {
-    files: [
-      'src/shared/chat/hooks/useChat.ts',
-    ],
-    rules: {
-      complexity: 'off',
-      'max-depth': 'off',
-      'max-lines': 'off',
-      'max-lines-per-function': 'off',
-    },
-  },
 ])

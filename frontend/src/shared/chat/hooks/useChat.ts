@@ -2,7 +2,7 @@
  * Custom hook for managing chat functionality.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type {
   Message,
   TokenUsage,
@@ -44,6 +44,485 @@ type SendMessageOptions = {
 };
 
 type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
+
+type MessageStateSetter = Dispatch<SetStateAction<Message[]>>;
+
+function createHydrateUserMessageFromServer(params: {
+  sessionId: string | null;
+  api: ReturnType<typeof useChatServices>['api'];
+  setMessages: MessageStateSetter;
+}) {
+  const { sessionId, api, setMessages } = params;
+
+  return async function hydrateUserMessageFromServer(
+    userMessageId: string,
+    attempt: number = 0
+  ): Promise<boolean> {
+    if (!sessionId) {
+      return false;
+    }
+
+    try {
+      const session = await api.getSession(sessionId);
+      const serverUserMessage = session.state.messages.find(
+        (message) => message.message_id === userMessageId && message.role === 'user'
+      );
+      if (!serverUserMessage) {
+        if (attempt < 4) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return hydrateUserMessageFromServer(userMessageId, attempt + 1);
+        }
+        return false;
+      }
+
+      setMessages((prev) => {
+        const next = [...prev];
+        let targetIndex = next.findIndex(
+          (message) => message.message_id === userMessageId && message.role === 'user'
+        );
+
+        if (targetIndex < 0) {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i].role === 'user' && !next[i].message_id) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex < 0) {
+          return prev;
+        }
+
+        next[targetIndex] = {
+          ...next[targetIndex],
+          message_id: userMessageId,
+          content: serverUserMessage.content,
+          attachments: serverUserMessage.attachments,
+          created_at: serverUserMessage.created_at || next[targetIndex].created_at,
+        };
+        return next;
+      });
+      return true;
+    } catch (err) {
+      console.warn('Failed to hydrate user message from server:', err);
+      return false;
+    }
+  };
+}
+
+function createLoadSession(params: {
+  sessionId: string | null;
+  api: ReturnType<typeof useChatServices>['api'];
+  abortControllerRef: MutableRefObject<AbortController | null>;
+  isProcessingRef: MutableRefObject<boolean>;
+  applySessionSnapshot: (snapshot: ReturnType<typeof createEmptyChatSessionSnapshot>) => void;
+  mergeToolCallsFromCache: (items: Message[]) => Message[];
+  rememberToolCalls: (items: Message[]) => void;
+  setIsStreaming: Dispatch<SetStateAction<boolean>>;
+  setIsComparing: Dispatch<SetStateAction<boolean>>;
+  setIsCompressing: Dispatch<SetStateAction<boolean>>;
+  setFollowupQuestions: Dispatch<SetStateAction<string[]>>;
+  setContextInfo: Dispatch<SetStateAction<ContextInfo | null>>;
+  setLoading: Dispatch<SetStateAction<boolean>>;
+  setError: Dispatch<SetStateAction<string | null>>;
+}) {
+  const {
+    sessionId,
+    api,
+    abortControllerRef,
+    isProcessingRef,
+    applySessionSnapshot,
+    mergeToolCallsFromCache,
+    rememberToolCalls,
+    setIsStreaming,
+    setIsComparing,
+    setIsCompressing,
+    setFollowupQuestions,
+    setContextInfo,
+    setLoading,
+    setError,
+  } = params;
+
+  return async function loadSession() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    isProcessingRef.current = false;
+    setIsStreaming(false);
+    setIsComparing(false);
+    setIsCompressing(false);
+
+    if (!sessionId) {
+      applySessionSnapshot(createEmptyChatSessionSnapshot());
+      setFollowupQuestions([]);
+      setContextInfo(null);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setFollowupQuestions([]);
+      const session = await api.getSession(sessionId);
+      let loadedMessages = session.state.messages;
+
+      if (session.group_assistants && session.group_assistants.length >= 2) {
+        const needsAssistantMetadata = loadedMessages.some(
+          (message) =>
+            message.role === 'assistant' &&
+            message.assistant_id &&
+            (!message.assistant_name || !message.assistant_icon)
+        );
+
+        if (needsAssistantMetadata) {
+          try {
+            const assistants = await api.listAssistants();
+            loadedMessages = enrichGroupAssistantMessages(loadedMessages, assistants);
+          } catch {
+            // Keep loaded messages as-is when assistant metadata cannot be fetched.
+          }
+        }
+      }
+
+      loadedMessages = mergeCompareResponses(loadedMessages, session.compare_data);
+      loadedMessages = mergeToolCallsFromCache(loadedMessages);
+      rememberToolCalls(loadedMessages);
+      applySessionSnapshot(buildChatSessionSnapshot(session, loadedMessages));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load session');
+      applySessionSnapshot(createEmptyChatSessionSnapshot());
+      setContextInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+}
+
+function createSendCompareMessage(params: {
+  sessionId: string | null;
+  api: ReturnType<typeof useChatServices>['api'];
+  isProcessingRef: MutableRefObject<boolean>;
+  abortControllerRef: MutableRefObject<AbortController | null>;
+  setMessages: MessageStateSetter;
+  setFollowupQuestions: Dispatch<SetStateAction<string[]>>;
+  setIsComparing: Dispatch<SetStateAction<boolean>>;
+  setLoading: Dispatch<SetStateAction<boolean>>;
+  setError: Dispatch<SetStateAction<string | null>>;
+  hydrateUserMessageFromServer: (userMessageId: string, attempt?: number) => Promise<boolean>;
+}) {
+  const {
+    sessionId,
+    api,
+    isProcessingRef,
+    abortControllerRef,
+    setMessages,
+    setFollowupQuestions,
+    setIsComparing,
+    setLoading,
+    setError,
+    hydrateUserMessageFromServer,
+  } = params;
+
+  return async function sendCompareMessage(
+    content: string,
+    modelIds: string[],
+    options?: SendMessageOptions
+  ) {
+    if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) {
+      return;
+    }
+
+    isProcessingRef.current = true;
+    try {
+      if (api.beforeSendMessage) {
+        const gate = await api.beforeSendMessage({ sessionId, message: content });
+        if (!gate.proceed) {
+          if (gate.reason) {
+            setError(gate.reason);
+          }
+          isProcessingRef.current = false;
+          return;
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to prepare message send');
+      isProcessingRef.current = false;
+      return;
+    }
+
+    setFollowupQuestions([]);
+    setIsComparing(true);
+
+    const userMessage: Message = {
+      role: 'user',
+      content,
+      created_at: nowTimestamp(),
+      attachments: options?.attachments?.map((attachment) => ({
+        filename: attachment.filename,
+        size: attachment.size,
+        mime_type: attachment.mime_type,
+      })),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    const assistantMessage: Message = {
+      role: 'assistant',
+      content: '',
+      created_at: nowTimestamp(),
+      compareResponses: [],
+    };
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    setLoading(true);
+    setError(null);
+
+    const modelContentMap = new Map<string, string>();
+    let latestUserMessageId: string | null = null;
+
+    try {
+      await api.sendCompareStream(
+        sessionId,
+        content,
+        modelIds,
+        {
+          onModelStart: (modelId: string, modelName: string) => {
+            modelContentMap.set(modelId, '');
+            setMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+              if (lastIndex >= 0 && next[lastIndex].role === 'assistant') {
+                const responses = [...(next[lastIndex].compareResponses || [])];
+                responses.push({ model_id: modelId, model_name: modelName, content: '' });
+                next[lastIndex] = { ...next[lastIndex], compareResponses: responses };
+              }
+              return next;
+            });
+          },
+          onModelChunk: (modelId: string, chunk: string) => {
+            const updatedContent = (modelContentMap.get(modelId) || '') + chunk;
+            modelContentMap.set(modelId, updatedContent);
+
+            setMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+              if (lastIndex >= 0 && next[lastIndex].role === 'assistant') {
+                const responses = (next[lastIndex].compareResponses || []).map((response) =>
+                  response.model_id === modelId ? { ...response, content: updatedContent } : response
+                );
+                const firstContent = modelContentMap.get(modelIds[0]) || '';
+                next[lastIndex] = { ...next[lastIndex], content: firstContent, compareResponses: responses };
+              }
+              return next;
+            });
+          },
+          onModelDone: (modelId: string, fullContent: string, usage?: TokenUsage, cost?: CostInfo) => {
+            setMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+              if (lastIndex >= 0 && next[lastIndex].role === 'assistant') {
+                const responses = (next[lastIndex].compareResponses || []).map((response) =>
+                  response.model_id === modelId ? { ...response, content: fullContent, usage, cost } : response
+                );
+                next[lastIndex] = { ...next[lastIndex], compareResponses: responses };
+              }
+              return next;
+            });
+          },
+          onModelError: (modelId: string, error: string) => {
+            setMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+              if (lastIndex >= 0 && next[lastIndex].role === 'assistant') {
+                const responses = (next[lastIndex].compareResponses || []).map((response) =>
+                  response.model_id === modelId ? { ...response, error } : response
+                );
+                next[lastIndex] = { ...next[lastIndex], compareResponses: responses };
+              }
+              return next;
+            });
+          },
+          onUserMessageId: (messageId: string) => {
+            latestUserMessageId = messageId;
+            setMessages((prev) => {
+              const next = [...prev];
+              if (next.length >= 2) {
+                next[next.length - 2] = { ...next[next.length - 2], message_id: messageId };
+              }
+              return next;
+            });
+            void hydrateUserMessageFromServer(messageId);
+          },
+          onAssistantMessageId: (messageId: string) => {
+            setMessages((prev) => {
+              const next = [...prev];
+              if (next.length >= 1) {
+                next[next.length - 1] = { ...next[next.length - 1], message_id: messageId };
+              }
+              return next;
+            });
+          },
+          onSources: (sources) => {
+            setMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+              if (lastIndex >= 0 && next[lastIndex].role === 'assistant') {
+                next[lastIndex] = { ...next[lastIndex], sources };
+              }
+              return next;
+            });
+          },
+          onDone: () => {
+            setLoading(false);
+            setIsComparing(false);
+            isProcessingRef.current = false;
+            if (latestUserMessageId) {
+              void hydrateUserMessageFromServer(latestUserMessageId);
+            }
+          },
+          onError: (error: string) => {
+            setError(error);
+            setLoading(false);
+            setIsComparing(false);
+            isProcessingRef.current = false;
+            setMessages((prev) => prev.slice(0, -2));
+          },
+        },
+        abortControllerRef,
+        {
+          reasoningEffort: options?.reasoningEffort,
+          attachments: options?.attachments,
+          useWebSearch: options?.useWebSearch,
+          fileReferences: options?.fileReferences,
+        }
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to compare models');
+      setLoading(false);
+      setIsComparing(false);
+      isProcessingRef.current = false;
+      setMessages((prev) => prev.slice(0, -2));
+    }
+  };
+}
+
+function createCompressContext(params: {
+  sessionId: string | null;
+  api: ReturnType<typeof useChatServices>['api'];
+  isProcessingRef: MutableRefObject<boolean>;
+  isCompressing: boolean;
+  setIsCompressing: Dispatch<SetStateAction<boolean>>;
+  setError: Dispatch<SetStateAction<string | null>>;
+  setMessages: MessageStateSetter;
+}) {
+  const {
+    sessionId,
+    api,
+    isProcessingRef,
+    isCompressing,
+    setIsCompressing,
+    setError,
+    setMessages,
+  } = params;
+
+  return async function compressContext() {
+    if (!sessionId || isProcessingRef.current || isCompressing) {
+      return;
+    }
+
+    isProcessingRef.current = true;
+    setIsCompressing(true);
+    setError(null);
+
+    const placeholderMessage: Message = {
+      role: 'summary',
+      content: '',
+      created_at: nowTimestamp(),
+    };
+    setMessages((prev) => [...prev, placeholderMessage]);
+
+    let streamedContent = '';
+
+    try {
+      await api.compressContext(
+        sessionId,
+        (chunk: string) => {
+          streamedContent += chunk;
+          setMessages((prev) => {
+            const next = [...prev];
+            const lastIndex = next.length - 1;
+            if (lastIndex >= 0 && next[lastIndex].role === 'summary') {
+              next[lastIndex] = { ...next[lastIndex], content: streamedContent };
+            }
+            return next;
+          });
+        },
+        (data: { message_id: string; compressed_count: number }) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            const lastIndex = next.length - 1;
+            if (lastIndex >= 0 && next[lastIndex].role === 'summary') {
+              next[lastIndex] = { ...next[lastIndex], message_id: data.message_id };
+            }
+            return next;
+          });
+        },
+        (error: string) => {
+          setError(error);
+          setMessages((prev) => prev.filter((message) => message !== placeholderMessage));
+        },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to compress context');
+      setMessages((prev) => {
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage?.role === 'summary' && !lastMessage.content) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+    } finally {
+      setIsCompressing(false);
+      isProcessingRef.current = false;
+    }
+  };
+}
+
+function createClearFollowupQuestions(setFollowupQuestions: Dispatch<SetStateAction<string[]>>) {
+  return function clearFollowupQuestions() {
+    setFollowupQuestions([]);
+  };
+}
+
+function createGenerateFollowups(params: {
+  sessionId: string | null;
+  api: ReturnType<typeof useChatServices>['api'];
+  setFollowupQuestions: Dispatch<SetStateAction<string[]>>;
+}) {
+  const { sessionId, api, setFollowupQuestions } = params;
+
+  return async function generateFollowups() {
+    if (!sessionId) {
+      return;
+    }
+    try {
+      const questions = await api.generateFollowups(sessionId);
+      setFollowupQuestions(questions);
+    } catch (err) {
+      console.error('Failed to generate follow-ups:', err);
+    }
+  };
+}
+
+function createStopGeneration(abortControllerRef: MutableRefObject<AbortController | null>) {
+  return function stopGeneration() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      console.log('Stopping generation...');
+    }
+  };
+}
 
 export function useChat(sessionId: string | null) {
   const { api } = useChatServices();
@@ -137,62 +616,24 @@ export function useChat(sessionId: string | null) {
     });
   }, [appendGroupTimelineEvent, setLastPromptTokens, setMessages, setTotalCost, setTotalUsage]);
 
-  // Extract loadSession as a standalone function so it can be called after sending messages
-  const loadSession = useCallback(async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    isProcessingRef.current = false;
-    setIsStreaming(false);
-    setIsComparing(false);
-    setIsCompressing(false);
-
-    if (!sessionId) {
-      applySessionSnapshot(createEmptyChatSessionSnapshot());
-      setFollowupQuestions([]);
-      setContextInfo(null);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      setFollowupQuestions([]);
-      const session = await api.getSession(sessionId);
-      let loadedMessages = session.state.messages;
-
-      if (session.group_assistants && session.group_assistants.length >= 2) {
-        const needsAssistantMetadata = loadedMessages.some(
-          (msg) =>
-            msg.role === 'assistant' &&
-            msg.assistant_id &&
-            (!msg.assistant_name || !msg.assistant_icon)
-        );
-
-        if (needsAssistantMetadata) {
-          try {
-            const assistants = await api.listAssistants();
-            loadedMessages = enrichGroupAssistantMessages(loadedMessages, assistants);
-          } catch {
-            // Keep loaded messages as-is when assistant metadata cannot be fetched.
-          }
-        }
-      }
-
-      loadedMessages = mergeCompareResponses(loadedMessages, session.compare_data);
-
-      loadedMessages = mergeToolCallsFromCache(loadedMessages);
-      rememberToolCalls(loadedMessages);
-      applySessionSnapshot(buildChatSessionSnapshot(session, loadedMessages));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load session');
-      applySessionSnapshot(createEmptyChatSessionSnapshot());
-      setContextInfo(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, applySessionSnapshot, mergeToolCallsFromCache, rememberToolCalls, sessionId]);
+  const loadSession = useMemo(() => createLoadSession({
+    sessionId,
+    api,
+    abortControllerRef,
+    isProcessingRef,
+    applySessionSnapshot,
+    mergeToolCallsFromCache,
+    rememberToolCalls,
+    setIsStreaming,
+    setIsComparing,
+    setIsCompressing,
+    setFollowupQuestions,
+    setContextInfo,
+    setLoading,
+    setError,
+  }),
+    [api, applySessionSnapshot, mergeToolCallsFromCache, rememberToolCalls, sessionId]
+  );
 
   useEffect(() => {
     rememberToolCalls(messages);
@@ -203,63 +644,10 @@ export function useChat(sessionId: string | null) {
     loadSession();
   }, [loadSession]);
 
-  // Replace optimistic user message content with server-stored content
-  // (important for @file injected blocks).
-  const hydrateUserMessageFromServer = async (
-    userMessageId: string,
-    attempt: number = 0
-  ): Promise<boolean> => {
-    if (!sessionId) return false;
-    try {
-      const session = await api.getSession(sessionId);
-      const serverUserMessage = session.state.messages.find(
-        (m) => m.message_id === userMessageId && m.role === 'user'
-      );
-      if (!serverUserMessage) {
-        if (attempt < 4) {
-          await new Promise((resolve) => setTimeout(resolve, 150));
-          return hydrateUserMessageFromServer(userMessageId, attempt + 1);
-        }
-        return false;
-      }
-
-      setMessages(prev => {
-        const next = [...prev];
-        let targetIndex = next.findIndex(
-          (m) => m.message_id === userMessageId && m.role === 'user'
-        );
-
-        // Fallback for optimistic message race: fill the latest user message
-        // that still has no backend message_id.
-        if (targetIndex < 0) {
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'user' && !next[i].message_id) {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex < 0) {
-          return prev;
-        }
-
-        next[targetIndex] = {
-          ...next[targetIndex],
-          message_id: userMessageId,
-          content: serverUserMessage.content,
-          attachments: serverUserMessage.attachments,
-          created_at: serverUserMessage.created_at || next[targetIndex].created_at,
-        };
-        return next;
-      });
-      return true;
-    } catch (err) {
-      // Keep optimistic content if hydration fails.
-      console.warn('Failed to hydrate user message from server:', err);
-      return false;
-    }
-  };
+  const hydrateUserMessageFromServer = useMemo(
+    () => createHydrateUserMessageFromServer({ sessionId, api, setMessages }),
+    [api, sessionId]
+  );
 
   const sendMessage = async (content: string, options?: SendMessageOptions) => {
     if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
@@ -539,198 +927,20 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const sendCompareMessage = async (content: string, modelIds: string[], options?: SendMessageOptions) => {
-    if (!sessionId || (!content.trim() && !options?.attachments?.length) || isProcessingRef.current) return;
-
-    isProcessingRef.current = true;
-    try {
-      if (api.beforeSendMessage) {
-        const gate = await api.beforeSendMessage({ sessionId, message: content });
-        if (!gate.proceed) {
-          if (gate.reason) {
-            setError(gate.reason);
-          }
-          isProcessingRef.current = false;
-          return;
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to prepare message send');
-      isProcessingRef.current = false;
-      return;
-    }
-
-    setFollowupQuestions([]);
-    setIsComparing(true);
-
-    // Optimistically add user message
-    const userMessage: Message = {
-      role: 'user',
-      content,
-      created_at: nowTimestamp(),
-      attachments: options?.attachments?.map(a => ({
-        filename: a.filename,
-        size: a.size,
-        mime_type: a.mime_type,
-      })),
-    };
-    setMessages(prev => [...prev, userMessage]);
-
-    // Add placeholder assistant message with empty compareResponses
-    const assistantMessage: Message = {
-      role: 'assistant',
-      content: '',
-      created_at: nowTimestamp(),
-      compareResponses: [],
-    };
-    setMessages(prev => [...prev, assistantMessage]);
-
-    setLoading(true);
-    setError(null);
-
-    // Track accumulated content per model
-    const modelContentMap = new Map<string, string>();
-    const modelNameMap = new Map<string, string>();
-
-    let latestUserMessageId: string | null = null;
-    try {
-      await api.sendCompareStream(
-        sessionId,
-        content,
-        modelIds,
-        {
-          onModelStart: (modelId: string, modelName: string) => {
-            modelNameMap.set(modelId, modelName);
-            modelContentMap.set(modelId, '');
-            // Add initial empty entry
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastIndex = newMessages.length - 1;
-              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-                const responses = [...(newMessages[lastIndex].compareResponses || [])];
-                responses.push({
-                  model_id: modelId,
-                  model_name: modelName,
-                  content: '',
-                });
-                newMessages[lastIndex] = { ...newMessages[lastIndex], compareResponses: responses };
-              }
-              return newMessages;
-            });
-          },
-          onModelChunk: (modelId: string, chunk: string) => {
-            const current = modelContentMap.get(modelId) || '';
-            modelContentMap.set(modelId, current + chunk);
-            const updatedContent = current + chunk;
-
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastIndex = newMessages.length - 1;
-              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-                const responses = (newMessages[lastIndex].compareResponses || []).map(r =>
-                  r.model_id === modelId ? { ...r, content: updatedContent } : r
-                );
-                // Also set content to first model's content for display purposes
-                const firstContent = modelContentMap.get(modelIds[0]) || '';
-                newMessages[lastIndex] = { ...newMessages[lastIndex], content: firstContent, compareResponses: responses };
-              }
-              return newMessages;
-            });
-          },
-          onModelDone: (modelId: string, fullContent: string, usage?: TokenUsage, cost?: CostInfo) => {
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastIndex = newMessages.length - 1;
-              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-                const responses = (newMessages[lastIndex].compareResponses || []).map(r =>
-                  r.model_id === modelId ? { ...r, content: fullContent, usage, cost } : r
-                );
-                newMessages[lastIndex] = { ...newMessages[lastIndex], compareResponses: responses };
-              }
-              return newMessages;
-            });
-          },
-          onModelError: (modelId: string, error: string) => {
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastIndex = newMessages.length - 1;
-              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-                const responses = (newMessages[lastIndex].compareResponses || []).map(r =>
-                  r.model_id === modelId ? { ...r, error } : r
-                );
-                newMessages[lastIndex] = { ...newMessages[lastIndex], compareResponses: responses };
-              }
-              return newMessages;
-            });
-          },
-          onUserMessageId: (messageId: string) => {
-            latestUserMessageId = messageId;
-            setMessages(prev => {
-              const newMessages = [...prev];
-              if (newMessages.length >= 2) {
-                newMessages[newMessages.length - 2] = {
-                  ...newMessages[newMessages.length - 2],
-                  message_id: messageId,
-                };
-              }
-              return newMessages;
-            });
-            void hydrateUserMessageFromServer(messageId);
-          },
-          onAssistantMessageId: (messageId: string) => {
-            setMessages(prev => {
-              const newMessages = [...prev];
-              if (newMessages.length >= 1) {
-                newMessages[newMessages.length - 1] = {
-                  ...newMessages[newMessages.length - 1],
-                  message_id: messageId,
-                };
-              }
-              return newMessages;
-            });
-          },
-          onSources: (sources) => {
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastIndex = newMessages.length - 1;
-              if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-                newMessages[lastIndex] = { ...newMessages[lastIndex], sources };
-              }
-              return newMessages;
-            });
-          },
-          onDone: () => {
-            setLoading(false);
-            setIsComparing(false);
-            isProcessingRef.current = false;
-            if (latestUserMessageId) {
-              void hydrateUserMessageFromServer(latestUserMessageId);
-            }
-          },
-          onError: (error: string) => {
-            setError(error);
-            setLoading(false);
-            setIsComparing(false);
-            isProcessingRef.current = false;
-            setMessages(prev => prev.slice(0, -2));
-          },
-        },
-        abortControllerRef,
-        {
-          reasoningEffort: options?.reasoningEffort,
-          attachments: options?.attachments,
-          useWebSearch: options?.useWebSearch,
-          fileReferences: options?.fileReferences,
-        }
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to compare models');
-      setLoading(false);
-      setIsComparing(false);
-      isProcessingRef.current = false;
-      setMessages(prev => prev.slice(0, -2));
-    }
-  };
+  const sendCompareMessage = useMemo(() => createSendCompareMessage({
+    sessionId,
+    api,
+    isProcessingRef,
+    abortControllerRef,
+    setMessages,
+    setFollowupQuestions,
+    setIsComparing,
+    setLoading,
+    setError,
+    hydrateUserMessageFromServer,
+  }),
+    [api, hydrateUserMessageFromServer, sessionId]
+  );
 
   const editMessage = async (messageId: string, newContent: string) => {
     if (!sessionId || isProcessingRef.current) return;
@@ -1119,12 +1329,7 @@ export function useChat(sessionId: string | null) {
     }
   };
 
-  const stopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      console.log('Stopping generation...');
-    }
-  };
+  const stopGeneration = useMemo(() => createStopGeneration(abortControllerRef), []);
 
   const deleteMessage = async (messageId: string) => {
     if (!sessionId || isProcessingRef.current) return;
@@ -1255,86 +1460,27 @@ export function useChat(sessionId: string | null) {
 
   const hasActiveOverrides = Object.keys(paramOverrides).length > 0;
 
-  const clearFollowupQuestions = () => {
-    setFollowupQuestions([]);
-  };
+  const clearFollowupQuestions = useMemo(
+    () => createClearFollowupQuestions(setFollowupQuestions),
+    []
+  );
 
-  const generateFollowups = async () => {
-    if (!sessionId) return;
-    try {
-      const questions = await api.generateFollowups(sessionId);
-      setFollowupQuestions(questions);
-    } catch (err) {
-      console.error('Failed to generate follow-ups:', err);
-    }
-  };
+  const generateFollowups = useMemo(
+    () => createGenerateFollowups({ sessionId, api, setFollowupQuestions }),
+    [api, sessionId]
+  );
 
-  const compressContext = async () => {
-    if (!sessionId || isProcessingRef.current || isCompressing) return;
-
-    isProcessingRef.current = true;
-    setIsCompressing(true);
-    setError(null);
-
-    // Add placeholder summary message (streaming)
-    const placeholderMessage: Message = {
-      role: 'summary',
-      content: '',
-      created_at: nowTimestamp(),
-    };
-    setMessages(prev => [...prev, placeholderMessage]);
-
-    let streamedContent = '';
-
-    try {
-      await api.compressContext(
-        sessionId,
-        (chunk: string) => {
-          streamedContent += chunk;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'summary') {
-              newMessages[lastIndex] = { ...newMessages[lastIndex], content: streamedContent };
-            }
-            return newMessages;
-          });
-        },
-        (data: { message_id: string; compressed_count: number }) => {
-          // Update placeholder with final message_id
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            if (lastIndex >= 0 && newMessages[lastIndex].role === 'summary') {
-              newMessages[lastIndex] = {
-                ...newMessages[lastIndex],
-                message_id: data.message_id,
-              };
-            }
-            return newMessages;
-          });
-        },
-        (error: string) => {
-          setError(error);
-          // Remove the placeholder on error
-          setMessages(prev => prev.filter(m => m !== placeholderMessage));
-        },
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to compress context');
-      setMessages(prev => {
-        // Remove the last summary message if it has no content
-        const lastMsg = prev[prev.length - 1];
-        if (lastMsg?.role === 'summary' && !lastMsg.content) {
-          return prev.slice(0, -1);
-        }
-        return prev;
-      });
-    } finally {
-      setIsCompressing(false);
-      isProcessingRef.current = false;
-    }
-  };
+  const compressContext = useMemo(() => createCompressContext({
+    sessionId,
+    api,
+    isProcessingRef,
+    isCompressing,
+    setIsCompressing,
+    setError,
+    setMessages,
+  }),
+    [api, isCompressing, sessionId]
+  );
 
   return {
     messages,
