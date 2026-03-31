@@ -32,7 +32,6 @@ export default defineConfig([
   },
   {
     files: [
-      'src/services/api.ts',
       'src/shared/chat/hooks/useChat.ts',
     ],
     rules: {

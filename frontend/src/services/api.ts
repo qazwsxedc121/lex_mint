@@ -215,6 +215,18 @@ interface CompareStreamRequestBody {
   file_references?: FileReferenceInput[];
 }
 
+interface CompareStreamCallbacks {
+  onModelChunk: (modelId: string, chunk: string) => void;
+  onModelStart: (modelId: string, modelName: string) => void;
+  onModelDone: (modelId: string, content: string, usage?: TokenUsage, cost?: CostInfo) => void;
+  onModelError: (modelId: string, error: string) => void;
+  onUserMessageId: (messageId: string) => void;
+  onAssistantMessageId: (messageId: string) => void;
+  onSources?: (sources: SearchSource[]) => void;
+  onDone: () => void;
+  onError: (error: string) => void;
+}
+
 function toUploadedFilePayload(attachments: UploadedFile[]): UploadedFilePayload[] {
   return attachments.map((attachment) => ({
     filename: attachment.filename,
@@ -222,6 +234,76 @@ function toUploadedFilePayload(attachments: UploadedFile[]): UploadedFilePayload
     mime_type: attachment.mime_type,
     temp_path: attachment.temp_path,
   }));
+}
+
+function handleCompareFlowEvent(flowEvent: FlowEvent, callbacks: CompareStreamCallbacks): boolean {
+  const payload = flowEvent.payload;
+
+  switch (flowEvent.event_type) {
+    case 'stream_error':
+      callbacks.onError(asString(payload.error) || 'Compare stream error');
+      return true;
+    case 'stream_ended':
+      callbacks.onDone();
+      return true;
+    case 'compare_model_started': {
+      const modelId = asString(payload.model_id);
+      if (modelId) {
+        callbacks.onModelStart(modelId, asString(payload.model_name) || modelId);
+      }
+      return false;
+    }
+    case 'text_delta': {
+      const modelId = asString(payload.model_id);
+      const text = asString(payload.text) || asString(payload.chunk);
+      if (modelId && text) {
+        callbacks.onModelChunk(modelId, text);
+      }
+      return false;
+    }
+    case 'compare_model_finished': {
+      const modelId = asString(payload.model_id);
+      if (modelId) {
+        callbacks.onModelDone(
+          modelId,
+          asString(payload.content) || '',
+          payload.usage as TokenUsage | undefined,
+          payload.cost as CostInfo | undefined
+        );
+      }
+      return false;
+    }
+    case 'compare_model_failed': {
+      const modelId = asString(payload.model_id);
+      if (modelId) {
+        callbacks.onModelError(modelId, asString(payload.error) || 'Model compare failed');
+      }
+      return false;
+    }
+    case 'user_message_identified': {
+      const messageId = asString(payload.message_id);
+      if (messageId) {
+        callbacks.onUserMessageId(messageId);
+      }
+      return false;
+    }
+    case 'assistant_message_identified': {
+      const messageId = asString(payload.message_id);
+      if (messageId) {
+        callbacks.onAssistantMessageId(messageId);
+      }
+      return false;
+    }
+    case 'sources_reported': {
+      const sources = payload.sources as SearchSource[] | undefined;
+      if (sources && callbacks.onSources) {
+        callbacks.onSources(sources);
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
 }
 
 export {
@@ -987,17 +1069,7 @@ export async function sendCompareStream(
   sessionId: string,
   message: string,
   modelIds: string[],
-  callbacks: {
-    onModelChunk: (modelId: string, chunk: string) => void;
-    onModelStart: (modelId: string, modelName: string) => void;
-    onModelDone: (modelId: string, content: string, usage?: TokenUsage, cost?: CostInfo) => void;
-    onModelError: (modelId: string, error: string) => void;
-    onUserMessageId: (messageId: string) => void;
-    onAssistantMessageId: (messageId: string) => void;
-    onSources?: (sources: SearchSource[]) => void;
-    onDone: () => void;
-    onError: (error: string) => void;
-  },
+  callbacks: CompareStreamCallbacks,
   abortControllerRef?: MutableRefObject<AbortController | null>,
   options?: {
     reasoningEffort?: string;
@@ -1064,82 +1136,8 @@ export async function sendCompareStream(
             callbacks.onError('Invalid compare stream event payload: missing flow_event');
             return;
           }
-          const payload = flowEvent.payload;
-
-          if (flowEvent.event_type === 'stream_error') {
-            callbacks.onError(asString(payload.error) || 'Compare stream error');
+          if (handleCompareFlowEvent(flowEvent, callbacks)) {
             return;
-          }
-
-          if (flowEvent.event_type === 'stream_ended') {
-            callbacks.onDone();
-            return;
-          }
-
-          if (flowEvent.event_type === 'compare_model_started') {
-            const modelId = asString(payload.model_id);
-            if (!modelId) {
-              continue;
-            }
-            callbacks.onModelStart(modelId, asString(payload.model_name) || modelId);
-            continue;
-          }
-
-          if (flowEvent.event_type === 'text_delta') {
-            const modelId = asString(payload.model_id);
-            const text = asString(payload.text) || asString(payload.chunk);
-            if (!modelId || !text) {
-              continue;
-            }
-            callbacks.onModelChunk(modelId, text);
-            continue;
-          }
-
-          if (flowEvent.event_type === 'compare_model_finished') {
-            const modelId = asString(payload.model_id);
-            if (!modelId) {
-              continue;
-            }
-            callbacks.onModelDone(
-              modelId,
-              asString(payload.content) || '',
-              payload.usage as TokenUsage | undefined,
-              payload.cost as CostInfo | undefined
-            );
-            continue;
-          }
-
-          if (flowEvent.event_type === 'compare_model_failed') {
-            const modelId = asString(payload.model_id);
-            if (!modelId) {
-              continue;
-            }
-            callbacks.onModelError(modelId, asString(payload.error) || 'Model compare failed');
-            continue;
-          }
-
-          if (flowEvent.event_type === 'user_message_identified') {
-            const messageId = asString(payload.message_id);
-            if (messageId) {
-              callbacks.onUserMessageId(messageId);
-            }
-            continue;
-          }
-
-          if (flowEvent.event_type === 'assistant_message_identified') {
-            const messageId = asString(payload.message_id);
-            if (messageId) {
-              callbacks.onAssistantMessageId(messageId);
-            }
-            continue;
-          }
-
-          if (flowEvent.event_type === 'sources_reported' && callbacks.onSources) {
-            const sources = payload.sources as SearchSource[] | undefined;
-            if (sources) {
-              callbacks.onSources(sources);
-            }
-            continue;
           }
         } catch {
           // Ignore malformed SSE event payloads.
