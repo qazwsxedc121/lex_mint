@@ -168,115 +168,9 @@ class ToolLoopRunner:
         round_tool_calls: list[dict[str, Any]],
         tool_results: list[dict[str, str]],
     ) -> None:
-        progress_made = False
         evidence_count_before = len(state.evidence_rows)
-
-        for tool_call in round_tool_calls:
-            name = str(tool_call.get("name") or "")
-            raw_args = tool_call.get("args")
-            args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-            if name in {"search_knowledge", "web_search"}:
-                state.tool_search_count += 1
-                if name == "web_search":
-                    state.web_search_count += 1
-                query_text = str(args.get("query") or "")
-                normalized_query = self._normalize_query(query_text)
-                if normalized_query and normalized_query in state.search_queries_seen:
-                    state.tool_search_duplicate_count += 1
-                elif normalized_query:
-                    state.search_queries_seen.add(normalized_query)
-                    state.tool_search_unique_count += 1
-                    progress_made = True
-                continue
-            if name in {"read_knowledge", "read_webpage"}:
-                state.tool_read_count += 1
-                if name == "read_webpage":
-                    state.web_read_count += 1
-                read_target = ""
-                if name == "read_webpage":
-                    read_target = str(args.get("url") or "")
-                elif name == "read_knowledge":
-                    raw_refs = args.get("refs")
-                    if isinstance(raw_refs, list):
-                        read_target = "|".join(str(ref or "") for ref in raw_refs)
-                normalized_target = self._normalize_target(read_target)
-                if normalized_target and normalized_target in state.read_targets_seen:
-                    state.tool_read_duplicate_count += 1
-                elif normalized_target:
-                    state.read_targets_seen.add(normalized_target)
-                    progress_made = True
-
-        for tool_result in tool_results:
-            state.tool_result_count += 1
-            name = str(tool_result.get("name") or "")
-            raw_result = str(tool_result.get("result") or "")
-            try:
-                parsed = json.loads(raw_result)
-            except Exception:
-                continue
-            if not isinstance(parsed, dict):
-                continue
-
-            if name == "search_knowledge":
-                refs: list[str] = []
-                raw_hits = parsed.get("hits")
-                hits: list[Any] = list(raw_hits) if isinstance(raw_hits, list) else []
-                for hit in hits[:4]:
-                    if not isinstance(hit, dict):
-                        continue
-                    ref_id = str(hit.get("ref_id") or "").strip()
-                    if ref_id:
-                        refs.append(ref_id)
-                    self._append_evidence_row(
-                        state,
-                        title=str(hit.get("filename") or hit.get("doc_id") or "search_hit"),
-                        snippet=str(hit.get("snippet") or ""),
-                    )
-                if refs:
-                    state.last_search_refs = refs
-                continue
-
-            if name == "web_search":
-                urls: list[str] = []
-                raw_results = parsed.get("results")
-                results: list[Any] = list(raw_results) if isinstance(raw_results, list) else []
-                for item in results[:4]:
-                    if not isinstance(item, dict):
-                        continue
-                    url = str(item.get("url") or "").strip()
-                    if url:
-                        urls.append(url)
-                    self._append_evidence_row(
-                        state,
-                        title=str(item.get("title") or item.get("domain") or "web_result"),
-                        snippet=str(item.get("snippet") or url),
-                    )
-                if urls:
-                    state.last_web_search_urls = urls
-                continue
-
-            if name == "read_knowledge":
-                raw_sources = parsed.get("sources")
-                sources: list[Any] = list(raw_sources) if isinstance(raw_sources, list) else []
-                for source in sources[:4]:
-                    if not isinstance(source, dict):
-                        continue
-                    self._append_evidence_row(
-                        state,
-                        title=str(source.get("filename") or source.get("ref_id") or "read_source"),
-                        snippet=str(source.get("content") or ""),
-                    )
-                continue
-
-            if name == "read_webpage":
-                page_title = str(parsed.get("title") or parsed.get("domain") or "webpage")
-                page_snippet = str(parsed.get("preview") or parsed.get("content") or "")
-                if page_snippet:
-                    self._append_evidence_row(
-                        state,
-                        title=page_title,
-                        snippet=page_snippet,
-                    )
+        progress_made = self._record_tool_calls_activity(state, round_tool_calls)
+        progress_made = self._record_tool_results_activity(state, tool_results) or progress_made
 
         if len(state.evidence_rows) > evidence_count_before:
             progress_made = True
@@ -285,6 +179,200 @@ class ToolLoopRunner:
             state.no_progress_rounds = 0
         else:
             state.no_progress_rounds += 1
+
+    def _record_tool_calls_activity(
+        self,
+        state: ToolLoopState,
+        round_tool_calls: list[dict[str, Any]],
+    ) -> bool:
+        progress_made = False
+        for tool_call in round_tool_calls:
+            progress_made = self._record_tool_call(state, tool_call) or progress_made
+        return progress_made
+
+    def _record_tool_call(
+        self,
+        state: ToolLoopState,
+        tool_call: dict[str, Any],
+    ) -> bool:
+        name = str(tool_call.get("name") or "")
+        raw_args = tool_call.get("args")
+        args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
+
+        if name in {"search_knowledge", "web_search"}:
+            return self._record_search_tool_call(state, name=name, args=args)
+        if name in {"read_knowledge", "read_webpage"}:
+            return self._record_read_tool_call(state, name=name, args=args)
+        return False
+
+    def _record_search_tool_call(
+        self,
+        state: ToolLoopState,
+        *,
+        name: str,
+        args: dict[str, Any],
+    ) -> bool:
+        state.tool_search_count += 1
+        if name == "web_search":
+            state.web_search_count += 1
+
+        query_text = str(args.get("query") or "")
+        normalized_query = self._normalize_query(query_text)
+        if normalized_query and normalized_query in state.search_queries_seen:
+            state.tool_search_duplicate_count += 1
+            return False
+        if not normalized_query:
+            return False
+
+        state.search_queries_seen.add(normalized_query)
+        state.tool_search_unique_count += 1
+        return True
+
+    def _record_read_tool_call(
+        self,
+        state: ToolLoopState,
+        *,
+        name: str,
+        args: dict[str, Any],
+    ) -> bool:
+        state.tool_read_count += 1
+        if name == "read_webpage":
+            state.web_read_count += 1
+
+        normalized_target = self._normalize_target(self._read_target(name=name, args=args))
+        if normalized_target and normalized_target in state.read_targets_seen:
+            state.tool_read_duplicate_count += 1
+            return False
+        if not normalized_target:
+            return False
+
+        state.read_targets_seen.add(normalized_target)
+        return True
+
+    @staticmethod
+    def _read_target(*, name: str, args: dict[str, Any]) -> str:
+        if name == "read_webpage":
+            return str(args.get("url") or "")
+
+        raw_refs = args.get("refs")
+        if isinstance(raw_refs, list):
+            return "|".join(str(ref or "") for ref in raw_refs)
+        return ""
+
+    def _record_tool_results_activity(
+        self,
+        state: ToolLoopState,
+        tool_results: list[dict[str, str]],
+    ) -> bool:
+        progress_made = False
+        for tool_result in tool_results:
+            state.tool_result_count += 1
+            progress_made = self._record_tool_result(state, tool_result) or progress_made
+        return progress_made
+
+    def _record_tool_result(
+        self,
+        state: ToolLoopState,
+        tool_result: dict[str, str],
+    ) -> bool:
+        name = str(tool_result.get("name") or "")
+        parsed = self._parse_tool_result(tool_result)
+        if parsed is None:
+            return False
+
+        if name == "search_knowledge":
+            return self._record_search_knowledge_result(state, parsed)
+        if name == "web_search":
+            return self._record_web_search_result(state, parsed)
+        if name == "read_knowledge":
+            return self._record_read_knowledge_result(state, parsed)
+        if name == "read_webpage":
+            return self._record_read_webpage_result(state, parsed)
+        return False
+
+    @staticmethod
+    def _parse_tool_result(tool_result: dict[str, str]) -> dict[str, Any] | None:
+        raw_result = str(tool_result.get("result") or "")
+        try:
+            parsed = json.loads(raw_result)
+        except Exception:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    def _record_search_knowledge_result(
+        self,
+        state: ToolLoopState,
+        parsed: dict[str, Any],
+    ) -> bool:
+        refs: list[str] = []
+        hits = self._result_items(parsed.get("hits"))
+        for hit in hits[:4]:
+            ref_id = str(hit.get("ref_id") or "").strip()
+            if ref_id:
+                refs.append(ref_id)
+            self._append_evidence_row(
+                state,
+                title=str(hit.get("filename") or hit.get("doc_id") or "search_hit"),
+                snippet=str(hit.get("snippet") or ""),
+            )
+        if refs:
+            state.last_search_refs = refs
+        return bool(refs)
+
+    def _record_web_search_result(
+        self,
+        state: ToolLoopState,
+        parsed: dict[str, Any],
+    ) -> bool:
+        urls: list[str] = []
+        results = self._result_items(parsed.get("results"))
+        for item in results[:4]:
+            url = str(item.get("url") or "").strip()
+            if url:
+                urls.append(url)
+            self._append_evidence_row(
+                state,
+                title=str(item.get("title") or item.get("domain") or "web_result"),
+                snippet=str(item.get("snippet") or url),
+            )
+        if urls:
+            state.last_web_search_urls = urls
+        return bool(urls)
+
+    def _record_read_knowledge_result(
+        self,
+        state: ToolLoopState,
+        parsed: dict[str, Any],
+    ) -> bool:
+        sources = self._result_items(parsed.get("sources"))
+        for source in sources[:4]:
+            self._append_evidence_row(
+                state,
+                title=str(source.get("filename") or source.get("ref_id") or "read_source"),
+                snippet=str(source.get("content") or ""),
+            )
+        return bool(sources)
+
+    def _record_read_webpage_result(
+        self,
+        state: ToolLoopState,
+        parsed: dict[str, Any],
+    ) -> bool:
+        page_title = str(parsed.get("title") or parsed.get("domain") or "webpage")
+        page_snippet = str(parsed.get("preview") or parsed.get("content") or "")
+        if not page_snippet:
+            return False
+        self._append_evidence_row(
+            state,
+            title=page_title,
+            snippet=page_snippet,
+        )
+        return True
+
+    @staticmethod
+    def _result_items(raw_items: Any) -> list[dict[str, Any]]:
+        items: list[Any] = list(raw_items) if isinstance(raw_items, list) else []
+        return [item for item in items if isinstance(item, dict)]
 
     @staticmethod
     def should_request_read_compensation(
