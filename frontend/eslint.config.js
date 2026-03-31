@@ -35,7 +35,6 @@ export default defineConfig([
       'src/modules/projects/components/FileViewer.tsx',
       'src/services/api.ts',
       'src/shared/chat/components/MessageBubble.tsx',
-      'src/shared/chat/components/ToolCallBlock.tsx',
       'src/shared/chat/hooks/useChat.ts',
     ],
     rules: {

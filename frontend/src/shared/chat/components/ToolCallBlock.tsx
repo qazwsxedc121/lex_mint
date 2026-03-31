@@ -12,6 +12,7 @@ import {
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import type { ToolCallInfo } from '../../../types/message';
 import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
@@ -291,6 +292,638 @@ const developerPayloadBlock = (
   </details>
 );
 
+const buildToolHeaderText = (
+  t: TFunction,
+  tc: ToolCallInfo,
+  formatArgs: (args: Record<string, unknown>) => string,
+  parsedSearchResult: WebSearchResultPayload | null,
+  parsedReadResult: ReadWebpageResultPayload | null,
+): string => {
+  if (tc.status === 'calling') {
+    return t('toolCall.calling', { name: tc.name });
+  }
+
+  if (parsedSearchResult) {
+    const query = parsedSearchResult.query || (typeof tc.args.query === 'string' ? tc.args.query : '');
+    if (parsedSearchResult.ok) {
+      return `${tc.name}(${JSON.stringify(truncateText(query, 72))}) 路 ${t('toolCall.webSearch.resultCount', { count: parsedSearchResult.total_results ?? 0 })}`;
+    }
+    return `${tc.name}(${JSON.stringify(truncateText(query, 72))}) 路 ${parsedSearchResult.error?.message || t('toolCall.webSearch.error')}`;
+  }
+
+  if (parsedReadResult) {
+    const targetUrl = parsedReadResult.final_url || parsedReadResult.url || (typeof tc.args.url === 'string' ? tc.args.url : '');
+    const label = parsedReadResult.title || displayUrl(targetUrl) || tc.name;
+    if (parsedReadResult.ok) {
+      return `${tc.name}(${truncateText(displayUrl(targetUrl), 48)}) 路 ${truncateText(label, 64)}`;
+    }
+    return `${tc.name}(${truncateText(displayUrl(targetUrl), 48)}) 路 ${parsedReadResult.error?.message || t('toolCall.readWebpage.error')}`;
+  }
+
+  return `${tc.name}(${formatArgs(tc.args)})`;
+};
+
+interface WebSearchDetailsProps {
+  developerModeEnabled: boolean;
+  parsedSearchResult: WebSearchResultPayload;
+  t: TFunction;
+  tc: ToolCallInfo;
+}
+
+const WebSearchDetails = ({
+  developerModeEnabled,
+  parsedSearchResult,
+  t,
+  tc,
+}: WebSearchDetailsProps) => (
+  <div data-name="tool-web-search" className="space-y-3">
+    <div className="grid gap-2 sm:grid-cols-3">
+      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          {t('toolCall.webSearch.query')}
+        </div>
+        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+          {parsedSearchResult.query || '-'}
+        </div>
+      </div>
+      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          {t('toolCall.webSearch.provider')}
+        </div>
+        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+          {parsedSearchResult.provider || '-'}
+        </div>
+      </div>
+      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          {t('toolCall.webSearch.totalResults')}
+        </div>
+        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+          {parsedSearchResult.total_results ?? 0}
+        </div>
+      </div>
+    </div>
+
+    {parsedSearchResult.ok === false && (
+      <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        {parsedSearchResult.error?.message || t('toolCall.webSearch.error')}
+      </div>
+    )}
+
+    {parsedSearchResult.ok && !parsedSearchResult.has_results && (
+      <div className="rounded border border-gray-200 bg-white/70 p-3 text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
+        {t('toolCall.webSearch.noResults')}
+      </div>
+    )}
+
+    {parsedSearchResult.ok && Boolean(parsedSearchResult.results?.length) && (
+      <div className="space-y-2">
+        {parsedSearchResult.results?.map((result) => {
+          const resultUrl = result.url || '';
+          const resultKey = `${result.rank || 0}-${resultUrl || result.title || 'result'}`;
+          return (
+            <a
+              key={resultKey}
+              href={resultUrl || '#'}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-lg border border-gray-200 bg-white/80 p-3 transition hover:border-sky-300 hover:bg-white dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-sky-700"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    #{result.rank || 0}
+                    {result.domain ? ` 路 ${result.domain}` : ''}
+                  </div>
+                  <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
+                    {result.title || displayUrl(resultUrl) || '-'}
+                  </div>
+                  <div className="mt-1 break-all text-xs text-sky-700 dark:text-sky-300">
+                    {resultUrl}
+                  </div>
+                </div>
+                <ArrowTopRightOnSquareIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
+              </div>
+              {result.snippet && (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                  {result.snippet}
+                </p>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    )}
+
+    {developerModeEnabled && developerPayloadBlock(
+      t('toolCall.rawPayload'),
+      t('toolCall.arguments'),
+      t('toolCall.result'),
+      tc.args,
+      tc.result,
+    )}
+  </div>
+);
+
+interface ReadWebpageDetailsProps {
+  developerModeEnabled: boolean;
+  parsedReadResult: ReadWebpageResultPayload;
+  t: TFunction;
+  tc: ToolCallInfo;
+}
+
+const ReadWebpageDetails = ({
+  developerModeEnabled,
+  parsedReadResult,
+  t,
+  tc,
+}: ReadWebpageDetailsProps) => (
+  <div data-name="tool-read-webpage" className="space-y-3">
+    {parsedReadResult.ok === false ? (
+      <div className="space-y-2">
+        <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          {parsedReadResult.error?.message || t('toolCall.readWebpage.error')}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {t('toolCall.readWebpage.url')}
+            </div>
+            <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
+              {parsedReadResult.url || '-'}
+            </div>
+          </div>
+          <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {t('toolCall.readWebpage.statusCode')}
+            </div>
+            <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+              {parsedReadResult.status_code ?? '-'}
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <>
+        <div className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {parsedReadResult.domain && (
+                <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {parsedReadResult.domain}
+                </div>
+              )}
+              <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
+                {parsedReadResult.title || displayUrl(parsedReadResult.final_url || parsedReadResult.url) || '-'}
+              </div>
+            </div>
+            {(parsedReadResult.final_url || parsedReadResult.url) && (
+              <a
+                href={parsedReadResult.final_url || parsedReadResult.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              >
+                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              </a>
+            )}
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {t('toolCall.readWebpage.url')}
+              </div>
+              <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
+                {parsedReadResult.url || '-'}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {t('toolCall.readWebpage.finalUrl')}
+              </div>
+              <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
+                {parsedReadResult.final_url || '-'}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {t('toolCall.readWebpage.contentType')}
+              </div>
+              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+                {parsedReadResult.content_type || '-'}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {t('toolCall.readWebpage.statusCode')}
+              </div>
+              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+                {parsedReadResult.status_code ?? '-'}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {t('toolCall.readWebpage.contentChars')}
+              </div>
+              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+                {parsedReadResult.content_chars ?? 0}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {t('toolCall.readWebpage.truncated')}
+              </div>
+              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+                {parsedReadResult.truncated ? 'yes' : 'no'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="font-medium text-gray-700 dark:text-gray-200">
+              {t('toolCall.readWebpage.preview')}
+            </div>
+            {parsedReadResult.truncated && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                {t('toolCall.readWebpage.truncated')}
+              </span>
+            )}
+          </div>
+          <pre className="max-h-72 max-w-full overflow-auto whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">
+            {parsedReadResult.content || parsedReadResult.preview || '-'}
+          </pre>
+        </div>
+      </>
+    )}
+
+    {developerModeEnabled && developerPayloadBlock(
+      t('toolCall.rawPayload'),
+      t('toolCall.arguments'),
+      t('toolCall.result'),
+      tc.args,
+      tc.result,
+    )}
+  </div>
+);
+
+interface ApplyDiffDetailsProps {
+  applyDiffPreview: UnifiedDiffPreview | null;
+  applyError: string;
+  applySummaryAdditions: number;
+  applySummaryDeletions: number;
+  applySummaryHunks: number;
+  baseHashArg: string;
+  developerModeEnabled: boolean;
+  dryRunArg?: boolean;
+  parsedResult: ApplyDiffResultPayload | null;
+  t: TFunction;
+  tc: ToolCallInfo;
+}
+
+const ApplyDiffDetails = ({
+  applyDiffPreview,
+  applyError,
+  applySummaryAdditions,
+  applySummaryDeletions,
+  applySummaryHunks,
+  baseHashArg,
+  developerModeEnabled,
+  dryRunArg,
+  parsedResult,
+  t,
+  tc,
+}: ApplyDiffDetailsProps) => (
+  <div className="space-y-2">
+    <div data-name="tool-apply-diff-preview" className="rounded border border-gray-200 bg-white/70 dark:border-gray-700 dark:bg-gray-900/30">
+      <div className="border-b border-gray-200 px-2 py-1 font-medium text-gray-700 dark:border-gray-700 dark:text-gray-200">
+        {t('toolCall.applyDiff.diffPreview')}
+      </div>
+      {applyDiffPreview ? (
+        <pre className="max-h-64 max-w-full overflow-auto p-2 text-[11px] font-mono leading-5 whitespace-pre-wrap break-words">
+          {applyDiffPreview.lines.map((line, lineIndex) => (
+            <div
+              key={`${lineIndex}-${line.text}`}
+              className={`px-1 rounded ${diffPreviewLineClass(line.type)}`}
+            >
+              {line.text || ' '}
+            </div>
+          ))}
+          {applyDiffPreview.hiddenLineCount > 0 && (
+            <div className="px-1 text-gray-500 dark:text-gray-400">
+              {t('toolCall.applyDiff.linesHidden', { count: applyDiffPreview.hiddenLineCount })}
+            </div>
+          )}
+        </pre>
+      ) : (
+        <div className="p-2 text-gray-500 dark:text-gray-400">
+          {t('toolCall.applyDiff.noDiffProvided')}
+        </div>
+      )}
+    </div>
+
+    {parsedResult?.error?.message && (
+      <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        {(parsedResult.error.code || 'ERROR')}: {parsedResult.error.message}
+      </div>
+    )}
+
+    {applyError && (
+      <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        {applyError}
+      </div>
+    )}
+
+    {developerModeEnabled && (
+      <div className="space-y-1 rounded border border-blue-200 bg-white/70 p-2 dark:border-blue-800 dark:bg-gray-900/30">
+        <div className="font-medium text-gray-700 dark:text-gray-200">
+          {t('toolCall.applyDiff.request')}
+        </div>
+        {baseHashArg && (
+          <div className="text-gray-700 dark:text-gray-300">
+            {t('toolCall.applyDiff.baseHash')}: <code>{baseHashArg}</code>
+          </div>
+        )}
+        {typeof dryRunArg === 'boolean' && (
+          <div className="text-gray-700 dark:text-gray-300">
+            {t('toolCall.applyDiff.dryRun')}: <code>{String(dryRunArg)}</code>
+          </div>
+        )}
+        <div className="text-gray-700 dark:text-gray-300">
+          {t('toolCall.applyDiff.summary', {
+            additions: applySummaryAdditions,
+            deletions: applySummaryDeletions,
+            hunks: applySummaryHunks,
+          })}
+        </div>
+        {parsedResult && (
+          <div className="text-gray-700 dark:text-gray-300">
+            {t('toolCall.applyDiff.file')}: <code>{parsedResult.file_path || '-'}</code>
+          </div>
+        )}
+      </div>
+    )}
+
+    {developerModeEnabled && developerPayloadBlock(
+      t('toolCall.applyDiff.rawPayload'),
+      t('toolCall.arguments'),
+      t('toolCall.result'),
+      tc.args,
+      tc.result,
+    )}
+  </div>
+);
+
+interface ApplyDiffActionsProps {
+  applyError: string;
+  applySummaryAdditions: number;
+  applySummaryDeletions: number;
+  applySummaryHunks: number;
+  developerModeEnabled: boolean;
+  isApplied: boolean;
+  isApplying: boolean;
+  onApply: () => void;
+  onDiscard: () => void;
+  patchExpiryLabel: string;
+  parsedResult: ApplyDiffResultPayload | null;
+}
+
+const ApplyDiffActions = ({
+  applyError,
+  applySummaryAdditions,
+  applySummaryDeletions,
+  applySummaryHunks,
+  developerModeEnabled,
+  isApplied,
+  isApplying,
+  onApply,
+  onDiscard,
+  patchExpiryLabel,
+  parsedResult,
+}: ApplyDiffActionsProps) => (
+  <div data-name="tool-apply-diff-actions" className="space-y-2 rounded border border-green-200 bg-green-50 p-2 dark:border-green-800 dark:bg-green-900/20">
+    <div className="font-medium text-green-700 dark:text-green-300">
+      Diff preview ready
+    </div>
+    {developerModeEnabled && (
+      <>
+        <div className="text-gray-700 dark:text-gray-300">
+          {parsedResult?.file_path}
+          {' | '}
+          +{applySummaryAdditions}
+          {' / -'}
+          {applySummaryDeletions}
+          {' / hunks '}
+          {applySummaryHunks}
+        </div>
+        {patchExpiryLabel && (
+          <div className="text-gray-600 dark:text-gray-400">
+            Expires at {patchExpiryLabel}
+          </div>
+        )}
+      </>
+    )}
+    {applyError && (
+      <div className="text-red-600 dark:text-red-400">{applyError}</div>
+    )}
+    <div className="flex gap-2">
+      <button
+        type="button"
+        disabled={isApplying || isApplied}
+        onClick={onApply}
+        className="rounded bg-green-600 px-2 py-1 text-white disabled:opacity-50"
+      >
+        {isApplied ? 'Applied' : (isApplying ? 'Applying...' : 'Apply Changes')}
+      </button>
+      <button
+        type="button"
+        disabled={isApplying || isApplied}
+        onClick={onDiscard}
+        className="rounded border border-gray-400 px-2 py-1 text-gray-700 disabled:opacity-50 dark:text-gray-200"
+      >
+        Discard
+      </button>
+    </div>
+  </div>
+);
+
+interface DefaultToolDetailsProps {
+  t: TFunction;
+  tc: ToolCallInfo;
+}
+
+const DefaultToolDetails = ({ t, tc }: DefaultToolDetailsProps) => (
+  <div className="space-y-2">
+    {Object.keys(tc.args).length > 0 && (
+      <div>
+        <span className="font-medium text-gray-500 dark:text-gray-400">
+          {t('toolCall.arguments')}:
+        </span>
+        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          {JSON.stringify(tc.args, null, 2)}
+        </pre>
+      </div>
+    )}
+
+    {tc.result !== undefined && (
+      <div>
+        <span className="font-medium text-gray-500 dark:text-gray-400">
+          {t('toolCall.result')}:
+        </span>
+        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          {tc.result}
+        </pre>
+      </div>
+    )}
+  </div>
+);
+
+interface ToolCallItemProps {
+  applyErrors: Record<string, string>;
+  appliedPatchIds: Record<string, boolean>;
+  applyingPatchIds: Record<string, boolean>;
+  developerModeEnabled: boolean;
+  dismissedPatchIds: Record<string, boolean>;
+  expandedIndex: number | null;
+  formatArgs: (args: Record<string, unknown>) => string;
+  handleApplyPatch: (patchId: string, payload: ApplyDiffResultPayload) => void;
+  handleDiscardPatch: (patchId: string) => void;
+  index: number;
+  t: TFunction;
+  tc: ToolCallInfo;
+  toggleExpand: (index: number) => void;
+}
+
+const ToolCallItem = ({
+  applyErrors,
+  appliedPatchIds,
+  applyingPatchIds,
+  developerModeEnabled,
+  dismissedPatchIds,
+  expandedIndex,
+  formatArgs,
+  handleApplyPatch,
+  handleDiscardPatch,
+  index,
+  t,
+  tc,
+  toggleExpand,
+}: ToolCallItemProps) => {
+  const isExpanded = expandedIndex === index;
+  const isCalling = tc.status === 'calling';
+  const isError = tc.status === 'error';
+  const isApplyDiffTool = APPLY_DIFF_TOOL_NAMES.has(tc.name);
+  const isWebSearchTool = tc.name === WEB_SEARCH_TOOL_NAME;
+  const isReadWebpageTool = tc.name === READ_WEBPAGE_TOOL_NAME;
+  const parsedResult = isApplyDiffTool ? safeParseJson<ApplyDiffResultPayload>(tc.result) : null;
+  const parsedSearchResult = isWebSearchTool ? safeParseJson<WebSearchResultPayload>(tc.result) : null;
+  const parsedReadResult = isReadWebpageTool ? safeParseJson<ReadWebpageResultPayload>(tc.result) : null;
+  const applyDiffRaw = isApplyDiffTool ? extractUnifiedDiff(tc.args) : '';
+  const applyDiffPreview = applyDiffRaw ? parseUnifiedDiffPreview(applyDiffRaw) : null;
+  const patchId = parsedResult?.pending_patch_id || '';
+  const patchExpiryLabel = typeof parsedResult?.pending_patch_expires_at === 'number'
+    ? new Date(parsedResult.pending_patch_expires_at).toLocaleTimeString()
+    : '';
+  const isDryRunApplyDiff = Boolean(
+    parsedResult &&
+    parsedResult.ok &&
+    parsedResult.mode === 'dry_run' &&
+    patchId &&
+    !dismissedPatchIds[patchId]
+  );
+  const isApplying = patchId ? Boolean(applyingPatchIds[patchId]) : false;
+  const isApplied = patchId ? Boolean(appliedPatchIds[patchId]) : false;
+  const applyError = patchId ? applyErrors[patchId] : '';
+  const applySummaryAdditions = parsedResult?.preview?.additions ?? applyDiffPreview?.additions ?? 0;
+  const applySummaryDeletions = parsedResult?.preview?.deletions ?? applyDiffPreview?.deletions ?? 0;
+  const applySummaryHunks = parsedResult?.preview?.hunks ?? applyDiffPreview?.hunks ?? 0;
+  const baseHashArg = typeof tc.args.base_hash === 'string' ? tc.args.base_hash : '';
+  const dryRunArg = typeof tc.args.dry_run === 'boolean' ? tc.args.dry_run : undefined;
+  const statusIcon = isCalling ? (
+    <WrenchScrewdriverIcon className="h-4 w-4 animate-spin" />
+  ) : isError ? (
+    <ExclamationCircleIcon className="h-4 w-4 text-red-500" />
+  ) : (
+    <CheckCircleIcon className="h-4 w-4 text-green-500 dark:text-green-400" />
+  );
+  const headerText = buildToolHeaderText(t, tc, formatArgs, parsedSearchResult, parsedReadResult);
+
+  return (
+    <div
+      data-name="tool-call-item"
+      className="min-w-0 max-w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 text-sm dark:border-gray-700 dark:bg-gray-900/20"
+    >
+      <button
+        type="button"
+        onClick={() => toggleExpand(index)}
+        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-gray-100/80 dark:hover:bg-gray-800/30"
+      >
+        <span className="flex-shrink-0">{statusIcon}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-800 dark:text-gray-200">
+          {headerText}
+        </span>
+        <ChevronDownIcon
+          className={`h-4 w-4 flex-shrink-0 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {isExpanded && (
+        <div className="min-w-0 max-w-full space-y-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+          {isWebSearchTool && parsedSearchResult ? (
+            <WebSearchDetails
+              developerModeEnabled={developerModeEnabled}
+              parsedSearchResult={parsedSearchResult}
+              t={t}
+              tc={tc}
+            />
+          ) : isReadWebpageTool && parsedReadResult ? (
+            <ReadWebpageDetails
+              developerModeEnabled={developerModeEnabled}
+              parsedReadResult={parsedReadResult}
+              t={t}
+              tc={tc}
+            />
+          ) : isApplyDiffTool ? (
+            <ApplyDiffDetails
+              applyDiffPreview={applyDiffPreview}
+              applyError={applyError}
+              applySummaryAdditions={applySummaryAdditions}
+              applySummaryDeletions={applySummaryDeletions}
+              applySummaryHunks={applySummaryHunks}
+              baseHashArg={baseHashArg}
+              developerModeEnabled={developerModeEnabled}
+              dryRunArg={dryRunArg}
+              parsedResult={parsedResult}
+              t={t}
+              tc={tc}
+            />
+          ) : (
+            <DefaultToolDetails t={t} tc={tc} />
+          )}
+
+          {isDryRunApplyDiff && parsedResult && patchId && (
+            <ApplyDiffActions
+              applyError={applyError}
+              applySummaryAdditions={applySummaryAdditions}
+              applySummaryDeletions={applySummaryDeletions}
+              applySummaryHunks={applySummaryHunks}
+              developerModeEnabled={developerModeEnabled}
+              isApplied={isApplied}
+              isApplying={isApplying}
+              onApply={() => handleApplyPatch(patchId, parsedResult)}
+              onDiscard={() => handleDiscardPatch(patchId)}
+              patchExpiryLabel={patchExpiryLabel}
+              parsedResult={parsedResult}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, sessionId }) => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [applyingPatchIds, setApplyingPatchIds] = useState<Record<string, boolean>>({});
@@ -403,456 +1036,23 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls, session
   return (
     <div data-name="tool-call-block" className="mb-3 w-full min-w-0 max-w-full space-y-1.5">
       {toolCalls.map((tc, index) => {
-        const isExpanded = expandedIndex === index;
-        const isCalling = tc.status === 'calling';
-        const isError = tc.status === 'error';
-        const isApplyDiffTool = APPLY_DIFF_TOOL_NAMES.has(tc.name);
-        const isWebSearchTool = tc.name === WEB_SEARCH_TOOL_NAME;
-        const isReadWebpageTool = tc.name === READ_WEBPAGE_TOOL_NAME;
-        const parsedResult = isApplyDiffTool ? safeParseJson<ApplyDiffResultPayload>(tc.result) : null;
-        const parsedSearchResult = isWebSearchTool ? safeParseJson<WebSearchResultPayload>(tc.result) : null;
-        const parsedReadResult = isReadWebpageTool ? safeParseJson<ReadWebpageResultPayload>(tc.result) : null;
-        const applyDiffRaw = isApplyDiffTool ? extractUnifiedDiff(tc.args) : '';
-        const applyDiffPreview = applyDiffRaw ? parseUnifiedDiffPreview(applyDiffRaw) : null;
-        const patchId = parsedResult?.pending_patch_id || '';
-        const patchExpiresAt = parsedResult?.pending_patch_expires_at;
-        const patchExpiryLabel = typeof patchExpiresAt === 'number'
-          ? new Date(patchExpiresAt).toLocaleTimeString()
-          : '';
-        const isDryRunApplyDiff = Boolean(
-          parsedResult &&
-          parsedResult.ok &&
-          parsedResult.mode === 'dry_run' &&
-          patchId &&
-          !dismissedPatchIds[patchId]
-        );
-        const isApplying = patchId ? Boolean(applyingPatchIds[patchId]) : false;
-        const isApplied = patchId ? Boolean(appliedPatchIds[patchId]) : false;
-        const applyError = patchId ? applyErrors[patchId] : '';
-        const applySummaryAdditions = parsedResult?.preview?.additions ?? applyDiffPreview?.additions ?? 0;
-        const applySummaryDeletions = parsedResult?.preview?.deletions ?? applyDiffPreview?.deletions ?? 0;
-        const applySummaryHunks = parsedResult?.preview?.hunks ?? applyDiffPreview?.hunks ?? 0;
-        const baseHashArg = typeof tc.args.base_hash === 'string' ? tc.args.base_hash : '';
-        const dryRunArg = typeof tc.args.dry_run === 'boolean' ? tc.args.dry_run : undefined;
-
-        const statusIcon = isCalling ? (
-          <WrenchScrewdriverIcon className="h-4 w-4 animate-spin" />
-        ) : isError ? (
-          <ExclamationCircleIcon className="h-4 w-4 text-red-500" />
-        ) : (
-          <CheckCircleIcon className="h-4 w-4 text-green-500 dark:text-green-400" />
-        );
-
-        let headerText = isCalling
-          ? t('toolCall.calling', { name: tc.name })
-          : `${tc.name}(${formatArgs(tc.args)})`;
-
-        if (!isCalling && parsedSearchResult) {
-          const query = parsedSearchResult.query || (typeof tc.args.query === 'string' ? tc.args.query : '');
-          if (parsedSearchResult.ok) {
-            headerText = `${tc.name}(${JSON.stringify(truncateText(query, 72))}) · ${t('toolCall.webSearch.resultCount', { count: parsedSearchResult.total_results ?? 0 })}`;
-          } else {
-            headerText = `${tc.name}(${JSON.stringify(truncateText(query, 72))}) · ${parsedSearchResult.error?.message || t('toolCall.webSearch.error')}`;
-          }
-        }
-
-        if (!isCalling && parsedReadResult) {
-          const targetUrl = parsedReadResult.final_url || parsedReadResult.url || (typeof tc.args.url === 'string' ? tc.args.url : '');
-          const label = parsedReadResult.title || displayUrl(targetUrl) || tc.name;
-          if (parsedReadResult.ok) {
-            headerText = `${tc.name}(${truncateText(displayUrl(targetUrl), 48)}) · ${truncateText(label, 64)}`;
-          } else {
-            headerText = `${tc.name}(${truncateText(displayUrl(targetUrl), 48)}) · ${parsedReadResult.error?.message || t('toolCall.readWebpage.error')}`;
-          }
-        }
-
         return (
-          <div
+          <ToolCallItem
             key={`${tc.toolCallId || tc.name}-${index}`}
-            data-name="tool-call-item"
-            className="min-w-0 max-w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 text-sm dark:border-gray-700 dark:bg-gray-900/20"
-          >
-            <button
-              type="button"
-              onClick={() => toggleExpand(index)}
-              className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-gray-100/80 dark:hover:bg-gray-800/30"
-            >
-              <span className="flex-shrink-0">{statusIcon}</span>
-              <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-800 dark:text-gray-200">
-                {headerText}
-              </span>
-              <ChevronDownIcon
-                className={`h-4 w-4 flex-shrink-0 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-              />
-            </button>
-
-            {isExpanded && (
-              <div className="min-w-0 max-w-full space-y-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
-                {isWebSearchTool && parsedSearchResult ? (
-                  <div data-name="tool-web-search" className="space-y-3">
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          {t('toolCall.webSearch.query')}
-                        </div>
-                        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                          {parsedSearchResult.query || '-'}
-                        </div>
-                      </div>
-                      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          {t('toolCall.webSearch.provider')}
-                        </div>
-                        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                          {parsedSearchResult.provider || '-'}
-                        </div>
-                      </div>
-                      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          {t('toolCall.webSearch.totalResults')}
-                        </div>
-                        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                          {parsedSearchResult.total_results ?? 0}
-                        </div>
-                      </div>
-                    </div>
-
-                    {parsedSearchResult.ok === false && (
-                      <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-                        {parsedSearchResult.error?.message || t('toolCall.webSearch.error')}
-                      </div>
-                    )}
-
-                    {parsedSearchResult.ok && !parsedSearchResult.has_results && (
-                      <div className="rounded border border-gray-200 bg-white/70 p-3 text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
-                        {t('toolCall.webSearch.noResults')}
-                      </div>
-                    )}
-
-                    {parsedSearchResult.ok && Boolean(parsedSearchResult.results?.length) && (
-                      <div className="space-y-2">
-                        {parsedSearchResult.results?.map(result => {
-                          const resultUrl = result.url || '';
-                          const resultKey = `${result.rank || 0}-${resultUrl || result.title || 'result'}`;
-                          return (
-                            <a
-                              key={resultKey}
-                              href={resultUrl || '#'}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block rounded-lg border border-gray-200 bg-white/80 p-3 transition hover:border-sky-300 hover:bg-white dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-sky-700"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    #{result.rank || 0}
-                                    {result.domain ? ` · ${result.domain}` : ''}
-                                  </div>
-                                  <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
-                                    {result.title || displayUrl(resultUrl) || '-'}
-                                  </div>
-                                  <div className="mt-1 break-all text-xs text-sky-700 dark:text-sky-300">
-                                    {resultUrl}
-                                  </div>
-                                </div>
-                                <ArrowTopRightOnSquareIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
-                              </div>
-                              {result.snippet && (
-                                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                                  {result.snippet}
-                                </p>
-                              )}
-                            </a>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {developerModeEnabled && developerPayloadBlock(
-                      t('toolCall.rawPayload'),
-                      t('toolCall.arguments'),
-                      t('toolCall.result'),
-                      tc.args,
-                      tc.result,
-                    )}
-                  </div>
-                ) : isReadWebpageTool && parsedReadResult ? (
-                  <div data-name="tool-read-webpage" className="space-y-3">
-                    {parsedReadResult.ok === false ? (
-                      <div className="space-y-2">
-                        <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-                          {parsedReadResult.error?.message || t('toolCall.readWebpage.error')}
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                              {t('toolCall.readWebpage.url')}
-                            </div>
-                            <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
-                              {parsedReadResult.url || '-'}
-                            </div>
-                          </div>
-                          <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                              {t('toolCall.readWebpage.statusCode')}
-                            </div>
-                            <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                              {parsedReadResult.status_code ?? '-'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              {parsedReadResult.domain && (
-                                <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                  {parsedReadResult.domain}
-                                </div>
-                              )}
-                              <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
-                                {parsedReadResult.title || displayUrl(parsedReadResult.final_url || parsedReadResult.url) || '-'}
-                              </div>
-                            </div>
-                            {(parsedReadResult.final_url || parsedReadResult.url) && (
-                              <a
-                                href={parsedReadResult.final_url || parsedReadResult.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                              >
-                                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-                              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('toolCall.readWebpage.url')}
-                              </div>
-                              <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
-                                {parsedReadResult.url || '-'}
-                              </div>
-                            </div>
-                            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-                              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('toolCall.readWebpage.finalUrl')}
-                              </div>
-                              <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
-                                {parsedReadResult.final_url || '-'}
-                              </div>
-                            </div>
-                            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-                              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('toolCall.readWebpage.contentType')}
-                              </div>
-                              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                                {parsedReadResult.content_type || '-'}
-                              </div>
-                            </div>
-                            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-                              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('toolCall.readWebpage.statusCode')}
-                              </div>
-                              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                                {parsedReadResult.status_code ?? '-'}
-                              </div>
-                            </div>
-                            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-                              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('toolCall.readWebpage.contentChars')}
-                              </div>
-                              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                                {parsedReadResult.content_chars ?? 0}
-                              </div>
-                            </div>
-                            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-                              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('toolCall.readWebpage.truncated')}
-                              </div>
-                              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                                {parsedReadResult.truncated ? 'yes' : 'no'}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="font-medium text-gray-700 dark:text-gray-200">
-                              {t('toolCall.readWebpage.preview')}
-                            </div>
-                            {parsedReadResult.truncated && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                                {t('toolCall.readWebpage.truncated')}
-                              </span>
-                            )}
-                          </div>
-                          <pre className="max-h-72 max-w-full overflow-auto whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">
-                            {parsedReadResult.content || parsedReadResult.preview || '-'}
-                          </pre>
-                        </div>
-                      </>
-                    )}
-
-                    {developerModeEnabled && developerPayloadBlock(
-                      t('toolCall.rawPayload'),
-                      t('toolCall.arguments'),
-                      t('toolCall.result'),
-                      tc.args,
-                      tc.result,
-                    )}
-                  </div>
-                ) : isApplyDiffTool ? (
-                  <div className="space-y-2">
-                    <div data-name="tool-apply-diff-preview" className="rounded border border-gray-200 bg-white/70 dark:border-gray-700 dark:bg-gray-900/30">
-                      <div className="border-b border-gray-200 px-2 py-1 font-medium text-gray-700 dark:border-gray-700 dark:text-gray-200">
-                        {t('toolCall.applyDiff.diffPreview')}
-                      </div>
-                      {applyDiffPreview ? (
-                        <pre className="max-h-64 max-w-full overflow-auto p-2 text-[11px] font-mono leading-5 whitespace-pre-wrap break-words">
-                          {applyDiffPreview.lines.map((line, lineIndex) => (
-                            <div
-                              key={`${lineIndex}-${line.text}`}
-                              className={`px-1 rounded ${diffPreviewLineClass(line.type)}`}
-                            >
-                              {line.text || ' '}
-                            </div>
-                          ))}
-                          {applyDiffPreview.hiddenLineCount > 0 && (
-                            <div className="px-1 text-gray-500 dark:text-gray-400">
-                              {t('toolCall.applyDiff.linesHidden', { count: applyDiffPreview.hiddenLineCount })}
-                            </div>
-                          )}
-                        </pre>
-                      ) : (
-                        <div className="p-2 text-gray-500 dark:text-gray-400">
-                          {t('toolCall.applyDiff.noDiffProvided')}
-                        </div>
-                      )}
-                    </div>
-                    {parsedResult?.error?.message && (
-                      <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-                        {(parsedResult.error.code || 'ERROR')}: {parsedResult.error.message}
-                      </div>
-                    )}
-
-                    {developerModeEnabled && (
-                      <div className="space-y-1 rounded border border-blue-200 bg-white/70 p-2 dark:border-blue-800 dark:bg-gray-900/30">
-                        <div className="font-medium text-gray-700 dark:text-gray-200">
-                          {t('toolCall.applyDiff.request')}
-                        </div>
-                        {baseHashArg && (
-                          <div className="text-gray-700 dark:text-gray-300">
-                            {t('toolCall.applyDiff.baseHash')}: <code>{baseHashArg}</code>
-                          </div>
-                        )}
-                        {typeof dryRunArg === 'boolean' && (
-                          <div className="text-gray-700 dark:text-gray-300">
-                            {t('toolCall.applyDiff.dryRun')}: <code>{String(dryRunArg)}</code>
-                          </div>
-                        )}
-                        <div className="text-gray-700 dark:text-gray-300">
-                          {t('toolCall.applyDiff.summary', {
-                            additions: applySummaryAdditions,
-                            deletions: applySummaryDeletions,
-                            hunks: applySummaryHunks,
-                          })}
-                        </div>
-                        {parsedResult && (
-                          <div className="text-gray-700 dark:text-gray-300">
-                            {t('toolCall.applyDiff.file')}: <code>{parsedResult.file_path || '-'}</code>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {developerModeEnabled && developerPayloadBlock(
-                      t('toolCall.applyDiff.rawPayload'),
-                      t('toolCall.arguments'),
-                      t('toolCall.result'),
-                      tc.args,
-                      tc.result,
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {Object.keys(tc.args).length > 0 && (
-                      <div>
-                        <span className="font-medium text-gray-500 dark:text-gray-400">
-                          {t('toolCall.arguments')}:
-                        </span>
-                        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                          {JSON.stringify(tc.args, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-
-                    {tc.result !== undefined && (
-                      <div>
-                        <span className="font-medium text-gray-500 dark:text-gray-400">
-                          {t('toolCall.result')}:
-                        </span>
-                        <pre className="mt-0.5 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-100 p-1.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                          {tc.result}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {isDryRunApplyDiff && (
-                  <div data-name="tool-apply-diff-actions" className="space-y-2 rounded border border-green-200 bg-green-50 p-2 dark:border-green-800 dark:bg-green-900/20">
-                    <div className="font-medium text-green-700 dark:text-green-300">
-                      Diff preview ready
-                    </div>
-                    {developerModeEnabled && (
-                      <>
-                        <div className="text-gray-700 dark:text-gray-300">
-                          {parsedResult?.file_path}
-                          {' | '}
-                          +{applySummaryAdditions}
-                          {' / -'}
-                          {applySummaryDeletions}
-                          {' / hunks '}
-                          {applySummaryHunks}
-                        </div>
-                        {patchExpiryLabel && (
-                          <div className="text-gray-600 dark:text-gray-400">
-                            Expires at {patchExpiryLabel}
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {applyError && (
-                      <div className="text-red-600 dark:text-red-400">{applyError}</div>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={isApplying || isApplied}
-                        onClick={() => handleApplyPatch(patchId, parsedResult!)}
-                        className="rounded bg-green-600 px-2 py-1 text-white disabled:opacity-50"
-                      >
-                        {isApplied ? 'Applied' : (isApplying ? 'Applying...' : 'Apply Changes')}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isApplying || isApplied}
-                        onClick={() => handleDiscardPatch(patchId)}
-                        className="rounded border border-gray-400 px-2 py-1 text-gray-700 disabled:opacity-50 dark:text-gray-200"
-                      >
-                        Discard
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            applyErrors={applyErrors}
+            appliedPatchIds={appliedPatchIds}
+            applyingPatchIds={applyingPatchIds}
+            developerModeEnabled={developerModeEnabled}
+            dismissedPatchIds={dismissedPatchIds}
+            expandedIndex={expandedIndex}
+            formatArgs={formatArgs}
+            handleApplyPatch={handleApplyPatch}
+            handleDiscardPatch={handleDiscardPatch}
+            index={index}
+            t={t}
+            tc={tc}
+            toggleExpand={toggleExpand}
+          />
         );
       })}
     </div>
