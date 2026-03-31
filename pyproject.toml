@@ -37,7 +37,6 @@ ignore = [
 "src/llm_runtime/streaming_client.py" = ["C901", "PLR0912"]
 "src/llm_runtime/tool_loop_runner.py" = ["C901", "PLR0912"]
 "src/main.py" = ["E402"]
-"src/infrastructure/storage/migration_service.py" = ["C901"]
 "test_title_generation.py" = ["E402"]
 
 [tool.ruff.lint.mccabe]
