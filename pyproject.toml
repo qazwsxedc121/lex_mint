@@ -24,7 +24,6 @@ ignore = [
 "scripts/*.py" = ["E402"]
 "src/api/main.py" = ["E402"]
 "src/api/routers/*.py" = ["B008", "B904"]
-"src/application/chat/chat_runtime/supervisor_gatekeeper.py" = ["C901", "PLR0912"]
 "src/application/orchestration/engine.py" = ["C901", "PLR0912"]
 "src/application/workflows/execution_service.py" = ["C901", "PLR0912"]
 "src/infrastructure/config/project_service.py" = ["B904"]

@@ -32,11 +32,7 @@ class CommitteeSupervisorDecisionGatekeeper:
         decision: CommitteeDecision,
         state: CommitteeRuntimeState,
     ) -> CommitteeDecision:
-        valid_targets = [
-            assistant_id
-            for assistant_id in self.config.participant_order
-            if assistant_id in state.participants
-        ]
+        valid_targets = self._valid_targets(state)
         if not valid_targets:
             return CommitteeDecision(action="finish", reason="no_valid_participants")
 
@@ -44,124 +40,32 @@ class CommitteeSupervisorDecisionGatekeeper:
         required_targets = self.required_member_targets(valid_targets)
         depth_target = self.depth_required_target(state, required_targets)
 
-        if decision.action == "parallel_speak" and not self.config.allow_parallel_speak:
-            decision.action = "speak"
-            decision.reason = decision.reason or "parallel_speak_disabled"
-            if not decision.assistant_id and decision.assistant_ids:
-                decision.assistant_id = decision.assistant_ids[0]
-            decision.assistant_ids = None
-
+        decision = self._normalize_parallel_action_flag(decision)
         if decision.action == "finish":
-            if not self.config.allow_finish:
-                forced_target = pending_member_targets[0] if pending_member_targets else None
-                if not forced_target:
-                    forced_target = depth_target or self._fallback_speaker(state, valid_targets)
-                return self._build_forced_speak_decision(
-                    state=state,
-                    assistant_id=forced_target,
-                    reason="finish_disabled",
-                    depth_target=depth_target,
-                )
-            if pending_member_targets:
-                forced_target = pending_member_targets[0]
-                return self._build_forced_speak_decision(
-                    state=state,
-                    assistant_id=forced_target,
-                    reason="coverage_required_before_finish",
-                )
-            if depth_target:
-                return self._build_forced_speak_decision(
-                    state=state,
-                    assistant_id=depth_target,
-                    reason="discussion_depth_required_before_finish",
-                    depth_target=depth_target,
-                )
-            if not decision.reason:
-                decision.reason = "supervisor_finish"
-            return decision
+            return self._normalize_finish_decision(
+                decision=decision,
+                state=state,
+                valid_targets=valid_targets,
+                pending_member_targets=pending_member_targets,
+                depth_target=depth_target,
+            )
 
         if decision.action == "parallel_speak":
-            remaining_rounds = max(self.config.max_rounds - state.round_index, 0)
-            requested_targets = list(decision.assistant_ids or [])
-            if not requested_targets and decision.assistant_id:
-                requested_targets = [decision.assistant_id]
+            return self._normalize_parallel_speak_decision(
+                decision=decision,
+                state=state,
+                valid_targets=valid_targets,
+                pending_member_targets=pending_member_targets,
+                depth_target=depth_target,
+            )
 
-            selected_targets: list[str] = []
-            for assistant_id in requested_targets:
-                if assistant_id not in valid_targets or assistant_id == self.config.supervisor_id:
-                    continue
-                if assistant_id in selected_targets:
-                    continue
-                selected_targets.append(assistant_id)
-
-            if pending_member_targets:
-                for assistant_id in pending_member_targets:
-                    if assistant_id not in selected_targets:
-                        selected_targets.append(assistant_id)
-
-            if depth_target and depth_target not in selected_targets:
-                selected_targets.append(depth_target)
-
-            required_slots = 1
-            if (
-                pending_member_targets
-                and len(pending_member_targets) > 1
-                and remaining_rounds <= len(pending_member_targets)
-            ):
-                required_slots = 2
-
-            max_parallel_targets = self.config.max_parallel_speakers
-            selected_targets = selected_targets[:max_parallel_targets]
-            if len(selected_targets) < required_slots:
-                for assistant_id in self.required_member_targets(valid_targets):
-                    if assistant_id not in selected_targets:
-                        selected_targets.append(assistant_id)
-                    if len(selected_targets) >= required_slots:
-                        break
-
-            if len(selected_targets) <= 1:
-                fallback_target = selected_targets[0] if selected_targets else None
-                if not fallback_target:
-                    fallback_target = (
-                        pending_member_targets[0]
-                        if pending_member_targets
-                        else self._fallback_speaker(state, valid_targets)
-                    )
-                decision.action = "speak"
-                decision.assistant_id = fallback_target
-                decision.assistant_ids = None
-                decision.reason = decision.reason or "parallel_fallback_speaker"
-                if not decision.instruction:
-                    target_name = state.participants.get(fallback_target, fallback_target)
-                    decision.instruction = f"Please contribute your best analysis as {target_name}."
-                return decision
-
-            decision.assistant_ids = selected_targets
-            decision.assistant_id = selected_targets[0]
-            if not decision.reason:
-                decision.reason = "supervisor_selected_parallel_speakers"
-            if not decision.instruction:
-                decision.instruction = "Provide your perspective with concrete points, and avoid repeating other members verbatim."
-            return decision
-
-        preferred_target = decision.assistant_id
-        if pending_member_targets and preferred_target not in pending_member_targets:
-            preferred_target = pending_member_targets[0]
-            decision.reason = decision.reason or "coverage_first_speaker"
-        elif depth_target and preferred_target != depth_target:
-            preferred_target = depth_target
-            decision.reason = decision.reason or "discussion_depth_balance"
-        elif preferred_target not in valid_targets:
-            preferred_target = self._fallback_speaker(state, valid_targets)
-            decision.reason = decision.reason or "fallback_speaker"
-
-        decision.assistant_id = preferred_target
-        if not decision.instruction:
-            target_name = state.participants.get(preferred_target, preferred_target)
-            decision.instruction = f"Please contribute your best analysis as {target_name}."
-        if not decision.reason:
-            decision.reason = "supervisor_selected_speaker"
-        return decision
+        return self._normalize_single_speak_decision(
+            decision=decision,
+            state=state,
+            valid_targets=valid_targets,
+            pending_member_targets=pending_member_targets,
+            depth_target=depth_target,
+        )
 
     def required_member_targets(self, valid_targets: list[str]) -> list[str]:
         return [
@@ -235,6 +139,249 @@ class CommitteeSupervisorDecisionGatekeeper:
             instruction=instruction,
             reason=reason,
         )
+
+    def _valid_targets(self, state: CommitteeRuntimeState) -> list[str]:
+        return [
+            assistant_id
+            for assistant_id in self.config.participant_order
+            if assistant_id in state.participants
+        ]
+
+    def _normalize_parallel_action_flag(
+        self,
+        decision: CommitteeDecision,
+    ) -> CommitteeDecision:
+        if decision.action != "parallel_speak" or self.config.allow_parallel_speak:
+            return decision
+
+        decision.action = "speak"
+        decision.reason = decision.reason or "parallel_speak_disabled"
+        if not decision.assistant_id and decision.assistant_ids:
+            decision.assistant_id = decision.assistant_ids[0]
+        decision.assistant_ids = None
+        return decision
+
+    def _normalize_finish_decision(
+        self,
+        *,
+        decision: CommitteeDecision,
+        state: CommitteeRuntimeState,
+        valid_targets: list[str],
+        pending_member_targets: list[str],
+        depth_target: str | None,
+    ) -> CommitteeDecision:
+        if not self.config.allow_finish:
+            forced_target = self._finish_blocked_target(
+                state=state,
+                valid_targets=valid_targets,
+                pending_member_targets=pending_member_targets,
+                depth_target=depth_target,
+            )
+            return self._build_forced_speak_decision(
+                state=state,
+                assistant_id=forced_target,
+                reason="finish_disabled",
+                depth_target=depth_target,
+            )
+
+        if pending_member_targets:
+            return self._build_forced_speak_decision(
+                state=state,
+                assistant_id=pending_member_targets[0],
+                reason="coverage_required_before_finish",
+            )
+
+        if depth_target:
+            return self._build_forced_speak_decision(
+                state=state,
+                assistant_id=depth_target,
+                reason="discussion_depth_required_before_finish",
+                depth_target=depth_target,
+            )
+
+        if not decision.reason:
+            decision.reason = "supervisor_finish"
+        return decision
+
+    def _finish_blocked_target(
+        self,
+        *,
+        state: CommitteeRuntimeState,
+        valid_targets: list[str],
+        pending_member_targets: list[str],
+        depth_target: str | None,
+    ) -> str:
+        if pending_member_targets:
+            return pending_member_targets[0]
+        return depth_target or self._fallback_speaker(state, valid_targets)
+
+    def _normalize_parallel_speak_decision(
+        self,
+        *,
+        decision: CommitteeDecision,
+        state: CommitteeRuntimeState,
+        valid_targets: list[str],
+        pending_member_targets: list[str],
+        depth_target: str | None,
+    ) -> CommitteeDecision:
+        selected_targets = self._select_parallel_targets(
+            decision=decision,
+            state=state,
+            valid_targets=valid_targets,
+            pending_member_targets=pending_member_targets,
+            depth_target=depth_target,
+        )
+        if len(selected_targets) <= 1:
+            return self._normalize_parallel_fallback(
+                decision=decision,
+                state=state,
+                valid_targets=valid_targets,
+                pending_member_targets=pending_member_targets,
+                selected_targets=selected_targets,
+            )
+
+        decision.assistant_ids = selected_targets
+        decision.assistant_id = selected_targets[0]
+        if not decision.reason:
+            decision.reason = "supervisor_selected_parallel_speakers"
+        if not decision.instruction:
+            decision.instruction = (
+                "Provide your perspective with concrete points, and avoid repeating "
+                "other members verbatim."
+            )
+        return decision
+
+    def _select_parallel_targets(
+        self,
+        *,
+        decision: CommitteeDecision,
+        state: CommitteeRuntimeState,
+        valid_targets: list[str],
+        pending_member_targets: list[str],
+        depth_target: str | None,
+    ) -> list[str]:
+        selected_targets = self._requested_parallel_targets(decision, valid_targets)
+        self._append_missing_targets(selected_targets, pending_member_targets)
+        if depth_target and depth_target not in selected_targets:
+            selected_targets.append(depth_target)
+
+        required_slots = self._required_parallel_slots(
+            state=state,
+            pending_member_targets=pending_member_targets,
+        )
+        limited_targets = selected_targets[: self.config.max_parallel_speakers]
+        if len(limited_targets) >= required_slots:
+            return limited_targets
+
+        for assistant_id in self.required_member_targets(valid_targets):
+            if assistant_id not in limited_targets:
+                limited_targets.append(assistant_id)
+            if len(limited_targets) >= required_slots:
+                break
+        return limited_targets
+
+    def _requested_parallel_targets(
+        self,
+        decision: CommitteeDecision,
+        valid_targets: list[str],
+    ) -> list[str]:
+        requested_targets = list(decision.assistant_ids or [])
+        if not requested_targets and decision.assistant_id:
+            requested_targets = [decision.assistant_id]
+
+        selected_targets: list[str] = []
+        for assistant_id in requested_targets:
+            if assistant_id not in valid_targets or assistant_id == self.config.supervisor_id:
+                continue
+            if assistant_id in selected_targets:
+                continue
+            selected_targets.append(assistant_id)
+        return selected_targets
+
+    @staticmethod
+    def _append_missing_targets(
+        selected_targets: list[str],
+        additional_targets: list[str],
+    ) -> None:
+        for assistant_id in additional_targets:
+            if assistant_id not in selected_targets:
+                selected_targets.append(assistant_id)
+
+    def _required_parallel_slots(
+        self,
+        *,
+        state: CommitteeRuntimeState,
+        pending_member_targets: list[str],
+    ) -> int:
+        remaining_rounds = max(self.config.max_rounds - state.round_index, 0)
+        if (
+            pending_member_targets
+            and len(pending_member_targets) > 1
+            and remaining_rounds <= len(pending_member_targets)
+        ):
+            return 2
+        return 1
+
+    def _normalize_parallel_fallback(
+        self,
+        *,
+        decision: CommitteeDecision,
+        state: CommitteeRuntimeState,
+        valid_targets: list[str],
+        pending_member_targets: list[str],
+        selected_targets: list[str],
+    ) -> CommitteeDecision:
+        fallback_target = selected_targets[0] if selected_targets else None
+        if not fallback_target:
+            fallback_target = (
+                pending_member_targets[0]
+                if pending_member_targets
+                else self._fallback_speaker(state, valid_targets)
+            )
+
+        decision.action = "speak"
+        decision.assistant_id = fallback_target
+        decision.assistant_ids = None
+        decision.reason = decision.reason or "parallel_fallback_speaker"
+        self._apply_default_speak_instruction(decision, state, fallback_target)
+        return decision
+
+    def _normalize_single_speak_decision(
+        self,
+        *,
+        decision: CommitteeDecision,
+        state: CommitteeRuntimeState,
+        valid_targets: list[str],
+        pending_member_targets: list[str],
+        depth_target: str | None,
+    ) -> CommitteeDecision:
+        preferred_target = decision.assistant_id
+        if pending_member_targets and preferred_target not in pending_member_targets:
+            preferred_target = pending_member_targets[0]
+            decision.reason = decision.reason or "coverage_first_speaker"
+        elif depth_target and preferred_target != depth_target:
+            preferred_target = depth_target
+            decision.reason = decision.reason or "discussion_depth_balance"
+        elif preferred_target not in valid_targets:
+            preferred_target = self._fallback_speaker(state, valid_targets)
+            decision.reason = decision.reason or "fallback_speaker"
+
+        decision.assistant_id = preferred_target
+        self._apply_default_speak_instruction(decision, state, preferred_target)
+        if not decision.reason:
+            decision.reason = "supervisor_selected_speaker"
+        return decision
+
+    @staticmethod
+    def _apply_default_speak_instruction(
+        decision: CommitteeDecision,
+        state: CommitteeRuntimeState,
+        assistant_id: str,
+    ) -> None:
+        if decision.instruction:
+            return
+        target_name = state.participants.get(assistant_id, assistant_id)
+        decision.instruction = f"Please contribute your best analysis as {target_name}."
 
     def _fallback_speaker(self, state: CommitteeRuntimeState, valid_targets: list[str]) -> str:
         non_supervisor = [
