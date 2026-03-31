@@ -9,7 +9,9 @@ select = [
     "F",   # pyflakes
     "I",   # isort
     "B",   # flake8-bugbear
+    "C90", # mccabe complexity
     "C4",  # flake8-comprehensions
+    "PLR0912",  # too many branches
     "UP",  # pyupgrade
 ]
 ignore = [
@@ -22,12 +24,27 @@ ignore = [
 "scripts/*.py" = ["E402"]
 "src/api/main.py" = ["E402"]
 "src/api/routers/*.py" = ["B008", "B904"]
+"src/application/chat/chat_runtime/supervisor_gatekeeper.py" = ["C901", "PLR0912"]
+"src/application/orchestration/engine.py" = ["C901", "PLR0912"]
+"src/application/workflows/execution_service.py" = ["C901", "PLR0912"]
 "src/infrastructure/config/project_service.py" = ["B904"]
+"src/infrastructure/config/model_config_service.py" = ["C901", "PLR0912"]
 "src/infrastructure/files/file_service.py" = ["B904"]
 "src/infrastructure/projects/project_document_tool_service.py" = ["B904"]
+"src/infrastructure/retrieval/rag_service.py" = ["C901", "PLR0912"]
 "src/infrastructure/retrieval/embedding_service.py" = ["B904"]
+"src/infrastructure/storage/conversation_storage.py" = ["C901", "PLR0912"]
+"src/llm_runtime/streaming_client.py" = ["C901", "PLR0912"]
+"src/llm_runtime/tool_loop_runner.py" = ["C901", "PLR0912"]
 "src/main.py" = ["E402"]
+"src/infrastructure/storage/migration_service.py" = ["C901"]
 "test_title_generation.py" = ["E402"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 30
+
+[tool.ruff.lint.pylint]
+max-branches = 30
 
 [tool.mypy]
 python_version = "3.12"
