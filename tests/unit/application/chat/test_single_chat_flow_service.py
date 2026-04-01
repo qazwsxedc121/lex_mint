@@ -5,6 +5,13 @@ from types import SimpleNamespace
 import pytest
 
 from src.application.chat.chat_input_service import PreparedUserInput
+from src.application.chat.request_contexts import (
+    ConversationScope,
+    EditorContext,
+    SearchOptions,
+    SingleChatRequestContext,
+    UserInputPayload,
+)
 from src.application.chat.service_contracts import ContextPayload
 from src.application.chat.single_chat_flow_service import (
     SingleChatFlowDeps,
@@ -97,10 +104,10 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
 
     events = await _collect_events(
         service.process_message_stream(
-            session_id="s1",
-            user_message="hello",
-            context_type="chat",
-            project_id=None,
+            request=SingleChatRequestContext(
+                scope=ConversationScope(session_id="s1", context_type="chat"),
+                user_input=UserInputPayload(user_message="hello"),
+            )
         )
     )
 
@@ -115,10 +122,10 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
     assert post_turn.finalize_calls[0]["assistant_message"] == "hello"
 
     response, sources = await service.process_message(
-        session_id="s1",
-        user_message="hello",
-        context_type="chat",
-        project_id=None,
+        request=SingleChatRequestContext(
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            user_input=UserInputPayload(user_message="hello"),
+        )
     )
     assert response == "hello"
     assert sources == [{"type": "memory"}]
@@ -227,15 +234,14 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
 
     tools, executor = await service._resolve_tools(
-        assistant_id=None,
-        assistant_obj=None,
-        model_id="provider:model-a",
-        context_type="chat",
-        project_id=None,
-        session_id="s1",
-        active_file_path=None,
-        active_file_hash=None,
-        use_web_search=True,
+        request=SimpleNamespace(
+            assistant_id=None,
+            assistant_obj=None,
+            model_id="provider:model-a",
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            editor=EditorContext(),
+            use_web_search=True,
+        ),
     )
 
     assert tools is not None
@@ -290,17 +296,11 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
     monkeypatch.setattr(service, "_should_prefer_web_tools", lambda **_kwargs: _return_async(True))
 
     runtime = await service._prepare_runtime(
-        session_id="s1",
-        user_message="hello",
-        skip_user_append=False,
-        attachments=None,
-        context_type="chat",
-        project_id=None,
-        use_web_search=True,
-        search_query=None,
-        file_references=None,
-        active_file_path=None,
-        active_file_hash=None,
+        request=SingleChatRequestContext(
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            user_input=UserInputPayload(user_message="hello"),
+            search=SearchOptions(use_web_search=True),
+        )
     )
 
     assert runtime.system_prompt == "base\n\nmemory\n\nrag\n\nstructured"
@@ -419,10 +419,10 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
 
     events = await _collect_events(
         service.process_message_stream(
-            session_id="s1",
-            user_message="hello",
-            context_type="chat",
-            project_id=None,
+            request=SingleChatRequestContext(
+                scope=ConversationScope(session_id="s1", context_type="chat"),
+                user_input=UserInputPayload(user_message="hello"),
+            )
         )
     )
 

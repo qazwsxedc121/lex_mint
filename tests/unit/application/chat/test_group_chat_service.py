@@ -10,6 +10,12 @@ import pytest
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.chat_runtime import ResolvedCommitteeSettings, ResolvedGroupSettings
 from src.application.chat.group_chat_service import GroupChatDeps, GroupChatService
+from src.application.chat.request_contexts import (
+    ConversationScope,
+    GroupChatRequestContext,
+    SearchOptions,
+    UserInputPayload,
+)
 
 
 class _FakeChatInputService:
@@ -129,11 +135,15 @@ async def test_group_chat_service_round_robin_flow():
     events = [
         event
         async for event in service.process_group_message_stream(
-            session_id="session-1234",
-            user_message="hello",
-            group_assistants=["a", "a", "b"],
-            use_web_search=True,
-            file_references=[{"project_id": "p1", "path": "src/app.py"}],
+            request=GroupChatRequestContext(
+                scope=ConversationScope(session_id="session-1234"),
+                user_input=UserInputPayload(
+                    user_message="hello",
+                    file_references=[{"project_id": "p1", "path": "src/app.py"}],
+                ),
+                group_assistants=["a", "a", "b"],
+                search=SearchOptions(use_web_search=True),
+            )
         )
     ]
 
@@ -151,10 +161,12 @@ async def test_group_chat_service_handles_missing_participants_and_search_failur
     events = [
         event
         async for event in service.process_group_message_stream(
-            session_id="session-1234",
-            user_message="hello",
-            group_assistants=["missing"],
-            use_web_search=True,
+            request=GroupChatRequestContext(
+                scope=ConversationScope(session_id="session-1234"),
+                user_input=UserInputPayload(user_message="hello"),
+                group_assistants=["missing"],
+                search=SearchOptions(use_web_search=True),
+            )
         )
     ]
 
@@ -170,10 +182,12 @@ async def test_group_chat_service_committee_flow_and_trace_id():
     events = [
         event
         async for event in service.process_group_message_stream(
-            session_id="session-12345678",
-            user_message="hello committee",
-            group_assistants=["lead", "peer"],
-            group_mode="committee",
+            request=GroupChatRequestContext(
+                scope=ConversationScope(session_id="session-12345678"),
+                user_input=UserInputPayload(user_message="hello committee"),
+                group_assistants=["lead", "peer"],
+                group_mode="committee",
+            )
         )
     ]
 

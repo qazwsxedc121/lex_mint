@@ -13,6 +13,10 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from src.application.chat.rag_tool_service import RagToolService
+from src.application.chat.request_contexts import (
+    SingleChatRequestContext,
+    ToolResolutionContext,
+)
 from src.application.chat.service_contracts import (
     AssistantLike,
     ContextPayload,
@@ -203,30 +207,14 @@ class SingleChatFlowService:
     async def process_message(
         self,
         *,
-        session_id: str,
-        user_message: str,
-        context_type: str = "chat",
-        project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
-        file_references: list[dict[str, str]] | None = None,
-        active_file_path: str | None = None,
-        active_file_hash: str | None = None,
+        request: SingleChatRequestContext,
     ) -> tuple[str, list[SourcePayload]]:
         """Collect the single-chat stream into one final response payload."""
         response_chunks: list[str] = []
         latest_sources: list[SourcePayload] = []
 
         async for event in self.process_message_stream(
-            session_id=session_id,
-            user_message=user_message,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-            file_references=file_references,
-            active_file_path=active_file_path,
-            active_file_hash=active_file_hash,
+            request=request,
         ):
             if isinstance(event, str):
                 response_chunks.append(event)
@@ -241,18 +229,7 @@ class SingleChatFlowService:
     async def process_message_stream(
         self,
         *,
-        session_id: str,
-        user_message: str,
-        skip_user_append: bool = False,
-        reasoning_effort: str | None = None,
-        attachments: list[SourcePayload] | None = None,
-        context_type: str = "chat",
-        project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
-        file_references: list[dict[str, str]] | None = None,
-        active_file_path: str | None = None,
-        active_file_hash: str | None = None,
+        request: SingleChatRequestContext,
     ) -> AsyncIterator[StreamItem]:
         """Prepare context, run single-turn orchestration, and persist final outputs."""
         runtime_state: dict[str, Any] = {
@@ -262,22 +239,10 @@ class SingleChatFlowService:
             "tool_loop": None,
             "outcome": SingleTurnOutcome(),
         }
-        run_id = f"single-chat-{session_id[:12]}-{uuid.uuid4().hex[:8]}"
+        run_id = f"single-chat-{request.scope.session_id[:12]}-{uuid.uuid4().hex[:8]}"
 
         async def _prepare_runtime_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = await self._prepare_runtime(
-                session_id=session_id,
-                user_message=user_message,
-                skip_user_append=skip_user_append,
-                attachments=attachments,
-                context_type=context_type,
-                project_id=project_id,
-                use_web_search=use_web_search,
-                search_query=search_query,
-                file_references=file_references,
-                active_file_path=active_file_path,
-                active_file_hash=active_file_hash,
-            )
+            runtime = await self._prepare_runtime(request=request)
             runtime_state["runtime"] = runtime
 
             if runtime.user_message_id:
@@ -304,16 +269,16 @@ class SingleChatFlowService:
 
         async def _resolve_tools_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
             runtime = self._require_runtime_state(runtime_state)
-            llm_tools, rag_tool_executor = await self._resolve_tools(
+            tool_request = ToolResolutionContext(
+                scope=request.scope,
+                editor=request.editor,
                 assistant_id=runtime.assistant_id,
                 assistant_obj=runtime.assistant_obj,
                 model_id=runtime.model_id,
-                context_type=runtime.context_type,
-                project_id=runtime.project_id,
-                session_id=runtime.session_id,
-                active_file_path=runtime.active_file_path,
-                active_file_hash=runtime.active_file_hash,
-                use_web_search=use_web_search,
+                use_web_search=request.search.use_web_search,
+            )
+            llm_tools, rag_tool_executor = await self._resolve_tools(
+                request=tool_request,
             )
             runtime_state["llm_tools"] = llm_tools
             runtime_state["rag_tool_executor"] = rag_tool_executor
@@ -328,7 +293,7 @@ class SingleChatFlowService:
             outcome = self._require_outcome_state(runtime_state)
             async for event in self._stream_single_turn(
                 runtime=runtime,
-                reasoning_effort=reasoning_effort,
+                reasoning_effort=request.stream.reasoning_effort,
                 llm_tools=runtime_state["llm_tools"],
                 rag_tool_executor=runtime_state["rag_tool_executor"],
                 outcome=outcome,
@@ -340,7 +305,7 @@ class SingleChatFlowService:
             runtime = self._require_runtime_state(runtime_state)
             tool_loop = await self._prepare_tool_loop_runtime(
                 runtime=runtime,
-                reasoning_effort=reasoning_effort,
+                reasoning_effort=request.stream.reasoning_effort,
                 llm_tools=runtime_state["llm_tools"],
             )
             runtime_state["tool_loop"] = tool_loop
@@ -507,7 +472,7 @@ class SingleChatFlowService:
                 EdgeSpec(source_id="execute_tools", target_id="stream_tool_round"),
                 EdgeSpec(source_id="finalize_tool_loop", target_id="persist_result"),
             ),
-            metadata={"mode": "single_direct", "session_id": session_id},
+            metadata={"mode": "single_direct", "session_id": request.scope.session_id},
         )
         context = RunContext(run_id=run_id, max_steps=24)
 
@@ -554,18 +519,15 @@ class SingleChatFlowService:
     async def _prepare_runtime(
         self,
         *,
-        session_id: str,
-        user_message: str,
-        skip_user_append: bool,
-        attachments: list[SourcePayload] | None,
-        context_type: str,
-        project_id: str | None,
-        use_web_search: bool,
-        search_query: str | None,
-        file_references: list[dict[str, str]] | None,
-        active_file_path: str | None,
-        active_file_hash: str | None,
+        request: SingleChatRequestContext,
     ) -> SingleChatRuntime:
+        session_id = request.scope.session_id
+        context_type = request.scope.context_type
+        project_id = request.scope.project_id
+        user_message = request.user_input.user_message
+        attachments = request.user_input.attachments
+        file_references = request.user_input.file_references
+
         original_user_message = user_message
         file_context_block = await self.deps.build_file_context_block(file_references)
         if file_context_block:
@@ -576,7 +538,7 @@ class SingleChatFlowService:
             raw_user_message=original_user_message,
             expanded_user_message=user_message,
             attachments=attachments,
-            skip_user_append=skip_user_append,
+            skip_user_append=request.stream.skip_user_append,
             context_type=context_type,
             project_id=project_id,
         )
@@ -587,15 +549,15 @@ class SingleChatFlowService:
             session_id=session_id,
             context_type=context_type,
             project_id=project_id,
-            use_web_search=use_web_search,
+            use_web_search=request.search.use_web_search,
         )
         ctx = await self.deps.prepare_context(
             session_id=session_id,
             raw_user_message=prepared_input.raw_user_message,
             context_type=context_type,
             project_id=project_id,
-            use_web_search=use_web_search and not prefer_web_tools,
-            search_query=search_query,
+            use_web_search=request.search.use_web_search and not prefer_web_tools,
+            search_query=request.search.search_query,
         )
         print(f"[OK] Session loaded, {len(ctx.messages)} messages")
         print(f"   Assistant: {ctx.assistant_id}, Model: {ctx.model_id}")
@@ -639,8 +601,8 @@ class SingleChatFlowService:
             all_sources=all_sources,
             max_rounds=ctx.max_rounds,
             assistant_memory_enabled=ctx.assistant_memory_enabled,
-            active_file_path=(active_file_path or "").strip() or None,
-            active_file_hash=(active_file_hash or "").strip() or None,
+            active_file_path=(request.editor.active_file_path or "").strip() or None,
+            active_file_hash=(request.editor.active_file_hash or "").strip() or None,
             compression_event=compression_event,
         )
 
@@ -1309,15 +1271,7 @@ class SingleChatFlowService:
     async def _resolve_tools(
         self,
         *,
-        assistant_id: str | None,
-        assistant_obj: AssistantLike | None,
-        model_id: str,
-        context_type: str,
-        project_id: str | None,
-        session_id: str,
-        active_file_path: str | None,
-        active_file_hash: str | None,
-        use_web_search: bool,
+        request: ToolResolutionContext,
     ) -> tuple[list[Any] | None, Any | None]:
         """Resolve function-calling tools and optional assistant-scoped RAG tool executor."""
         llm_tools: list[Any] | None = None
@@ -1325,13 +1279,13 @@ class SingleChatFlowService:
         allowed_tool_names: set[str] = set()
         try:
             model_service = self.deps.model_service_factory()
-            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
+            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(request.model_id)
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
             if not merged_caps.function_calling:
                 return llm_tools, None
 
             llm_tools = list(self.deps.tool_registry_getter().get_all_tools())
-            if use_web_search:
+            if request.use_web_search:
                 web_tool_service = self.deps.web_tool_service_factory()
                 web_tools = web_tool_service.get_tools()
                 if web_tools:
@@ -1341,53 +1295,57 @@ class SingleChatFlowService:
 
             kb_ids_for_tools = (
                 await self.deps.project_knowledge_base_resolver_factory().resolve_effective_kb_ids(
-                    assistant_id=assistant_id,
-                    assistant_obj=assistant_obj,
-                    context_type=context_type,
-                    project_id=project_id,
+                    assistant_id=request.assistant_id,
+                    assistant_obj=request.assistant_obj,
+                    context_type=request.scope.context_type,
+                    project_id=request.scope.project_id,
                 )
             )
             if kb_ids_for_tools:
                 rag_tool_service = RagToolService(
-                    assistant_id=assistant_id
-                    or (f"project::{project_id}" if project_id else "project::default"),
+                    assistant_id=request.assistant_id
+                    or (
+                        f"project::{request.scope.project_id}"
+                        if request.scope.project_id
+                        else "project::default"
+                    ),
                     allowed_kb_ids=kb_ids_for_tools,
-                    runtime_model_id=model_id,
+                    runtime_model_id=request.model_id,
                 )
                 rag_tools = rag_tool_service.get_tools()
                 if rag_tools:
                     llm_tools.extend(rag_tools)
                     tool_executors.append(rag_tool_service.execute_tool)
                     print(
-                        f"[TOOLS] Added RAG tools for assistant {assistant_id}: "
+                        f"[TOOLS] Added RAG tools for assistant {request.assistant_id}: "
                         f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
                     )
 
-            if context_type == "project" and project_id:
+            if request.scope.context_type == "project" and request.scope.project_id:
                 doc_tool_service = self.deps.project_document_tool_service_factory(
-                    project_id=project_id,
-                    session_id=session_id,
-                    active_file_path=active_file_path,
-                    active_file_hash=active_file_hash,
+                    project_id=request.scope.project_id,
+                    session_id=request.scope.session_id,
+                    active_file_path=request.editor.active_file_path,
+                    active_file_hash=request.editor.active_file_hash,
                 )
                 doc_tools = doc_tool_service.get_tools()
                 if doc_tools:
                     llm_tools.extend(doc_tools)
                     tool_executors.append(doc_tool_service.execute_tool)
-                    active_file_log = active_file_path or "(none)"
+                    active_file_log = request.editor.active_file_path or "(none)"
                     print(
                         f"[TOOLS] Added project document tools: {len(doc_tools)} "
-                        f"(project={project_id}, file={active_file_log})"
+                        f"(project={request.scope.project_id}, file={active_file_log})"
                     )
 
             allowed_tool_names = (
                 await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
-                    context_type=context_type,
-                    project_id=project_id,
+                    context_type=request.scope.context_type,
+                    project_id=request.scope.project_id,
                     candidate_tool_names=[tool.name for tool in llm_tools],
                 )
             )
-            if context_type == "project" and project_id:
+            if request.scope.context_type == "project" and request.scope.project_id:
                 llm_tools = [tool for tool in llm_tools if tool.name in allowed_tool_names]
             print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
         except Exception as e:
@@ -1397,8 +1355,16 @@ class SingleChatFlowService:
             return llm_tools, None
 
         async def _combined_tool_executor(name: str, args: dict[str, Any]) -> str | None:
-            if context_type == "project" and project_id and name not in allowed_tool_names:
-                logger.info("Blocked project tool by policy: %s (project=%s)", name, project_id)
+            if (
+                request.scope.context_type == "project"
+                and request.scope.project_id
+                and name not in allowed_tool_names
+            ):
+                logger.info(
+                    "Blocked project tool by policy: %s (project=%s)",
+                    name,
+                    request.scope.project_id,
+                )
                 return f"Error: Tool '{name}' is disabled for this project"
             for executor in tool_executors:
                 try:

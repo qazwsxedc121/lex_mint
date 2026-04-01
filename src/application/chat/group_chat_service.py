@@ -17,6 +17,7 @@ from src.application.chat.chat_runtime import (
     RoundRobinOrchestrator,
     RoundRobinSettings,
 )
+from src.application.chat.request_contexts import CommitteeExecutionContext, GroupChatRequestContext
 from src.application.chat.service_contracts import (
     AssistantLike,
     SearchServiceLike,
@@ -78,28 +79,21 @@ class GroupChatService:
     async def process_committee_group_message_stream(
         self,
         *,
-        session_id: str,
-        raw_user_message: str,
-        group_assistants: list[str],
-        assistant_name_map: dict[str, str],
-        assistant_config_map: dict[str, AssistantLike],
-        group_settings: dict[str, object] | None,
-        reasoning_effort: str | None,
-        context_type: str,
-        project_id: str | None,
-        search_context: str | None,
-        search_sources: list[SourcePayload],
-        trace_id: str | None = None,
+        request: CommitteeExecutionContext,
     ) -> AsyncIterator[StreamEvent]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
+        session_id = request.scope.session_id
+        context_type = request.scope.context_type
+        project_id = request.scope.project_id
+        trace_id = request.trace_id
         if trace_id is None and self.deps.is_group_trace_enabled():
             trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
 
         resolved_settings = self.deps.resolve_group_settings(
             group_mode="committee",
-            group_assistants=group_assistants,
-            group_settings=group_settings,
-            assistant_config_map=assistant_config_map,
+            group_assistants=request.group_assistants,
+            group_settings=request.group_settings,
+            assistant_config_map=request.assistant_config_map,
         )
         committee_settings: ResolvedCommitteeSettings | None = resolved_settings.committee
         if committee_settings is None:
@@ -109,16 +103,16 @@ class GroupChatService:
         request = ChatOrchestrationRequest(
             session_id=session_id,
             mode="committee",
-            user_message=raw_user_message,
-            participants=group_assistants,
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
+            user_message=request.raw_user_message,
+            participants=request.group_assistants,
+            assistant_name_map=request.assistant_name_map,
+            assistant_config_map=request.assistant_config_map,
             settings=committee_settings,
-            reasoning_effort=reasoning_effort,
+            reasoning_effort=request.reasoning_effort,
             context_type=context_type,
             project_id=project_id,
-            search_context=search_context,
-            search_sources=search_sources,
+            search_context=request.search_context,
+            search_sources=request.search_sources,
             trace_id=trace_id,
         )
         async for event in orchestrator.stream(request):
@@ -126,21 +120,24 @@ class GroupChatService:
 
     async def process_group_message_stream(
         self,
-        session_id: str,
-        user_message: str,
-        group_assistants: list[str],
-        group_mode: str = "round_robin",
-        group_settings: dict[str, object] | None = None,
-        skip_user_append: bool = False,
-        reasoning_effort: str | None = None,
-        attachments: list[SourcePayload] | None = None,
-        context_type: str = "chat",
-        project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
-        file_references: list[dict[str, str]] | None = None,
+        *,
+        request: GroupChatRequestContext,
     ) -> AsyncIterator[StreamEvent]:
         """Stream process user message with multiple assistants (group chat)."""
+        session_id = request.scope.session_id
+        context_type = request.scope.context_type
+        project_id = request.scope.project_id
+        user_message = request.user_input.user_message
+        attachments = request.user_input.attachments
+        file_references = request.user_input.file_references
+        group_assistants = request.group_assistants
+        group_mode = request.group_mode
+        group_settings = request.group_settings
+        skip_user_append = request.stream.skip_user_append
+        reasoning_effort = request.stream.reasoning_effort
+        use_web_search = request.search.use_web_search
+        search_query = request.search.search_query
+
         original_user_message = user_message
         file_context_block = await self.deps.build_file_context_block(file_references)
         if file_context_block:
@@ -178,19 +175,20 @@ class GroupChatService:
             search_query=search_query,
             raw_user_message=raw_user_message,
         )
-        async for event in self._stream_group_mode(
-            session_id=session_id,
+        execution_context = CommitteeExecutionContext(
+            scope=request.scope,
             raw_user_message=raw_user_message,
-            group_mode=group_mode,
             group_assistants=group_assistants,
             assistant_name_map=assistant_name_map,
             assistant_config_map=assistant_config_map,
             group_settings=group_settings,
             reasoning_effort=reasoning_effort,
-            context_type=context_type,
-            project_id=project_id,
             search_context=search_context,
             search_sources=search_sources,
+            group_mode=group_mode,
+        )
+        async for event in self._stream_group_mode(
+            execution_context=execution_context,
         ):
             yield event
 
@@ -251,57 +249,47 @@ class GroupChatService:
     async def _stream_group_mode(
         self,
         *,
-        session_id: str,
-        raw_user_message: str,
-        group_mode: str,
-        group_assistants: list[str],
-        assistant_name_map: dict[str, str],
-        assistant_config_map: dict[str, AssistantLike],
-        group_settings: dict[str, object] | None,
-        reasoning_effort: str | None,
-        context_type: str,
-        project_id: str | None,
-        search_context: str | None,
-        search_sources: list[SourcePayload],
+        execution_context: CommitteeExecutionContext,
     ) -> AsyncIterator[StreamEvent]:
-        normalized_group_mode = (group_mode or "round_robin").strip().lower()
+        normalized_group_mode = (execution_context.group_mode or "round_robin").strip().lower()
         if normalized_group_mode == "committee":
             trace_id = self._build_committee_trace_id(
-                session_id=session_id,
-                raw_user_message=raw_user_message,
+                session_id=execution_context.scope.session_id,
+                raw_user_message=execution_context.raw_user_message,
                 group_mode=normalized_group_mode,
-                group_assistants=group_assistants,
+                group_assistants=execution_context.group_assistants,
             )
             async for event in self.process_committee_group_message_stream(
-                session_id=session_id,
-                raw_user_message=raw_user_message,
-                group_assistants=group_assistants,
-                assistant_name_map=assistant_name_map,
-                assistant_config_map=assistant_config_map,
-                group_settings=group_settings,
-                reasoning_effort=reasoning_effort,
-                context_type=context_type,
-                project_id=project_id,
-                search_context=search_context,
-                search_sources=search_sources,
-                trace_id=trace_id,
+                request=CommitteeExecutionContext(
+                    scope=execution_context.scope,
+                    raw_user_message=execution_context.raw_user_message,
+                    group_assistants=execution_context.group_assistants,
+                    assistant_name_map=execution_context.assistant_name_map,
+                    assistant_config_map=execution_context.assistant_config_map,
+                    group_settings=execution_context.group_settings,
+                    reasoning_effort=execution_context.reasoning_effort,
+                    search_context=execution_context.search_context,
+                    search_sources=execution_context.search_sources,
+                    group_mode=normalized_group_mode,
+                    trace_id=trace_id,
+                ),
             ):
                 yield event
             return
 
         request = ChatOrchestrationRequest(
-            session_id=session_id,
+            session_id=execution_context.scope.session_id,
             mode="round_robin",
-            user_message=raw_user_message,
-            participants=group_assistants,
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
+            user_message=execution_context.raw_user_message,
+            participants=execution_context.group_assistants,
+            assistant_name_map=execution_context.assistant_name_map,
+            assistant_config_map=execution_context.assistant_config_map,
             settings=RoundRobinSettings(),
-            reasoning_effort=reasoning_effort,
-            context_type=context_type,
-            project_id=project_id,
-            search_context=search_context,
-            search_sources=search_sources,
+            reasoning_effort=execution_context.reasoning_effort,
+            context_type=execution_context.scope.context_type,
+            project_id=execution_context.scope.project_id,
+            search_context=execution_context.search_context,
+            search_sources=execution_context.search_sources,
         )
         round_robin_orchestrator = self.deps.create_round_robin_orchestrator()
         async for event in round_robin_orchestrator.stream(request):

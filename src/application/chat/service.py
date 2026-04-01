@@ -7,6 +7,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from .orchestration_gateway import ChatOrchestrationGateway, ChatOrchestrationGatewayDeps
+from .request_contexts import (
+    CompareChatRequestContext,
+    ConversationScope,
+    EditorContext,
+    GroupChatRequestContext,
+    SearchOptions,
+    SingleChatRequestContext,
+    StreamOptions,
+    UserInputPayload,
+)
 from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 
 
@@ -38,6 +48,32 @@ class ChatApplicationService:
             )
         )
 
+    @staticmethod
+    def _build_scope(
+        *,
+        session_id: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> ConversationScope:
+        return ConversationScope(
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
+        )
+
+    @staticmethod
+    def _build_user_input(
+        *,
+        user_message: str,
+        attachments: list[dict[str, Any]] | None = None,
+        file_references: list[dict[str, str]] | None = None,
+    ) -> UserInputPayload:
+        return UserInputPayload(
+            user_message=user_message,
+            attachments=attachments,
+            file_references=file_references,
+        )
+
     async def process_message(
         self,
         session_id: str,
@@ -51,17 +87,26 @@ class ChatApplicationService:
         active_file_hash: str | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
         """Run the single-chat use case and collect the final response."""
-        return await self._orchestration_gateway.run_single_message(
-            session_id=session_id,
-            user_message=user_message,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-            file_references=file_references,
-            active_file_path=active_file_path,
-            active_file_hash=active_file_hash,
+        request = SingleChatRequestContext(
+            scope=self._build_scope(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            ),
+            user_input=self._build_user_input(
+                user_message=user_message,
+                file_references=file_references,
+            ),
+            search=SearchOptions(
+                use_web_search=use_web_search,
+                search_query=search_query,
+            ),
+            editor=EditorContext(
+                active_file_path=active_file_path,
+                active_file_hash=active_file_hash,
+            ),
         )
+        return await self._orchestration_gateway.run_single_message(request=request)
 
     async def process_message_stream(
         self,
@@ -79,19 +124,32 @@ class ChatApplicationService:
         active_file_hash: str | None = None,
     ) -> AsyncIterator[Any]:
         """Stream the single-chat use case."""
+        request = SingleChatRequestContext(
+            scope=self._build_scope(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            ),
+            user_input=self._build_user_input(
+                user_message=user_message,
+                attachments=attachments,
+                file_references=file_references,
+            ),
+            search=SearchOptions(
+                use_web_search=use_web_search,
+                search_query=search_query,
+            ),
+            stream=StreamOptions(
+                skip_user_append=skip_user_append,
+                reasoning_effort=reasoning_effort,
+            ),
+            editor=EditorContext(
+                active_file_path=active_file_path,
+                active_file_hash=active_file_hash,
+            ),
+        )
         async for event in self._orchestration_gateway.stream_single(
-            session_id=session_id,
-            user_message=user_message,
-            skip_user_append=skip_user_append,
-            reasoning_effort=reasoning_effort,
-            attachments=attachments,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-            file_references=file_references,
-            active_file_path=active_file_path,
-            active_file_hash=active_file_hash,
+            request=request,
         ):
             yield event
 
@@ -120,37 +178,61 @@ class ChatApplicationService:
         group_mode = session_data.get("group_mode", "round_robin")
         group_settings = session_data.get("group_settings")
         if isinstance(group_assistants, list) and len(group_assistants) >= 2:
-            async for event in self._orchestration_gateway.stream_group(
-                session_id=session_id,
-                user_message=user_message,
+            request = GroupChatRequestContext(
+                scope=self._build_scope(
+                    session_id=session_id,
+                    context_type=context_type,
+                    project_id=project_id,
+                ),
+                user_input=self._build_user_input(
+                    user_message=user_message,
+                    attachments=attachments,
+                    file_references=file_references,
+                ),
                 group_assistants=group_assistants,
-                group_mode=group_mode,
+                group_mode=str(group_mode or "round_robin"),
                 group_settings=group_settings if isinstance(group_settings, dict) else None,
-                skip_user_append=skip_user_append,
-                reasoning_effort=reasoning_effort,
-                attachments=attachments,
-                context_type=context_type,
-                project_id=project_id,
-                use_web_search=use_web_search,
-                search_query=search_query,
-                file_references=file_references,
+                search=SearchOptions(
+                    use_web_search=use_web_search,
+                    search_query=search_query,
+                ),
+                stream=StreamOptions(
+                    skip_user_append=skip_user_append,
+                    reasoning_effort=reasoning_effort,
+                ),
+            )
+            async for event in self._orchestration_gateway.stream_group(
+                request=request,
             ):
                 yield event
             return
 
+        request = SingleChatRequestContext(
+            scope=self._build_scope(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            ),
+            user_input=self._build_user_input(
+                user_message=user_message,
+                attachments=attachments,
+                file_references=file_references,
+            ),
+            search=SearchOptions(
+                use_web_search=use_web_search,
+                search_query=search_query,
+            ),
+            stream=StreamOptions(
+                skip_user_append=skip_user_append,
+                reasoning_effort=reasoning_effort,
+            ),
+            editor=EditorContext(
+                active_file_path=active_file_path,
+                active_file_hash=active_file_hash,
+            ),
+        )
         async for event in self._orchestration_gateway.stream_single(
-            session_id=session_id,
-            user_message=user_message,
-            skip_user_append=skip_user_append,
-            reasoning_effort=reasoning_effort,
-            attachments=attachments,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-            file_references=file_references,
-            active_file_path=active_file_path,
-            active_file_hash=active_file_hash,
+            request=request,
         ):
             yield event
 
@@ -171,20 +253,31 @@ class ChatApplicationService:
         file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[Any]:
         """Stream the group-chat use case."""
-        async for event in self._orchestration_gateway.stream_group(
-            session_id=session_id,
-            user_message=user_message,
+        request = GroupChatRequestContext(
+            scope=self._build_scope(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            ),
+            user_input=self._build_user_input(
+                user_message=user_message,
+                attachments=attachments,
+                file_references=file_references,
+            ),
             group_assistants=group_assistants,
             group_mode=group_mode,
             group_settings=group_settings,
-            skip_user_append=skip_user_append,
-            reasoning_effort=reasoning_effort,
-            attachments=attachments,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-            file_references=file_references,
+            search=SearchOptions(
+                use_web_search=use_web_search,
+                search_query=search_query,
+            ),
+            stream=StreamOptions(
+                skip_user_append=skip_user_append,
+                reasoning_effort=reasoning_effort,
+            ),
+        )
+        async for event in self._orchestration_gateway.stream_group(
+            request=request,
         ):
             yield event
 
@@ -202,17 +295,26 @@ class ChatApplicationService:
         file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[Any]:
         """Stream the compare-model use case."""
-        async for event in self._orchestration_gateway.stream_compare(
-            session_id=session_id,
-            user_message=user_message,
+        request = CompareChatRequestContext(
+            scope=self._build_scope(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            ),
+            user_input=self._build_user_input(
+                user_message=user_message,
+                attachments=attachments,
+                file_references=file_references,
+            ),
             model_ids=model_ids,
-            reasoning_effort=reasoning_effort,
-            attachments=attachments,
-            context_type=context_type,
-            project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
-            file_references=file_references,
+            search=SearchOptions(
+                use_web_search=use_web_search,
+                search_query=search_query,
+            ),
+            stream=StreamOptions(reasoning_effort=reasoning_effort),
+        )
+        async for event in self._orchestration_gateway.stream_compare(
+            request=request,
         ):
             yield event
 

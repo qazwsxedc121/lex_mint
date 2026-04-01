@@ -6,6 +6,13 @@ from src.application.chat.orchestration_gateway import (
     ChatOrchestrationGateway,
     ChatOrchestrationGatewayDeps,
 )
+from src.application.chat.request_contexts import (
+    CompareChatRequestContext,
+    ConversationScope,
+    GroupChatRequestContext,
+    SingleChatRequestContext,
+    UserInputPayload,
+)
 
 
 async def _collect(async_iter):
@@ -29,7 +36,8 @@ class _FakeSingle:
 
 class _FakeGroup:
     async def process_group_message_stream(self, **kwargs):
-        yield {"type": kwargs.get("group_mode")}
+        request = kwargs.get("request")
+        yield {"type": getattr(request, "group_mode", None)}
 
 
 class _FakeCompare:
@@ -47,13 +55,20 @@ async def test_gateway_routes_single_direct_and_group_modes():
         )
     )
 
-    message, sources = await gateway.run_single_message(session_id="s", user_message="u")
+    message, sources = await gateway.run_single_message(
+        request=SingleChatRequestContext(
+            scope=ConversationScope(session_id="s"),
+            user_input=UserInputPayload(user_message="u"),
+        )
+    )
     group_events = await _collect(
         gateway.stream_group(
-            session_id="s",
-            user_message="u",
-            group_assistants=["a"],
-            group_mode="committee",
+            request=GroupChatRequestContext(
+                scope=ConversationScope(session_id="s"),
+                user_input=UserInputPayload(user_message="u"),
+                group_assistants=["a"],
+                group_mode="committee",
+            )
         )
     )
 
@@ -74,7 +89,13 @@ async def test_gateway_routes_compare_stream():
     )
 
     compare_events = await _collect(
-        gateway.stream_compare(session_id="s", user_message="u", model_ids=["m1", "m2"])
+        gateway.stream_compare(
+            request=CompareChatRequestContext(
+                scope=ConversationScope(session_id="s"),
+                user_input=UserInputPayload(user_message="u"),
+                model_ids=["m1", "m2"],
+            )
+        )
     )
 
     assert compare_events == [{"type": "compare"}]

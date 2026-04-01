@@ -8,6 +8,7 @@ from typing import Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.chat_runtime import ChatOrchestrationRequest, CompareModelsSettings
+from src.application.chat.request_contexts import CompareChatRequestContext
 from src.application.chat.service_contracts import (
     ContextPayload,
     SourcePayload,
@@ -82,18 +83,20 @@ class CompareFlowService:
     async def process_compare_stream(
         self,
         *,
-        session_id: str,
-        user_message: str,
-        model_ids: list[str],
-        reasoning_effort: str | None = None,
-        attachments: list[SourcePayload] | None = None,
-        context_type: str = "chat",
-        project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
-        file_references: list[dict[str, str]] | None = None,
+        request: CompareChatRequestContext,
     ) -> AsyncIterator[StreamEvent]:
         """Stream compare responses and persist both canonical and comparison results."""
+        session_id = request.scope.session_id
+        context_type = request.scope.context_type
+        project_id = request.scope.project_id
+        user_message = request.user_input.user_message
+        attachments = request.user_input.attachments
+        file_references = request.user_input.file_references
+        model_ids = request.model_ids
+        use_web_search = request.search.use_web_search
+        search_query = request.search.search_query
+        reasoning_effort = request.stream.reasoning_effort
+
         original_user_message = user_message
         file_context_block = await self.deps.build_file_context_block(file_references)
         if file_context_block:

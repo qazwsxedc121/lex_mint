@@ -4,6 +4,11 @@ import pytest
 
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.compare_flow_service import CompareFlowDeps, CompareFlowService
+from src.application.chat.request_contexts import (
+    CompareChatRequestContext,
+    ConversationScope,
+    UserInputPayload,
+)
 from src.application.chat.service_contracts import ContextPayload
 
 
@@ -82,11 +87,11 @@ async def test_compare_flow_streams_and_persists():
 
     events = await _collect_events(
         service.process_compare_stream(
-            session_id="s1",
-            user_message="hello",
-            model_ids=["m1", "m2"],
-            context_type="chat",
-            project_id=None,
+            request=CompareChatRequestContext(
+                scope=ConversationScope(session_id="s1", context_type="chat"),
+                user_input=UserInputPayload(user_message="hello"),
+                model_ids=["m1", "m2"],
+            )
         )
     )
 
