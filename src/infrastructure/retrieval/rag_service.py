@@ -367,6 +367,613 @@ class RagService:
         return merged[:fusion_top_k]
 
     @staticmethod
+    def _sanitize_retrieval_queries(
+        retrieval_queries: list[str],
+        effective_query: str,
+    ) -> list[str]:
+        dedup_queries: list[str] = []
+        seen_query_keys = set()
+        for candidate in retrieval_queries:
+            normalized = " ".join(str(candidate or "").split()).strip()
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen_query_keys:
+                continue
+            seen_query_keys.add(key)
+            dedup_queries.append(normalized)
+        return dedup_queries or ([effective_query] if effective_query else [])
+
+    @staticmethod
+    def _preview_query(text: str, max_len: int) -> str:
+        preview = str(text or "").replace("\n", " ")
+        if len(preview) > max_len:
+            return f"{preview[:max_len]}..."
+        return preview
+
+    async def _retrieve_enabled_kbs(
+        self,
+        *,
+        kb_ids: list[str],
+        retrieval_queries: list[str],
+        retrieval_mode: str,
+        vector_backend: str,
+        vector_recall_k: int,
+        bm25_recall_k: int,
+        bm25_min_term_coverage: float,
+        effective_threshold: float,
+    ) -> tuple[list[RagResult], list[RagResult], int]:
+        from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
+
+        kb_service = KnowledgeBaseService()
+        vector_results: list[RagResult] = []
+        bm25_results: list[RagResult] = []
+        searched_kb_count = 0
+        kb_lookup_tasks = [kb_service.get_knowledge_base(kb_id) for kb_id in kb_ids]
+        kb_lookup_results = await asyncio.gather(*kb_lookup_tasks, return_exceptions=True)
+
+        enabled_kbs: list[tuple[str, Any]] = []
+        for kb_id, kb_lookup in zip(kb_ids, kb_lookup_results, strict=True):
+            if isinstance(kb_lookup, BaseException):
+                logger.warning(f"RAG lookup failed for KB {kb_id}: {kb_lookup}")
+                continue
+            kb = kb_lookup
+            if not kb or not kb.enabled:
+                logger.info("[RAG] kb=%s skipped (missing or disabled)", kb_id)
+                continue
+            logger.info(
+                "[RAG] kb=%s enabled=%s embedding_model=%s doc_count=%s",
+                kb_id,
+                kb.enabled,
+                kb.embedding_model,
+                kb.document_count,
+            )
+            searched_kb_count += 1
+            enabled_kbs.append((kb_id, kb))
+
+        query_embedding_cache = await self._build_query_embedding_cache(
+            enabled_kbs=enabled_kbs,
+            retrieval_queries=retrieval_queries,
+            retrieval_mode=retrieval_mode,
+            vector_backend=vector_backend,
+        )
+        kb_retrieval_tasks = [
+            self._retrieve_single_kb(
+                kb_id=kb_id,
+                kb=kb,
+                retrieval_queries=retrieval_queries,
+                retrieval_mode=retrieval_mode,
+                vector_recall_k=vector_recall_k,
+                bm25_recall_k=bm25_recall_k,
+                bm25_min_term_coverage=bm25_min_term_coverage,
+                effective_threshold=effective_threshold,
+                vector_backend=vector_backend,
+                query_embedding_cache=query_embedding_cache,
+            )
+            for kb_id, kb in enabled_kbs
+        ]
+        kb_retrieval_results = await asyncio.gather(*kb_retrieval_tasks, return_exceptions=True)
+        for (kb_id, _), result in zip(enabled_kbs, kb_retrieval_results, strict=True):
+            if isinstance(result, BaseException):
+                logger.warning(f"RAG search failed for KB {kb_id}: {result}")
+                continue
+            kb_vector_results, kb_bm25_results = cast(
+                tuple[list[RagResult], list[RagResult]],
+                result,
+            )
+            vector_results.extend(kb_vector_results)
+            bm25_results.extend(kb_bm25_results)
+
+        return vector_results, bm25_results, searched_kb_count
+
+    async def _build_query_embedding_cache(
+        self,
+        *,
+        enabled_kbs: list[tuple[str, Any]],
+        retrieval_queries: list[str],
+        retrieval_mode: str,
+        vector_backend: str,
+    ) -> dict[tuple[str, str], Sequence[float]]:
+        query_embedding_cache: dict[tuple[str, str], Sequence[float]] = {}
+        if not (
+            enabled_kbs
+            and retrieval_mode in {"vector", "hybrid"}
+            and vector_backend == "sqlite_vec"
+        ):
+            return query_embedding_cache
+
+        model_cache_targets: dict[str, str | None] = {}
+        for _, kb in enabled_kbs:
+            override_model = getattr(kb, "embedding_model", None)
+            cache_key = (str(override_model).strip() if override_model else "") or "__default__"
+            if cache_key not in model_cache_targets:
+                model_cache_targets[cache_key] = override_model
+
+        for retrieval_query in retrieval_queries:
+            for cache_key, override_model in model_cache_targets.items():
+                try:
+                    embedding_fn = self.embedding_service.get_embedding_function(override_model)
+                    if not hasattr(embedding_fn, "embed_query"):
+                        logger.warning(
+                            "sqlite_vec cache skipped for model=%s: embed_query() unavailable",
+                            override_model or "default",
+                        )
+                        continue
+                    query_embedding_cache[(retrieval_query, cache_key)] = embedding_fn.embed_query(
+                        retrieval_query
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "sqlite_vec cache embed failed for model=%s query='%s': %s",
+                        override_model or "default",
+                        retrieval_query,
+                        e,
+                    )
+        return query_embedding_cache
+
+    async def _retrieve_single_kb(
+        self,
+        *,
+        kb_id: str,
+        kb: Any,
+        retrieval_queries: list[str],
+        retrieval_mode: str,
+        vector_recall_k: int,
+        bm25_recall_k: int,
+        bm25_min_term_coverage: float,
+        effective_threshold: float,
+        vector_backend: str,
+        query_embedding_cache: dict[tuple[str, str], Sequence[float]],
+    ) -> tuple[list[RagResult], list[RagResult]]:
+        local_vector_results: list[RagResult] = []
+        local_bm25_results: list[RagResult] = []
+        total_query_count = max(1, len(retrieval_queries))
+
+        for query_index, retrieval_query in enumerate(retrieval_queries, start=1):
+            channel_jobs = self._build_kb_channel_jobs(
+                kb_id=kb_id,
+                kb=kb,
+                retrieval_query=retrieval_query,
+                retrieval_mode=retrieval_mode,
+                vector_recall_k=vector_recall_k,
+                bm25_recall_k=bm25_recall_k,
+                bm25_min_term_coverage=bm25_min_term_coverage,
+                effective_threshold=effective_threshold,
+                vector_backend=vector_backend,
+                query_embedding_cache=query_embedding_cache,
+            )
+            if not channel_jobs:
+                continue
+
+            channel_results = await asyncio.gather(
+                *(job for _, job in channel_jobs),
+                return_exceptions=True,
+            )
+            self._merge_kb_channel_results(
+                kb_id=kb_id,
+                query_index=query_index,
+                total_query_count=total_query_count,
+                retrieval_query=retrieval_query,
+                channel_jobs=channel_jobs,
+                channel_results=channel_results,
+                local_vector_results=local_vector_results,
+                local_bm25_results=local_bm25_results,
+            )
+
+        return local_vector_results, local_bm25_results
+
+    def _build_kb_channel_jobs(
+        self,
+        *,
+        kb_id: str,
+        kb: Any,
+        retrieval_query: str,
+        retrieval_mode: str,
+        vector_recall_k: int,
+        bm25_recall_k: int,
+        bm25_min_term_coverage: float,
+        effective_threshold: float,
+        vector_backend: str,
+        query_embedding_cache: dict[tuple[str, str], Sequence[float]],
+    ) -> list[tuple[str, Any]]:
+        channel_jobs: list[tuple[str, Any]] = []
+
+        if retrieval_mode in {"vector", "hybrid"}:
+            vector_kwargs: dict[str, Any] = {
+                "kb_id": kb_id,
+                "query": retrieval_query,
+                "top_k": vector_recall_k,
+                "score_threshold": effective_threshold,
+                "override_model": kb.embedding_model,
+            }
+            if vector_backend == "sqlite_vec":
+                cache_key = (str(kb.embedding_model).strip() if kb.embedding_model else "") or "__default__"
+                cached_embedding = query_embedding_cache.get((retrieval_query, cache_key))
+                if cached_embedding is not None:
+                    vector_kwargs["query_embedding"] = cached_embedding
+            channel_jobs.append(("vector", asyncio.to_thread(self._search_collection, **vector_kwargs)))
+
+        if retrieval_mode in {"bm25", "hybrid"}:
+            channel_jobs.append(
+                (
+                    "bm25",
+                    asyncio.to_thread(
+                        self._search_bm25_collection,
+                        kb_id=kb_id,
+                        query=retrieval_query,
+                        top_k=bm25_recall_k,
+                        min_term_coverage=bm25_min_term_coverage,
+                    ),
+                )
+            )
+        return channel_jobs
+
+    def _merge_kb_channel_results(
+        self,
+        *,
+        kb_id: str,
+        query_index: int,
+        total_query_count: int,
+        retrieval_query: str,
+        channel_jobs: list[tuple[str, Any]],
+        channel_results: list[Any],
+        local_vector_results: list[RagResult],
+        local_bm25_results: list[RagResult],
+    ) -> None:
+        query_preview = self._preview_query(retrieval_query, 80)
+        for (channel, _), payload in zip(channel_jobs, channel_results, strict=True):
+            if isinstance(payload, BaseException):
+                logger.warning(
+                    "RAG %s search failed for KB %s query[%d/%d]='%s': %s",
+                    channel,
+                    kb_id,
+                    query_index,
+                    total_query_count,
+                    query_preview,
+                    payload,
+                )
+                continue
+
+            if channel == "vector":
+                query_vector_results = list(cast(Sequence[RagResult], payload or []))
+                local_vector_results.extend(query_vector_results)
+                self._log_kb_query_results(
+                    kb_id=kb_id,
+                    channel=channel,
+                    query_index=query_index,
+                    total_query_count=total_query_count,
+                    query_preview=query_preview,
+                    results=query_vector_results,
+                )
+                continue
+
+            query_bm25_results = list(cast(Sequence[RagResult], payload or []))
+            local_bm25_results.extend(query_bm25_results)
+            self._log_kb_query_results(
+                kb_id=kb_id,
+                channel=channel,
+                query_index=query_index,
+                total_query_count=total_query_count,
+                query_preview=query_preview,
+                results=query_bm25_results,
+            )
+
+    @staticmethod
+    def _log_kb_query_results(
+        *,
+        kb_id: str,
+        channel: str,
+        query_index: int,
+        total_query_count: int,
+        query_preview: str,
+        results: list[RagResult],
+    ) -> None:
+        if results:
+            best_score = max(r.score for r in results)
+            logger.info(
+                "[RAG] kb=%s query[%d/%d]='%s' %s_results=%d best_score=%.4f",
+                kb_id,
+                query_index,
+                total_query_count,
+                query_preview,
+                channel,
+                len(results),
+                best_score,
+            )
+            return
+        logger.info(
+            "[RAG] kb=%s query[%d/%d]='%s' %s_results=0",
+            kb_id,
+            query_index,
+            total_query_count,
+            query_preview,
+            channel,
+        )
+
+    def _build_retrieval_diagnostics(
+        self,
+        *,
+        vector_results: list[RagResult],
+        bm25_results: list[RagResult],
+        deduped_results: list[RagResult],
+        diversified_results: list[RagResult],
+        selected_results: list[RagResult],
+        effective_top_k: int,
+        configured_recall_k: int,
+        vector_recall_k: int,
+        bm25_recall_k: int,
+        bm25_min_term_coverage: float,
+        bm25_doc_collapse_enabled: bool,
+        bm25_collapsed_count: int,
+        fusion_top_k: int,
+        fusion_strategy: str,
+        rrf_k: int,
+        vector_weight: float,
+        bm25_weight: float,
+        retrieval_mode: str,
+        effective_threshold: float,
+        configured_max_per_doc: int,
+        reorder_strategy: str,
+        context_neighbor_window: int,
+        context_neighbor_max_total: int,
+        context_neighbor_dedup_coverage: float,
+        neighbor_stats: dict[str, int],
+        original_query: str,
+        effective_query: str,
+        query_transform_enabled: bool,
+        query_transform_mode: str,
+        query_transform_applied: bool,
+        query_transform_resolved_model: str,
+        query_transform_guard_blocked: bool,
+        query_transform_guard_reason: str,
+        query_transform_crag_enabled: bool,
+        query_transform_crag_lower_threshold: float,
+        query_transform_crag_upper_threshold: float,
+        retrieval_queries: list[str],
+        retrieval_query_planner_enabled: bool,
+        retrieval_query_planner_applied: bool,
+        retrieval_query_planner_resolved_model: str,
+        retrieval_query_planner_fallback: bool,
+        retrieval_query_planner_reason: str,
+        benchmark_strict_mode: bool,
+        searched_kb_count: int,
+        requested_kb_count: int,
+        rerank_enabled: bool,
+        rerank_applied: bool,
+        rerank_model: str,
+        rerank_weight: float,
+    ) -> dict[str, Any]:
+        best_score = max(
+            (
+                item.final_score if item.final_score is not None else item.score
+                for item in selected_results
+            ),
+            default=0.0,
+        )
+        return {
+            "raw_count": len(vector_results) + len(bm25_results),
+            "vector_raw_count": len(vector_results),
+            "bm25_raw_count": len(bm25_results),
+            "deduped_count": len(deduped_results),
+            "diversified_count": len(diversified_results),
+            "selected_count": len(selected_results),
+            "top_k": effective_top_k,
+            "recall_k": configured_recall_k,
+            "vector_recall_k": vector_recall_k,
+            "bm25_recall_k": bm25_recall_k,
+            "bm25_min_term_coverage": bm25_min_term_coverage,
+            "bm25_doc_collapse_enabled": bm25_doc_collapse_enabled,
+            "bm25_collapsed_count": bm25_collapsed_count,
+            "fusion_top_k": fusion_top_k,
+            "fusion_strategy": fusion_strategy,
+            "rrf_k": rrf_k,
+            "vector_weight": vector_weight,
+            "bm25_weight": bm25_weight,
+            "retrieval_mode": retrieval_mode,
+            "score_threshold": float(effective_threshold),
+            "max_per_doc": configured_max_per_doc,
+            "reorder_strategy": reorder_strategy,
+            "context_neighbor_window": context_neighbor_window,
+            "context_neighbor_max_total": context_neighbor_max_total,
+            "context_neighbor_dedup_coverage": context_neighbor_dedup_coverage,
+            "neighbor_added_count": int(neighbor_stats.get("neighbor_added_count", 0) or 0),
+            "neighbor_duplicate_filtered": int(
+                neighbor_stats.get("neighbor_duplicate_filtered", 0) or 0
+            ),
+            "neighbor_redundant_filtered": int(
+                neighbor_stats.get("neighbor_redundant_filtered", 0) or 0
+            ),
+            "query_original": original_query,
+            "query_effective": effective_query,
+            "query_transform_enabled": query_transform_enabled,
+            "query_transform_mode": query_transform_mode,
+            "query_transform_applied": query_transform_applied,
+            "query_transform_model_id": query_transform_resolved_model,
+            "query_transform_guard_blocked": query_transform_guard_blocked,
+            "query_transform_guard_reason": query_transform_guard_reason,
+            "query_transform_crag_enabled": query_transform_crag_enabled,
+            "query_transform_crag_quality_score": 0.0,
+            "query_transform_crag_quality_label": "skipped",
+            "query_transform_crag_decision": "direct",
+            "query_transform_crag_lower_threshold": query_transform_crag_lower_threshold,
+            "query_transform_crag_upper_threshold": query_transform_crag_upper_threshold,
+            "retrieval_queries": retrieval_queries,
+            "retrieval_query_count": len(retrieval_queries),
+            "retrieval_query_planner_enabled": retrieval_query_planner_enabled,
+            "retrieval_query_planner_applied": retrieval_query_planner_applied,
+            "retrieval_query_planner_model_id": retrieval_query_planner_resolved_model,
+            "retrieval_query_planner_fallback": retrieval_query_planner_fallback,
+            "retrieval_query_planner_reason": retrieval_query_planner_reason,
+            "benchmark_strict_mode": benchmark_strict_mode,
+            "searched_kb_count": searched_kb_count,
+            "requested_kb_count": requested_kb_count,
+            "best_score": best_score,
+            "rerank_enabled": rerank_enabled,
+            "rerank_applied": rerank_applied,
+            "rerank_model": rerank_model,
+            "rerank_weight": rerank_weight,
+        }
+
+    async def _apply_query_transform_crag_gate(
+        self,
+        *,
+        final_results: list[RagResult],
+        final_diagnostics: dict[str, Any],
+        diagnostics: dict[str, Any],
+        reordered_results: list[RagResult],
+        original_query: str,
+        effective_query: str,
+        query_transform_enabled: bool,
+        query_transform_applied: bool,
+        query_transform_mode: str,
+        query_transform_resolved_model: str,
+        query_transform_guard_blocked: bool,
+        query_transform_guard_reason: str,
+        query_transform_crag_enabled: bool,
+        query_transform_crag_lower_threshold: float,
+        query_transform_crag_upper_threshold: float,
+        kb_ids: list[str],
+        effective_top_k: int,
+        effective_threshold: float,
+        runtime_model_id: str | None,
+        skip_crag_gate: bool,
+    ) -> tuple[list[RagResult], dict[str, Any]]:
+        if not (
+            query_transform_enabled
+            and query_transform_applied
+            and query_transform_crag_enabled
+            and not skip_crag_gate
+            and original_query
+            and effective_query
+            and original_query != effective_query
+        ):
+            final_diagnostics["query_transform_crag_quality_score"] = (
+                final_diagnostics.get("query_transform_crag_quality_score", 0.0) or 0.0
+            )
+            final_diagnostics["query_transform_crag_quality_label"] = (
+                "skipped"
+                if not query_transform_applied
+                else str(final_diagnostics.get("query_transform_crag_quality_label", "skipped"))
+            )
+            final_diagnostics["query_transform_crag_decision"] = (
+                "skipped"
+                if not query_transform_applied
+                else str(final_diagnostics.get("query_transform_crag_decision", "direct"))
+            )
+            return final_results, final_diagnostics
+
+        quality_score = self._compute_query_quality_score(diagnostics)
+        if quality_score < query_transform_crag_lower_threshold:
+            quality_label = "incorrect"
+        elif quality_score < query_transform_crag_upper_threshold:
+            quality_label = "ambiguous"
+        else:
+            quality_label = "correct"
+
+        final_diagnostics["query_transform_crag_quality_score"] = quality_score
+        final_diagnostics["query_transform_crag_quality_label"] = quality_label
+        if quality_label == "correct":
+            final_diagnostics["query_transform_crag_decision"] = "keep_rewrite_high_confidence"
+            return final_results, final_diagnostics
+
+        original_branch = await self.retrieve_with_diagnostics(
+            query=original_query,
+            kb_ids=kb_ids,
+            top_k=effective_top_k,
+            score_threshold=float(effective_threshold),
+            runtime_model_id=runtime_model_id,
+            _skip_query_transform=True,
+            _skip_crag_gate=True,
+        )
+        rewritten_branch = (reordered_results, diagnostics)
+        winner = self._select_better_branch(rewritten_branch, original_branch)
+        if quality_label == "incorrect" and winner == "rewrite":
+            final_diagnostics["query_transform_crag_decision"] = "keep_rewrite_low_confidence"
+            return final_results, final_diagnostics
+        if winner == "original":
+            final_results, original_diag = original_branch
+            final_diagnostics = dict(original_diag)
+            final_diagnostics.update(
+                {
+                    "query_original": original_query,
+                    "query_effective": original_query,
+                    "query_transform_enabled": query_transform_enabled,
+                    "query_transform_mode": query_transform_mode,
+                    "query_transform_applied": query_transform_applied,
+                    "query_transform_model_id": query_transform_resolved_model,
+                    "query_transform_guard_blocked": query_transform_guard_blocked,
+                    "query_transform_guard_reason": query_transform_guard_reason,
+                    "query_transform_crag_enabled": query_transform_crag_enabled,
+                    "query_transform_crag_quality_score": quality_score,
+                    "query_transform_crag_quality_label": quality_label,
+                    "query_transform_crag_decision": "fallback_original",
+                }
+            )
+            return final_results, final_diagnostics
+
+        final_diagnostics["query_transform_crag_decision"] = (
+            "keep_rewrite_after_compare"
+            if quality_label == "ambiguous"
+            else "keep_rewrite_low_confidence"
+        )
+        return final_results, final_diagnostics
+
+    @staticmethod
+    def _log_retrieve_complete(
+        final_results: list[RagResult],
+        final_diagnostics: dict[str, Any],
+    ) -> None:
+        if final_results:
+            logger.info(
+                "[RAG] retrieve done: raw=%d deduped=%d diversified=%d selected=%d best_score=%.4f",
+                int(final_diagnostics.get("raw_count", 0) or 0),
+                int(final_diagnostics.get("deduped_count", 0) or 0),
+                int(final_diagnostics.get("diversified_count", 0) or 0),
+                len(final_results),
+                float(final_diagnostics.get("best_score", 0.0) or 0.0),
+            )
+        else:
+            logger.info("[RAG] retrieve done: total=0")
+        logger.info(
+            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s neighbor=+%d dup=%d overlap=%d planner=%s/%s/%s(%s) query_transform=%s/%s applied=%s model=%s guard_blocked=%s crag=%s/%s/%s rerank=%s/%s(%.2f) kb=%d/%d",
+            final_diagnostics["retrieval_mode"],
+            final_diagnostics["raw_count"],
+            final_diagnostics["vector_raw_count"],
+            final_diagnostics["bm25_raw_count"],
+            final_diagnostics["deduped_count"],
+            final_diagnostics["diversified_count"],
+            final_diagnostics["selected_count"],
+            final_diagnostics["top_k"],
+            final_diagnostics["vector_recall_k"],
+            final_diagnostics["bm25_recall_k"],
+            final_diagnostics["bm25_min_term_coverage"],
+            final_diagnostics["fusion_top_k"],
+            final_diagnostics["score_threshold"],
+            final_diagnostics["max_per_doc"],
+            final_diagnostics["reorder_strategy"],
+            final_diagnostics.get("neighbor_added_count", 0),
+            final_diagnostics.get("neighbor_duplicate_filtered", 0),
+            final_diagnostics.get("neighbor_redundant_filtered", 0),
+            final_diagnostics.get("retrieval_query_planner_enabled", False),
+            final_diagnostics.get("retrieval_query_planner_applied", False),
+            final_diagnostics.get("retrieval_query_planner_fallback", False),
+            final_diagnostics.get("retrieval_query_planner_reason", "disabled"),
+            final_diagnostics["query_transform_enabled"],
+            final_diagnostics["query_transform_mode"],
+            final_diagnostics["query_transform_applied"],
+            final_diagnostics["query_transform_model_id"],
+            final_diagnostics.get("query_transform_guard_blocked", False),
+            final_diagnostics.get("query_transform_crag_enabled", False),
+            final_diagnostics.get("query_transform_crag_quality_label", "skipped"),
+            final_diagnostics.get("query_transform_crag_decision", "skipped"),
+            final_diagnostics["rerank_enabled"],
+            final_diagnostics["rerank_applied"],
+            final_diagnostics["rerank_weight"],
+            final_diagnostics["searched_kb_count"],
+            final_diagnostics["requested_kb_count"],
+        )
+
+    @staticmethod
     def build_rag_diagnostics_source(diagnostics: dict[str, Any]) -> dict[str, Any]:
         """Convert diagnostics into a source payload that can be stored and rendered."""
         raw_count = int(diagnostics.get("raw_count", 0) or 0)
@@ -627,8 +1234,6 @@ class RagService:
         Returns:
             Tuple of (results, diagnostics)
         """
-        from src.infrastructure.knowledge.knowledge_base_service import KnowledgeBaseService
-
         config = self.rag_config_service.config
         effective_top_k = max(1, int(top_k or config.retrieval.top_k))
         effective_threshold = (
@@ -856,26 +1461,10 @@ class RagService:
         elif retrieval_query_planner_enabled and not effective_query:
             retrieval_query_planner_reason = "empty_query"
 
-        # Final sanitization to guarantee at least one retrieval query when possible.
-        dedup_queries: list[str] = []
-        seen_query_keys = set()
-        for candidate in retrieval_queries:
-            normalized = " ".join(str(candidate or "").split()).strip()
-            if not normalized:
-                continue
-            key = normalized.lower()
-            if key in seen_query_keys:
-                continue
-            seen_query_keys.add(key)
-            dedup_queries.append(normalized)
-        retrieval_queries = dedup_queries or ([effective_query] if effective_query else [])
+        retrieval_queries = self._sanitize_retrieval_queries(retrieval_queries, effective_query)
 
-        short_query = effective_query.replace("\n", " ")
-        if len(short_query) > 120:
-            short_query = f"{short_query[:120]}..."
-        short_original_query = original_query.replace("\n", " ")
-        if len(short_original_query) > 120:
-            short_original_query = f"{short_original_query[:120]}..."
+        short_query = self._preview_query(effective_query, 120)
+        short_original_query = self._preview_query(original_query, 120)
         planner_query_preview = " | ".join(
             [item if len(item) <= 80 else f"{item[:80]}..." for item in retrieval_queries[:3]]
         )
@@ -922,190 +1511,16 @@ class RagService:
             config.storage.persist_directory,
         )
 
-        kb_service = KnowledgeBaseService()
-        vector_results: list[RagResult] = []
-        bm25_results: list[RagResult] = []
-        searched_kb_count = 0
-        kb_lookup_tasks = [kb_service.get_knowledge_base(kb_id) for kb_id in kb_ids]
-        kb_lookup_results = await asyncio.gather(*kb_lookup_tasks, return_exceptions=True)
-
-        enabled_kbs: list[tuple[str, Any]] = []
-        for kb_id, kb_lookup in zip(kb_ids, kb_lookup_results, strict=True):
-            if isinstance(kb_lookup, BaseException):
-                logger.warning(f"RAG lookup failed for KB {kb_id}: {kb_lookup}")
-                continue
-            kb = kb_lookup
-            if not kb or not kb.enabled:
-                logger.info("[RAG] kb=%s skipped (missing or disabled)", kb_id)
-                continue
-            logger.info(
-                "[RAG] kb=%s enabled=%s embedding_model=%s doc_count=%s",
-                kb_id,
-                kb.enabled,
-                kb.embedding_model,
-                kb.document_count,
-            )
-            searched_kb_count += 1
-            enabled_kbs.append((kb_id, kb))
-
-        query_embedding_cache: dict[tuple[str, str], Sequence[float]] = {}
-        if (
-            enabled_kbs
-            and retrieval_mode in {"vector", "hybrid"}
-            and vector_backend == "sqlite_vec"
-        ):
-            model_cache_targets: dict[str, str | None] = {}
-            for _, kb in enabled_kbs:
-                override_model = getattr(kb, "embedding_model", None)
-                cache_key = (str(override_model).strip() if override_model else "") or "__default__"
-                if cache_key not in model_cache_targets:
-                    model_cache_targets[cache_key] = override_model
-
-            for retrieval_query in retrieval_queries:
-                for cache_key, override_model in model_cache_targets.items():
-                    try:
-                        embedding_fn = self.embedding_service.get_embedding_function(override_model)
-                        if not hasattr(embedding_fn, "embed_query"):
-                            logger.warning(
-                                "sqlite_vec cache skipped for model=%s: embed_query() unavailable",
-                                override_model or "default",
-                            )
-                            continue
-                        query_embedding_cache[(retrieval_query, cache_key)] = (
-                            embedding_fn.embed_query(retrieval_query)
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            "sqlite_vec cache embed failed for model=%s query='%s': %s",
-                            override_model or "default",
-                            retrieval_query,
-                            e,
-                        )
-
-        async def _retrieve_single_kb(
-            kb_id: str, kb: Any
-        ) -> tuple[list[RagResult], list[RagResult]]:
-            local_vector_results: list[RagResult] = []
-            local_bm25_results: list[RagResult] = []
-            total_query_count = max(1, len(retrieval_queries))
-            for query_index, retrieval_query in enumerate(retrieval_queries, start=1):
-                channel_jobs: list[tuple[str, Any]] = []
-                query_preview = retrieval_query.replace("\n", " ")
-                if len(query_preview) > 80:
-                    query_preview = f"{query_preview[:80]}..."
-
-                if retrieval_mode in {"vector", "hybrid"}:
-                    vector_kwargs: dict[str, Any] = {
-                        "kb_id": kb_id,
-                        "query": retrieval_query,
-                        "top_k": vector_recall_k,
-                        "score_threshold": effective_threshold,
-                        "override_model": kb.embedding_model,
-                    }
-                    if vector_backend == "sqlite_vec":
-                        cache_key = (
-                            str(kb.embedding_model).strip() if kb.embedding_model else ""
-                        ) or "__default__"
-                        cached_embedding = query_embedding_cache.get((retrieval_query, cache_key))
-                        if cached_embedding is not None:
-                            vector_kwargs["query_embedding"] = cached_embedding
-                    channel_jobs.append(
-                        ("vector", asyncio.to_thread(self._search_collection, **vector_kwargs))
-                    )
-
-                if retrieval_mode in {"bm25", "hybrid"}:
-                    channel_jobs.append(
-                        (
-                            "bm25",
-                            asyncio.to_thread(
-                                self._search_bm25_collection,
-                                kb_id=kb_id,
-                                query=retrieval_query,
-                                top_k=bm25_recall_k,
-                                min_term_coverage=bm25_min_term_coverage,
-                            ),
-                        )
-                    )
-
-                if not channel_jobs:
-                    continue
-
-                channel_results = await asyncio.gather(
-                    *(job for _, job in channel_jobs),
-                    return_exceptions=True,
-                )
-                for (channel, _), payload in zip(channel_jobs, channel_results, strict=True):
-                    if isinstance(payload, BaseException):
-                        logger.warning(
-                            "RAG %s search failed for KB %s query[%d/%d]='%s': %s",
-                            channel,
-                            kb_id,
-                            query_index,
-                            total_query_count,
-                            query_preview,
-                            payload,
-                        )
-                        continue
-
-                    if channel == "vector":
-                        query_vector_results = list(cast(Sequence[RagResult], payload or []))
-                        local_vector_results.extend(query_vector_results)
-                        if query_vector_results:
-                            best_score = max(r.score for r in query_vector_results)
-                            logger.info(
-                                "[RAG] kb=%s query[%d/%d]='%s' vector_results=%d best_score=%.4f",
-                                kb_id,
-                                query_index,
-                                total_query_count,
-                                query_preview,
-                                len(query_vector_results),
-                                best_score,
-                            )
-                        else:
-                            logger.info(
-                                "[RAG] kb=%s query[%d/%d]='%s' vector_results=0",
-                                kb_id,
-                                query_index,
-                                total_query_count,
-                                query_preview,
-                            )
-                        continue
-
-                    query_bm25_results = list(cast(Sequence[RagResult], payload or []))
-                    local_bm25_results.extend(query_bm25_results)
-                    if query_bm25_results:
-                        best_score = max(r.score for r in query_bm25_results)
-                        logger.info(
-                            "[RAG] kb=%s query[%d/%d]='%s' bm25_results=%d best_score=%.4f",
-                            kb_id,
-                            query_index,
-                            total_query_count,
-                            query_preview,
-                            len(query_bm25_results),
-                            best_score,
-                        )
-                    else:
-                        logger.info(
-                            "[RAG] kb=%s query[%d/%d]='%s' bm25_results=0",
-                            kb_id,
-                            query_index,
-                            total_query_count,
-                            query_preview,
-                        )
-
-            return local_vector_results, local_bm25_results
-
-        kb_retrieval_tasks = [_retrieve_single_kb(kb_id, kb) for kb_id, kb in enabled_kbs]
-        kb_retrieval_results = await asyncio.gather(*kb_retrieval_tasks, return_exceptions=True)
-        for (kb_id, _), result in zip(enabled_kbs, kb_retrieval_results, strict=True):
-            if isinstance(result, BaseException):
-                logger.warning(f"RAG search failed for KB {kb_id}: {result}")
-                continue
-            kb_vector_results, kb_bm25_results = cast(
-                tuple[list[RagResult], list[RagResult]], result
-            )
-            vector_results.extend(kb_vector_results)
-            bm25_results.extend(kb_bm25_results)
+        vector_results, bm25_results, searched_kb_count = await self._retrieve_enabled_kbs(
+            kb_ids=kb_ids,
+            retrieval_queries=retrieval_queries,
+            retrieval_mode=retrieval_mode,
+            vector_backend=vector_backend,
+            vector_recall_k=vector_recall_k,
+            bm25_recall_k=bm25_recall_k,
+            bm25_min_term_coverage=bm25_min_term_coverage,
+            effective_threshold=float(effective_threshold),
+        )
 
         vector_results.sort(key=lambda r: r.score, reverse=True)
         bm25_results.sort(key=lambda r: r.score, reverse=True)
@@ -1159,212 +1574,84 @@ class RagService:
         ]
         # Keep retrieval ranking anchored on seed hits; neighbors are context-only append.
         reordered_results = self._deduplicate_results(reordered_seed_results + neighbor_results)
-        best_score = max(
-            (
-                item.final_score if item.final_score is not None else item.score
-                for item in selected_results
-            ),
-            default=0.0,
+        diagnostics = self._build_retrieval_diagnostics(
+            vector_results=vector_results,
+            bm25_results=bm25_results,
+            deduped_results=deduped_results,
+            diversified_results=diversified_results,
+            selected_results=selected_results,
+            effective_top_k=effective_top_k,
+            configured_recall_k=configured_recall_k,
+            vector_recall_k=vector_recall_k,
+            bm25_recall_k=bm25_recall_k,
+            bm25_min_term_coverage=bm25_min_term_coverage,
+            bm25_doc_collapse_enabled=bm25_doc_collapse_enabled,
+            bm25_collapsed_count=bm25_collapsed_count,
+            fusion_top_k=fusion_top_k,
+            fusion_strategy=fusion_strategy,
+            rrf_k=rrf_k,
+            vector_weight=vector_weight,
+            bm25_weight=bm25_weight,
+            retrieval_mode=retrieval_mode,
+            effective_threshold=float(effective_threshold),
+            configured_max_per_doc=configured_max_per_doc,
+            reorder_strategy=reorder_strategy,
+            context_neighbor_window=context_neighbor_window,
+            context_neighbor_max_total=context_neighbor_max_total,
+            context_neighbor_dedup_coverage=context_neighbor_dedup_coverage,
+            neighbor_stats=neighbor_stats,
+            original_query=original_query,
+            effective_query=effective_query,
+            query_transform_enabled=query_transform_enabled,
+            query_transform_mode=query_transform_mode,
+            query_transform_applied=query_transform_applied,
+            query_transform_resolved_model=query_transform_resolved_model,
+            query_transform_guard_blocked=query_transform_guard_blocked,
+            query_transform_guard_reason=query_transform_guard_reason,
+            query_transform_crag_enabled=query_transform_crag_enabled,
+            query_transform_crag_lower_threshold=query_transform_crag_lower_threshold,
+            query_transform_crag_upper_threshold=query_transform_crag_upper_threshold,
+            retrieval_queries=retrieval_queries,
+            retrieval_query_planner_enabled=retrieval_query_planner_enabled,
+            retrieval_query_planner_applied=retrieval_query_planner_applied,
+            retrieval_query_planner_resolved_model=retrieval_query_planner_resolved_model,
+            retrieval_query_planner_fallback=retrieval_query_planner_fallback,
+            retrieval_query_planner_reason=retrieval_query_planner_reason,
+            benchmark_strict_mode=benchmark_strict_mode,
+            searched_kb_count=searched_kb_count,
+            requested_kb_count=len(kb_ids),
+            rerank_enabled=rerank_enabled,
+            rerank_applied=rerank_applied,
+            rerank_model=rerank_model,
+            rerank_weight=rerank_weight,
         )
-        diagnostics: dict[str, Any] = {
-            "raw_count": len(vector_results) + len(bm25_results),
-            "vector_raw_count": len(vector_results),
-            "bm25_raw_count": len(bm25_results),
-            "deduped_count": len(deduped_results),
-            "diversified_count": len(diversified_results),
-            "selected_count": len(selected_results),
-            "top_k": effective_top_k,
-            "recall_k": configured_recall_k,
-            "vector_recall_k": vector_recall_k,
-            "bm25_recall_k": bm25_recall_k,
-            "bm25_min_term_coverage": bm25_min_term_coverage,
-            "bm25_doc_collapse_enabled": bm25_doc_collapse_enabled,
-            "bm25_collapsed_count": bm25_collapsed_count,
-            "fusion_top_k": fusion_top_k,
-            "fusion_strategy": fusion_strategy,
-            "rrf_k": rrf_k,
-            "vector_weight": vector_weight,
-            "bm25_weight": bm25_weight,
-            "retrieval_mode": retrieval_mode,
-            "score_threshold": float(effective_threshold),
-            "max_per_doc": configured_max_per_doc,
-            "reorder_strategy": reorder_strategy,
-            "context_neighbor_window": context_neighbor_window,
-            "context_neighbor_max_total": context_neighbor_max_total,
-            "context_neighbor_dedup_coverage": context_neighbor_dedup_coverage,
-            "neighbor_added_count": int(neighbor_stats.get("neighbor_added_count", 0) or 0),
-            "neighbor_duplicate_filtered": int(
-                neighbor_stats.get("neighbor_duplicate_filtered", 0) or 0
-            ),
-            "neighbor_redundant_filtered": int(
-                neighbor_stats.get("neighbor_redundant_filtered", 0) or 0
-            ),
-            "query_original": original_query,
-            "query_effective": effective_query,
-            "query_transform_enabled": query_transform_enabled,
-            "query_transform_mode": query_transform_mode,
-            "query_transform_applied": query_transform_applied,
-            "query_transform_model_id": query_transform_resolved_model,
-            "query_transform_guard_blocked": query_transform_guard_blocked,
-            "query_transform_guard_reason": query_transform_guard_reason,
-            "query_transform_crag_enabled": query_transform_crag_enabled,
-            "query_transform_crag_quality_score": 0.0,
-            "query_transform_crag_quality_label": "skipped",
-            "query_transform_crag_decision": "direct",
-            "query_transform_crag_lower_threshold": query_transform_crag_lower_threshold,
-            "query_transform_crag_upper_threshold": query_transform_crag_upper_threshold,
-            "retrieval_queries": retrieval_queries,
-            "retrieval_query_count": len(retrieval_queries),
-            "retrieval_query_planner_enabled": retrieval_query_planner_enabled,
-            "retrieval_query_planner_applied": retrieval_query_planner_applied,
-            "retrieval_query_planner_model_id": retrieval_query_planner_resolved_model,
-            "retrieval_query_planner_fallback": retrieval_query_planner_fallback,
-            "retrieval_query_planner_reason": retrieval_query_planner_reason,
-            "benchmark_strict_mode": benchmark_strict_mode,
-            "searched_kb_count": searched_kb_count,
-            "requested_kb_count": len(kb_ids),
-            "best_score": best_score,
-            "rerank_enabled": rerank_enabled,
-            "rerank_applied": rerank_applied,
-            "rerank_model": rerank_model,
-            "rerank_weight": rerank_weight,
-        }
 
         final_results = reordered_results
         final_diagnostics = diagnostics
 
-        # CRAG-style quality gate for transformed queries:
-        # 1) evaluate retrieval quality score
-        # 2) fallback to original query when quality is low
-        # 3) for ambiguous quality, compare rewritten vs original branches
-        if (
-            query_transform_enabled
-            and query_transform_applied
-            and query_transform_crag_enabled
-            and not _skip_crag_gate
-            and original_query
-            and effective_query
-            and original_query != effective_query
-        ):
-            quality_score = self._compute_query_quality_score(diagnostics)
-            if quality_score < query_transform_crag_lower_threshold:
-                quality_label = "incorrect"
-            elif quality_score < query_transform_crag_upper_threshold:
-                quality_label = "ambiguous"
-            else:
-                quality_label = "correct"
-
-            final_diagnostics["query_transform_crag_quality_score"] = quality_score
-            final_diagnostics["query_transform_crag_quality_label"] = quality_label
-
-            if quality_label in {"incorrect", "ambiguous"}:
-                original_branch = await self.retrieve_with_diagnostics(
-                    query=original_query,
-                    kb_ids=kb_ids,
-                    top_k=effective_top_k,
-                    score_threshold=float(effective_threshold),
-                    runtime_model_id=runtime_model_id,
-                    _skip_query_transform=True,
-                    _skip_crag_gate=True,
-                )
-                rewritten_branch = (reordered_results, diagnostics)
-                winner = self._select_better_branch(rewritten_branch, original_branch)
-                if quality_label == "incorrect" and winner == "rewrite":
-                    # Low-confidence rewrite can still win by retrieval signals.
-                    final_diagnostics["query_transform_crag_decision"] = (
-                        "keep_rewrite_low_confidence"
-                    )
-                elif winner == "original":
-                    final_results, original_diag = original_branch
-                    final_diagnostics = dict(original_diag)
-                    final_diagnostics.update(
-                        {
-                            "query_original": original_query,
-                            "query_effective": original_query,
-                            "query_transform_enabled": query_transform_enabled,
-                            "query_transform_mode": query_transform_mode,
-                            "query_transform_applied": query_transform_applied,
-                            "query_transform_model_id": query_transform_resolved_model,
-                            "query_transform_guard_blocked": query_transform_guard_blocked,
-                            "query_transform_guard_reason": query_transform_guard_reason,
-                            "query_transform_crag_enabled": query_transform_crag_enabled,
-                            "query_transform_crag_quality_score": quality_score,
-                            "query_transform_crag_quality_label": quality_label,
-                            "query_transform_crag_decision": "fallback_original",
-                        }
-                    )
-                else:
-                    final_diagnostics["query_transform_crag_decision"] = (
-                        "keep_rewrite_after_compare"
-                        if quality_label == "ambiguous"
-                        else "keep_rewrite_low_confidence"
-                    )
-            else:
-                final_diagnostics["query_transform_crag_decision"] = "keep_rewrite_high_confidence"
-        else:
-            final_diagnostics["query_transform_crag_quality_score"] = (
-                final_diagnostics.get("query_transform_crag_quality_score", 0.0) or 0.0
-            )
-            final_diagnostics["query_transform_crag_quality_label"] = (
-                "skipped"
-                if not query_transform_applied
-                else str(final_diagnostics.get("query_transform_crag_quality_label", "skipped"))
-            )
-            final_diagnostics["query_transform_crag_decision"] = (
-                "skipped"
-                if not query_transform_applied
-                else str(final_diagnostics.get("query_transform_crag_decision", "direct"))
-            )
-
-        if final_results:
-            logger.info(
-                "[RAG] retrieve done: raw=%d deduped=%d diversified=%d selected=%d best_score=%.4f",
-                int(final_diagnostics.get("raw_count", 0) or 0),
-                int(final_diagnostics.get("deduped_count", 0) or 0),
-                int(final_diagnostics.get("diversified_count", 0) or 0),
-                len(final_results),
-                float(final_diagnostics.get("best_score", 0.0) or 0.0),
-            )
-        else:
-            logger.info("[RAG] retrieve done: total=0")
-        logger.info(
-            "[RAG][DIAG] mode=%s raw=%d(v=%d,b=%d) deduped=%d diversified=%d selected=%d top_k=%d vector_recall_k=%d bm25_recall_k=%d bm25_min_term_coverage=%.2f fusion_top_k=%d threshold=%.3f max_per_doc=%d reorder=%s neighbor=+%d dup=%d overlap=%d planner=%s/%s/%s(%s) query_transform=%s/%s applied=%s model=%s guard_blocked=%s crag=%s/%s/%s rerank=%s/%s(%.2f) kb=%d/%d",
-            final_diagnostics["retrieval_mode"],
-            final_diagnostics["raw_count"],
-            final_diagnostics["vector_raw_count"],
-            final_diagnostics["bm25_raw_count"],
-            final_diagnostics["deduped_count"],
-            final_diagnostics["diversified_count"],
-            final_diagnostics["selected_count"],
-            final_diagnostics["top_k"],
-            final_diagnostics["vector_recall_k"],
-            final_diagnostics["bm25_recall_k"],
-            final_diagnostics["bm25_min_term_coverage"],
-            final_diagnostics["fusion_top_k"],
-            final_diagnostics["score_threshold"],
-            final_diagnostics["max_per_doc"],
-            final_diagnostics["reorder_strategy"],
-            final_diagnostics.get("neighbor_added_count", 0),
-            final_diagnostics.get("neighbor_duplicate_filtered", 0),
-            final_diagnostics.get("neighbor_redundant_filtered", 0),
-            final_diagnostics.get("retrieval_query_planner_enabled", False),
-            final_diagnostics.get("retrieval_query_planner_applied", False),
-            final_diagnostics.get("retrieval_query_planner_fallback", False),
-            final_diagnostics.get("retrieval_query_planner_reason", "disabled"),
-            final_diagnostics["query_transform_enabled"],
-            final_diagnostics["query_transform_mode"],
-            final_diagnostics["query_transform_applied"],
-            final_diagnostics["query_transform_model_id"],
-            final_diagnostics.get("query_transform_guard_blocked", False),
-            final_diagnostics.get("query_transform_crag_enabled", False),
-            final_diagnostics.get("query_transform_crag_quality_label", "skipped"),
-            final_diagnostics.get("query_transform_crag_decision", "skipped"),
-            final_diagnostics["rerank_enabled"],
-            final_diagnostics["rerank_applied"],
-            final_diagnostics["rerank_weight"],
-            final_diagnostics["searched_kb_count"],
-            final_diagnostics["requested_kb_count"],
+        final_results, final_diagnostics = await self._apply_query_transform_crag_gate(
+            final_results=final_results,
+            final_diagnostics=final_diagnostics,
+            diagnostics=diagnostics,
+            reordered_results=reordered_results,
+            original_query=original_query,
+            effective_query=effective_query,
+            query_transform_enabled=query_transform_enabled,
+            query_transform_applied=query_transform_applied,
+            query_transform_mode=query_transform_mode,
+            query_transform_resolved_model=query_transform_resolved_model,
+            query_transform_guard_blocked=query_transform_guard_blocked,
+            query_transform_guard_reason=query_transform_guard_reason,
+            query_transform_crag_enabled=query_transform_crag_enabled,
+            query_transform_crag_lower_threshold=query_transform_crag_lower_threshold,
+            query_transform_crag_upper_threshold=query_transform_crag_upper_threshold,
+            kb_ids=kb_ids,
+            effective_top_k=effective_top_k,
+            effective_threshold=float(effective_threshold),
+            runtime_model_id=runtime_model_id,
+            skip_crag_gate=_skip_crag_gate,
         )
+        self._log_retrieve_complete(final_results, final_diagnostics)
         return final_results, final_diagnostics
 
     def _search_collection(
