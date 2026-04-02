@@ -30,8 +30,11 @@ class _FakeInputService:
 
 
 class _FakeCompareOrchestrator:
+    def __init__(self):
+        self.requests = []
+
     async def stream(self, request):
-        _ = request
+        self.requests.append(request)
         yield {"type": "model_start", "model_id": "m1", "model_name": "M1"}
         yield {"type": "model_done", "model_id": "m1", "content": "A"}
         yield {
@@ -63,11 +66,12 @@ async def test_compare_flow_streams_and_persists():
         async def save(self, *args, **kwargs):
             await _save(*args, **kwargs)
 
+    orchestrator = _FakeCompareOrchestrator()
     deps = CompareFlowDeps(
         storage=_FakeStorage(),
         comparison_storage=_FakeComparisonStorage(),
         chat_input_service=_FakeInputService(),
-        compare_models_orchestrator=_FakeCompareOrchestrator(),
+        compare_models_orchestrator=orchestrator,
         prepare_context=lambda **_kwargs: _return_async(
             ContextPayload(
                 messages=[{"role": "user", "content": "hello"}],
@@ -102,6 +106,10 @@ async def test_compare_flow_streams_and_persists():
     assert events[4] == {"type": "assistant_message_id", "message_id": "assistant-msg-1"}
     assert len(append_calls) == 1
     assert len(save_calls) == 1
+    assert orchestrator.requests[0].user_message == "hello"
+    assert orchestrator.requests[0].participants == ["m1", "m2"]
+    assert orchestrator.requests[0].reasoning_effort is None
+    assert orchestrator.requests[0].context_type == "chat"
 
 
 async def _return_async(value):

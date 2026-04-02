@@ -24,7 +24,7 @@ async def test_round_robin_streams_participants_in_order():
     call_order = []
 
     async def fake_stream_group_assistant_turn(**kwargs):
-        assistant_id = kwargs["assistant_id"]
+        assistant_id = kwargs["turn_context"].assistant_id
         call_order.append(assistant_id)
         yield {"type": "assistant_start", "assistant_id": assistant_id}
         yield {"type": "assistant_done", "assistant_id": assistant_id}
@@ -62,7 +62,7 @@ async def test_round_robin_honors_cancel_token_between_turns():
     call_order = []
 
     async def fake_stream_group_assistant_turn(**kwargs):
-        assistant_id = kwargs["assistant_id"]
+        assistant_id = kwargs["turn_context"].assistant_id
         call_order.append(assistant_id)
         yield {"type": "assistant_start", "assistant_id": assistant_id}
         cancel_token.cancel("user_stop")
@@ -98,7 +98,7 @@ async def test_round_robin_honors_cancel_token_between_turns():
 @pytest.mark.asyncio
 async def test_round_robin_rejects_mismatched_mode():
     async def fake_stream_group_assistant_turn(**kwargs):
-        yield {"type": "assistant_start", "assistant_id": kwargs["assistant_id"]}
+        yield {"type": "assistant_start", "assistant_id": kwargs["turn_context"].assistant_id}
 
     orchestrator = RoundRobinOrchestrator(
         stream_group_assistant_turn=fake_stream_group_assistant_turn,

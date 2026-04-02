@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any
 
 from .service_contracts import AssistantLike, SourcePayload
+
+if TYPE_CHECKING:
+    from .chat_runtime.base import (
+        ChatOrchestrationMode,
+        ChatOrchestrationRequest,
+        ChatOrchestrationSettings,
+    )
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,29 @@ class CompareChatRequestContext:
     search: SearchOptions = field(default_factory=SearchOptions)
     stream: StreamOptions = field(default_factory=StreamOptions)
 
+    def to_orchestration_request(
+        self,
+        *,
+        settings: ChatOrchestrationSettings,
+        user_message: str | None = None,
+    ) -> ChatOrchestrationRequest:
+        """Translate compare request context into one compare-model orchestrator request."""
+
+        from .chat_runtime.base import ChatOrchestrationRequest
+
+        return ChatOrchestrationRequest(
+            session_id=self.scope.session_id,
+            mode="compare_models",
+            user_message=user_message if user_message is not None else self.user_input.user_message,
+            participants=self.model_ids,
+            assistant_name_map={},
+            assistant_config_map={},
+            settings=settings,
+            reasoning_effort=self.stream.reasoning_effort,
+            context_type=self.scope.context_type,
+            project_id=self.scope.project_id,
+        )
+
 
 @dataclass(frozen=True)
 class ToolResolutionContext:
@@ -112,3 +142,75 @@ class CommitteeExecutionContext:
     search_sources: list[SourcePayload]
     group_mode: str = "committee"
     trace_id: str | None = None
+
+    @classmethod
+    def from_orchestration_request(
+        cls,
+        request: ChatOrchestrationRequest,
+        *,
+        group_settings: dict[str, object] | None = None,
+    ) -> CommitteeExecutionContext:
+        """Project one orchestration request back into shared group execution inputs."""
+
+        return cls(
+            scope=ConversationScope(
+                session_id=request.session_id,
+                context_type=request.context_type,
+                project_id=request.project_id,
+            ),
+            raw_user_message=request.user_message,
+            group_assistants=request.participants,
+            assistant_name_map=request.assistant_name_map,
+            assistant_config_map=request.assistant_config_map,
+            group_settings=group_settings,
+            reasoning_effort=request.reasoning_effort,
+            search_context=request.search_context,
+            search_sources=request.search_sources,
+            group_mode=request.mode,
+            trace_id=request.trace_id,
+        )
+
+    def with_updates(self, **changes: Any) -> CommitteeExecutionContext:
+        """Return a copy with selected execution fields updated."""
+
+        return replace(self, **changes)
+
+    def to_orchestration_request(
+        self,
+        *,
+        mode: ChatOrchestrationMode,
+        settings: ChatOrchestrationSettings,
+        trace_id: str | None = None,
+    ) -> ChatOrchestrationRequest:
+        """Translate shared execution context into one orchestrator request."""
+
+        from .chat_runtime.base import ChatOrchestrationRequest
+
+        return ChatOrchestrationRequest(
+            session_id=self.scope.session_id,
+            mode=mode,
+            user_message=self.raw_user_message,
+            participants=self.group_assistants,
+            assistant_name_map=self.assistant_name_map,
+            assistant_config_map=self.assistant_config_map,
+            settings=settings,
+            reasoning_effort=self.reasoning_effort,
+            context_type=self.scope.context_type,
+            project_id=self.scope.project_id,
+            search_context=self.search_context,
+            search_sources=self.search_sources,
+            trace_id=trace_id if trace_id is not None else self.trace_id,
+        )
+
+
+@dataclass(frozen=True)
+class CommitteeMemberTurnContext:
+    """Resolved member-turn inputs derived from one committee execution run."""
+
+    execution: CommitteeExecutionContext
+    assistant_id: str
+    assistant_obj: AssistantLike
+    instruction: str | None = None
+    committee_turn_packet: dict[str, Any] | None = None
+    trace_round: int | None = None
+    trace_mode: str | None = None

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
-from src.application.chat.chat_runtime import ChatOrchestrationRequest, CompareModelsSettings
+from src.application.chat.chat_runtime import CompareModelsSettings
 from src.application.chat.request_contexts import CompareChatRequestContext
 from src.application.chat.service_contracts import (
     ContextPayload,
@@ -15,6 +15,9 @@ from src.application.chat.service_contracts import (
     StreamEvent,
 )
 from src.providers.types import CostInfo, TokenUsage
+
+if TYPE_CHECKING:
+    from src.application.chat.chat_runtime import ChatOrchestrationRequest
 
 
 class _StorageLike(Protocol):
@@ -124,13 +127,7 @@ class CompareFlowService:
         if ctx.all_sources:
             yield {"type": "sources", "sources": ctx.all_sources}
 
-        compare_request = ChatOrchestrationRequest(
-            session_id=session_id,
-            mode="compare_models",
-            user_message=prepared_input.raw_user_message,
-            participants=model_ids,
-            assistant_name_map={},
-            assistant_config_map={},
+        compare_request = request.to_orchestration_request(
             settings=CompareModelsSettings(
                 messages=ctx.messages,
                 model_ids=model_ids,
@@ -147,9 +144,7 @@ class CompareFlowService:
                 assistant_params=ctx.assistant_params,
                 reasoning_effort=reasoning_effort,
             ),
-            reasoning_effort=reasoning_effort,
-            context_type=context_type,
-            project_id=project_id,
+            user_message=prepared_input.raw_user_message,
         )
 
         model_results: dict[str, SourcePayload] = {}

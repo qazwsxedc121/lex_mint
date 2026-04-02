@@ -3,6 +3,11 @@ from dataclasses import dataclass
 import pytest
 
 from src.application.chat.chat_runtime.turn_executor import CommitteeTurnExecutor
+from src.application.chat.request_contexts import (
+    CommitteeExecutionContext,
+    CommitteeMemberTurnContext,
+    ConversationScope,
+)
 
 
 @dataclass
@@ -112,17 +117,21 @@ async def test_group_turn_executor_merges_tool_diagnostics_into_sources(monkeypa
 
     events = await _collect_events(
         executor.stream_group_assistant_turn(
-            session_id="s1",
-            assistant_id="a1",
-            assistant_obj=assistant,
-            group_assistants=["a1"],
-            assistant_name_map={"a1": "Architect"},
-            raw_user_message="hello",
-            reasoning_effort=None,
-            context_type="chat",
-            project_id=None,
-            search_context="search ctx",
-            search_sources=[{"type": "search", "title": "Web"}],
+            turn_context=CommitteeMemberTurnContext(
+                execution=CommitteeExecutionContext(
+                    scope=ConversationScope(session_id="s1"),
+                    raw_user_message="hello",
+                    group_assistants=["a1"],
+                    assistant_name_map={"a1": "Architect"},
+                    assistant_config_map={"a1": assistant},
+                    group_settings=None,
+                    reasoning_effort=None,
+                    search_context="search ctx",
+                    search_sources=[{"type": "search", "title": "Web"}],
+                ),
+                assistant_id="a1",
+                assistant_obj=assistant,
+            )
         )
     )
 

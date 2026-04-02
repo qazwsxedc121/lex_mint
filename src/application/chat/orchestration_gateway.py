@@ -27,6 +27,14 @@ from .request_contexts import (
 
 
 @dataclass(frozen=True)
+class _GatewayRuntimeRoute:
+    """Resolved runtime route for one chat gateway request."""
+
+    mode: str
+    source_factory: Callable[[], AsyncIterator[Any]]
+
+
+@dataclass(frozen=True)
 class ChatOrchestrationGatewayDeps:
     """Dependencies required by ChatOrchestrationGateway."""
 
@@ -73,11 +81,8 @@ class ChatOrchestrationGateway:
         request: SingleChatRequestContext,
     ) -> AsyncIterator[Any]:
         """Stream single_direct mode through the unified gateway."""
-        async for event in self._stream_via_runtime(
-            mode="single_direct",
-            source_factory=lambda: self._single_chat_flow_service.process_message_stream(
-                request=request,
-            ),
+        async for event in self._stream_route(
+            self._single_route(request),
         ):
             yield event
 
@@ -87,12 +92,8 @@ class ChatOrchestrationGateway:
         request: GroupChatRequestContext,
     ) -> AsyncIterator[Any]:
         """Stream round_robin/committee modes through the unified gateway."""
-        normalized_mode = (request.group_mode or "round_robin").strip().lower()
-        async for event in self._stream_via_runtime(
-            mode=normalized_mode,
-            source_factory=lambda: self._group_chat_service.process_group_message_stream(
-                request=request,
-            ),
+        async for event in self._stream_route(
+            self._group_route(request),
         ):
             yield event
 
@@ -102,11 +103,51 @@ class ChatOrchestrationGateway:
         request: CompareChatRequestContext,
     ) -> AsyncIterator[Any]:
         """Stream compare_models mode through the unified gateway."""
-        async for event in self._stream_via_runtime(
+        async for event in self._stream_route(
+            self._compare_route(request),
+        ):
+            yield event
+
+    def _single_route(self, request: SingleChatRequestContext) -> _GatewayRuntimeRoute:
+        """Build the runtime route for single-message streaming."""
+        return _GatewayRuntimeRoute(
+            mode="single_direct",
+            source_factory=lambda: self._single_chat_flow_service.process_message_stream(
+                request=request,
+            ),
+        )
+
+    @staticmethod
+    def _group_mode(request: GroupChatRequestContext) -> str:
+        """Normalize one group mode before routing into the runtime."""
+        return (request.group_mode or "round_robin").strip().lower()
+
+    def _group_route(self, request: GroupChatRequestContext) -> _GatewayRuntimeRoute:
+        """Build the runtime route for group-message streaming."""
+        return _GatewayRuntimeRoute(
+            mode=self._group_mode(request),
+            source_factory=lambda: self._group_chat_service.process_group_message_stream(
+                request=request,
+            ),
+        )
+
+    def _compare_route(self, request: CompareChatRequestContext) -> _GatewayRuntimeRoute:
+        """Build the runtime route for compare-message streaming."""
+        return _GatewayRuntimeRoute(
             mode="compare_models",
             source_factory=lambda: self._compare_flow_service.process_compare_stream(
                 request=request,
             ),
+        )
+
+    async def _stream_route(
+        self,
+        route: _GatewayRuntimeRoute,
+    ) -> AsyncIterator[Any]:
+        """Stream one resolved route through the orchestration runtime."""
+        async for event in self._stream_via_runtime(
+            mode=route.mode,
+            source_factory=route.source_factory,
         ):
             yield event
 
@@ -117,35 +158,12 @@ class ChatOrchestrationGateway:
         source_factory: Callable[[], AsyncIterator[Any]],
     ) -> AsyncIterator[Any]:
         run_id = f"chat-{mode}-{uuid.uuid4().hex}"
-
-        async def _adapter_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            async for event in source_factory():
-                yield ActorEmit(event_type="chat_event", payload={"event": event})
-            yield ActorResult(
-                terminal_status="completed",
-                terminal_reason=f"{mode} completed",
-            )
-
-        spec = RunSpec(
+        spec = self._build_runtime_spec(
             run_id=run_id,
-            entry_node_id="chat_adapter",
-            nodes=(
-                NodeSpec(
-                    node_id="chat_adapter",
-                    actor=ActorRef(
-                        actor_id="chat_adapter",
-                        kind=f"chat_{mode}",
-                        handler=_adapter_actor,
-                    ),
-                ),
-            ),
-            metadata={"mode": mode},
+            mode=mode,
+            source_factory=source_factory,
         )
-        context = RunContext(
-            run_id=run_id,
-            max_steps=2,
-            context_manager=InMemoryContextManager(),
-        )
+        context = self._build_runtime_context(run_id)
         async for runtime_event in self._orchestration_engine.run_stream(spec, context):
             event_type = str(runtime_event.get("type") or "")
             if event_type == "node_event" and runtime_event.get("event_type") == "chat_event":
@@ -157,3 +175,57 @@ class ChatOrchestrationGateway:
                 raise RuntimeError(
                     str(runtime_event.get("terminal_reason") or "chat stream failed")
                 )
+
+    def _build_runtime_spec(
+        self,
+        *,
+        run_id: str,
+        mode: str,
+        source_factory: Callable[[], AsyncIterator[Any]],
+    ) -> RunSpec:
+        """Build a minimal one-node runtime spec for one chat route."""
+        return RunSpec(
+            run_id=run_id,
+            entry_node_id="chat_adapter",
+            nodes=(
+                NodeSpec(
+                    node_id="chat_adapter",
+                    actor=ActorRef(
+                        actor_id="chat_adapter",
+                        kind=f"chat_{mode}",
+                        handler=self._build_adapter_actor(
+                            mode=mode,
+                            source_factory=source_factory,
+                        ),
+                    ),
+                ),
+            ),
+            metadata={"mode": mode},
+        )
+
+    @staticmethod
+    def _build_runtime_context(run_id: str) -> RunContext:
+        """Build the isolated runtime context used by gateway adapter runs."""
+        return RunContext(
+            run_id=run_id,
+            max_steps=2,
+            context_manager=InMemoryContextManager(),
+        )
+
+    @staticmethod
+    def _build_adapter_actor(
+        *,
+        mode: str,
+        source_factory: Callable[[], AsyncIterator[Any]],
+    ) -> Callable[[ActorExecutionContext], AsyncIterator[Any]]:
+        """Wrap one chat source iterator into an orchestration actor."""
+
+        async def _adapter_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
+            async for event in source_factory():
+                yield ActorEmit(event_type="chat_event", payload={"event": event})
+            yield ActorResult(
+                terminal_status="completed",
+                terminal_reason=f"{mode} completed",
+            )
+
+        return _adapter_actor

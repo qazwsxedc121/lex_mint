@@ -4,6 +4,10 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
+from src.application.chat.request_contexts import (
+    CommitteeExecutionContext,
+    CommitteeMemberTurnContext,
+)
 from src.application.orchestration import (
     ActorEmit,
     ActorExecutionContext,
@@ -116,6 +120,7 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
             participant_order = participant_order[: settings.max_turns]
 
         completed_turns = 0
+        execution = CommitteeExecutionContext.from_orchestration_request(request)
         for assistant_id in participant_order:
             if self.is_cancelled(cancel_token):
                 done_event = build_group_done_event(
@@ -136,19 +141,13 @@ class RoundRobinOrchestrator(BaseChatOrchestrator):
                 continue
 
             async for event in self.stream_group_assistant_turn(
-                session_id=request.session_id,
-                assistant_id=assistant_id,
-                assistant_obj=assistant_obj,
-                group_assistants=request.participants,
-                assistant_name_map=request.assistant_name_map,
-                raw_user_message=request.user_message,
-                reasoning_effort=request.reasoning_effort,
-                context_type=request.context_type,
-                project_id=request.project_id,
-                search_context=request.search_context,
-                search_sources=request.search_sources,
+                turn_context=CommitteeMemberTurnContext(
+                    execution=execution,
+                    assistant_id=assistant_id,
+                    assistant_obj=assistant_obj,
+                    trace_mode=self.mode,
+                ),
                 trace_id=request.trace_id,
-                trace_mode=self.mode,
             ):
                 yield ActorEmit(event_type="round_robin_event", payload={"event": event})
             completed_turns += 1

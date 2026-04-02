@@ -7,6 +7,11 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from src.application.chat.request_contexts import (
+    CommitteeExecutionContext,
+    CommitteeMemberTurnContext,
+)
+
 from .base import ChatOrchestrationCancelToken
 from .committee_types import CommitteeDecision, CommitteeRuntimeState, CommitteeTurnRecord
 from .runtime import CommitteeRuntime
@@ -19,21 +24,16 @@ from .terminal import build_group_done_event, cancellation_reason
 class CommitteeRunContext:
     """Static run context shared by committee action handlers."""
 
-    session_id: str
-    raw_user_message: str
-    group_assistants: list[str]
+    execution: CommitteeExecutionContext
     supervisor_id: str
     supervisor_name: str
     supervisor_obj: Any
-    assistant_name_map: dict[str, str]
-    assistant_config_map: dict[str, Any]
-    reasoning_effort: str | None
-    context_type: str
-    project_id: str | None
-    search_context: str | None
-    search_sources: list[dict[str, Any]]
     committee_settings: ResolvedCommitteeSettings
-    trace_id: str | None = None
+
+    @property
+    def trace_id(self) -> str | None:
+        """Expose trace id from the shared execution context."""
+        return self.execution.trace_id
 
 
 class CommitteeActionExecutor:
@@ -135,26 +135,20 @@ class CommitteeActionExecutor:
         summary_packet = self.build_committee_turn_packet(
             state=state,
             target_assistant_id=run_context.supervisor_id,
-            assistant_name_map=run_context.assistant_name_map,
+            assistant_name_map=run_context.execution.assistant_name_map,
             instruction=summary_instruction,
         )
         async for event in self.stream_group_assistant_turn(
-            session_id=run_context.session_id,
-            assistant_id=run_context.supervisor_id,
-            assistant_obj=run_context.supervisor_obj,
-            group_assistants=run_context.group_assistants,
-            assistant_name_map=run_context.assistant_name_map,
-            raw_user_message=run_context.raw_user_message,
-            reasoning_effort=run_context.reasoning_effort,
-            context_type=run_context.context_type,
-            project_id=run_context.project_id,
-            search_context=run_context.search_context,
-            search_sources=run_context.search_sources,
-            instruction=summary_instruction,
-            committee_turn_packet=summary_packet,
+            turn_context=CommitteeMemberTurnContext(
+                execution=run_context.execution,
+                assistant_id=run_context.supervisor_id,
+                assistant_obj=run_context.supervisor_obj,
+                instruction=summary_instruction,
+                committee_turn_packet=summary_packet,
+                trace_round=current_round,
+                trace_mode=self.mode,
+            ),
             trace_id=run_context.trace_id,
-            trace_round=current_round,
-            trace_mode=self.mode,
         ):
             yield event
         if run_context.trace_id:
@@ -229,12 +223,12 @@ class CommitteeActionExecutor:
         parallel_targets = [
             assistant_id
             for assistant_id in (decision.assistant_ids or [])
-            if assistant_id in run_context.assistant_config_map
+            if assistant_id in run_context.execution.assistant_config_map
         ]
         if len(parallel_targets) < 2:
             fallback_target = (
                 decision.assistant_id
-                if decision.assistant_id in run_context.assistant_config_map
+                if decision.assistant_id in run_context.execution.assistant_config_map
                 else None
             )
             if not fallback_target and parallel_targets:
@@ -265,32 +259,26 @@ class CommitteeActionExecutor:
         parallel_errors: list[dict[str, Any]] = []
 
         async def _run_parallel_target(target_id: str) -> None:
-            target_obj = run_context.assistant_config_map[target_id]
+            target_obj = run_context.execution.assistant_config_map[target_id]
             target_instruction = decision.instruction
             try:
                 turn_packet = self.build_committee_turn_packet(
                     state=state,
                     target_assistant_id=target_id,
-                    assistant_name_map=run_context.assistant_name_map,
+                    assistant_name_map=run_context.execution.assistant_name_map,
                     instruction=target_instruction,
                 )
                 async for event in self.stream_group_assistant_turn(
-                    session_id=run_context.session_id,
-                    assistant_id=target_id,
-                    assistant_obj=target_obj,
-                    group_assistants=run_context.group_assistants,
-                    assistant_name_map=run_context.assistant_name_map,
-                    raw_user_message=run_context.raw_user_message,
-                    reasoning_effort=run_context.reasoning_effort,
-                    context_type=run_context.context_type,
-                    project_id=run_context.project_id,
-                    search_context=run_context.search_context,
-                    search_sources=run_context.search_sources,
-                    instruction=target_instruction,
-                    committee_turn_packet=turn_packet,
+                    turn_context=CommitteeMemberTurnContext(
+                        execution=run_context.execution,
+                        assistant_id=target_id,
+                        assistant_obj=target_obj,
+                        instruction=target_instruction,
+                        committee_turn_packet=turn_packet,
+                        trace_round=current_round,
+                        trace_mode=self.mode,
+                    ),
                     trace_id=run_context.trace_id,
-                    trace_round=current_round,
-                    trace_mode=self.mode,
                 ):
                     if event.get("type") == "assistant_message_id":
                         parallel_message_ids[target_id] = event.get("message_id")
@@ -299,7 +287,9 @@ class CommitteeActionExecutor:
                 parallel_errors.append(
                     {
                         "assistant_id": target_id,
-                        "assistant_name": run_context.assistant_name_map.get(target_id, target_id),
+                        "assistant_name": run_context.execution.assistant_name_map.get(
+                            target_id, target_id
+                        ),
                         "error": str(e),
                     }
                 )
@@ -307,7 +297,9 @@ class CommitteeActionExecutor:
                     {
                         "kind": "error",
                         "assistant_id": target_id,
-                        "assistant_name": run_context.assistant_name_map.get(target_id, target_id),
+                        "assistant_name": run_context.execution.assistant_name_map.get(
+                            target_id, target_id
+                        ),
                         "error": str(e),
                     }
                 )
@@ -363,12 +355,12 @@ class CommitteeActionExecutor:
             target_message_id = parallel_message_ids.get(target_id)
             await self._record_turn_from_message(
                 state=state,
-                session_id=run_context.session_id,
+                session_id=run_context.execution.scope.session_id,
                 message_id=target_message_id,
                 assistant_id=target_id,
-                assistant_name=run_context.assistant_name_map.get(target_id, target_id),
-                context_type=run_context.context_type,
-                project_id=run_context.project_id,
+                assistant_name=run_context.execution.assistant_name_map.get(target_id, target_id),
+                context_type=run_context.execution.scope.context_type,
+                project_id=run_context.execution.scope.project_id,
                 runtime=runtime,
             )
 
@@ -405,7 +397,7 @@ class CommitteeActionExecutor:
                 rounds=state.round_index,
             )
             return
-        target_obj = run_context.assistant_config_map.get(target_id)
+        target_obj = run_context.execution.assistant_config_map.get(target_id)
         if not target_obj:
             yield build_group_done_event(
                 mode=self.mode,
@@ -427,47 +419,43 @@ class CommitteeActionExecutor:
             turn_packet = self.build_committee_turn_packet(
                 state=state,
                 target_assistant_id=target_id,
-                assistant_name_map=run_context.assistant_name_map,
+                assistant_name_map=run_context.execution.assistant_name_map,
                 instruction=turn_instruction,
             )
             async for event in self.stream_group_assistant_turn(
-                session_id=run_context.session_id,
-                assistant_id=target_id,
-                assistant_obj=target_obj,
-                group_assistants=run_context.group_assistants,
-                assistant_name_map=run_context.assistant_name_map,
-                raw_user_message=run_context.raw_user_message,
-                reasoning_effort=run_context.reasoning_effort,
-                context_type=run_context.context_type,
-                project_id=run_context.project_id,
-                search_context=run_context.search_context,
-                search_sources=run_context.search_sources,
-                instruction=turn_instruction,
-                committee_turn_packet=turn_packet,
+                turn_context=CommitteeMemberTurnContext(
+                    execution=run_context.execution,
+                    assistant_id=target_id,
+                    assistant_obj=target_obj,
+                    instruction=turn_instruction,
+                    committee_turn_packet=turn_packet,
+                    trace_round=current_round,
+                    trace_mode=self.mode,
+                ),
                 trace_id=run_context.trace_id,
-                trace_round=current_round,
-                trace_mode=self.mode,
             ):
                 if event.get("type") == "assistant_message_id":
                     target_message_id = event.get("message_id")
                 yield event
 
             content = await self.get_message_content_by_id(
-                session_id=run_context.session_id,
+                session_id=run_context.execution.scope.session_id,
                 message_id=target_message_id,
-                context_type=run_context.context_type,
-                project_id=run_context.project_id,
+                context_type=run_context.execution.scope.context_type,
+                project_id=run_context.execution.scope.project_id,
             )
             drift_reason = self.detect_group_role_drift(
                 content=content,
                 expected_assistant_id=target_id,
-                expected_assistant_name=run_context.assistant_name_map.get(target_id, target_id),
-                participant_name_map=run_context.assistant_name_map,
+                expected_assistant_name=run_context.execution.assistant_name_map.get(
+                    target_id, target_id
+                ),
+                participant_name_map=run_context.execution.assistant_name_map,
             )
             if drift_reason and attempt < role_retry_limit:
                 turn_instruction = self.build_role_retry_instruction(
                     base_instruction=decision.instruction,
-                    expected_assistant_name=run_context.assistant_name_map.get(
+                    expected_assistant_name=run_context.execution.assistant_name_map.get(
                         target_id, target_id
                     ),
                 )
@@ -477,7 +465,9 @@ class CommitteeActionExecutor:
                     "round": current_round,
                     "action": "role_retry",
                     "assistant_id": target_id,
-                    "assistant_name": run_context.assistant_name_map.get(target_id, target_id),
+                    "assistant_name": run_context.execution.assistant_name_map.get(
+                        target_id, target_id
+                    ),
                     "reason": drift_reason,
                     "supervisor_id": run_context.supervisor_id,
                     "supervisor_name": run_context.supervisor_name,
@@ -489,7 +479,7 @@ class CommitteeActionExecutor:
                         {
                             "round": current_round,
                             "assistant_id": target_id,
-                            "assistant_name": run_context.assistant_name_map.get(
+                            "assistant_name": run_context.execution.assistant_name_map.get(
                                 target_id, target_id
                             ),
                             "reason": drift_reason,
@@ -510,7 +500,7 @@ class CommitteeActionExecutor:
             state,
             CommitteeTurnRecord(
                 assistant_id=target_id,
-                assistant_name=run_context.assistant_name_map.get(target_id, target_id),
+                assistant_name=run_context.execution.assistant_name_map.get(target_id, target_id),
                 message_id=target_message_id,
                 content_preview=(structured_turn.get("content_preview") or "")[:240],
                 key_points=structured_turn.get("key_points", []),

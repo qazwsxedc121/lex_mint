@@ -5,6 +5,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Optional, cast
 
+from src.application.chat.request_contexts import CommitteeExecutionContext
 from src.application.orchestration import (
     ActorEmit,
     ActorExecutionContext,
@@ -147,18 +148,8 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
         if committee_settings is None:
             raise ValueError("Committee orchestrator requires resolved committee settings")
         async for event in self.process(
-            session_id=request.session_id,
-            raw_user_message=request.user_message,
-            group_assistants=request.participants,
+            execution_context=CommitteeExecutionContext.from_orchestration_request(request),
             committee_settings=committee_settings,
-            assistant_name_map=request.assistant_name_map,
-            assistant_config_map=request.assistant_config_map,
-            reasoning_effort=request.reasoning_effort,
-            context_type=request.context_type,
-            project_id=request.project_id,
-            search_context=request.search_context,
-            search_sources=request.search_sources,
-            trace_id=request.trace_id,
             cancel_token=cancel_token,
         ):
             if event.get("type") == "group_done":
@@ -179,25 +170,17 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
     async def process(
         self,
         *,
-        session_id: str,
-        raw_user_message: str,
-        group_assistants: list[str],
+        execution_context: CommitteeExecutionContext,
         committee_settings: ResolvedCommitteeSettings,
-        assistant_name_map: dict[str, str],
-        assistant_config_map: dict[str, Any],
-        reasoning_effort: str | None,
-        context_type: str,
-        project_id: str | None,
-        search_context: str | None,
-        search_sources: list[dict[str, Any]],
-        trace_id: str | None = None,
         cancel_token: ChatOrchestrationCancelToken | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
+        session_id = execution_context.scope.session_id
+        trace_id = execution_context.trace_id
         participant_order = [
             assistant_id
-            for assistant_id in group_assistants
-            if assistant_id in assistant_config_map
+            for assistant_id in execution_context.group_assistants
+            if assistant_id in execution_context.assistant_config_map
         ]
         if not participant_order:
             yield build_group_done_event(mode=self.mode, reason="no_valid_participants", rounds=0)
@@ -205,10 +188,10 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
 
         supervisor_id, supervisor_obj = self._resolve_supervisor(
             participant_order=participant_order,
-            assistant_config_map=assistant_config_map,
+            assistant_config_map=execution_context.assistant_config_map,
             requested_supervisor_id=committee_settings.supervisor_id,
         )
-        supervisor_name = assistant_name_map.get(supervisor_id, supervisor_id)
+        supervisor_name = execution_context.assistant_name_map.get(supervisor_id, supervisor_id)
         max_rounds = committee_settings.max_rounds
 
         self._log_committee_start(
@@ -219,16 +202,16 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
             participant_order=participant_order,
             max_rounds=max_rounds,
             committee_settings=committee_settings,
-            raw_user_message=raw_user_message,
+            raw_user_message=execution_context.raw_user_message,
         )
 
         runtime = CommitteeRuntime(
             CommitteeRuntimeConfig(supervisor_id=supervisor_id, max_rounds=max_rounds)
         )
         state = CommitteeRuntimeState(
-            user_message=raw_user_message,
+            user_message=execution_context.raw_user_message,
             participants={
-                assistant_id: assistant_name_map.get(assistant_id, assistant_id)
+                assistant_id: execution_context.assistant_name_map.get(assistant_id, assistant_id)
                 for assistant_id in participant_order
             },
         )
@@ -247,21 +230,11 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
             summary_instruction_template=committee_settings.summary_instruction_template,
         )
         run_context = CommitteeRunContext(
-            session_id=session_id,
-            raw_user_message=raw_user_message,
-            group_assistants=group_assistants,
+            execution=execution_context,
             supervisor_id=supervisor_id,
             supervisor_name=supervisor_name,
             supervisor_obj=supervisor_obj,
-            assistant_name_map=assistant_name_map,
-            assistant_config_map=assistant_config_map,
-            reasoning_effort=reasoning_effort,
-            context_type=context_type,
-            project_id=project_id,
-            search_context=search_context,
-            search_sources=search_sources,
             committee_settings=committee_settings,
-            trace_id=trace_id,
         )
 
         supervisor_call_context: dict[str, Any] = {"round": None}
@@ -310,7 +283,7 @@ class CommitteeOrchestrator(BaseChatOrchestrator):
             max_rounds=max_rounds,
             supervisor_id=supervisor_id,
             supervisor_name=supervisor_name,
-            assistant_name_map=assistant_name_map,
+            assistant_name_map=execution_context.assistant_name_map,
             trace_id=trace_id,
         )
 

@@ -9,6 +9,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
+from src.application.chat.request_contexts import CommitteeMemberTurnContext
 from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
 
 from .committee_types import CommitteeRuntimeState
@@ -331,45 +332,27 @@ class CommitteeTurnExecutor:
     async def stream_group_assistant_turn(
         self,
         *,
-        session_id: str,
-        assistant_id: str,
-        assistant_obj: Any,
-        group_assistants: list[str],
-        assistant_name_map: dict[str, str],
-        raw_user_message: str,
-        reasoning_effort: str | None,
-        context_type: str,
-        project_id: str | None,
-        search_context: str | None,
-        search_sources: list[dict[str, Any]],
-        instruction: str | None = None,
-        committee_turn_packet: dict[str, Any] | None = None,
+        turn_context: CommitteeMemberTurnContext,
         trace_id: str | None = None,
-        trace_round: int | None = None,
-        trace_mode: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute one assistant turn in group mode and stream structured events."""
+        member_turn = turn_context
+        execution = member_turn.execution
+        session_id = execution.scope.session_id
+        context_type = execution.scope.context_type
+        project_id = execution.scope.project_id
+        assistant_id = member_turn.assistant_id
+        assistant_obj = member_turn.assistant_obj
         assistant_turn_id = str(uuid.uuid4())
-        turn_context = await self._context_builder.build(
-            session_id=session_id,
-            assistant_id=assistant_id,
-            assistant_obj=assistant_obj,
-            group_assistants=group_assistants,
-            assistant_name_map=assistant_name_map,
-            raw_user_message=raw_user_message,
-            context_type=context_type,
-            project_id=project_id,
-            search_context=search_context,
-            search_sources=search_sources,
-            instruction=instruction,
-            committee_turn_packet=committee_turn_packet,
+        prompt_context = await self._context_builder.build(
+            turn_context=member_turn,
         )
 
         yield {
             "type": "assistant_start",
             "assistant_id": assistant_id,
             "assistant_turn_id": assistant_turn_id,
-            "name": turn_context.assistant_name,
+            "name": prompt_context.assistant_name,
             "icon": assistant_obj.icon,
         }
 
@@ -378,29 +361,29 @@ class CommitteeTurnExecutor:
                 trace_id,
                 "assistant_turn_request",
                 {
-                    "mode": trace_mode or "group",
-                    "round": trace_round,
+                    "mode": member_turn.trace_mode or "group",
+                    "round": member_turn.trace_round,
                     "assistant_id": assistant_id,
-                    "assistant_name": turn_context.assistant_name,
+                    "assistant_name": prompt_context.assistant_name,
                     "assistant_turn_id": assistant_turn_id,
-                    "model_id": turn_context.model_id,
+                    "model_id": prompt_context.model_id,
                     "instruction": self.truncate_log_text(
-                        instruction, self.group_trace_preview_chars
+                        member_turn.instruction, self.group_trace_preview_chars
                     ),
                     "identity_prompt": self.truncate_log_text(
-                        turn_context.identity_prompt, self.group_trace_preview_chars
+                        prompt_context.identity_prompt, self.group_trace_preview_chars
                     ),
                     "history_hint": self.truncate_log_text(
-                        turn_context.history_hint, self.group_trace_preview_chars
+                        prompt_context.history_hint, self.group_trace_preview_chars
                     ),
                     "instruction_prompt": self.truncate_log_text(
-                        turn_context.instruction_prompt, self.group_trace_preview_chars
+                        prompt_context.instruction_prompt, self.group_trace_preview_chars
                     ),
-                    "committee_turn_packet": committee_turn_packet,
+                    "committee_turn_packet": member_turn.committee_turn_packet,
                     "final_system_prompt": self.truncate_log_text(
-                        turn_context.system_prompt, self.group_trace_preview_chars
+                        prompt_context.system_prompt, self.group_trace_preview_chars
                     ),
-                    "messages_preview": self.build_messages_preview_for_log(turn_context.messages),
+                    "messages_preview": self.build_messages_preview_for_log(prompt_context.messages),
                 },
             )
 
@@ -412,10 +395,10 @@ class CommitteeTurnExecutor:
                 assistant_id=assistant_id,
                 assistant_turn_id=assistant_turn_id,
                 assistant_obj=assistant_obj,
-                model_id=turn_context.model_id,
-                messages=turn_context.messages,
-                system_prompt=turn_context.system_prompt,
-                reasoning_effort=reasoning_effort,
+                model_id=prompt_context.model_id,
+                messages=prompt_context.messages,
+                system_prompt=prompt_context.system_prompt,
+                reasoning_effort=execution.reasoning_effort,
             ):
                 yield event
         except asyncio.CancelledError:
@@ -431,7 +414,7 @@ class CommitteeTurnExecutor:
             raise
 
         all_sources = merge_tool_diagnostics_into_sources(
-            turn_context.sources,
+            prompt_context.sources,
             stream_state.tool_diagnostics,
         )
 
@@ -452,10 +435,10 @@ class CommitteeTurnExecutor:
                 trace_id,
                 "assistant_turn_result",
                 {
-                    "mode": trace_mode or "group",
-                    "round": trace_round,
+                    "mode": member_turn.trace_mode or "group",
+                    "round": member_turn.trace_round,
                     "assistant_id": assistant_id,
-                    "assistant_name": turn_context.assistant_name,
+                    "assistant_name": prompt_context.assistant_name,
                     "assistant_turn_id": assistant_turn_id,
                     "assistant_message_id": assistant_message_id,
                     "response_preview": self.truncate_log_text(

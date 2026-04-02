@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from src.application.chat.request_contexts import CommitteeMemberTurnContext
 from src.application.chat.source_diagnostics import merge_source_groups
 
 logger = logging.getLogger(__name__)
@@ -51,20 +52,15 @@ class GroupTurnContextBuilder:
     async def build(
         self,
         *,
-        session_id: str,
-        assistant_id: str,
-        assistant_obj: Any,
-        group_assistants: list[str],
-        assistant_name_map: dict[str, str],
-        raw_user_message: str,
-        context_type: str,
-        project_id: str | None,
-        search_context: str | None,
-        search_sources: list[dict[str, Any]],
-        instruction: str | None = None,
-        committee_turn_packet: dict[str, Any] | None = None,
+        turn_context: CommitteeMemberTurnContext,
     ) -> GroupTurnContext:
         """Build complete turn context with system prompt stacking."""
+        execution = turn_context.execution
+        assistant_id = turn_context.assistant_id
+        assistant_obj = turn_context.assistant_obj
+        session_id = execution.scope.session_id
+        context_type = execution.scope.context_type
+        project_id = execution.scope.project_id
         session = await self.storage.get_session(
             session_id, context_type=context_type, project_id=project_id
         )
@@ -76,17 +72,17 @@ class GroupTurnContextBuilder:
         history_hint = self.build_group_history_hint(
             messages,
             assistant_id,
-            assistant_name_map,
+            execution.assistant_name_map,
         )
         identity_prompt = self.build_group_identity_prompt(
             assistant_id,
             assistant_name,
-            group_assistants,
-            assistant_name_map,
+            execution.group_assistants,
+            execution.assistant_name_map,
         )
         instruction_prompt = self.build_group_instruction_prompt(
-            instruction,
-            committee_turn_packet,
+            turn_context.instruction,
+            turn_context.committee_turn_packet,
         )
 
         system_prompt = assistant_obj.system_prompt
@@ -103,7 +99,7 @@ class GroupTurnContextBuilder:
         memory_sources: list[dict[str, Any]] = []
         try:
             memory_context, memory_sources = self.memory_service.build_memory_context(
-                query=raw_user_message,
+                query=execution.raw_user_message,
                 assistant_id=assistant_id,
                 include_global=True,
                 include_assistant=assistant_memory_enabled,
@@ -118,18 +114,20 @@ class GroupTurnContextBuilder:
         rag_context, rag_sources = await self.build_rag_context_and_sources(
             context_type=context_type,
             project_id=project_id,
-            raw_user_message=raw_user_message,
+            raw_user_message=execution.raw_user_message,
             assistant_id=assistant_id,
             assistant_obj=assistant_obj,
             runtime_model_id=model_id,
         )
         if rag_context:
             system_prompt = f"{system_prompt}\n\n{rag_context}" if system_prompt else rag_context
-        if search_context:
+        if execution.search_context:
             system_prompt = (
-                f"{system_prompt}\n\n{search_context}" if system_prompt else search_context
+                f"{system_prompt}\n\n{execution.search_context}"
+                if system_prompt
+                else execution.search_context
             )
-        sources = merge_source_groups(memory_sources, search_sources, rag_sources)
+        sources = merge_source_groups(memory_sources, execution.search_sources, rag_sources)
 
         return GroupTurnContext(
             assistant_name=assistant_name,

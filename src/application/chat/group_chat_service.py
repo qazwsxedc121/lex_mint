@@ -10,7 +10,6 @@ from typing import Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.chat_runtime import (
-    ChatOrchestrationRequest,
     CommitteeOrchestrator,
     ResolvedCommitteeSettings,
     ResolvedGroupSettings,
@@ -83,8 +82,6 @@ class GroupChatService:
     ) -> AsyncIterator[StreamEvent]:
         """Committee mode orchestration: supervisor decides who speaks each round."""
         session_id = request.scope.session_id
-        context_type = request.scope.context_type
-        project_id = request.scope.project_id
         trace_id = request.trace_id
         if trace_id is None and self.deps.is_group_trace_enabled():
             trace_id = f"{session_id[:8]}-{uuid.uuid4().hex[:6]}"
@@ -100,22 +97,12 @@ class GroupChatService:
             return
 
         orchestrator = self.deps.create_committee_orchestrator()
-        request = ChatOrchestrationRequest(
-            session_id=session_id,
+        orchestration_request = request.to_orchestration_request(
             mode="committee",
-            user_message=request.raw_user_message,
-            participants=request.group_assistants,
-            assistant_name_map=request.assistant_name_map,
-            assistant_config_map=request.assistant_config_map,
             settings=committee_settings,
-            reasoning_effort=request.reasoning_effort,
-            context_type=context_type,
-            project_id=project_id,
-            search_context=request.search_context,
-            search_sources=request.search_sources,
             trace_id=trace_id,
         )
-        async for event in orchestrator.stream(request):
+        async for event in orchestrator.stream(orchestration_request):
             yield event
 
     async def process_group_message_stream(
@@ -260,16 +247,7 @@ class GroupChatService:
                 group_assistants=execution_context.group_assistants,
             )
             async for event in self.process_committee_group_message_stream(
-                request=CommitteeExecutionContext(
-                    scope=execution_context.scope,
-                    raw_user_message=execution_context.raw_user_message,
-                    group_assistants=execution_context.group_assistants,
-                    assistant_name_map=execution_context.assistant_name_map,
-                    assistant_config_map=execution_context.assistant_config_map,
-                    group_settings=execution_context.group_settings,
-                    reasoning_effort=execution_context.reasoning_effort,
-                    search_context=execution_context.search_context,
-                    search_sources=execution_context.search_sources,
+                request=execution_context.with_updates(
                     group_mode=normalized_group_mode,
                     trace_id=trace_id,
                 ),
@@ -277,19 +255,9 @@ class GroupChatService:
                 yield event
             return
 
-        request = ChatOrchestrationRequest(
-            session_id=execution_context.scope.session_id,
+        request = execution_context.to_orchestration_request(
             mode="round_robin",
-            user_message=execution_context.raw_user_message,
-            participants=execution_context.group_assistants,
-            assistant_name_map=execution_context.assistant_name_map,
-            assistant_config_map=execution_context.assistant_config_map,
             settings=RoundRobinSettings(),
-            reasoning_effort=execution_context.reasoning_effort,
-            context_type=execution_context.scope.context_type,
-            project_id=execution_context.scope.project_id,
-            search_context=execution_context.search_context,
-            search_sources=execution_context.search_sources,
         )
         round_robin_orchestrator = self.deps.create_round_robin_orchestrator()
         async for event in round_robin_orchestrator.stream(request):

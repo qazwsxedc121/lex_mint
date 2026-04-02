@@ -59,6 +59,14 @@ async def _collect_events(async_iter):
     return events
 
 
+def _called_assistant_id(call: dict) -> str:
+    return call["turn_context"].assistant_id
+
+
+def _called_instruction(call: dict) -> str | None:
+    return call["turn_context"].instruction
+
+
 def _build_orchestrator(*, llm_call, stream_group_assistant_turn, get_message_content_by_id):
     support = GroupOrchestrationSupportService(
         storage=object(),
@@ -144,7 +152,7 @@ async def test_committee_orchestrator_speak_then_finish():
 
     async def fake_stream_group_assistant_turn(**kwargs):
         turn_calls.append(kwargs)
-        assistant_id = kwargs["assistant_id"]
+        assistant_id = kwargs["turn_context"].assistant_id
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
         yield {
@@ -190,12 +198,12 @@ async def test_committee_orchestrator_speak_then_finish():
     assert action_events[1]["reason"] == "discussion_complete"
 
     assert len(turn_calls) == 2
-    assert turn_calls[0]["assistant_id"] == "a2"
-    assert turn_calls[0]["instruction"] == "Focus on backend risks."
-    assert turn_calls[1]["assistant_id"] == "a1"
+    assert _called_assistant_id(turn_calls[0]) == "a2"
+    assert _called_instruction(turn_calls[0]) == "Focus on backend risks."
+    assert _called_assistant_id(turn_calls[1]) == "a1"
     assert (
         "Committee orchestration is ending (reason: discussion_complete)."
-        in turn_calls[1]["instruction"]
+        in (_called_instruction(turn_calls[1]) or "")
     )
 
     assert events[-1] == {
@@ -215,7 +223,7 @@ async def test_committee_orchestrator_invalid_supervisor_output_uses_fallback():
 
     async def fake_stream_group_assistant_turn(**kwargs):
         turn_calls.append(kwargs)
-        assistant_id = kwargs["assistant_id"]
+        assistant_id = kwargs["turn_context"].assistant_id
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
         yield {
@@ -265,11 +273,11 @@ async def test_committee_orchestrator_invalid_supervisor_output_uses_fallback():
     assert action_event["instruction"] == "Please contribute your best analysis as Implementer."
 
     assert len(turn_calls) == 2
-    assert turn_calls[0]["assistant_id"] == "a2"
-    assert turn_calls[1]["assistant_id"] == "a1"
+    assert _called_assistant_id(turn_calls[0]) == "a2"
+    assert _called_assistant_id(turn_calls[1]) == "a1"
     assert (
         "Committee orchestration is ending (reason: max_rounds_reached)."
-        in turn_calls[1]["instruction"]
+        in (_called_instruction(turn_calls[1]) or "")
     )
 
     assert events[-1]["type"] == "group_done"
@@ -337,7 +345,7 @@ async def test_committee_orchestrator_role_drift_retries_once():
 
     async def fake_stream_group_assistant_turn(**kwargs):
         turn_calls.append(kwargs)
-        assistant_id = kwargs["assistant_id"]
+        assistant_id = kwargs["turn_context"].assistant_id
         message_id = f"{assistant_id}-m-{len(turn_calls)}"
         yield {"type": "assistant_start", "assistant_id": assistant_id}
         yield {
@@ -383,10 +391,10 @@ async def test_committee_orchestrator_role_drift_retries_once():
     assert retry_events[0]["reason"] == "role_drift_claimed_a1"
 
     assert len(turn_calls) == 3
-    assert turn_calls[0]["assistant_id"] == "a2"
-    assert turn_calls[1]["assistant_id"] == "a2"
-    assert "Role correction required:" in (turn_calls[1].get("instruction") or "")
-    assert turn_calls[2]["assistant_id"] == "a1"
+    assert _called_assistant_id(turn_calls[0]) == "a2"
+    assert _called_assistant_id(turn_calls[1]) == "a2"
+    assert "Role correction required:" in (_called_instruction(turn_calls[1]) or "")
+    assert _called_assistant_id(turn_calls[2]) == "a1"
 
     assert events[-1]["type"] == "group_done"
     assert events[-1]["reason"] == "discussion_complete"
@@ -415,7 +423,7 @@ async def test_committee_orchestrator_parallel_speak_then_finish():
         turn_calls.append(kwargs)
         call_index["value"] += 1
         idx = call_index["value"]
-        assistant_id = kwargs["assistant_id"]
+        assistant_id = kwargs["turn_context"].assistant_id
         message_id = f"{assistant_id}-m-{idx}"
         yield {
             "type": "assistant_start",
@@ -469,8 +477,11 @@ async def test_committee_orchestrator_parallel_speak_then_finish():
     assert action_events[1]["action"] == "finish"
 
     assert len(turn_calls) == 3
-    assert {turn_calls[0]["assistant_id"], turn_calls[1]["assistant_id"]} == {"a2", "a3"}
-    assert turn_calls[2]["assistant_id"] == "a1"
+    assert {_called_assistant_id(turn_calls[0]), _called_assistant_id(turn_calls[1])} == {
+        "a2",
+        "a3",
+    }
+    assert _called_assistant_id(turn_calls[2]) == "a1"
 
     assert events[-1] == {
         "type": "group_done",
