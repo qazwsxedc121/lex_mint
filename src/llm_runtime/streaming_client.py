@@ -3,36 +3,34 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage
 
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.files.file_service import FileService
 from src.llm_runtime.stream_call_policy import (
     build_stream_kwargs,
-    select_stream_llm,
     should_allow_responses_fallback,
 )
-from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
+from src.llm_runtime.tool_loop_runtime import (
+    ToolLoopRoundResult,
+    bind_tools_for_tool_loop,
+    build_tool_loop_state,
+    decide_tool_loop_branch,
+    execute_tool_loop_round,
+    finalize_tool_loop,
+    resolve_active_stream_llm,
+    stream_tool_loop_round,
+)
 from src.providers.types import CallMode, TokenUsage
 from src.utils.llm_logger import get_llm_logger
 
-from .context import (
-    build_context_info_event,
-    build_context_plan,
-    context_segment_to_system_content,
-    estimate_langchain_messages_tokens,
-    filter_messages_by_context_boundary,
-    get_context_limit,
-    trim_to_context_limit,
-)
-from .messages import convert_to_langchain_messages
 from .params import build_llm_request_params
 from .reasoning import ReasoningDecision, log_reasoning_decision, resolve_reasoning_decision
+from .stream_input import prepare_stream_input
 
 logger = logging.getLogger(__name__)
 
@@ -57,25 +55,6 @@ class StreamingRuntime:
     allow_responses_fallback: bool
     request_params: dict[str, Any]
     reasoning_decision: ReasoningDecision
-
-
-@dataclass
-class PreparedStreamInput:
-    """Prepared prompt context and converted LangChain messages."""
-
-    langchain_messages: list[BaseMessage]
-    context_event: dict[str, Any]
-
-
-@dataclass
-class StreamRoundResult:
-    """Aggregated output from one streaming round."""
-
-    round_content: str
-    round_reasoning: str
-    round_reasoning_details: Any
-    final_usage: TokenUsage | None
-    merged_chunk: Any
 
 
 def _resolve_streaming_runtime(
@@ -210,322 +189,11 @@ def _log_stream_preparation(
     )
 
 
-def _log_context_filtering(
-    *,
-    original_count: int,
-    filtered_count: int,
-    summary_content: str,
-) -> None:
-    if filtered_count >= original_count:
-        return
-    print(f"[CONTEXT] Filtered messages: {original_count} -> {filtered_count}")
-    logger.info("Context filtered: %s -> %s messages", original_count, filtered_count)
-    if summary_content:
-        print(f"[CONTEXT] Summary context injected ({len(summary_content)} chars)")
-        logger.info("Summary context injected: %s chars", len(summary_content))
-
-
-async def _prepare_stream_input(
-    *,
-    runtime: StreamingRuntime,
-    messages: list[dict[str, str]],
-    session_id: str,
-    system_prompt: str | None,
-    context_segments: dict[str, str | None] | None,
-    max_rounds: int | None,
-    file_service: FileService | None,
-) -> PreparedStreamInput:
-    filtered_messages, summary_content = filter_messages_by_context_boundary(messages)
-    _log_context_filtering(
-        original_count=len(messages),
-        filtered_count=len(filtered_messages),
-        summary_content=summary_content,
-    )
-
-    max_input_tokens, context_window = get_context_limit(
-        llm=runtime.llm,
-        capabilities=runtime.capabilities,
-    )
-    context_plan = build_context_plan(
-        messages=filtered_messages,
-        system_prompt=system_prompt,
-        context_segments=context_segments,
-        summary_content=summary_content,
-        max_rounds=max_rounds,
-        context_budget_tokens=max_input_tokens,
-    )
-
-    langchain_messages = await _build_langchain_messages(
-        context_plan=context_plan,
-        session_id=session_id,
-        file_service=file_service,
-    )
-    langchain_messages = trim_to_context_limit(langchain_messages, max_input_tokens)
-    estimated_prompt_tokens = estimate_langchain_messages_tokens(langchain_messages)
-
-    return PreparedStreamInput(
-        langchain_messages=langchain_messages,
-        context_event=build_context_info_event(
-            context_plan=context_plan,
-            context_budget=max_input_tokens,
-            context_window=context_window,
-            estimated_prompt_tokens=estimated_prompt_tokens,
-        ),
-    )
-
-
-async def _build_langchain_messages(
-    *,
-    context_plan: Any,
-    session_id: str,
-    file_service: FileService | None,
-) -> list[BaseMessage]:
-    langchain_messages: list[BaseMessage] = [
-        SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
-        for segment in context_plan.system_segments
-    ]
-    langchain_messages.extend(
-        await _build_chat_messages(
-            chat_messages=context_plan.chat_messages,
-            session_id=session_id,
-            file_service=file_service,
-        )
-    )
-    return langchain_messages
-
-
-async def _build_chat_messages(
-    *,
-    chat_messages: list[dict[str, Any]],
-    session_id: str,
-    file_service: FileService | None,
-) -> list[BaseMessage]:
-    if file_service:
-        converted_messages = await convert_to_langchain_messages(
-            chat_messages,
-            session_id,
-            file_service,
-        )
-        _log_chat_messages(chat_messages, include_image_hint=True)
-        return converted_messages
-
-    simple_messages: list[BaseMessage] = []
-    for msg in chat_messages:
-        role = msg.get("role")
-        if role == "user":
-            simple_messages.append(HumanMessage(content=msg["content"]))
-        elif role == "assistant":
-            simple_messages.append(AIMessage(content=msg["content"]))
-    _log_chat_messages(chat_messages, include_image_hint=False)
-    return simple_messages
-
-
-def _log_chat_messages(
-    chat_messages: list[dict[str, Any]],
-    *,
-    include_image_hint: bool,
-) -> None:
-    for index, msg in enumerate(chat_messages):
-        role = msg.get("role", "unknown")
-        content_preview = msg.get("content", "")[:50]
-        if include_image_hint:
-            attachments = msg.get("attachments", [])
-            has_images = any(att.get("mime_type", "").startswith("image/") for att in attachments)
-            suffix = " [with images]" if has_images else ""
-            print(f"      Message {index + 1}: {role} - {content_preview}...{suffix}")
-        elif role in {"user", "assistant"}:
-            print(f"      Message {index + 1}: {role} - {content_preview}...")
-
-
-def _bind_tools_if_available(runtime: StreamingRuntime, tools: list | None) -> tuple[Any, list | None]:
-    llm_for_call = runtime.llm
-    if not tools:
-        return llm_for_call, tools
-    try:
-        llm_for_call = runtime.llm.bind_tools(tools)
-        print(f"[TOOLS] Bound {len(tools)} tools to LLM")
-        logger.info("Bound %s tools to LLM", len(tools))
-    except Exception as exc:
-        logger.warning("Failed to bind tools: %s, proceeding without tools", exc)
-        llm_for_call = runtime.llm
-        tools = None
-    return llm_for_call, tools
-
-
 def _latest_user_text(messages: list[dict[str, str]]) -> str:
     for raw_msg in reversed(messages):
         if str(raw_msg.get("role", "")).strip().lower() == "user":
             return str(raw_msg.get("content") or "")
     return ""
-
-
-def _tool_names(tools: list | None) -> set[str]:
-    return {
-        str(getattr(tool, "name", "") or "").strip()
-        for tool in (tools or [])
-        if str(getattr(tool, "name", "") or "").strip()
-    }
-
-
-def _build_tool_loop_state(
-    *,
-    langchain_messages: list[BaseMessage],
-    latest_user_text: str,
-    tools: list | None,
-) -> tuple[ToolLoopRunner, ToolLoopState]:
-    tool_names = _tool_names(tools)
-    max_tool_rounds = ToolLoopRunner.resolve_max_tool_rounds(
-        tool_names=tool_names,
-        latest_user_text=latest_user_text,
-        default_max_tool_rounds=3,
-    )
-    tool_loop_runner = ToolLoopRunner(max_tool_rounds=max_tool_rounds)
-    tool_loop_state = ToolLoopState(
-        current_messages=list(langchain_messages),
-        web_research_enabled=bool(tool_names.intersection({"web_search", "read_webpage"})),
-        max_tool_rounds=max_tool_rounds,
-    )
-    tool_loop_state.evidence_intent = tool_loop_runner.detect_evidence_intent(latest_user_text)
-    return tool_loop_runner, tool_loop_state
-
-
-def _active_stream_llm(
-    *,
-    runtime: StreamingRuntime,
-    llm_for_call: Any,
-    tools: list | None,
-    tool_loop_state: ToolLoopState,
-) -> Any:
-    return select_stream_llm(
-        llm=runtime.llm,
-        llm_for_tools=llm_for_call,
-        tools_enabled=bool(tools),
-        force_finalize_without_tools=tool_loop_state.force_finalize_without_tools,
-    )
-
-
-def _merged_chunk_reasoning_details(merged_chunk: Any) -> Any:
-    merged_kwargs = getattr(merged_chunk, "additional_kwargs", None) or {}
-    if not isinstance(merged_kwargs, dict):
-        return None
-    return merged_kwargs.get("reasoning_details")
-
-
-def _merged_chunk_reasoning_content(merged_chunk: Any) -> str:
-    merged_kwargs = getattr(merged_chunk, "additional_kwargs", None) or {}
-    if not isinstance(merged_kwargs, dict):
-        return ""
-    merged_reasoning = merged_kwargs.get("reasoning_content")
-    return merged_reasoning if isinstance(merged_reasoning, str) else ""
-
-
-async def _stream_single_round(
-    *,
-    runtime: StreamingRuntime,
-    active_llm: Any,
-    current_messages: list[BaseMessage],
-    stream_kwargs: dict[str, Any],
-) -> AsyncIterator[str | dict[str, Any] | StreamRoundResult]:
-    in_thinking_phase = False
-    thinking_ended = False
-    thinking_start_time: float | None = None
-    round_content = ""
-    round_reasoning = ""
-    final_usage: TokenUsage | None = None
-    merged_chunk = None
-
-    async for chunk in runtime.adapter.stream(
-        active_llm,
-        current_messages,
-        **stream_kwargs,
-    ):
-        chunk_usage = getattr(chunk, "usage", None)
-        if chunk_usage is not None:
-            final_usage = chunk_usage
-
-        if chunk.thinking and not runtime.reasoning_decision.disable_thinking:
-            round_reasoning += chunk.thinking
-            if not in_thinking_phase:
-                in_thinking_phase = True
-                thinking_start_time = time.time()
-                yield "<think>"
-            yield chunk.thinking
-
-        if chunk.content:
-            if in_thinking_phase and not thinking_ended:
-                thinking_ended = True
-                duration_ms = (
-                    int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
-                )
-                yield "</think>"
-                yield {"type": "thinking_duration", "duration_ms": duration_ms}
-            round_content += chunk.content
-            yield chunk.content
-
-        if chunk.raw is not None:
-            try:
-                merged_chunk = chunk.raw if merged_chunk is None else merged_chunk + chunk.raw
-            except Exception:
-                pass
-
-    if in_thinking_phase and not thinking_ended:
-        duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
-        yield "</think>"
-        yield {"type": "thinking_duration", "duration_ms": duration_ms}
-
-    round_reasoning_details = None
-    if merged_chunk is not None:
-        extracted_usage = TokenUsage.extract_from_chunk(merged_chunk)
-        if extracted_usage and final_usage is None:
-            final_usage = extracted_usage
-        if not runtime.reasoning_decision.disable_thinking and not round_reasoning:
-            round_reasoning = _merged_chunk_reasoning_content(merged_chunk)
-        round_reasoning_details = _merged_chunk_reasoning_details(merged_chunk)
-
-    yield StreamRoundResult(
-        round_content=round_content,
-        round_reasoning=round_reasoning,
-        round_reasoning_details=round_reasoning_details,
-        final_usage=final_usage,
-        merged_chunk=merged_chunk,
-    )
-
-
-def _remove_round_content(full_response: str, round_content: str) -> str:
-    if round_content and full_response.endswith(round_content):
-        return full_response[: -len(round_content)]
-    return full_response
-
-
-def _should_compensate_and_continue(
-    *,
-    tool_loop_runner: ToolLoopRunner,
-    tool_loop_state: ToolLoopState,
-    round_tool_calls: list[dict[str, Any]],
-    round_content: str,
-    full_response: str,
-) -> tuple[bool, str]:
-    if tool_loop_runner.should_request_read_compensation(
-        tool_loop_state,
-        round_tool_calls=round_tool_calls,
-    ):
-        full_response = _remove_round_content(full_response, round_content)
-        print("[TOOLS] Evidence request detected, asking model to call read_knowledge before final answer")
-        logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
-        tool_loop_runner.apply_read_compensation_prompt(tool_loop_state)
-        return True, full_response
-
-    if tool_loop_runner.should_request_web_read_compensation(
-        tool_loop_state,
-        round_tool_calls=round_tool_calls,
-    ):
-        full_response = _remove_round_content(full_response, round_content)
-        print("[TOOLS] Web research needs a webpage read before final answer")
-        logger.info("Injecting read_webpage compensation prompt for web research request")
-        tool_loop_runner.apply_web_read_compensation_prompt(tool_loop_state)
-        return True, full_response
-
-    return False, full_response
 
 
 def _build_log_extra_params(
@@ -631,7 +299,7 @@ async def call_llm_stream(
         system_prompt=system_prompt,
         max_rounds=max_rounds,
     )
-    prepared_input = await _prepare_stream_input(
+    prepared_input = await prepare_stream_input(
         runtime=runtime,
         messages=messages,
         session_id=session_id,
@@ -643,8 +311,6 @@ async def call_llm_stream(
     langchain_messages = prepared_input.langchain_messages
     yield prepared_input.context_event
 
-    llm_for_call, tools = _bind_tools_if_available(runtime, tools)
-
     try:
         print(f"[LLM] Streaming {len(langchain_messages)} messages to LLM API...")
         logger.info("Streaming LLM API call...")
@@ -653,74 +319,60 @@ async def call_llm_stream(
         full_reasoning = ""
         final_usage: TokenUsage | None = None
         latest_user_text = _latest_user_text(messages)
-        tool_loop_runner, tool_loop_state = _build_tool_loop_state(
+        bound_tools = bind_tools_for_tool_loop(
+            llm=runtime.llm,
+            llm_tools=tools,
+            warning_message="Failed to bind tools",
+        )
+        tool_loop_runner, tool_loop_state = build_tool_loop_state(
             langchain_messages=langchain_messages,
             latest_user_text=latest_user_text,
-            tools=tools,
+            tool_names=bound_tools.tool_names,
         )
 
         while True:
-            active_llm = _active_stream_llm(
+            active_llm = resolve_active_stream_llm(
                 runtime=runtime,
-                llm_for_call=llm_for_call,
-                tools=tools,
+                llm_for_tools=bound_tools.llm_for_tools,
+                tools_enabled=bound_tools.tools_enabled,
                 tool_loop_state=tool_loop_state,
             )
             stream_kwargs = build_stream_kwargs(
                 allow_responses_fallback=runtime.allow_responses_fallback,
             )
-            round_result: StreamRoundResult | None = None
-            async for chunk in _stream_single_round(
+            round_result: ToolLoopRoundResult | None = None
+            async for chunk in stream_tool_loop_round(
                 runtime=runtime,
                 active_llm=active_llm,
                 current_messages=tool_loop_state.current_messages,
                 stream_kwargs=stream_kwargs,
             ):
-                if isinstance(chunk, StreamRoundResult):
+                if isinstance(chunk, ToolLoopRoundResult):
                     round_result = chunk
                     continue
                 yield chunk
             if round_result is None:
-                round_result = StreamRoundResult("", "", None, final_usage, None)
+                round_result = ToolLoopRoundResult("", "", None, final_usage, None)
             if round_result.final_usage is not None:
                 final_usage = round_result.final_usage
             if round_result.round_reasoning:
                 full_reasoning += round_result.round_reasoning
 
-            round_tool_calls = tool_loop_runner.extract_tool_calls(
-                round_result.merged_chunk,
-                tools_enabled=bool(tools),
-                force_finalize_without_tools=tool_loop_state.force_finalize_without_tools,
-            )
             full_response += round_result.round_content
-            should_continue, full_response = _should_compensate_and_continue(
+            decision = decide_tool_loop_branch(
                 tool_loop_runner=tool_loop_runner,
                 tool_loop_state=tool_loop_state,
-                round_tool_calls=round_tool_calls,
-                round_content=round_result.round_content,
+                round_result=round_result,
                 full_response=full_response,
+                tools_enabled=bound_tools.tools_enabled,
             )
-            if should_continue:
+            full_response = decision.full_response
+            round_tool_calls = decision.round_tool_calls
+            if decision.branch == "continue":
                 continue
 
-            if tool_loop_runner.should_finish_round(
-                tool_loop_state,
-                round_tool_calls=round_tool_calls,
-                tools_enabled=bool(tools),
-            ):
+            if decision.branch == "finalize":
                 break
-
-            if tool_loop_runner.advance_round_or_force_finalize(
-                tool_loop_state,
-                round_content=round_result.round_content,
-                round_reasoning=round_result.round_reasoning,
-                round_reasoning_details=round_result.round_reasoning_details,
-            ):
-                print(
-                    f"[TOOLS] Max tool rounds ({tool_loop_runner.max_tool_rounds}) reached, stopping"
-                )
-                logger.warning("Max tool call rounds reached")
-                continue
 
             print(
                 f"[TOOLS] Round {tool_loop_state.tool_round}: executing {len(round_tool_calls)} tool(s)"
@@ -733,37 +385,29 @@ async def call_llm_stream(
 
             yield tool_loop_runner.build_tool_calls_event(round_tool_calls)
 
-            tool_results = await tool_loop_runner.execute_tool_calls(
-                round_tool_calls,
-                tool_executor=tool_executor,
-            )
-            tool_loop_runner.record_round_activity(
-                tool_loop_state,
+            tool_results = await execute_tool_loop_round(
+                tool_loop_runner=tool_loop_runner,
+                tool_loop_state=tool_loop_state,
                 round_tool_calls=round_tool_calls,
-                tool_results=tool_results,
+                tool_executor=tool_executor,
+                round_content=round_result.round_content,
+                round_reasoning=round_result.round_reasoning,
+                round_reasoning_details=round_result.round_reasoning_details,
             )
             for tool_result in tool_results:
                 print(f"[TOOLS]   {tool_result['name']} -> {tool_result['result'][:100]}")
 
             yield tool_loop_runner.build_tool_results_event(tool_results)
-            tool_loop_runner.append_round_with_tool_results(
-                tool_loop_state,
-                round_content=round_result.round_content,
-                round_tool_calls=round_tool_calls,
-                tool_results=tool_results,
-                round_reasoning=round_result.round_reasoning,
-                round_reasoning_details=round_result.round_reasoning_details,
-            )
 
-        if tool_loop_runner.should_inject_fallback_answer(tool_loop_state, full_response):
-            injected = tool_loop_runner.build_fallback_answer(tool_loop_state)
-            if full_response.strip():
-                injected = f"\n\n{injected}"
-            full_response += injected
-            tool_loop_state.tool_finalize_reason = "fallback_empty_answer"
-            yield injected
-
-        yield tool_loop_runner.build_tool_diagnostics_event(tool_loop_state)
+        finalize_result = finalize_tool_loop(
+            tool_loop_runner=tool_loop_runner,
+            tool_loop_state=tool_loop_state,
+            full_response=full_response,
+        )
+        full_response = finalize_result.full_response
+        if finalize_result.injected_text:
+            yield finalize_result.injected_text
+        yield finalize_result.diagnostics_event
 
         if final_usage:
             yield {"type": "usage", "usage": final_usage}

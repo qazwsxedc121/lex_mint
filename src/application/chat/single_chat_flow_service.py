@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage
 
 from src.application.chat.rag_tool_service import RagToolService
 from src.application.chat.request_contexts import (
@@ -37,20 +36,21 @@ from src.application.orchestration import (
     RunContext,
     RunSpec,
 )
-from src.llm_runtime import (
-    build_context_info_event,
-    build_context_plan,
-    context_segment_to_system_content,
-    convert_to_langchain_messages,
-    estimate_langchain_messages_tokens,
-    estimate_total_tokens,
-    filter_messages_by_context_boundary,
-    get_context_limit,
-    trim_to_context_limit,
-)
-from src.llm_runtime.stream_call_policy import build_stream_kwargs, select_stream_llm
+from src.llm_runtime import estimate_total_tokens
+from src.llm_runtime.stream_call_policy import build_stream_kwargs
+from src.llm_runtime.stream_input import prepare_stream_input
 from src.llm_runtime.streaming_client import _resolve_streaming_runtime
 from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
+from src.llm_runtime.tool_loop_runtime import (
+    ToolLoopRoundResult,
+    bind_tools_for_tool_loop,
+    build_tool_loop_state,
+    decide_tool_loop_branch,
+    execute_tool_loop_round,
+    finalize_tool_loop,
+    resolve_active_stream_llm,
+    stream_tool_loop_round,
+)
 from src.providers.types import CostInfo, TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,51 @@ class SingleChatToolLoopRuntime:
     pending_tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class SingleChatExecutionState:
+    """Cross-node mutable execution state for one single-chat orchestration run."""
+
+    runtime: SingleChatRuntime | None = None
+    llm_tools: list[Any] | None = None
+    rag_tool_executor: Any | None = None
+    tool_loop: SingleChatToolLoopRuntime | None = None
+    outcome: SingleTurnOutcome = field(default_factory=SingleTurnOutcome)
+
+
+@dataclass
+class SingleChatResolvedTools:
+    """Resolved tool set and execution policy for one single-chat turn."""
+
+    llm_tools: list[Any] = field(default_factory=list)
+    tool_executors: list[Any] = field(default_factory=list)
+    allowed_tool_names: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class SingleChatPreparedInput:
+    """Prepared user input after optional file-context expansion."""
+
+    raw_user_message: str
+    user_message_id: str | None
+
+
+@dataclass(frozen=True)
+class SingleChatPreparedContext:
+    """Prepared context payload after optional web-context pruning and compression."""
+
+    messages: list[MessagePayload]
+    model_id: str
+    system_prompt: str | None
+    context_segments: dict[str, str | None]
+    all_sources: list[SourcePayload]
+    assistant_id: str | None
+    assistant_obj: AssistantLike | None
+    assistant_params: dict[str, Any]
+    max_rounds: int | None
+    assistant_memory_enabled: bool
+    compression_event: StreamEvent | None
+
+
 class SingleChatFlowService:
     """Runs single-chat stream flow and emits chat stream events."""
 
@@ -232,18 +277,33 @@ class SingleChatFlowService:
         request: SingleChatRequestContext,
     ) -> AsyncIterator[StreamItem]:
         """Prepare context, run single-turn orchestration, and persist final outputs."""
-        runtime_state: dict[str, Any] = {
-            "runtime": None,
-            "llm_tools": None,
-            "rag_tool_executor": None,
-            "tool_loop": None,
-            "outcome": SingleTurnOutcome(),
-        }
+        execution_state = SingleChatExecutionState()
         run_id = f"single-chat-{request.scope.session_id[:12]}-{uuid.uuid4().hex[:8]}"
+        actor_handlers = self._build_actor_handlers(
+            request=request,
+            execution_state=execution_state,
+        )
+        spec = self._build_single_chat_run_spec(
+            request=request,
+            run_id=run_id,
+            actor_handlers=actor_handlers,
+        )
+        context = self._build_single_chat_run_context(run_id=run_id)
+
+        async for event in self._stream_single_chat_run(spec=spec, context=context):
+            yield event
+
+    def _build_actor_handlers(
+        self,
+        *,
+        request: SingleChatRequestContext,
+        execution_state: SingleChatExecutionState,
+    ) -> dict[str, Callable[[ActorExecutionContext], AsyncIterator[Any]]]:
+        """Build one-node handlers for the single-chat orchestration graph."""
 
         async def _prepare_runtime_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
             runtime = await self._prepare_runtime(request=request)
-            runtime_state["runtime"] = runtime
+            execution_state.runtime = runtime
 
             if runtime.user_message_id:
                 yield self._emit_single_chat_event(
@@ -268,7 +328,7 @@ class SingleChatFlowService:
             yield ActorResult()
 
         async def _resolve_tools_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(runtime_state)
+            runtime = self._require_runtime_state(execution_state)
             tool_request = ToolResolutionContext(
                 scope=request.scope,
                 editor=request.editor,
@@ -280,42 +340,25 @@ class SingleChatFlowService:
             llm_tools, rag_tool_executor = await self._resolve_tools(
                 request=tool_request,
             )
-            runtime_state["llm_tools"] = llm_tools
-            runtime_state["rag_tool_executor"] = rag_tool_executor
-            yield ActorResult()
-
-        async def _choose_stream_path_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            has_tools = bool(runtime_state.get("llm_tools"))
-            yield ActorResult(branch="tool_loop" if has_tools else "direct")
-
-        async def _stream_direct_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(runtime_state)
-            outcome = self._require_outcome_state(runtime_state)
-            async for event in self._stream_single_turn(
-                runtime=runtime,
-                reasoning_effort=request.stream.reasoning_effort,
-                llm_tools=runtime_state["llm_tools"],
-                rag_tool_executor=runtime_state["rag_tool_executor"],
-                outcome=outcome,
-            ):
-                yield self._emit_single_chat_event(event)
+            execution_state.llm_tools = llm_tools
+            execution_state.rag_tool_executor = rag_tool_executor
             yield ActorResult()
 
         async def _prepare_tool_loop_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(runtime_state)
+            runtime = self._require_runtime_state(execution_state)
             tool_loop = await self._prepare_tool_loop_runtime(
                 runtime=runtime,
                 reasoning_effort=request.stream.reasoning_effort,
-                llm_tools=runtime_state["llm_tools"],
+                llm_tools=execution_state.llm_tools,
             )
-            runtime_state["tool_loop"] = tool_loop
+            execution_state.tool_loop = tool_loop
             yield self._emit_single_chat_event(tool_loop.context_info_event)
             yield ActorResult()
 
         async def _stream_tool_round_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(runtime_state)
-            outcome = self._require_outcome_state(runtime_state)
-            tool_loop = self._require_tool_loop_state(runtime_state)
+            runtime = self._require_runtime_state(execution_state)
+            outcome = self._require_outcome_state(execution_state)
+            tool_loop = self._require_tool_loop_state(execution_state)
             async for event in self._stream_tool_loop_round(
                 runtime=runtime,
                 tool_loop=tool_loop,
@@ -325,8 +368,8 @@ class SingleChatFlowService:
             yield ActorResult()
 
         async def _decide_tool_round_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            outcome = self._require_outcome_state(runtime_state)
-            tool_loop = self._require_tool_loop_state(runtime_state)
+            outcome = self._require_outcome_state(execution_state)
+            tool_loop = self._require_tool_loop_state(execution_state)
             branch = self._decide_tool_loop_branch(
                 tool_loop=tool_loop,
                 outcome=outcome,
@@ -334,18 +377,18 @@ class SingleChatFlowService:
             yield ActorResult(branch=branch)
 
         async def _execute_tools_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            tool_loop = self._require_tool_loop_state(runtime_state)
+            tool_loop = self._require_tool_loop_state(execution_state)
             async for event in self._execute_tool_loop_round(
                 tool_loop=tool_loop,
-                tool_executor=runtime_state["rag_tool_executor"],
+                tool_executor=execution_state.rag_tool_executor,
             ):
                 yield self._emit_single_chat_event(event)
             yield ActorResult()
 
         async def _finalize_tool_loop_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(runtime_state)
-            outcome = self._require_outcome_state(runtime_state)
-            tool_loop = self._require_tool_loop_state(runtime_state)
+            runtime = self._require_runtime_state(execution_state)
+            outcome = self._require_outcome_state(execution_state)
+            tool_loop = self._require_tool_loop_state(execution_state)
             async for event in self._finalize_tool_loop(
                 runtime=runtime,
                 outcome=outcome,
@@ -355,127 +398,130 @@ class SingleChatFlowService:
             yield ActorResult()
 
         async def _persist_result_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(runtime_state)
-            outcome = self._require_outcome_state(runtime_state)
+            runtime = self._require_runtime_state(execution_state)
+            outcome = self._require_outcome_state(execution_state)
             async for event in self._persist_and_emit(runtime=runtime, outcome=outcome):
                 yield self._emit_single_chat_event(event)
             yield ActorResult(terminal_status="completed", terminal_reason="completed")
 
-        spec = RunSpec(
+        return {
+            "prepare_runtime": _prepare_runtime_actor,
+            "resolve_tools": _resolve_tools_actor,
+            "prepare_tool_loop": _prepare_tool_loop_actor,
+            "stream_tool_round": _stream_tool_round_actor,
+            "decide_tool_round": _decide_tool_round_actor,
+            "execute_tools": _execute_tools_actor,
+            "finalize_tool_loop": _finalize_tool_loop_actor,
+            "persist_result": _persist_result_actor,
+        }
+
+    @staticmethod
+    def _build_single_chat_run_context(*, run_id: str) -> RunContext:
+        """Build the orchestration runtime context for one single-chat run."""
+        return RunContext(run_id=run_id, max_steps=24)
+
+    def _build_single_chat_run_spec(
+        self,
+        *,
+        request: SingleChatRequestContext,
+        run_id: str,
+        actor_handlers: dict[str, Callable[[ActorExecutionContext], AsyncIterator[Any]]],
+    ) -> RunSpec:
+        """Build the static single-chat orchestration graph."""
+        return RunSpec(
             run_id=run_id,
             entry_node_id="prepare_runtime",
             nodes=(
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="prepare_runtime",
-                    actor=ActorRef(
-                        actor_id="prepare_runtime",
-                        kind="single_chat_prepare",
-                        handler=_prepare_runtime_actor,
-                    ),
+                    kind="single_chat_prepare",
+                    handler=actor_handlers["prepare_runtime"],
                 ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="resolve_tools",
-                    actor=ActorRef(
-                        actor_id="resolve_tools",
-                        kind="single_chat_tools",
-                        handler=_resolve_tools_actor,
-                    ),
+                    kind="single_chat_tools",
+                    handler=actor_handlers["resolve_tools"],
                 ),
-                NodeSpec(
-                    node_id="choose_stream_path",
-                    actor=ActorRef(
-                        actor_id="choose_stream_path",
-                        kind="single_chat_branch",
-                        handler=_choose_stream_path_actor,
-                    ),
-                ),
-                NodeSpec(
-                    node_id="stream_direct",
-                    actor=ActorRef(
-                        actor_id="stream_direct",
-                        kind="single_chat_llm_direct",
-                        handler=_stream_direct_actor,
-                    ),
-                ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="prepare_tool_loop",
-                    actor=ActorRef(
-                        actor_id="prepare_tool_loop",
-                        kind="single_chat_tool_loop_prepare",
-                        handler=_prepare_tool_loop_actor,
-                    ),
+                    kind="single_chat_tool_loop_prepare",
+                    handler=actor_handlers["prepare_tool_loop"],
                 ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="stream_tool_round",
-                    actor=ActorRef(
-                        actor_id="stream_tool_round",
-                        kind="single_chat_tool_loop_stream",
-                        handler=_stream_tool_round_actor,
-                    ),
+                    kind="single_chat_tool_loop_stream",
+                    handler=actor_handlers["stream_tool_round"],
                 ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="decide_tool_round",
-                    actor=ActorRef(
-                        actor_id="decide_tool_round",
-                        kind="single_chat_tool_loop_branch",
-                        handler=_decide_tool_round_actor,
-                    ),
+                    kind="single_chat_tool_loop_branch",
+                    handler=actor_handlers["decide_tool_round"],
                 ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="execute_tools",
-                    actor=ActorRef(
-                        actor_id="execute_tools",
-                        kind="single_chat_tool_loop_execute",
-                        handler=_execute_tools_actor,
-                    ),
+                    kind="single_chat_tool_loop_execute",
+                    handler=actor_handlers["execute_tools"],
                 ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="finalize_tool_loop",
-                    actor=ActorRef(
-                        actor_id="finalize_tool_loop",
-                        kind="single_chat_tool_loop_finalize",
-                        handler=_finalize_tool_loop_actor,
-                    ),
+                    kind="single_chat_tool_loop_finalize",
+                    handler=actor_handlers["finalize_tool_loop"],
                 ),
-                NodeSpec(
+                self._build_single_chat_node(
                     node_id="persist_result",
-                    actor=ActorRef(
-                        actor_id="persist_result",
-                        kind="single_chat_persist",
-                        handler=_persist_result_actor,
-                    ),
+                    kind="single_chat_persist",
+                    handler=actor_handlers["persist_result"],
                 ),
             ),
-            edges=(
-                EdgeSpec(source_id="prepare_runtime", target_id="resolve_tools"),
-                EdgeSpec(source_id="resolve_tools", target_id="choose_stream_path"),
-                EdgeSpec(
-                    source_id="choose_stream_path", target_id="stream_direct", branch="direct"
-                ),
-                EdgeSpec(
-                    source_id="choose_stream_path",
-                    target_id="prepare_tool_loop",
-                    branch="tool_loop",
-                ),
-                EdgeSpec(source_id="stream_direct", target_id="persist_result"),
-                EdgeSpec(source_id="prepare_tool_loop", target_id="stream_tool_round"),
-                EdgeSpec(source_id="stream_tool_round", target_id="decide_tool_round"),
-                EdgeSpec(
-                    source_id="decide_tool_round", target_id="execute_tools", branch="execute_tools"
-                ),
-                EdgeSpec(
-                    source_id="decide_tool_round", target_id="stream_tool_round", branch="continue"
-                ),
-                EdgeSpec(
-                    source_id="decide_tool_round", target_id="finalize_tool_loop", branch="finalize"
-                ),
-                EdgeSpec(source_id="execute_tools", target_id="stream_tool_round"),
-                EdgeSpec(source_id="finalize_tool_loop", target_id="persist_result"),
-            ),
+            edges=self._single_chat_run_edges(),
             metadata={"mode": "single_direct", "session_id": request.scope.session_id},
         )
-        context = RunContext(run_id=run_id, max_steps=24)
 
+    @staticmethod
+    def _build_single_chat_node(
+        *,
+        node_id: str,
+        kind: str,
+        handler: Callable[[ActorExecutionContext], AsyncIterator[Any]],
+    ) -> NodeSpec:
+        """Build one single-chat graph node from a handler."""
+        return NodeSpec(
+            node_id=node_id,
+            actor=ActorRef(
+                actor_id=node_id,
+                kind=kind,
+                handler=handler,
+            ),
+        )
+
+    @staticmethod
+    def _single_chat_run_edges() -> tuple[EdgeSpec, ...]:
+        """Return the static edge set for one single-chat orchestration run."""
+        return (
+            EdgeSpec(source_id="prepare_runtime", target_id="resolve_tools"),
+            EdgeSpec(source_id="resolve_tools", target_id="prepare_tool_loop"),
+            EdgeSpec(source_id="prepare_tool_loop", target_id="stream_tool_round"),
+            EdgeSpec(source_id="stream_tool_round", target_id="decide_tool_round"),
+            EdgeSpec(
+                source_id="decide_tool_round", target_id="execute_tools", branch="execute_tools"
+            ),
+            EdgeSpec(
+                source_id="decide_tool_round", target_id="stream_tool_round", branch="continue"
+            ),
+            EdgeSpec(
+                source_id="decide_tool_round", target_id="finalize_tool_loop", branch="finalize"
+            ),
+            EdgeSpec(source_id="execute_tools", target_id="stream_tool_round"),
+            EdgeSpec(source_id="finalize_tool_loop", target_id="persist_result"),
+        )
+
+    async def _stream_single_chat_run(
+        self,
+        *,
+        spec: RunSpec,
+        context: RunContext,
+    ) -> AsyncIterator[StreamItem]:
+        """Run the single-chat graph and unwrap emitted chat events."""
         async for runtime_event in self._orchestration_engine.run_stream(spec, context):
             event_type = str(runtime_event.get("type") or "")
             if (
@@ -496,22 +542,24 @@ class SingleChatFlowService:
         return ActorEmit(event_type="single_chat_event", payload={"event": event})
 
     @staticmethod
-    def _require_runtime_state(runtime_state: dict[str, Any]) -> SingleChatRuntime:
-        runtime = runtime_state.get("runtime")
+    def _require_runtime_state(execution_state: SingleChatExecutionState) -> SingleChatRuntime:
+        runtime = execution_state.runtime
         if not isinstance(runtime, SingleChatRuntime):
             raise RuntimeError("single chat runtime was not prepared before node execution")
         return runtime
 
     @staticmethod
-    def _require_outcome_state(runtime_state: dict[str, Any]) -> SingleTurnOutcome:
-        outcome = runtime_state.get("outcome")
+    def _require_outcome_state(execution_state: SingleChatExecutionState) -> SingleTurnOutcome:
+        outcome = execution_state.outcome
         if not isinstance(outcome, SingleTurnOutcome):
             raise RuntimeError("single chat outcome state is unavailable")
         return outcome
 
     @staticmethod
-    def _require_tool_loop_state(runtime_state: dict[str, Any]) -> SingleChatToolLoopRuntime:
-        tool_loop = runtime_state.get("tool_loop")
+    def _require_tool_loop_state(
+        execution_state: SingleChatExecutionState,
+    ) -> SingleChatToolLoopRuntime:
+        tool_loop = execution_state.tool_loop
         if not isinstance(tool_loop, SingleChatToolLoopRuntime):
             raise RuntimeError("single chat tool loop state is unavailable")
         return tool_loop
@@ -521,41 +569,87 @@ class SingleChatFlowService:
         *,
         request: SingleChatRequestContext,
     ) -> SingleChatRuntime:
-        session_id = request.scope.session_id
-        context_type = request.scope.context_type
-        project_id = request.scope.project_id
-        user_message = request.user_input.user_message
-        attachments = request.user_input.attachments
-        file_references = request.user_input.file_references
-
-        original_user_message = user_message
-        file_context_block = await self.deps.build_file_context_block(file_references)
-        if file_context_block:
-            user_message = f"{file_context_block}\n\n{user_message}"
-
-        prepared_input = await self.deps.chat_input_service.prepare_user_input(
-            session_id=session_id,
-            raw_user_message=original_user_message,
-            expanded_user_message=user_message,
-            attachments=attachments,
-            skip_user_append=request.stream.skip_user_append,
-            context_type=context_type,
-            project_id=project_id,
+        prepared_input = await self._prepare_single_chat_input(request=request)
+        prepared_context = await self._prepare_single_chat_context(
+            request=request,
+            raw_user_message=prepared_input.raw_user_message,
         )
 
+        return SingleChatRuntime(
+            session_id=request.scope.session_id,
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
+            raw_user_message=prepared_input.raw_user_message,
+            user_message_id=prepared_input.user_message_id,
+            messages=prepared_context.messages,
+            assistant_id=prepared_context.assistant_id,
+            assistant_obj=prepared_context.assistant_obj,
+            model_id=prepared_context.model_id,
+            system_prompt=prepared_context.system_prompt,
+            context_segments=prepared_context.context_segments,
+            assistant_params=prepared_context.assistant_params,
+            all_sources=prepared_context.all_sources,
+            max_rounds=prepared_context.max_rounds,
+            assistant_memory_enabled=prepared_context.assistant_memory_enabled,
+            active_file_path=(request.editor.active_file_path or "").strip() or None,
+            active_file_hash=(request.editor.active_file_hash or "").strip() or None,
+            compression_event=prepared_context.compression_event,
+        )
+
+    async def _prepare_single_chat_input(
+        self,
+        *,
+        request: SingleChatRequestContext,
+    ) -> SingleChatPreparedInput:
+        user_message = request.user_input.user_message
+        expanded_user_message = await self._expand_user_message_with_file_context(
+            user_message=user_message,
+            file_references=request.user_input.file_references,
+        )
+        prepared_input = await self.deps.chat_input_service.prepare_user_input(
+            session_id=request.scope.session_id,
+            raw_user_message=user_message,
+            expanded_user_message=expanded_user_message,
+            attachments=request.user_input.attachments,
+            skip_user_append=request.stream.skip_user_append,
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
+        )
+        return SingleChatPreparedInput(
+            raw_user_message=prepared_input.raw_user_message,
+            user_message_id=prepared_input.user_message_id,
+        )
+
+    async def _expand_user_message_with_file_context(
+        self,
+        *,
+        user_message: str,
+        file_references: list[dict[str, str]] | None,
+    ) -> str:
+        file_context_block = await self.deps.build_file_context_block(file_references)
+        if not file_context_block:
+            return user_message
+        return f"{file_context_block}\n\n{user_message}"
+
+    async def _prepare_single_chat_context(
+        self,
+        *,
+        request: SingleChatRequestContext,
+        raw_user_message: str,
+    ) -> SingleChatPreparedContext:
         print("[Step 2] Loading session state...")
         logger.info("[Step 2] Loading session state")
         prefer_web_tools = await self._should_prefer_web_tools(
-            session_id=session_id,
-            context_type=context_type,
-            project_id=project_id,
+            session_id=request.scope.session_id,
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
             use_web_search=request.search.use_web_search,
         )
         ctx = await self.deps.prepare_context(
-            session_id=session_id,
-            raw_user_message=prepared_input.raw_user_message,
-            context_type=context_type,
-            project_id=project_id,
+            session_id=request.scope.session_id,
+            raw_user_message=raw_user_message,
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
             use_web_search=request.search.use_web_search and not prefer_web_tools,
             search_query=request.search.search_query,
         )
@@ -563,48 +657,52 @@ class SingleChatFlowService:
         print(f"   Assistant: {ctx.assistant_id}, Model: {ctx.model_id}")
 
         messages, compression_event = await self._maybe_auto_compress(
-            session_id=session_id,
+            session_id=request.scope.session_id,
             model_id=ctx.model_id,
             messages=ctx.messages,
-            context_type=context_type,
-            project_id=project_id,
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
         )
-        system_prompt = ctx.system_prompt
+        system_prompt, context_segments, all_sources = self._normalize_context_payload(
+            context_payload=ctx,
+            prefer_web_tools=prefer_web_tools,
+        )
+        return SingleChatPreparedContext(
+            messages=messages,
+            model_id=ctx.model_id,
+            system_prompt=system_prompt,
+            context_segments=context_segments,
+            all_sources=all_sources,
+            assistant_id=ctx.assistant_id,
+            assistant_obj=ctx.assistant_obj,
+            assistant_params=ctx.assistant_params,
+            max_rounds=ctx.max_rounds,
+            assistant_memory_enabled=ctx.assistant_memory_enabled,
+            compression_event=compression_event,
+        )
+
+    def _normalize_context_payload(
+        self,
+        *,
+        context_payload: ContextPayload,
+        prefer_web_tools: bool,
+    ) -> tuple[str | None, dict[str, str | None], list[SourcePayload]]:
+        system_prompt = context_payload.system_prompt
         context_segments = {
-            "base_system_prompt": ctx.base_system_prompt,
-            "memory_context": ctx.memory_context,
-            "webpage_context": ctx.webpage_context,
-            "search_context": ctx.search_context,
-            "rag_context": ctx.rag_context,
-            "structured_source_context": ctx.structured_source_context,
+            "base_system_prompt": context_payload.base_system_prompt,
+            "memory_context": context_payload.memory_context,
+            "webpage_context": context_payload.webpage_context,
+            "search_context": context_payload.search_context,
+            "rag_context": context_payload.rag_context,
+            "structured_source_context": context_payload.structured_source_context,
         }
-        all_sources = list(ctx.all_sources)
+        all_sources = list(context_payload.all_sources)
         if prefer_web_tools:
             system_prompt, context_segments, all_sources = self._strip_preloaded_web_context(
                 context_segments=context_segments,
                 all_sources=all_sources,
             )
-
-        return SingleChatRuntime(
-            session_id=session_id,
-            context_type=context_type,
-            project_id=project_id,
-            raw_user_message=prepared_input.raw_user_message,
-            user_message_id=prepared_input.user_message_id,
-            messages=messages,
-            assistant_id=ctx.assistant_id,
-            assistant_obj=ctx.assistant_obj,
-            model_id=ctx.model_id,
-            system_prompt=system_prompt,
-            context_segments=context_segments,
-            assistant_params=ctx.assistant_params,
-            all_sources=all_sources,
-            max_rounds=ctx.max_rounds,
-            assistant_memory_enabled=ctx.assistant_memory_enabled,
-            active_file_path=(request.editor.active_file_path or "").strip() or None,
-            active_file_hash=(request.editor.active_file_hash or "").strip() or None,
-            compression_event=compression_event,
-        )
+        return system_prompt, context_segments, all_sources
 
     @staticmethod
     def _compose_system_prompt(*segments: str | None) -> str | None:
@@ -760,60 +858,15 @@ class SingleChatFlowService:
             model_service_factory=self.deps.model_service_factory,
             llm_logger_factory=self.deps.llm_logger_factory,
         )
-
-        filtered_messages, summary_content = filter_messages_by_context_boundary(runtime.messages)
-        max_input_tokens, context_window = get_context_limit(
-            llm=streaming_runtime.llm,
-            capabilities=streaming_runtime.capabilities,
-        )
-        context_plan = build_context_plan(
-            messages=filtered_messages,
+        prepared_input = await prepare_stream_input(
+            runtime=streaming_runtime,
+            messages=runtime.messages,
+            session_id=runtime.session_id,
             system_prompt=runtime.system_prompt,
             context_segments=runtime.context_segments,
-            summary_content=summary_content,
             max_rounds=runtime.max_rounds,
-            context_budget_tokens=max_input_tokens,
+            file_service=self.deps.file_service,
         )
-
-        langchain_messages: list[BaseMessage] = [
-            SystemMessage(content=context_segment_to_system_content(segment.name, segment.content))
-            for segment in context_plan.system_segments
-        ]
-        if self.deps.file_service:
-            langchain_messages.extend(
-                await convert_to_langchain_messages(
-                    context_plan.chat_messages,
-                    runtime.session_id,
-                    self.deps.file_service,
-                )
-            )
-        else:
-            for message in context_plan.chat_messages:
-                role = str(message.get("role") or "").strip().lower()
-                if role == "user":
-                    langchain_messages.append(
-                        HumanMessage(content=str(message.get("content") or ""))
-                    )
-                elif role == "assistant":
-                    langchain_messages.append(AIMessage(content=str(message.get("content") or "")))
-
-        prompt_messages = trim_to_context_limit(langchain_messages, max_input_tokens)
-        estimated_prompt_tokens = estimate_langchain_messages_tokens(prompt_messages)
-        context_info_event = build_context_info_event(
-            context_plan=context_plan,
-            context_budget=max_input_tokens,
-            context_window=context_window,
-            estimated_prompt_tokens=estimated_prompt_tokens,
-        )
-
-        llm_for_tools = streaming_runtime.llm
-        tools_enabled = False
-        if llm_tools:
-            try:
-                llm_for_tools = streaming_runtime.llm.bind_tools(llm_tools)
-                tools_enabled = True
-            except Exception as exc:
-                logger.warning("Failed to bind tools for single-chat tool loop: %s", exc)
 
         latest_user_text = ""
         for raw_message in reversed(runtime.messages):
@@ -821,36 +874,25 @@ class SingleChatFlowService:
                 latest_user_text = str(raw_message.get("content") or "")
                 break
 
-        tool_names = (
-            {
-                str(getattr(tool, "name", "") or "").strip()
-                for tool in (llm_tools or [])
-                if str(getattr(tool, "name", "") or "").strip()
-            }
-            if tools_enabled
-            else set()
+        bound_tools = bind_tools_for_tool_loop(
+            llm=streaming_runtime.llm,
+            llm_tools=llm_tools,
+            warning_message="Failed to bind tools for single-chat tool loop",
         )
-        max_tool_rounds = ToolLoopRunner.resolve_max_tool_rounds(
-            tool_names=tool_names,
+        tool_loop_runner, tool_loop_state = build_tool_loop_state(
+            langchain_messages=list(prepared_input.langchain_messages),
             latest_user_text=latest_user_text,
-            default_max_tool_rounds=3,
+            tool_names=bound_tools.tool_names,
         )
-        tool_loop_runner = ToolLoopRunner(max_tool_rounds=max_tool_rounds)
-        tool_loop_state = ToolLoopState(
-            current_messages=list(prompt_messages),
-            web_research_enabled=bool(tool_names.intersection({"web_search", "read_webpage"})),
-            max_tool_rounds=max_tool_rounds,
-        )
-        tool_loop_state.evidence_intent = tool_loop_runner.detect_evidence_intent(latest_user_text)
 
         return SingleChatToolLoopRuntime(
             streaming_runtime=streaming_runtime,
-            llm_for_tools=llm_for_tools,
+            llm_for_tools=bound_tools.llm_for_tools,
             tool_loop_runner=tool_loop_runner,
             tool_loop_state=tool_loop_state,
-            prompt_messages=list(prompt_messages),
-            context_info_event=context_info_event,
-            tools_enabled=tools_enabled,
+            prompt_messages=list(prepared_input.langchain_messages),
+            context_info_event=prepared_input.context_event,
+            tools_enabled=bound_tools.tools_enabled,
         )
 
     async def _stream_tool_loop_round(
@@ -864,105 +906,43 @@ class SingleChatFlowService:
         logger.info("Streaming single-chat tool-aware LLM round")
 
         try:
-            active_llm = select_stream_llm(
-                llm=tool_loop.streaming_runtime.llm,
+            active_llm = resolve_active_stream_llm(
+                runtime=tool_loop.streaming_runtime,
                 llm_for_tools=tool_loop.llm_for_tools,
                 tools_enabled=tool_loop.tools_enabled,
-                force_finalize_without_tools=tool_loop.tool_loop_state.force_finalize_without_tools,
+                tool_loop_state=tool_loop.tool_loop_state,
             )
-            stream_kwargs = build_stream_kwargs(
-                allow_responses_fallback=tool_loop.streaming_runtime.allow_responses_fallback,
-            )
-
-            in_thinking_phase = False
-            thinking_ended = False
-            thinking_start_time: float | None = None
             tool_loop.round_content = ""
             tool_loop.round_reasoning = ""
             tool_loop.round_reasoning_details = None
             tool_loop.merged_chunk = None
             tool_loop.pending_tool_calls = []
 
-            async for chunk in tool_loop.streaming_runtime.adapter.stream(
-                active_llm,
-                tool_loop.tool_loop_state.current_messages,
-                **stream_kwargs,
+            round_result: ToolLoopRoundResult | None = None
+            async for chunk in stream_tool_loop_round(
+                runtime=tool_loop.streaming_runtime,
+                active_llm=active_llm,
+                current_messages=tool_loop.tool_loop_state.current_messages,
+                stream_kwargs=build_stream_kwargs(
+                    allow_responses_fallback=tool_loop.streaming_runtime.allow_responses_fallback,
+                ),
             ):
-                chunk_usage = getattr(chunk, "usage", None)
-                if isinstance(chunk_usage, dict):
-                    chunk_usage = TokenUsage(**chunk_usage)
-                if chunk_usage is not None:
-                    tool_loop.final_usage = chunk_usage
+                if isinstance(chunk, ToolLoopRoundResult):
+                    round_result = chunk
+                    continue
+                yield chunk
 
-                if (
-                    chunk.thinking
-                    and not tool_loop.streaming_runtime.reasoning_decision.disable_thinking
-                ):
-                    tool_loop.full_reasoning += chunk.thinking
-                    tool_loop.round_reasoning += chunk.thinking
-                    if not in_thinking_phase:
-                        in_thinking_phase = True
-                        thinking_start_time = time.time()
-                        yield "<think>"
-                    yield chunk.thinking
-
-                if chunk.content:
-                    if in_thinking_phase and not thinking_ended:
-                        thinking_ended = True
-                        duration_ms = (
-                            int((time.time() - thinking_start_time) * 1000)
-                            if thinking_start_time is not None
-                            else 0
-                        )
-                        yield "</think>"
-                        yield {"type": "thinking_duration", "duration_ms": duration_ms}
-                    tool_loop.round_content += chunk.content
-                    yield chunk.content
-
-                if chunk.raw is not None:
-                    try:
-                        tool_loop.merged_chunk = (
-                            chunk.raw
-                            if tool_loop.merged_chunk is None
-                            else tool_loop.merged_chunk + chunk.raw
-                        )
-                    except Exception:
-                        pass
-
-            if tool_loop.merged_chunk is not None:
-                extracted_usage = TokenUsage.extract_from_chunk(tool_loop.merged_chunk)
-                if extracted_usage and tool_loop.final_usage is None:
-                    tool_loop.final_usage = extracted_usage
-                if (
-                    not tool_loop.streaming_runtime.reasoning_decision.disable_thinking
-                    and not tool_loop.round_reasoning
-                ):
-                    merged_kwargs = getattr(tool_loop.merged_chunk, "additional_kwargs", None) or {}
-                    if isinstance(merged_kwargs, dict):
-                        merged_reasoning = merged_kwargs.get("reasoning_content")
-                        if isinstance(merged_reasoning, str) and merged_reasoning:
-                            tool_loop.round_reasoning = merged_reasoning
-                            tool_loop.full_reasoning += merged_reasoning
-                merged_kwargs = getattr(tool_loop.merged_chunk, "additional_kwargs", None) or {}
-                if isinstance(merged_kwargs, dict):
-                    tool_loop.round_reasoning_details = merged_kwargs.get("reasoning_details")
-
-            tool_loop.pending_tool_calls = tool_loop.tool_loop_runner.extract_tool_calls(
-                tool_loop.merged_chunk,
-                tools_enabled=tool_loop.tools_enabled,
-                force_finalize_without_tools=tool_loop.tool_loop_state.force_finalize_without_tools,
-            )
-
-            if in_thinking_phase and not thinking_ended:
-                duration_ms = (
-                    int((time.time() - thinking_start_time) * 1000)
-                    if thinking_start_time is not None
-                    else 0
-                )
-                yield "</think>"
-                yield {"type": "thinking_duration", "duration_ms": duration_ms}
-
-            outcome.full_response += tool_loop.round_content
+            if round_result is None:
+                round_result = ToolLoopRoundResult("", "", None, tool_loop.final_usage, None)
+            if round_result.final_usage is not None:
+                tool_loop.final_usage = round_result.final_usage
+            tool_loop.round_content = round_result.round_content
+            tool_loop.round_reasoning = round_result.round_reasoning
+            tool_loop.round_reasoning_details = round_result.round_reasoning_details
+            tool_loop.merged_chunk = round_result.merged_chunk
+            if round_result.round_reasoning:
+                tool_loop.full_reasoning += round_result.round_reasoning
+            outcome.full_response += round_result.round_content
         except asyncio.CancelledError:
             print("[WARN] Stream generation cancelled, saving partial content...")
             logger.warning(
@@ -983,44 +963,27 @@ class SingleChatFlowService:
         tool_loop: SingleChatToolLoopRuntime,
         outcome: SingleTurnOutcome,
     ) -> str:
-        round_tool_calls = tool_loop.pending_tool_calls
-        if tool_loop.tool_loop_runner.should_request_read_compensation(
-            tool_loop.tool_loop_state,
-            round_tool_calls=round_tool_calls,
-        ):
-            if tool_loop.round_content and outcome.full_response.endswith(tool_loop.round_content):
-                outcome.full_response = outcome.full_response[: -len(tool_loop.round_content)]
-            logger.info("Injecting read_knowledge compensation prompt for evidence-focused request")
-            tool_loop.tool_loop_runner.apply_read_compensation_prompt(tool_loop.tool_loop_state)
-            return "continue"
-
-        if tool_loop.tool_loop_runner.should_request_web_read_compensation(
-            tool_loop.tool_loop_state,
-            round_tool_calls=round_tool_calls,
-        ):
-            if tool_loop.round_content and outcome.full_response.endswith(tool_loop.round_content):
-                outcome.full_response = outcome.full_response[: -len(tool_loop.round_content)]
-            logger.info("Injecting read_webpage compensation prompt for web research request")
-            tool_loop.tool_loop_runner.apply_web_read_compensation_prompt(tool_loop.tool_loop_state)
-            return "continue"
-
-        if tool_loop.tool_loop_runner.should_finish_round(
-            tool_loop.tool_loop_state,
-            round_tool_calls=round_tool_calls,
+        decision = decide_tool_loop_branch(
+            tool_loop_runner=tool_loop.tool_loop_runner,
+            tool_loop_state=tool_loop.tool_loop_state,
+            round_result=ToolLoopRoundResult(
+                round_content=tool_loop.round_content,
+                round_reasoning=tool_loop.round_reasoning,
+                round_reasoning_details=tool_loop.round_reasoning_details,
+                final_usage=tool_loop.final_usage,
+                merged_chunk=tool_loop.merged_chunk,
+            ),
+            full_response=outcome.full_response,
             tools_enabled=tool_loop.tools_enabled,
-        ):
-            return "finalize"
-
-        if tool_loop.tool_loop_runner.advance_round_or_force_finalize(
-            tool_loop.tool_loop_state,
-            round_content=tool_loop.round_content,
-            round_reasoning=tool_loop.round_reasoning,
-            round_reasoning_details=tool_loop.round_reasoning_details,
+        )
+        outcome.full_response = decision.full_response
+        tool_loop.pending_tool_calls = decision.round_tool_calls
+        if (
+            decision.branch == "continue"
+            and tool_loop.tool_loop_state.force_finalize_without_tools
         ):
             logger.info("Single-chat tool loop entered force-finalize mode")
-            return "continue"
-
-        return "execute_tools"
+        return decision.branch
 
     async def _execute_tool_loop_round(
         self,
@@ -1039,24 +1002,16 @@ class SingleChatFlowService:
         )
         yield tool_loop.tool_loop_runner.build_tool_calls_event(round_tool_calls)
 
-        tool_results = await tool_loop.tool_loop_runner.execute_tool_calls(
-            round_tool_calls,
+        tool_results = await execute_tool_loop_round(
+            tool_loop_runner=tool_loop.tool_loop_runner,
+            tool_loop_state=tool_loop.tool_loop_state,
+            round_tool_calls=round_tool_calls,
             tool_executor=tool_executor,
-        )
-        tool_loop.tool_loop_runner.record_round_activity(
-            tool_loop.tool_loop_state,
-            round_tool_calls=round_tool_calls,
-            tool_results=tool_results,
-        )
-        yield tool_loop.tool_loop_runner.build_tool_results_event(tool_results)
-        tool_loop.tool_loop_runner.append_round_with_tool_results(
-            tool_loop.tool_loop_state,
             round_content=tool_loop.round_content,
-            round_tool_calls=round_tool_calls,
-            tool_results=tool_results,
             round_reasoning=tool_loop.round_reasoning,
             round_reasoning_details=tool_loop.round_reasoning_details,
         )
+        yield tool_loop.tool_loop_runner.build_tool_results_event(tool_results)
         tool_loop.pending_tool_calls = []
 
     async def _finalize_tool_loop(
@@ -1066,20 +1021,15 @@ class SingleChatFlowService:
         outcome: SingleTurnOutcome,
         tool_loop: SingleChatToolLoopRuntime,
     ) -> AsyncIterator[StreamItem]:
-        if tool_loop.tool_loop_runner.should_inject_fallback_answer(
-            tool_loop.tool_loop_state,
-            outcome.full_response,
-        ):
-            injected = tool_loop.tool_loop_runner.build_fallback_answer(tool_loop.tool_loop_state)
-            if outcome.full_response.strip():
-                injected = f"\n\n{injected}"
-            outcome.full_response += injected
-            tool_loop.tool_loop_state.tool_finalize_reason = "fallback_empty_answer"
-            yield injected
-
-        outcome.tool_diagnostics = tool_loop.tool_loop_runner.build_tool_diagnostics_event(
-            tool_loop.tool_loop_state
+        finalize_result = finalize_tool_loop(
+            tool_loop_runner=tool_loop.tool_loop_runner,
+            tool_loop_state=tool_loop.tool_loop_state,
+            full_response=outcome.full_response,
         )
+        outcome.full_response = finalize_result.full_response
+        if finalize_result.injected_text:
+            yield finalize_result.injected_text
+        outcome.tool_diagnostics = finalize_result.diagnostics_event
         self._apply_usage_to_outcome(
             runtime=runtime,
             outcome=outcome,
@@ -1274,91 +1224,176 @@ class SingleChatFlowService:
         request: ToolResolutionContext,
     ) -> tuple[list[Any] | None, Any | None]:
         """Resolve function-calling tools and optional assistant-scoped RAG tool executor."""
-        llm_tools: list[Any] | None = None
-        tool_executors: list[Any] = []
-        allowed_tool_names: set[str] = set()
+        resolved_tools = SingleChatResolvedTools()
         try:
-            model_service = self.deps.model_service_factory()
-            model_cfg, provider_cfg = model_service.get_model_and_provider_sync(request.model_id)
-            merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
-            if not merged_caps.function_calling:
-                return llm_tools, None
+            if not self._supports_function_calling(request.model_id):
+                return None, None
 
-            llm_tools = list(self.deps.tool_registry_getter().get_all_tools())
-            if request.use_web_search:
-                web_tool_service = self.deps.web_tool_service_factory()
-                web_tools = web_tool_service.get_tools()
-                if web_tools:
-                    llm_tools.extend(web_tools)
-                    tool_executors.append(web_tool_service.execute_tool)
-                    print(f"[TOOLS] Added web tools: {len(web_tools)}")
-
-            kb_ids_for_tools = (
-                await self.deps.project_knowledge_base_resolver_factory().resolve_effective_kb_ids(
-                    assistant_id=request.assistant_id,
-                    assistant_obj=request.assistant_obj,
-                    context_type=request.scope.context_type,
-                    project_id=request.scope.project_id,
-                )
+            resolved_tools.llm_tools = list(self.deps.tool_registry_getter().get_all_tools())
+            self._add_web_tools_if_needed(
+                request=request,
+                resolved_tools=resolved_tools,
             )
-            if kb_ids_for_tools:
-                rag_tool_service = RagToolService(
-                    assistant_id=request.assistant_id
-                    or (
-                        f"project::{request.scope.project_id}"
-                        if request.scope.project_id
-                        else "project::default"
-                    ),
-                    allowed_kb_ids=kb_ids_for_tools,
-                    runtime_model_id=request.model_id,
-                )
-                rag_tools = rag_tool_service.get_tools()
-                if rag_tools:
-                    llm_tools.extend(rag_tools)
-                    tool_executors.append(rag_tool_service.execute_tool)
-                    print(
-                        f"[TOOLS] Added RAG tools for assistant {request.assistant_id}: "
-                        f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
-                    )
-
-            if request.scope.context_type == "project" and request.scope.project_id:
-                doc_tool_service = self.deps.project_document_tool_service_factory(
-                    project_id=request.scope.project_id,
-                    session_id=request.scope.session_id,
-                    active_file_path=request.editor.active_file_path,
-                    active_file_hash=request.editor.active_file_hash,
-                )
-                doc_tools = doc_tool_service.get_tools()
-                if doc_tools:
-                    llm_tools.extend(doc_tools)
-                    tool_executors.append(doc_tool_service.execute_tool)
-                    active_file_log = request.editor.active_file_path or "(none)"
-                    print(
-                        f"[TOOLS] Added project document tools: {len(doc_tools)} "
-                        f"(project={request.scope.project_id}, file={active_file_log})"
-                    )
-
-            allowed_tool_names = (
-                await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
-                    context_type=request.scope.context_type,
-                    project_id=request.scope.project_id,
-                    candidate_tool_names=[tool.name for tool in llm_tools],
-                )
+            await self._add_rag_tools_if_needed(
+                request=request,
+                resolved_tools=resolved_tools,
             )
-            if request.scope.context_type == "project" and request.scope.project_id:
-                llm_tools = [tool for tool in llm_tools if tool.name in allowed_tool_names]
-            print(f"[TOOLS] Function calling enabled, {len(llm_tools)} tools available")
+            self._add_project_document_tools_if_needed(
+                request=request,
+                resolved_tools=resolved_tools,
+            )
+            resolved_tools.allowed_tool_names = await self._resolve_allowed_tool_names(
+                request=request,
+                candidate_tools=resolved_tools.llm_tools,
+            )
+            self._apply_project_tool_policy(
+                request=request,
+                resolved_tools=resolved_tools,
+            )
+            print(
+                f"[TOOLS] Function calling enabled, {len(resolved_tools.llm_tools)} tools available"
+            )
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
 
-        if not tool_executors:
-            return llm_tools, None
+        if not resolved_tools.tool_executors:
+            return resolved_tools.llm_tools or None, None
 
+        return (
+            resolved_tools.llm_tools or None,
+            self._build_combined_tool_executor(
+                request=request,
+                resolved_tools=resolved_tools,
+            ),
+        )
+
+    def _supports_function_calling(self, model_id: str) -> bool:
+        model_service = self.deps.model_service_factory()
+        model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
+        merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
+        return bool(merged_caps.function_calling)
+
+    def _add_web_tools_if_needed(
+        self,
+        *,
+        request: ToolResolutionContext,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> None:
+        if not request.use_web_search:
+            return
+
+        web_tool_service = self.deps.web_tool_service_factory()
+        web_tools = web_tool_service.get_tools()
+        if not web_tools:
+            return
+
+        resolved_tools.llm_tools.extend(web_tools)
+        resolved_tools.tool_executors.append(web_tool_service.execute_tool)
+        print(f"[TOOLS] Added web tools: {len(web_tools)}")
+
+    async def _add_rag_tools_if_needed(
+        self,
+        *,
+        request: ToolResolutionContext,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> None:
+        kb_ids_for_tools = (
+            await self.deps.project_knowledge_base_resolver_factory().resolve_effective_kb_ids(
+                assistant_id=request.assistant_id,
+                assistant_obj=request.assistant_obj,
+                context_type=request.scope.context_type,
+                project_id=request.scope.project_id,
+            )
+        )
+        if not kb_ids_for_tools:
+            return
+
+        rag_tool_service = RagToolService(
+            assistant_id=request.assistant_id
+            or (
+                f"project::{request.scope.project_id}"
+                if request.scope.project_id
+                else "project::default"
+            ),
+            allowed_kb_ids=kb_ids_for_tools,
+            runtime_model_id=request.model_id,
+        )
+        rag_tools = rag_tool_service.get_tools()
+        if not rag_tools:
+            return
+
+        resolved_tools.llm_tools.extend(rag_tools)
+        resolved_tools.tool_executors.append(rag_tool_service.execute_tool)
+        print(
+            f"[TOOLS] Added RAG tools for assistant {request.assistant_id}: "
+            f"{len(rag_tools)} tools, kb_count={len(kb_ids_for_tools)}"
+        )
+
+    def _add_project_document_tools_if_needed(
+        self,
+        *,
+        request: ToolResolutionContext,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> None:
+        if request.scope.context_type != "project" or not request.scope.project_id:
+            return
+
+        doc_tool_service = self.deps.project_document_tool_service_factory(
+            project_id=request.scope.project_id,
+            session_id=request.scope.session_id,
+            active_file_path=request.editor.active_file_path,
+            active_file_hash=request.editor.active_file_hash,
+        )
+        doc_tools = doc_tool_service.get_tools()
+        if not doc_tools:
+            return
+
+        resolved_tools.llm_tools.extend(doc_tools)
+        resolved_tools.tool_executors.append(doc_tool_service.execute_tool)
+        active_file_log = request.editor.active_file_path or "(none)"
+        print(
+            f"[TOOLS] Added project document tools: {len(doc_tools)} "
+            f"(project={request.scope.project_id}, file={active_file_log})"
+        )
+
+    async def _resolve_allowed_tool_names(
+        self,
+        *,
+        request: ToolResolutionContext,
+        candidate_tools: list[Any],
+    ) -> set[str]:
+        return await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
+            candidate_tool_names=[tool.name for tool in candidate_tools],
+        )
+
+    @staticmethod
+    def _apply_project_tool_policy(
+        *,
+        request: ToolResolutionContext,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> None:
+        if request.scope.context_type != "project" or not request.scope.project_id:
+            return
+
+        resolved_tools.llm_tools = [
+            tool
+            for tool in resolved_tools.llm_tools
+            if tool.name in resolved_tools.allowed_tool_names
+        ]
+
+    def _build_combined_tool_executor(
+        self,
+        *,
+        request: ToolResolutionContext,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> Callable[[str, dict[str, Any]], Awaitable[str | None]]:
         async def _combined_tool_executor(name: str, args: dict[str, Any]) -> str | None:
             if (
                 request.scope.context_type == "project"
                 and request.scope.project_id
-                and name not in allowed_tool_names
+                and name not in resolved_tools.allowed_tool_names
             ):
                 logger.info(
                     "Blocked project tool by policy: %s (project=%s)",
@@ -1366,7 +1401,7 @@ class SingleChatFlowService:
                     request.scope.project_id,
                 )
                 return f"Error: Tool '{name}' is disabled for this project"
-            for executor in tool_executors:
+            for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)
                     if asyncio.iscoroutine(maybe_result):
@@ -1377,4 +1412,4 @@ class SingleChatFlowService:
                     logger.warning("Tool executor failed for %s: %s", name, exec_error)
             return None
 
-        return llm_tools, _combined_tool_executor
+        return _combined_tool_executor
