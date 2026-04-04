@@ -17,9 +17,7 @@ from src.application.chat.service_contracts import ContextPayload
 from src.application.chat.single_chat_flow_service import (
     SingleChatFlowDeps,
     SingleChatFlowService,
-    SingleChatToolLoopRuntime,
 )
-from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
 from src.providers.types import CostInfo, TokenUsage
 
 
@@ -37,6 +35,14 @@ class _FakePricingService:
 
 async def _fake_call_llm_stream(*_args, **_kwargs):
     usage = TokenUsage(prompt_tokens=5, completion_tokens=7, total_tokens=12)
+    yield {
+        "type": "context_info",
+        "context_budget": 100,
+        "context_window": 128,
+        "estimated_prompt_tokens": 4,
+        "remaining_tokens": 96,
+        "segments": [],
+    }
     yield "hello"
     yield {"type": "usage", "usage": usage}
 
@@ -64,37 +70,6 @@ class _FakeInputService:
             attachment_metadata=[],
             user_message_id="user-msg-1",
         )
-
-
-def _build_fake_tool_loop_runtime(*, tools_enabled: bool) -> SingleChatToolLoopRuntime:
-    return SingleChatToolLoopRuntime(
-        streaming_runtime=SimpleNamespace(
-            llm_logger=SimpleNamespace(log_interaction=lambda **_kwargs: None),
-            request_params={},
-            effective_call_mode=SimpleNamespace(value="auto"),
-            allow_responses_fallback=False,
-            actual_model_id="provider:model-a",
-            reasoning_decision=SimpleNamespace(
-                disable_thinking=True,
-                thinking_enabled=False,
-                effective_reasoning_option=None,
-                effective_reasoning_effort=None,
-            ),
-        ),
-        llm_for_tools=None,
-        tool_loop_runner=ToolLoopRunner(),
-        tool_loop_state=ToolLoopState(current_messages=[]),
-        prompt_messages=[],
-        context_info_event={
-            "type": "context_info",
-            "context_budget": 100,
-            "context_window": 128,
-            "estimated_prompt_tokens": 4,
-            "remaining_tokens": 96,
-            "segments": [],
-        },
-        tools_enabled=tools_enabled,
-    )
 
 
 @pytest.mark.asyncio
@@ -133,21 +108,6 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
         "_resolve_tools",
         lambda **_kwargs: _return_async((None, None)),
     )
-    monkeypatch.setattr(
-        service,
-        "_prepare_tool_loop_runtime",
-        lambda **_kwargs: _return_async(_build_fake_tool_loop_runtime(tools_enabled=False)),
-    )
-
-    async def _fake_stream_tool_loop_round(*, tool_loop, outcome, **_kwargs):
-        tool_loop.round_content = "hello"
-        tool_loop.round_reasoning = ""
-        tool_loop.round_reasoning_details = None
-        tool_loop.merged_chunk = None
-        outcome.full_response += "hello"
-        yield "hello"
-
-    monkeypatch.setattr(service, "_stream_tool_loop_round", _fake_stream_tool_loop_round)
 
     events = await _collect_events(
         service.process_message_stream(
@@ -162,12 +122,17 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
     assert events[1] == {"type": "sources", "sources": [{"type": "memory"}]}
     assert events[2]["type"] == "context_info"
     assert events[3] == "hello"
-    assert events[4] == {"type": "sources", "sources": [{"type": "memory"}]}
-    assert events[5] == {"type": "assistant_message_id", "message_id": "assistant-msg-1"}
-    assert events[6] == {"type": "followup_questions", "questions": ["next question"]}
+    assert events[4]["type"] == "usage"
+    assert events[5] == {"type": "sources", "sources": [{"type": "memory"}]}
+    assert events[6] == {"type": "assistant_message_id", "message_id": "assistant-msg-1"}
+    assert events[7] == {"type": "followup_questions", "questions": ["next question"]}
     assert len(post_turn.finalize_calls) == 1
     assert post_turn.finalize_calls[0]["assistant_message"] == "hello"
-    assert post_turn.finalize_calls[0]["usage_data"] is None
+    assert post_turn.finalize_calls[0]["usage_data"] == TokenUsage(
+        prompt_tokens=5,
+        completion_tokens=7,
+        total_tokens=12,
+    )
 
     response, sources = await service.process_message(
         request=SingleChatRequestContext(
@@ -361,7 +326,7 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
 
 
 @pytest.mark.asyncio
-async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
+async def test_single_chat_flow_streams_tool_events_from_runtime(monkeypatch):
     post_turn = _FakePostTurnService()
     deps = SingleChatFlowDeps(
         storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
@@ -386,9 +351,6 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
         build_file_context_block=lambda _refs: _return_async(""),
     )
     service = SingleChatFlowService(deps)
-    loop_state = {"stream_calls": 0, "execute_calls": 0}
-    tool_loop = _build_fake_tool_loop_runtime(tools_enabled=True)
-
     monkeypatch.setattr(
         service,
         "_maybe_auto_compress",
@@ -399,25 +361,16 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
         "_resolve_tools",
         lambda **_kwargs: _return_async(([SimpleNamespace(name="web_search")], None)),
     )
-    monkeypatch.setattr(
-        service,
-        "_prepare_tool_loop_runtime",
-        lambda **_kwargs: _return_async(tool_loop),
-    )
 
-    async def _fake_stream_tool_loop_round(*, tool_loop, outcome, **_kwargs):
-        loop_state["stream_calls"] += 1
-        chunk = f"round-{loop_state['stream_calls']}"
-        tool_loop.round_content = chunk
-        tool_loop.round_reasoning = ""
-        tool_loop.round_reasoning_details = None
-        tool_loop.merged_chunk = object()
-        outcome.full_response += chunk
-        yield chunk
-
-    async def _fake_execute_tool_loop_round(*, tool_loop, **_kwargs):
-        loop_state["execute_calls"] += 1
-        tool_loop.pending_tool_calls = []
+    async def _fake_stream(*_args, **_kwargs):
+        yield {
+            "type": "context_info",
+            "context_budget": 100,
+            "context_window": 128,
+            "estimated_prompt_tokens": 4,
+            "remaining_tokens": 96,
+            "segments": [],
+        }
         yield {
             "type": "tool_calls",
             "calls": [{"id": "call-1", "name": "web_search", "args": {"query": "hello"}}],
@@ -426,14 +379,10 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
             "type": "tool_results",
             "results": [{"name": "web_search", "result": "{}", "tool_call_id": "call-1"}],
         }
+        yield "round-1"
+        yield "round-2"
 
-    monkeypatch.setattr(service, "_stream_tool_loop_round", _fake_stream_tool_loop_round)
-    monkeypatch.setattr(service, "_execute_tool_loop_round", _fake_execute_tool_loop_round)
-    monkeypatch.setattr(
-        service,
-        "_decide_tool_loop_branch",
-        lambda **_kwargs: "execute_tools" if loop_state["stream_calls"] == 1 else "finalize",
-    )
+    service._single_direct_orchestrator.call_llm_stream = _fake_stream
 
     events = await _collect_events(
         service.process_message_stream(
@@ -444,7 +393,6 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
         )
     )
 
-    assert loop_state == {"stream_calls": 2, "execute_calls": 1}
     assert {
         "type": "context_info",
         "context_budget": 100,
@@ -453,8 +401,7 @@ async def test_single_chat_flow_uses_static_tool_loop_graph(monkeypatch):
         "remaining_tokens": 96,
         "segments": [],
     } in events
-    assert "round-1" in events
-    assert "round-2" in events
+    assert "round-1" in events and "round-2" in events
     assert any(isinstance(event, dict) and event.get("type") == "tool_calls" for event in events)
     assert any(isinstance(event, dict) and event.get("type") == "tool_results" for event in events)
     assert events[-2] == {"type": "assistant_message_id", "message_id": "assistant-msg-1"}

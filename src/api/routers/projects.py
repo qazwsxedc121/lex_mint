@@ -2,9 +2,11 @@
 
 import logging
 import uuid
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from src.domain.models.project_config import (
     BrowseDirectoryCreate,
@@ -61,6 +63,43 @@ class ProjectChatApplyDiffResponse(BaseModel):
     content: str
 
 
+def _normalize_project_response(project: Any) -> Project:
+    if isinstance(project, Project):
+        return project
+    try:
+        return Project.model_validate(project)
+    except ValidationError as exc:
+        logger.warning("Project validation failed in router response, using fallback: %s", exc)
+    payload = dict(project) if isinstance(project, dict) else dict(getattr(project, "__dict__", {}))
+    return Project.model_construct(
+        id=str(payload.get("id") or ""),
+        name=str(payload.get("name") or ""),
+        root_path=str(payload.get("root_path") or ""),
+        description=payload.get("description"),
+        settings=ProjectSettings.model_validate(payload.get("settings") or {}),
+        created_at=str(payload.get("created_at") or datetime.now().isoformat()),
+        updated_at=str(payload.get("updated_at") or datetime.now().isoformat()),
+    )
+
+
+def _normalize_workspace_state_response(state: Any) -> ProjectWorkspaceState:
+    if isinstance(state, ProjectWorkspaceState):
+        return state
+    payload = dict(state) if isinstance(state, dict) else dict(getattr(state, "__dict__", {}))
+    recent_items = payload.get("recent_items")
+    if isinstance(recent_items, list):
+        normalized_items: list[dict[str, Any]] = []
+        for item in recent_items:
+            item_payload = (
+                dict(item) if isinstance(item, dict) else dict(getattr(item, "__dict__", {}))
+            )
+            if not item_payload.get("updated_at"):
+                item_payload["updated_at"] = datetime.now().isoformat()
+            normalized_items.append(item_payload)
+        payload["recent_items"] = normalized_items
+    return ProjectWorkspaceState.model_validate(payload)
+
+
 @router.get("", response_model=list[Project])
 async def list_projects():
     """Get all projects.
@@ -71,7 +110,7 @@ async def list_projects():
     try:
         service = get_project_service()
         projects = await service.get_projects()
-        return [Project.model_validate(project) for project in projects]
+        return [_normalize_project_response(project) for project in projects]
     except Exception as e:
         logger.error(f"Error listing projects: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -175,7 +214,7 @@ async def get_project(project_id: str):
         project = await service.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-        return Project.model_validate(project)
+        return _normalize_project_response(project)
     except HTTPException:
         raise
     except Exception as e:
@@ -212,7 +251,7 @@ async def update_project(project_id: str, update_data: ProjectUpdate):
         if updated is None:
             raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
 
-        return Project.model_validate(updated)
+        return _normalize_project_response(updated)
     except HTTPException:
         raise
     except ValueError as e:
@@ -250,7 +289,7 @@ async def get_workspace_state(project_id: str):
     """Return the project-local workspace state stored under .lex_mint/state/."""
     try:
         service = get_project_workspace_state_service()
-        return ProjectWorkspaceState.model_validate(await service.get_workspace_state(project_id))
+        return _normalize_workspace_state_response(await service.get_workspace_state(project_id))
     except ValueError as e:
         logger.error(f"Validation error reading workspace state for project {project_id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -264,7 +303,9 @@ async def add_workspace_state_item(project_id: str, item: ProjectWorkspaceItemUp
     """Add or update one recent workspace item for a project."""
     try:
         service = get_project_workspace_state_service()
-        return ProjectWorkspaceState.model_validate(await service.upsert_recent_item(project_id, item))
+        return _normalize_workspace_state_response(
+            await service.upsert_recent_item(project_id, item)
+        )
     except ValueError as e:
         logger.error(f"Validation error updating workspace state for project {project_id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))

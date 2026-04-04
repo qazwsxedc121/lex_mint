@@ -1,16 +1,19 @@
+
 """Single-chat streaming flow orchestration."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_core.messages import AIMessage
-
+from src.application.chat.chat_runtime import (
+    ChatOrchestrationRequest,
+    SingleDirectOrchestrator,
+    SingleDirectSettings,
+)
 from src.application.chat.rag_tool_service import RagToolService
 from src.application.chat.request_contexts import (
     SingleChatRequestContext,
@@ -25,32 +28,7 @@ from src.application.chat.service_contracts import (
     StreamItem,
 )
 from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
-from src.application.orchestration import (
-    ActorEmit,
-    ActorExecutionContext,
-    ActorRef,
-    ActorResult,
-    EdgeSpec,
-    NodeSpec,
-    OrchestrationEngine,
-    RunContext,
-    RunSpec,
-)
 from src.llm_runtime import estimate_total_tokens
-from src.llm_runtime.stream_call_policy import build_stream_kwargs
-from src.llm_runtime.stream_input import prepare_stream_input
-from src.llm_runtime.streaming_client import _resolve_streaming_runtime
-from src.llm_runtime.tool_loop_runner import ToolLoopRunner, ToolLoopState
-from src.llm_runtime.tool_loop_runtime import (
-    ToolLoopRoundResult,
-    bind_tools_for_tool_loop,
-    build_tool_loop_state,
-    decide_tool_loop_branch,
-    execute_tool_loop_round,
-    finalize_tool_loop,
-    resolve_active_stream_llm,
-    stream_tool_loop_round,
-)
 from src.providers.types import CostInfo, TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -106,12 +84,6 @@ def _default_tool_registry_getter() -> Any:
     return get_tool_registry()
 
 
-def _default_llm_logger_factory() -> Any:
-    from src.utils.llm_logger import get_llm_logger
-
-    return get_llm_logger()
-
-
 @dataclass(frozen=True)
 class SingleChatFlowDeps:
     """Dependencies required by SingleChatFlowService."""
@@ -124,6 +96,7 @@ class SingleChatFlowDeps:
     file_service: Any
     prepare_context: Callable[..., Awaitable[ContextPayload]]
     build_file_context_block: Callable[[list[dict[str, str]] | None], Awaitable[str]]
+    single_direct_orchestrator: SingleDirectOrchestrator | None = None
     model_service_factory: Callable[[], Any] = _default_model_service_factory
     compression_config_service_factory: Callable[[], Any] = (
         _default_compression_config_service_factory
@@ -140,12 +113,11 @@ class SingleChatFlowDeps:
     )
     web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
     tool_registry_getter: Callable[[], Any] = _default_tool_registry_getter
-    llm_logger_factory: Callable[[], Any] = _default_llm_logger_factory
 
 
 @dataclass
 class SingleChatRuntime:
-    """Single-turn runtime context resolved before orchestration stream starts."""
+    """Single-turn runtime context resolved before stream starts."""
 
     session_id: str
     context_type: str
@@ -169,43 +141,12 @@ class SingleChatRuntime:
 
 @dataclass
 class SingleTurnOutcome:
-    """Collected outputs from one single-turn orchestration stream."""
+    """Collected outputs from one single-turn stream."""
 
     full_response: str = ""
     usage_data: TokenUsage | None = None
     cost_data: CostInfo | None = None
     tool_diagnostics: SourcePayload | None = None
-
-
-@dataclass
-class SingleChatToolLoopRuntime:
-    """Mutable tool-loop runtime state for one single-chat turn."""
-
-    streaming_runtime: Any
-    llm_for_tools: Any
-    tool_loop_runner: ToolLoopRunner
-    tool_loop_state: ToolLoopState
-    prompt_messages: list[Any]
-    context_info_event: StreamEvent
-    tools_enabled: bool
-    final_usage: TokenUsage | None = None
-    full_reasoning: str = ""
-    round_content: str = ""
-    round_reasoning: str = ""
-    round_reasoning_details: Any = None
-    merged_chunk: Any = None
-    pending_tool_calls: list[dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class SingleChatExecutionState:
-    """Cross-node mutable execution state for one single-chat orchestration run."""
-
-    runtime: SingleChatRuntime | None = None
-    llm_tools: list[Any] | None = None
-    rag_tool_executor: Any | None = None
-    tool_loop: SingleChatToolLoopRuntime | None = None
-    outcome: SingleTurnOutcome = field(default_factory=SingleTurnOutcome)
 
 
 @dataclass
@@ -247,7 +188,13 @@ class SingleChatFlowService:
 
     def __init__(self, deps: SingleChatFlowDeps):
         self.deps = deps
-        self._orchestration_engine = OrchestrationEngine()
+        self._single_direct_orchestrator = (
+            deps.single_direct_orchestrator
+            or SingleDirectOrchestrator(
+                call_llm_stream=deps.call_llm_stream,
+                file_service=deps.file_service,
+            )
+        )
 
     async def process_message(
         self,
@@ -276,60 +223,28 @@ class SingleChatFlowService:
         *,
         request: SingleChatRequestContext,
     ) -> AsyncIterator[StreamItem]:
-        """Prepare context, run single-turn orchestration, and persist final outputs."""
-        execution_state = SingleChatExecutionState()
-        run_id = f"single-chat-{request.scope.session_id[:12]}-{uuid.uuid4().hex[:8]}"
-        actor_handlers = self._build_actor_handlers(
-            request=request,
-            execution_state=execution_state,
-        )
-        spec = self._build_single_chat_run_spec(
-            request=request,
-            run_id=run_id,
-            actor_handlers=actor_handlers,
-        )
-        context = self._build_single_chat_run_context(run_id=run_id)
+        """Prepare context, run single-direct orchestration, and persist outputs."""
+        runtime = await self._prepare_runtime(request=request)
+        outcome = SingleTurnOutcome()
 
-        async for event in self._stream_single_chat_run(spec=spec, context=context):
-            yield event
+        if runtime.user_message_id:
+            yield {
+                "type": "user_message_id",
+                "message_id": runtime.user_message_id,
+            }
+        else:
+            print("[Step 1] Skipping user message save (regeneration mode)")
+            logger.info("[Step 1] Skipping user message save")
 
-    def _build_actor_handlers(
-        self,
-        *,
-        request: SingleChatRequestContext,
-        execution_state: SingleChatExecutionState,
-    ) -> dict[str, Callable[[ActorExecutionContext], AsyncIterator[Any]]]:
-        """Build one-node handlers for the single-chat orchestration graph."""
-
-        async def _prepare_runtime_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = await self._prepare_runtime(request=request)
-            execution_state.runtime = runtime
-
-            if runtime.user_message_id:
-                yield self._emit_single_chat_event(
-                    {
-                        "type": "user_message_id",
-                        "message_id": runtime.user_message_id,
-                    }
-                )
-            else:
-                print("[Step 1] Skipping user message save (regeneration mode)")
-                logger.info("[Step 1] Skipping user message save")
-
-            if runtime.all_sources:
-                yield self._emit_single_chat_event(
-                    {
-                        "type": "sources",
-                        "sources": runtime.all_sources,
-                    }
-                )
-            if runtime.compression_event:
-                yield self._emit_single_chat_event(runtime.compression_event)
-            yield ActorResult()
-
-        async def _resolve_tools_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(execution_state)
-            tool_request = ToolResolutionContext(
+        if runtime.all_sources:
+            yield {
+                "type": "sources",
+                "sources": runtime.all_sources,
+            }
+        if runtime.compression_event:
+            yield runtime.compression_event
+        llm_tools, tool_executor = await self._resolve_tools(
+            request=ToolResolutionContext(
                 scope=request.scope,
                 editor=request.editor,
                 assistant_id=runtime.assistant_id,
@@ -337,232 +252,78 @@ class SingleChatFlowService:
                 model_id=runtime.model_id,
                 use_web_search=request.search.use_web_search,
             )
-            llm_tools, rag_tool_executor = await self._resolve_tools(
-                request=tool_request,
-            )
-            execution_state.llm_tools = llm_tools
-            execution_state.rag_tool_executor = rag_tool_executor
-            yield ActorResult()
+        )
 
-        async def _prepare_tool_loop_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(execution_state)
-            tool_loop = await self._prepare_tool_loop_runtime(
-                runtime=runtime,
+        orchestration_request = ChatOrchestrationRequest(
+            session_id=runtime.session_id,
+            mode="single_direct",
+            user_message=runtime.raw_user_message,
+            participants=[runtime.assistant_id or "single_direct"],
+            assistant_name_map={},
+            assistant_config_map={},
+            settings=SingleDirectSettings(
+                messages=runtime.messages,
+                model_id=runtime.model_id,
+                system_prompt=runtime.system_prompt,
+                max_rounds=runtime.max_rounds,
+                context_segments=runtime.context_segments,
+                assistant_params=runtime.assistant_params,
                 reasoning_effort=request.stream.reasoning_effort,
-                llm_tools=execution_state.llm_tools,
+                tools=llm_tools,
+                tool_executor=tool_executor,
+            ),
+            reasoning_effort=request.stream.reasoning_effort,
+            context_type=runtime.context_type,
+            project_id=runtime.project_id,
+        )
+
+        try:
+            async for event in self._single_direct_orchestrator.stream(orchestration_request):
+                event_type = str(event.get("type") or "")
+                if event_type == "assistant_chunk":
+                    chunk = str(event.get("chunk") or "")
+                    outcome.full_response += chunk
+                    yield chunk
+                    continue
+                if event_type == "usage":
+                    outcome.usage_data = self._normalize_usage(event.get("usage"))
+                    continue
+                if event_type == "tool_diagnostics":
+                    outcome.tool_diagnostics = dict(event)
+                    continue
+                yield event
+        except asyncio.CancelledError:
+            print("[WARN] Stream generation cancelled, saving partial content...")
+            logger.warning(
+                "Single-direct stream cancelled, saving partial content (%s chars)",
+                len(outcome.full_response),
             )
-            execution_state.tool_loop = tool_loop
-            yield self._emit_single_chat_event(tool_loop.context_info_event)
-            yield ActorResult()
-
-        async def _stream_tool_round_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(execution_state)
-            outcome = self._require_outcome_state(execution_state)
-            tool_loop = self._require_tool_loop_state(execution_state)
-            async for event in self._stream_tool_loop_round(
-                runtime=runtime,
-                tool_loop=tool_loop,
-                outcome=outcome,
-            ):
-                yield self._emit_single_chat_event(event)
-            yield ActorResult()
-
-        async def _decide_tool_round_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            outcome = self._require_outcome_state(execution_state)
-            tool_loop = self._require_tool_loop_state(execution_state)
-            branch = self._decide_tool_loop_branch(
-                tool_loop=tool_loop,
-                outcome=outcome,
+            await self.deps.post_turn_service.save_partial_assistant_message(
+                session_id=runtime.session_id,
+                assistant_message=outcome.full_response,
+                context_type=runtime.context_type,
+                project_id=runtime.project_id,
             )
-            yield ActorResult(branch=branch)
+            raise
 
-        async def _execute_tools_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            tool_loop = self._require_tool_loop_state(execution_state)
-            async for event in self._execute_tool_loop_round(
-                tool_loop=tool_loop,
-                tool_executor=execution_state.rag_tool_executor,
-            ):
-                yield self._emit_single_chat_event(event)
-            yield ActorResult()
-
-        async def _finalize_tool_loop_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(execution_state)
-            outcome = self._require_outcome_state(execution_state)
-            tool_loop = self._require_tool_loop_state(execution_state)
-            async for event in self._finalize_tool_loop(
-                runtime=runtime,
-                outcome=outcome,
-                tool_loop=tool_loop,
-            ):
-                yield self._emit_single_chat_event(event)
-            yield ActorResult()
-
-        async def _persist_result_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
-            runtime = self._require_runtime_state(execution_state)
-            outcome = self._require_outcome_state(execution_state)
-            async for event in self._persist_and_emit(runtime=runtime, outcome=outcome):
-                yield self._emit_single_chat_event(event)
-            yield ActorResult(terminal_status="completed", terminal_reason="completed")
-
-        return {
-            "prepare_runtime": _prepare_runtime_actor,
-            "resolve_tools": _resolve_tools_actor,
-            "prepare_tool_loop": _prepare_tool_loop_actor,
-            "stream_tool_round": _stream_tool_round_actor,
-            "decide_tool_round": _decide_tool_round_actor,
-            "execute_tools": _execute_tools_actor,
-            "finalize_tool_loop": _finalize_tool_loop_actor,
-            "persist_result": _persist_result_actor,
-        }
-
-    @staticmethod
-    def _build_single_chat_run_context(*, run_id: str) -> RunContext:
-        """Build the orchestration runtime context for one single-chat run."""
-        return RunContext(run_id=run_id, max_steps=24)
-
-    def _build_single_chat_run_spec(
-        self,
-        *,
-        request: SingleChatRequestContext,
-        run_id: str,
-        actor_handlers: dict[str, Callable[[ActorExecutionContext], AsyncIterator[Any]]],
-    ) -> RunSpec:
-        """Build the static single-chat orchestration graph."""
-        return RunSpec(
-            run_id=run_id,
-            entry_node_id="prepare_runtime",
-            nodes=(
-                self._build_single_chat_node(
-                    node_id="prepare_runtime",
-                    kind="single_chat_prepare",
-                    handler=actor_handlers["prepare_runtime"],
-                ),
-                self._build_single_chat_node(
-                    node_id="resolve_tools",
-                    kind="single_chat_tools",
-                    handler=actor_handlers["resolve_tools"],
-                ),
-                self._build_single_chat_node(
-                    node_id="prepare_tool_loop",
-                    kind="single_chat_tool_loop_prepare",
-                    handler=actor_handlers["prepare_tool_loop"],
-                ),
-                self._build_single_chat_node(
-                    node_id="stream_tool_round",
-                    kind="single_chat_tool_loop_stream",
-                    handler=actor_handlers["stream_tool_round"],
-                ),
-                self._build_single_chat_node(
-                    node_id="decide_tool_round",
-                    kind="single_chat_tool_loop_branch",
-                    handler=actor_handlers["decide_tool_round"],
-                ),
-                self._build_single_chat_node(
-                    node_id="execute_tools",
-                    kind="single_chat_tool_loop_execute",
-                    handler=actor_handlers["execute_tools"],
-                ),
-                self._build_single_chat_node(
-                    node_id="finalize_tool_loop",
-                    kind="single_chat_tool_loop_finalize",
-                    handler=actor_handlers["finalize_tool_loop"],
-                ),
-                self._build_single_chat_node(
-                    node_id="persist_result",
-                    kind="single_chat_persist",
-                    handler=actor_handlers["persist_result"],
-                ),
-            ),
-            edges=self._single_chat_run_edges(),
-            metadata={"mode": "single_direct", "session_id": request.scope.session_id},
+        self._apply_usage_to_outcome(
+            runtime=runtime,
+            outcome=outcome,
+            usage_data=outcome.usage_data,
         )
+        async for event in self._persist_and_emit(runtime=runtime, outcome=outcome):
+            yield event
 
     @staticmethod
-    def _build_single_chat_node(
-        *,
-        node_id: str,
-        kind: str,
-        handler: Callable[[ActorExecutionContext], AsyncIterator[Any]],
-    ) -> NodeSpec:
-        """Build one single-chat graph node from a handler."""
-        return NodeSpec(
-            node_id=node_id,
-            actor=ActorRef(
-                actor_id=node_id,
-                kind=kind,
-                handler=handler,
-            ),
-        )
-
-    @staticmethod
-    def _single_chat_run_edges() -> tuple[EdgeSpec, ...]:
-        """Return the static edge set for one single-chat orchestration run."""
-        return (
-            EdgeSpec(source_id="prepare_runtime", target_id="resolve_tools"),
-            EdgeSpec(source_id="resolve_tools", target_id="prepare_tool_loop"),
-            EdgeSpec(source_id="prepare_tool_loop", target_id="stream_tool_round"),
-            EdgeSpec(source_id="stream_tool_round", target_id="decide_tool_round"),
-            EdgeSpec(
-                source_id="decide_tool_round", target_id="execute_tools", branch="execute_tools"
-            ),
-            EdgeSpec(
-                source_id="decide_tool_round", target_id="stream_tool_round", branch="continue"
-            ),
-            EdgeSpec(
-                source_id="decide_tool_round", target_id="finalize_tool_loop", branch="finalize"
-            ),
-            EdgeSpec(source_id="execute_tools", target_id="stream_tool_round"),
-            EdgeSpec(source_id="finalize_tool_loop", target_id="persist_result"),
-        )
-
-    async def _stream_single_chat_run(
-        self,
-        *,
-        spec: RunSpec,
-        context: RunContext,
-    ) -> AsyncIterator[StreamItem]:
-        """Run the single-chat graph and unwrap emitted chat events."""
-        async for runtime_event in self._orchestration_engine.run_stream(spec, context):
-            event_type = str(runtime_event.get("type") or "")
-            if (
-                event_type == "node_event"
-                and runtime_event.get("event_type") == "single_chat_event"
-            ):
-                payload = runtime_event.get("payload") or {}
-                if isinstance(payload, dict) and "event" in payload:
-                    yield payload["event"]
-                continue
-            if event_type in {"failed", "cancelled"}:
-                raise RuntimeError(
-                    str(runtime_event.get("terminal_reason") or "single chat stream failed")
-                )
-
-    @staticmethod
-    def _emit_single_chat_event(event: StreamItem) -> ActorEmit:
-        return ActorEmit(event_type="single_chat_event", payload={"event": event})
-
-    @staticmethod
-    def _require_runtime_state(execution_state: SingleChatExecutionState) -> SingleChatRuntime:
-        runtime = execution_state.runtime
-        if not isinstance(runtime, SingleChatRuntime):
-            raise RuntimeError("single chat runtime was not prepared before node execution")
-        return runtime
-
-    @staticmethod
-    def _require_outcome_state(execution_state: SingleChatExecutionState) -> SingleTurnOutcome:
-        outcome = execution_state.outcome
-        if not isinstance(outcome, SingleTurnOutcome):
-            raise RuntimeError("single chat outcome state is unavailable")
-        return outcome
-
-    @staticmethod
-    def _require_tool_loop_state(
-        execution_state: SingleChatExecutionState,
-    ) -> SingleChatToolLoopRuntime:
-        tool_loop = execution_state.tool_loop
-        if not isinstance(tool_loop, SingleChatToolLoopRuntime):
-            raise RuntimeError("single chat tool loop state is unavailable")
-        return tool_loop
+    def _normalize_usage(raw_usage: Any) -> TokenUsage | None:
+        if isinstance(raw_usage, TokenUsage):
+            return raw_usage
+        if isinstance(raw_usage, dict):
+            try:
+                return TokenUsage(**raw_usage)
+            except Exception:
+                return None
+        return None
 
     async def _prepare_runtime(
         self,
@@ -765,210 +526,6 @@ class SingleChatFlowService:
             logger.warning("Failed to determine web tool preference: %s", exc)
             return False
 
-    async def _prepare_tool_loop_runtime(
-        self,
-        *,
-        runtime: SingleChatRuntime,
-        reasoning_effort: str | None,
-        llm_tools: list[Any] | None,
-    ) -> SingleChatToolLoopRuntime:
-        assistant_params = runtime.assistant_params or {}
-        streaming_runtime = _resolve_streaming_runtime(
-            model_id=runtime.model_id,
-            session_id=runtime.session_id,
-            temperature=assistant_params.get("temperature"),
-            max_tokens=assistant_params.get("max_tokens"),
-            top_p=assistant_params.get("top_p"),
-            top_k=assistant_params.get("top_k"),
-            frequency_penalty=assistant_params.get("frequency_penalty"),
-            presence_penalty=assistant_params.get("presence_penalty"),
-            reasoning_effort=reasoning_effort,
-            model_service_factory=self.deps.model_service_factory,
-            llm_logger_factory=self.deps.llm_logger_factory,
-        )
-        prepared_input = await prepare_stream_input(
-            runtime=streaming_runtime,
-            messages=runtime.messages,
-            session_id=runtime.session_id,
-            system_prompt=runtime.system_prompt,
-            context_segments=runtime.context_segments,
-            max_rounds=runtime.max_rounds,
-            file_service=self.deps.file_service,
-        )
-
-        latest_user_text = ""
-        for raw_message in reversed(runtime.messages):
-            if str(raw_message.get("role", "")).strip().lower() == "user":
-                latest_user_text = str(raw_message.get("content") or "")
-                break
-
-        bound_tools = bind_tools_for_tool_loop(
-            llm=streaming_runtime.llm,
-            llm_tools=llm_tools,
-            warning_message="Failed to bind tools for single-chat tool loop",
-        )
-        tool_loop_runner, tool_loop_state = build_tool_loop_state(
-            langchain_messages=list(prepared_input.langchain_messages),
-            latest_user_text=latest_user_text,
-            tool_names=bound_tools.tool_names,
-        )
-
-        return SingleChatToolLoopRuntime(
-            streaming_runtime=streaming_runtime,
-            llm_for_tools=bound_tools.llm_for_tools,
-            tool_loop_runner=tool_loop_runner,
-            tool_loop_state=tool_loop_state,
-            prompt_messages=list(prepared_input.langchain_messages),
-            context_info_event=prepared_input.context_event,
-            tools_enabled=bound_tools.tools_enabled,
-        )
-
-    async def _stream_tool_loop_round(
-        self,
-        *,
-        runtime: SingleChatRuntime,
-        tool_loop: SingleChatToolLoopRuntime,
-        outcome: SingleTurnOutcome,
-    ) -> AsyncIterator[StreamItem]:
-        print("[Step 3] Streaming tool-aware LLM round...")
-        logger.info("Streaming single-chat tool-aware LLM round")
-
-        try:
-            active_llm = resolve_active_stream_llm(
-                runtime=tool_loop.streaming_runtime,
-                llm_for_tools=tool_loop.llm_for_tools,
-                tools_enabled=tool_loop.tools_enabled,
-                tool_loop_state=tool_loop.tool_loop_state,
-            )
-            tool_loop.round_content = ""
-            tool_loop.round_reasoning = ""
-            tool_loop.round_reasoning_details = None
-            tool_loop.merged_chunk = None
-            tool_loop.pending_tool_calls = []
-
-            round_result: ToolLoopRoundResult | None = None
-            async for chunk in stream_tool_loop_round(
-                runtime=tool_loop.streaming_runtime,
-                active_llm=active_llm,
-                current_messages=tool_loop.tool_loop_state.current_messages,
-                stream_kwargs=build_stream_kwargs(
-                    allow_responses_fallback=tool_loop.streaming_runtime.allow_responses_fallback,
-                ),
-            ):
-                if isinstance(chunk, ToolLoopRoundResult):
-                    round_result = chunk
-                    continue
-                yield chunk
-
-            if round_result is None:
-                round_result = ToolLoopRoundResult("", "", None, tool_loop.final_usage, None)
-            if round_result.final_usage is not None:
-                tool_loop.final_usage = round_result.final_usage
-            tool_loop.round_content = round_result.round_content
-            tool_loop.round_reasoning = round_result.round_reasoning
-            tool_loop.round_reasoning_details = round_result.round_reasoning_details
-            tool_loop.merged_chunk = round_result.merged_chunk
-            if round_result.round_reasoning:
-                tool_loop.full_reasoning += round_result.round_reasoning
-            outcome.full_response += round_result.round_content
-        except asyncio.CancelledError:
-            print("[WARN] Stream generation cancelled, saving partial content...")
-            logger.warning(
-                "Tool-loop stream generation cancelled, saving partial content (%s chars)",
-                len(outcome.full_response),
-            )
-            await self.deps.post_turn_service.save_partial_assistant_message(
-                session_id=runtime.session_id,
-                assistant_message=outcome.full_response,
-                context_type=runtime.context_type,
-                project_id=runtime.project_id,
-            )
-            raise
-
-    def _decide_tool_loop_branch(
-        self,
-        *,
-        tool_loop: SingleChatToolLoopRuntime,
-        outcome: SingleTurnOutcome,
-    ) -> str:
-        decision = decide_tool_loop_branch(
-            tool_loop_runner=tool_loop.tool_loop_runner,
-            tool_loop_state=tool_loop.tool_loop_state,
-            round_result=ToolLoopRoundResult(
-                round_content=tool_loop.round_content,
-                round_reasoning=tool_loop.round_reasoning,
-                round_reasoning_details=tool_loop.round_reasoning_details,
-                final_usage=tool_loop.final_usage,
-                merged_chunk=tool_loop.merged_chunk,
-            ),
-            full_response=outcome.full_response,
-            tools_enabled=tool_loop.tools_enabled,
-        )
-        outcome.full_response = decision.full_response
-        tool_loop.pending_tool_calls = decision.round_tool_calls
-        if (
-            decision.branch == "continue"
-            and tool_loop.tool_loop_state.force_finalize_without_tools
-        ):
-            logger.info("Single-chat tool loop entered force-finalize mode")
-        return decision.branch
-
-    async def _execute_tool_loop_round(
-        self,
-        *,
-        tool_loop: SingleChatToolLoopRuntime,
-        tool_executor: Any | None,
-    ) -> AsyncIterator[StreamEvent]:
-        round_tool_calls = list(tool_loop.pending_tool_calls)
-        if not round_tool_calls:
-            return
-
-        logger.info(
-            "Tool call round %s: %s",
-            tool_loop.tool_loop_state.tool_round,
-            [tool_call["name"] for tool_call in round_tool_calls],
-        )
-        yield tool_loop.tool_loop_runner.build_tool_calls_event(round_tool_calls)
-
-        tool_results = await execute_tool_loop_round(
-            tool_loop_runner=tool_loop.tool_loop_runner,
-            tool_loop_state=tool_loop.tool_loop_state,
-            round_tool_calls=round_tool_calls,
-            tool_executor=tool_executor,
-            round_content=tool_loop.round_content,
-            round_reasoning=tool_loop.round_reasoning,
-            round_reasoning_details=tool_loop.round_reasoning_details,
-        )
-        yield tool_loop.tool_loop_runner.build_tool_results_event(tool_results)
-        tool_loop.pending_tool_calls = []
-
-    async def _finalize_tool_loop(
-        self,
-        *,
-        runtime: SingleChatRuntime,
-        outcome: SingleTurnOutcome,
-        tool_loop: SingleChatToolLoopRuntime,
-    ) -> AsyncIterator[StreamItem]:
-        finalize_result = finalize_tool_loop(
-            tool_loop_runner=tool_loop.tool_loop_runner,
-            tool_loop_state=tool_loop.tool_loop_state,
-            full_response=outcome.full_response,
-        )
-        outcome.full_response = finalize_result.full_response
-        if finalize_result.injected_text:
-            yield finalize_result.injected_text
-        outcome.tool_diagnostics = finalize_result.diagnostics_event
-        self._apply_usage_to_outcome(
-            runtime=runtime,
-            outcome=outcome,
-            usage_data=tool_loop.final_usage,
-        )
-        self._log_tool_loop_interaction(
-            runtime=runtime,
-            outcome=outcome,
-            tool_loop=tool_loop,
-        )
-
     def _apply_usage_to_outcome(
         self,
         *,
@@ -987,43 +544,6 @@ class SingleChatFlowService:
             provider_id,
             simple_model_id,
             usage_data,
-        )
-
-    def _log_tool_loop_interaction(
-        self,
-        *,
-        runtime: SingleChatRuntime,
-        outcome: SingleTurnOutcome,
-        tool_loop: SingleChatToolLoopRuntime,
-    ) -> None:
-        response_msg = AIMessage(content=outcome.full_response)
-        log_extra_params: dict[str, Any] = {
-            "request_params": tool_loop.streaming_runtime.request_params,
-            "call_mode": tool_loop.streaming_runtime.effective_call_mode.value,
-            "responses_fallback_enabled": tool_loop.streaming_runtime.allow_responses_fallback,
-            "tool_finalize_reason": tool_loop.tool_loop_state.tool_finalize_reason,
-        }
-        reasoning_decision = tool_loop.streaming_runtime.reasoning_decision
-        if reasoning_decision.disable_thinking:
-            log_extra_params["thinking_enabled"] = False
-            log_extra_params["reasoning_mode"] = "none"
-        elif reasoning_decision.thinking_enabled:
-            log_extra_params["thinking_enabled"] = True
-            if reasoning_decision.effective_reasoning_option:
-                log_extra_params["reasoning_option"] = reasoning_decision.effective_reasoning_option
-            if reasoning_decision.effective_reasoning_effort:
-                log_extra_params["reasoning_effort"] = reasoning_decision.effective_reasoning_effort
-        if tool_loop.full_reasoning:
-            log_extra_params["reasoning_content"] = tool_loop.full_reasoning
-        if outcome.usage_data:
-            log_extra_params["usage"] = outcome.usage_data.model_dump()
-
-        tool_loop.streaming_runtime.llm_logger.log_interaction(
-            session_id=runtime.session_id,
-            messages_sent=tool_loop.prompt_messages,
-            response_received=response_msg,
-            model=tool_loop.streaming_runtime.actual_model_id,
-            extra_params=log_extra_params,
         )
 
     async def _persist_and_emit(

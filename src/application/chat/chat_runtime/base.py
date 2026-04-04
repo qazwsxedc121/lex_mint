@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, Union
 
 from .events import normalize_orchestration_event
 
-ChatOrchestrationMode = Literal["round_robin", "committee", "compare_models"]
+ChatOrchestrationMode = Literal["round_robin", "committee", "compare_models", "single_direct"]
 
 
 @dataclass(frozen=True)
@@ -36,12 +36,14 @@ class ChatOrchestrationCancelToken:
 if TYPE_CHECKING:
     # Forward references keep runtime import graph light.
     from .compare_models import CompareModelsSettings
+    from .single_direct import SingleDirectSettings
     from .settings import ResolvedCommitteeSettings
 
 
 ChatOrchestrationSettings = Union[
     "ResolvedCommitteeSettings",
     "CompareModelsSettings",
+    "SingleDirectSettings",
     RoundRobinSettings,
     None,
 ]

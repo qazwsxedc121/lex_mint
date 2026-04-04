@@ -20,6 +20,7 @@ def build_single_chat_flow_service(
     file_service: Any,
     prepare_context: Any,
     build_file_context_block: Any,
+    single_direct_orchestrator: Any = None,
     model_service_factory: Any = None,
     compression_config_service_factory: Any = None,
     compression_service_factory: Any = None,
@@ -40,6 +41,11 @@ def build_single_chat_flow_service(
             file_service=file_service,
             prepare_context=prepare_context,
             build_file_context_block=build_file_context_block,
+            **(
+                {"single_direct_orchestrator": single_direct_orchestrator}
+                if single_direct_orchestrator is not None
+                else {}
+            ),
             **(
                 {"model_service_factory": model_service_factory}
                 if model_service_factory is not None

@@ -11,6 +11,7 @@ from src.application.chat.chat_input_service import ChatInputService
 from src.application.chat.chat_runtime import (
     CommitteePolicy,
     CompareModelsOrchestrator,
+    SingleDirectOrchestrator,
 )
 from src.application.chat.chat_runtime.log_utils import (
     build_messages_preview_for_log,
@@ -143,6 +144,10 @@ def build_default_chat_application_service(
         file_service=resolved_file_service,
         resolve_model_name=_resolve_compare_model_name,
     )
+    single_direct_orchestrator = SingleDirectOrchestrator(
+        call_llm_stream=call_llm_stream,
+        file_service=resolved_file_service,
+    )
     group_chat_service = GroupChatService(
         GroupChatDeps(
             chat_input_service=chat_input_service,
@@ -184,6 +189,7 @@ def build_default_chat_application_service(
         file_service=resolved_file_service,
         prepare_context=context_assembly_service.prepare_context,
         build_file_context_block=file_reference_context_builder.build_context_block,
+        single_direct_orchestrator=single_direct_orchestrator,
         model_service_factory=ModelConfigService,
         compression_config_service_factory=CompressionConfigService,
         compression_service_factory=CompressionService,

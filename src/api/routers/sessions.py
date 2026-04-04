@@ -8,7 +8,7 @@ import zipfile
 from typing import Any, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -21,7 +21,6 @@ from src.api.routers.service_protocols import (
     ConversationImportStorageLike,
     ConversationQueryStorageLike,
     SessionApplicationServiceLike,
-    UploadFileLike,
 )
 
 from ..dependencies import get_session_application_service as get_shared_session_application_service
@@ -973,7 +972,7 @@ async def export_session(
 
 @router.post("/import/chatgpt", response_model=ImportChatGPTResponse)
 async def import_chatgpt_conversations(
-    file: UploadFileLike = File(...),
+    file: UploadFile = File(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
     storage: ConversationImportStorageLike = Depends(get_storage),
@@ -1033,7 +1032,7 @@ async def import_chatgpt_conversations(
 
 @router.post("/import/markdown", response_model=ImportChatGPTResponse)
 async def import_markdown_conversation(
-    file: UploadFileLike = File(...),
+    file: UploadFile = File(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
     storage: ConversationImportStorageLike = Depends(get_storage),
