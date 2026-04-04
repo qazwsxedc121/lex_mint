@@ -5,12 +5,23 @@ import logging
 import mimetypes
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import aiofiles
-from fastapi import UploadFile
 
 logger = logging.getLogger(__name__)
+
+
+class UploadFileLike(Protocol):
+    @property
+    def filename(self) -> str | None: ...
+
+    @property
+    def content_type(self) -> str | None: ...
+
+    async def read(self) -> bytes: ...
+
+    async def seek(self, offset: int) -> None: ...
 
 
 class FileService:
@@ -52,7 +63,7 @@ class FileService:
         """
         return mime_type.startswith("image/")
 
-    async def validate_file(self, file: UploadFile) -> None:
+    async def validate_file(self, file: UploadFileLike) -> None:
         """Validate file is text or image and under size limit.
 
         Args:
@@ -104,7 +115,7 @@ class FileService:
             f"File {file.filename} validated successfully (MIME: {mime_type}, size: {len(content)} bytes)"
         )
 
-    async def save_temp_file(self, session_id: str, file: UploadFile) -> dict[str, Any]:
+    async def save_temp_file(self, session_id: str, file: UploadFileLike) -> dict[str, Any]:
         """Save uploaded file to temporary location.
 
         Args:

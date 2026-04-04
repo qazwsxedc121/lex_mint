@@ -19,8 +19,8 @@ class _FakeUploadFile:
     async def read(self) -> bytes:
         return self._buffer.read()
 
-    async def seek(self, position: int) -> None:
-        self._buffer.seek(position)
+    async def seek(self, offset: int) -> None:
+        self._buffer.seek(offset)
 
 
 @pytest.mark.asyncio

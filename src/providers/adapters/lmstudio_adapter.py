@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from types import SimpleNamespace
 from typing import (
     Any,
+    Protocol,
     TypeVar,
 )
 from urllib.parse import urlparse
@@ -114,6 +115,18 @@ class _FallbackChatHistory:
 
     def add_tool_result(self, payload: dict[str, Any]) -> None:
         self.messages.append({"role": "tool", **payload})
+
+
+class _ChatHistoryLike(Protocol):
+    """Minimal history interface consumed by LM Studio adapter."""
+
+    def add_system_prompt(self, text: str) -> None: ...
+
+    def add_user_message(self, text: str, images: list[Any] | None = None) -> None: ...
+
+    def add_assistant_response(self, text: str) -> None: ...
+
+    def add_tool_result(self, payload: dict[str, Any]) -> None: ...
 
 
 class LmStudioChatModel:
@@ -302,7 +315,8 @@ class LmStudioAdapter(BaseLLMAdapter):
         client: Any,
     ) -> Any:
         chat_cls = getattr(lm_history, "Chat", None)
-        chat = chat_cls() if callable(chat_cls) else _FallbackChatHistory()
+        chat_obj = chat_cls() if callable(chat_cls) else _FallbackChatHistory()
+        chat = cls._coerce_chat_history(chat_obj)
         for message in messages:
             role = getattr(message, "type", "")
             if role == "system":
@@ -333,6 +347,25 @@ class LmStudioAdapter(BaseLLMAdapter):
             if text.strip():
                 chat.add_user_message(text)
         return chat
+
+    @staticmethod
+    def _coerce_chat_history(chat_obj: Any) -> _ChatHistoryLike:
+        if isinstance(chat_obj, _FallbackChatHistory):
+            return chat_obj
+
+        required_methods = (
+            "add_system_prompt",
+            "add_user_message",
+            "add_assistant_response",
+            "add_tool_result",
+        )
+        for method_name in required_methods:
+            if not callable(getattr(chat_obj, method_name, None)):
+                raise TypeError(
+                    "LM Studio history object is missing required method: "
+                    f"{method_name}"
+                )
+        return chat_obj
 
     @staticmethod
     def _tool_parameters_from_langchain(tool: BaseTool) -> dict[str, Any]:

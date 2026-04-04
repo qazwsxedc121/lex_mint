@@ -87,7 +87,7 @@ def test_delete_document_uses_doc_id_where_filter(monkeypatch):
 
         fake_collection = _FakeCollection()
         fake_chromadb = types.ModuleType("chromadb")
-        fake_chromadb.PersistentClient = lambda path: _FakeClient(fake_collection)
+        setattr(fake_chromadb, "PersistentClient", lambda path: _FakeClient(fake_collection))
         monkeypatch.setitem(sys.modules, "chromadb", fake_chromadb)
 
         asyncio.run(service.delete_document("kb1", "doc1"))

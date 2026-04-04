@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from src.infrastructure.storage.conversation_storage import ConversationStorage
+from src.application.chat.service_contracts import ImportConversationStorageLike
 
 
 class ChatGPTImportService:
     """Import conversations from ChatGPT export JSON."""
 
-    def __init__(self, storage: ConversationStorage):
+    def __init__(self, storage: ImportConversationStorageLike):
         self.storage = storage
 
     async def import_conversations(

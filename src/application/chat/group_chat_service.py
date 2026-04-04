@@ -10,10 +10,11 @@ from typing import Protocol
 
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.chat_runtime import (
-    CommitteeOrchestrator,
+    ChatOrchestrationCancelToken,
+    ChatOrchestrationEvent,
+    ChatOrchestrationRequest,
     ResolvedCommitteeSettings,
     ResolvedGroupSettings,
-    RoundRobinOrchestrator,
     RoundRobinSettings,
 )
 from src.application.chat.request_contexts import CommitteeExecutionContext, GroupChatRequestContext
@@ -51,6 +52,24 @@ class _PostTurnServiceLike(Protocol):
     ) -> None: ...
 
 
+class _CommitteeOrchestratorLike(Protocol):
+    def stream(
+        self,
+        request: ChatOrchestrationRequest,
+        *,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
+    ) -> AsyncIterator[ChatOrchestrationEvent]: ...
+
+
+class _RoundRobinOrchestratorLike(Protocol):
+    def stream(
+        self,
+        request: ChatOrchestrationRequest,
+        *,
+        cancel_token: ChatOrchestrationCancelToken | None = None,
+    ) -> AsyncIterator[ChatOrchestrationEvent]: ...
+
+
 @dataclass(frozen=True)
 class GroupChatDeps:
     """Dependencies required by GroupChatService."""
@@ -61,8 +80,8 @@ class GroupChatDeps:
     build_file_context_block: Callable[[list[dict[str, str]] | None], Awaitable[str]]
     build_group_runtime_assistant: Callable[[str], Awaitable[tuple[str, AssistantLike, str] | None]]
     resolve_group_settings: Callable[..., ResolvedGroupSettings]
-    create_committee_orchestrator: Callable[[], CommitteeOrchestrator]
-    create_round_robin_orchestrator: Callable[[], RoundRobinOrchestrator]
+    create_committee_orchestrator: Callable[[], _CommitteeOrchestratorLike]
+    create_round_robin_orchestrator: Callable[[], _RoundRobinOrchestratorLike]
     is_group_trace_enabled: Callable[[], bool]
     log_group_trace: Callable[[str, str, dict[str, object]], None]
     truncate_log_text: Callable[[str | None, int], str]

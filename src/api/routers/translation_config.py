@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.infrastructure.config.translation_config_service import TranslationConfigService
+from src.api.routers.service_protocols import ConfigSaveServiceLike
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/translation", tags=["translation"])
@@ -43,12 +44,12 @@ class TranslationConfigUpdate(BaseModel):
     provider: str | None = None
     model_id: str | None = None
     local_gguf_model_path: str | None = None
-    local_gguf_n_ctx: int | None = Field(None, ge=512, le=65536)
-    local_gguf_n_threads: int | None = Field(None, ge=0, le=256)
-    local_gguf_n_gpu_layers: int | None = Field(None, ge=0, le=1024)
-    local_gguf_max_tokens: int | None = Field(None, ge=64, le=16384)
-    temperature: float | None = Field(None, ge=0.0, le=2.0)
-    timeout_seconds: int | None = Field(None, ge=10, le=300)
+    local_gguf_n_ctx: int | None = Field(default=None, ge=512, le=65536)
+    local_gguf_n_threads: int | None = Field(default=None, ge=0, le=256)
+    local_gguf_n_gpu_layers: int | None = Field(default=None, ge=0, le=1024)
+    local_gguf_max_tokens: int | None = Field(default=None, ge=64, le=16384)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    timeout_seconds: int | None = Field(default=None, ge=10, le=300)
     prompt_template: str | None = None
 
 
@@ -60,7 +61,7 @@ def get_translation_config_service() -> TranslationConfigService:
 
 # Endpoints
 @router.get("/config", response_model=TranslationConfigResponse)
-async def get_config(service: TranslationConfigService = Depends(get_translation_config_service)):
+async def get_config(service: ConfigSaveServiceLike = Depends(get_translation_config_service)):
     """Get current translation configuration"""
     try:
         config = service.config
@@ -87,7 +88,7 @@ async def get_config(service: TranslationConfigService = Depends(get_translation
 @router.put("/config")
 async def update_config(
     updates: TranslationConfigUpdate,
-    service: TranslationConfigService = Depends(get_translation_config_service),
+    service: ConfigSaveServiceLike = Depends(get_translation_config_service),
 ):
     """Update translation configuration"""
     try:

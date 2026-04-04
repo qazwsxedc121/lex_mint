@@ -8,7 +8,6 @@ from typing import Protocol
 from src.domain.models.project_config import FileContent
 from src.infrastructure.config.file_reference_config_service import (
     FileReferenceConfig,
-    FileReferenceConfigService,
 )
 
 logger = logging.getLogger(__name__)
@@ -18,12 +17,18 @@ class ProjectFileReader(Protocol):
     async def read_file(self, project_id: str, relative_path: str) -> FileContent: ...
 
 
+class FileReferenceConfigServiceLike(Protocol):
+    config: FileReferenceConfig
+
+    def reload_config(self) -> None: ...
+
+
 class FileReferenceContextBuilder:
     """Render file references into bounded prompt-safe context blocks."""
 
     def __init__(
         self,
-        file_reference_config_service: FileReferenceConfigService,
+        file_reference_config_service: FileReferenceConfigServiceLike,
         project_service: ProjectFileReader,
     ):
         self.file_reference_config_service = file_reference_config_service

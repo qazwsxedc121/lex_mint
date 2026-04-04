@@ -6,8 +6,7 @@
     "check:workflow-schema": "node scripts/run_workflow_schema_generation.mjs --check",
     "pyright": "pyright",
     "pyright:orchestrator": "pyright src/api/services/service_contracts.py src/api/services/context_assembly_service.py src/api/services/chat_input_service.py src/api/services/post_turn_service.py src/api/services/single_chat_flow_service.py src/api/services/group_chat_service.py src/api/services/compare_flow_service.py src/api/services/agent_service_simple.py src/api/services/agent_service_bootstrap.py src/api/services/compression_service.py src/api/routers/chat.py",
-    "typecheck:write-baseline": "basedpyright --project pyrightconfig.json --baselinefile .basedpyright/baseline.json --writebaseline",
-    "typecheck": "basedpyright --project pyrightconfig.json --baselinefile .basedpyright/baseline.json"
+    "typecheck": "basedpyright --project pyrightconfig.json"
   },
   "devDependencies": {
     "basedpyright": "1.39.0",

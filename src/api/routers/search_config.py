@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.infrastructure.web.search_service import SearchService
+from src.api.routers.service_protocols import ConfigSaveServiceLike
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -27,8 +28,8 @@ class SearchConfigUpdate(BaseModel):
     """Request model for updating search configuration"""
 
     provider: str | None = None
-    max_results: int | None = Field(None, ge=1, le=20)
-    timeout_seconds: int | None = Field(None, ge=5, le=60)
+    max_results: int | None = Field(default=None, ge=1, le=20)
+    timeout_seconds: int | None = Field(default=None, ge=5, le=60)
 
 
 def get_search_service() -> SearchService:
@@ -45,7 +46,7 @@ def _validate_provider(provider: str | None) -> None:
 
 
 @router.get("/config", response_model=SearchConfigResponse)
-async def get_config(service: SearchService = Depends(get_search_service)):
+async def get_config(service: ConfigSaveServiceLike = Depends(get_search_service)):
     """Get current search configuration"""
     try:
         config = service.config
@@ -61,7 +62,7 @@ async def get_config(service: SearchService = Depends(get_search_service)):
 
 @router.put("/config")
 async def update_config(
-    updates: SearchConfigUpdate, service: SearchService = Depends(get_search_service)
+    updates: SearchConfigUpdate, service: ConfigSaveServiceLike = Depends(get_search_service)
 ):
     """Update search configuration"""
     try:

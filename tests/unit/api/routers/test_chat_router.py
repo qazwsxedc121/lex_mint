@@ -37,7 +37,10 @@ async def _async_iter(items: Iterable[Any]) -> AsyncIterator[Any]:
 
 class _FakeAgent:
     def __init__(self) -> None:
-        self.process_message_result = ("answer", [{"type": "search", "title": "Result"}])
+        self.process_message_result: tuple[str, list[dict[str, str]]] = (
+            "answer",
+            [{"type": "search", "title": "Result"}],
+        )
         self.process_message_error: Exception | None = None
         self.stream_items: list[Any] = []
         self.stream_error: Exception | None = None
@@ -63,9 +66,10 @@ class _FakeAgent:
             ("process_chat_stream", {"session_id": session_id, "message": message, **kwargs})
         )
         if self.stream_error is not None:
+            stream_error = self.stream_error
 
             async def _raiser():
-                raise self.stream_error
+                raise stream_error
                 yield  # pragma: no cover
 
             return _raiser()
@@ -93,9 +97,10 @@ class _FakeAgent:
     def compress_context_stream(self, **kwargs):
         self.calls.append(("compress_context_stream", kwargs))
         if self.compress_error is not None:
+            compress_error = self.compress_error
 
             async def _raiser():
-                raise self.compress_error
+                raise compress_error
                 yield  # pragma: no cover
 
             return _raiser()
@@ -109,9 +114,10 @@ class _FakeAgent:
             )
         )
         if self.compare_error is not None:
+            compare_error = self.compare_error
 
             async def _raiser():
-                raise self.compare_error
+                raise compare_error
                 yield  # pragma: no cover
 
             return _raiser()

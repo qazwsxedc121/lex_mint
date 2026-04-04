@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.application.chat.title_generation_service import TitleGenerationService
+from src.api.routers.service_protocols import TitleGenerationServiceLike
 from src.core.config import settings
 from src.infrastructure.storage.conversation_storage import (
     create_storage_with_project_resolver,
@@ -35,11 +36,11 @@ class TitleGenerationConfigUpdate(BaseModel):
     """Request model for updating title generation configuration"""
 
     enabled: bool | None = None
-    trigger_threshold: int | None = Field(None, ge=1, le=10)
+    trigger_threshold: int | None = Field(default=None, ge=1, le=10)
     model_id: str | None = None
     prompt_template: str | None = None
-    max_context_rounds: int | None = Field(None, ge=1, le=10)
-    timeout_seconds: int | None = Field(None, ge=5, le=60)
+    max_context_rounds: int | None = Field(default=None, ge=1, le=10)
+    timeout_seconds: int | None = Field(default=None, ge=5, le=60)
 
 
 class ManualGenerateRequest(BaseModel):
@@ -57,7 +58,7 @@ def get_title_service() -> TitleGenerationService:
 
 # Endpoints
 @router.get("/config", response_model=TitleGenerationConfigResponse)
-async def get_config(service: TitleGenerationService = Depends(get_title_service)):
+async def get_config(service: TitleGenerationServiceLike = Depends(get_title_service)):
     """Get current title generation configuration"""
     try:
         config = service.config
@@ -77,7 +78,7 @@ async def get_config(service: TitleGenerationService = Depends(get_title_service
 @router.put("/config")
 async def update_config(
     updates: TitleGenerationConfigUpdate,
-    service: TitleGenerationService = Depends(get_title_service),
+    service: TitleGenerationServiceLike = Depends(get_title_service),
 ):
     """Update title generation configuration"""
     try:
@@ -100,7 +101,7 @@ async def update_config(
 
 @router.post("/generate")
 async def generate_title(
-    request: ManualGenerateRequest, service: TitleGenerationService = Depends(get_title_service)
+    request: ManualGenerateRequest, service: TitleGenerationServiceLike = Depends(get_title_service)
 ):
     """Manually trigger title generation for a session"""
     try:

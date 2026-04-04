@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import operator
 from collections.abc import Callable
 
 from pydantic import BaseModel, Field
@@ -32,16 +31,19 @@ TOOL = ToolDefinition(
 )
 
 
-_SAFE_OPERATORS: dict[type[ast.operator] | type[ast.unaryop], Callable[..., float]] = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.FloorDiv: operator.floordiv,
-    ast.Mod: operator.mod,
-    ast.Pow: operator.pow,
-    ast.USub: operator.neg,
-    ast.UAdd: operator.pos,
+_SAFE_BINARY_OPERATORS: dict[type[ast.operator], Callable[[float, float], float]] = {
+    ast.Add: lambda left, right: left + right,
+    ast.Sub: lambda left, right: left - right,
+    ast.Mult: lambda left, right: left * right,
+    ast.Div: lambda left, right: left / right,
+    ast.FloorDiv: lambda left, right: left // right,
+    ast.Mod: lambda left, right: left % right,
+    ast.Pow: lambda left, right: left**right,
+}
+
+_SAFE_UNARY_OPERATORS: dict[type[ast.unaryop], Callable[[float], float]] = {
+    ast.USub: lambda value: -value,
+    ast.UAdd: lambda value: value,
 }
 
 
@@ -51,14 +53,14 @@ def _safe_eval_expr(node: ast.AST) -> float:
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return float(node.value)
     if isinstance(node, ast.BinOp):
-        op_func = _SAFE_OPERATORS.get(type(node.op))
+        op_func = _SAFE_BINARY_OPERATORS.get(type(node.op))
         if op_func is None:
             raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
         left = _safe_eval_expr(node.left)
         right = _safe_eval_expr(node.right)
         return float(op_func(left, right))
     if isinstance(node, ast.UnaryOp):
-        op_func = _SAFE_OPERATORS.get(type(node.op))
+        op_func = _SAFE_UNARY_OPERATORS.get(type(node.op))
         if op_func is None:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
         return float(op_func(_safe_eval_expr(node.operand)))

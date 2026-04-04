@@ -10,6 +10,7 @@ from src.application.chat.request_contexts import (
     EditorContext,
     SearchOptions,
     SingleChatRequestContext,
+    ToolResolutionContext,
     UserInputPayload,
 )
 from src.application.chat.service_contracts import ContextPayload
@@ -281,7 +282,7 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
 
     tools, executor = await service._resolve_tools(
-        request=SimpleNamespace(
+        request=ToolResolutionContext(
             assistant_id=None,
             assistant_obj=None,
             model_id="provider:model-a",

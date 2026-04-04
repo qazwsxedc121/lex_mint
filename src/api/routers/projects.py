@@ -71,7 +71,7 @@ async def list_projects():
     try:
         service = get_project_service()
         projects = await service.get_projects()
-        return projects
+        return [Project.model_validate(project) for project in projects]
     except Exception as e:
         logger.error(f"Error listing projects: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -82,7 +82,7 @@ async def list_browse_roots():
     """List allowed root directories for server-side project selection."""
     try:
         service = get_project_service()
-        return service.list_browse_roots()
+        return [DirectoryEntry.model_validate(entry) for entry in service.list_browse_roots()]
     except Exception as e:
         logger.error(f"Error listing browse roots: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -93,7 +93,7 @@ async def list_directories(path: str = Query(..., description="Absolute director
     """List child directories for a server-side path."""
     try:
         service = get_project_service()
-        return service.list_directories(path)
+        return [DirectoryEntry.model_validate(entry) for entry in service.list_directories(path)]
     except ValueError as e:
         logger.error(f"Validation error listing directories: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -107,7 +107,9 @@ async def create_browse_directory(directory_data: BrowseDirectoryCreate):
     """Create a new directory under an allowed server-side browse path."""
     try:
         service = get_project_service()
-        return service.create_browse_directory(directory_data.parent_path, directory_data.name)
+        return DirectoryEntry.model_validate(
+            service.create_browse_directory(directory_data.parent_path, directory_data.name)
+        )
     except ValueError as e:
         logger.error(f"Validation error creating browse directory: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -146,7 +148,7 @@ async def create_project(project_data: ProjectCreate):
 
         # Add to storage
         created = await service.add_project(project)
-        return created
+        return Project.model_validate(created)
     except ValueError as e:
         logger.error(f"Validation error creating project: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -173,7 +175,7 @@ async def get_project(project_id: str):
         project = await service.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-        return project
+        return Project.model_validate(project)
     except HTTPException:
         raise
     except Exception as e:
@@ -210,7 +212,7 @@ async def update_project(project_id: str, update_data: ProjectUpdate):
         if updated is None:
             raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
 
-        return updated
+        return Project.model_validate(updated)
     except HTTPException:
         raise
     except ValueError as e:
@@ -248,7 +250,7 @@ async def get_workspace_state(project_id: str):
     """Return the project-local workspace state stored under .lex_mint/state/."""
     try:
         service = get_project_workspace_state_service()
-        return await service.get_workspace_state(project_id)
+        return ProjectWorkspaceState.model_validate(await service.get_workspace_state(project_id))
     except ValueError as e:
         logger.error(f"Validation error reading workspace state for project {project_id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -262,7 +264,7 @@ async def add_workspace_state_item(project_id: str, item: ProjectWorkspaceItemUp
     """Add or update one recent workspace item for a project."""
     try:
         service = get_project_workspace_state_service()
-        return await service.upsert_recent_item(project_id, item)
+        return ProjectWorkspaceState.model_validate(await service.upsert_recent_item(project_id, item))
     except ValueError as e:
         logger.error(f"Validation error updating workspace state for project {project_id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -291,7 +293,7 @@ async def get_file_tree(
     try:
         service = get_project_service()
         tree = await service.get_file_tree(project_id, path)
-        return tree
+        return FileNode.model_validate(tree)
     except ValueError as e:
         logger.error(f"Validation error getting file tree: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -319,7 +321,7 @@ async def read_file(
     try:
         service = get_project_service()
         content = await service.read_file(project_id, path)
-        return content
+        return FileContent.model_validate(content)
     except ValueError as e:
         logger.error(f"Validation error reading file: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -347,7 +349,7 @@ async def create_file(project_id: str, file_data: FileCreate):
         content = await service.create_file(
             project_id, file_data.path, file_data.content, file_data.encoding
         )
-        return content
+        return FileContent.model_validate(content)
     except ValueError as e:
         logger.error(f"Validation error creating file: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -373,7 +375,7 @@ async def create_directory(project_id: str, directory_data: DirectoryCreate):
     try:
         service = get_project_service()
         node = await service.create_directory(project_id, directory_data.path)
-        return node
+        return FileNode.model_validate(node)
     except ValueError as e:
         logger.error(f"Validation error creating directory: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -405,7 +407,7 @@ async def write_file(project_id: str, file_data: FileWrite):
             file_data.encoding,
             file_data.expected_hash,
         )
-        return content
+        return FileContent.model_validate(content)
     except ProjectConflictError as e:
         raise HTTPException(
             status_code=409,
@@ -482,7 +484,7 @@ async def rename_path(project_id: str, rename_data: FileRename):
         result = await service.rename_path(
             project_id, rename_data.source_path, rename_data.target_path
         )
-        return result
+        return FileRenameResult.model_validate(result)
     except ValueError as e:
         logger.error(f"Validation error renaming path: {e}")
         raise HTTPException(status_code=400, detail=str(e))

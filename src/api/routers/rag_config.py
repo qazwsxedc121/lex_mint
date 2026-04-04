@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.routers.service_protocols import FlatConfigServiceLike
 from src.infrastructure.config.rag_config_service import RagConfigService
 
 logger = logging.getLogger(__name__)
@@ -88,52 +89,52 @@ class RagConfigUpdate(BaseModel):
     embedding_local_model: str | None = None
     embedding_local_device: str | None = None
     embedding_local_gguf_model_path: str | None = None
-    embedding_local_gguf_n_ctx: int | None = Field(None, ge=256, le=65536)
-    embedding_local_gguf_n_threads: int | None = Field(None, ge=0, le=256)
-    embedding_local_gguf_n_gpu_layers: int | None = Field(None, ge=0, le=1024)
+    embedding_local_gguf_n_ctx: int | None = Field(default=None, ge=256, le=65536)
+    embedding_local_gguf_n_threads: int | None = Field(default=None, ge=0, le=256)
+    embedding_local_gguf_n_gpu_layers: int | None = Field(default=None, ge=0, le=1024)
     embedding_local_gguf_normalize: bool | None = None
-    embedding_batch_size: int | None = Field(None, ge=1, le=1000)
-    embedding_batch_delay_seconds: float | None = Field(None, ge=0.0, le=60.0)
-    embedding_batch_max_retries: int | None = Field(None, ge=0, le=20)
-    chunk_size: int | None = Field(None, ge=100, le=10000)
-    chunk_overlap: int | None = Field(None, ge=0, le=5000)
+    embedding_batch_size: int | None = Field(default=None, ge=1, le=1000)
+    embedding_batch_delay_seconds: float | None = Field(default=None, ge=0.0, le=60.0)
+    embedding_batch_max_retries: int | None = Field(default=None, ge=0, le=20)
+    chunk_size: int | None = Field(default=None, ge=100, le=10000)
+    chunk_overlap: int | None = Field(default=None, ge=0, le=5000)
     retrieval_mode: Literal["vector", "bm25", "hybrid"] | None = None
-    top_k: int | None = Field(None, ge=1, le=50)
-    score_threshold: float | None = Field(None, ge=0.0, le=1.0)
-    recall_k: int | None = Field(None, ge=1, le=200)
-    vector_recall_k: int | None = Field(None, ge=1, le=500)
-    bm25_recall_k: int | None = Field(None, ge=1, le=500)
-    bm25_min_term_coverage: float | None = Field(None, ge=0.0, le=1.0)
-    fusion_top_k: int | None = Field(None, ge=1, le=500)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    recall_k: int | None = Field(default=None, ge=1, le=200)
+    vector_recall_k: int | None = Field(default=None, ge=1, le=500)
+    bm25_recall_k: int | None = Field(default=None, ge=1, le=500)
+    bm25_min_term_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
+    fusion_top_k: int | None = Field(default=None, ge=1, le=500)
     fusion_strategy: Literal["rrf"] | None = None
-    rrf_k: int | None = Field(None, ge=1, le=500)
-    vector_weight: float | None = Field(None, ge=0.0, le=10.0)
-    bm25_weight: float | None = Field(None, ge=0.0, le=10.0)
-    max_per_doc: int | None = Field(None, ge=0, le=20)
+    rrf_k: int | None = Field(default=None, ge=1, le=500)
+    vector_weight: float | None = Field(default=None, ge=0.0, le=10.0)
+    bm25_weight: float | None = Field(default=None, ge=0.0, le=10.0)
+    max_per_doc: int | None = Field(default=None, ge=0, le=20)
     reorder_strategy: Literal["none", "long_context"] | None = None
-    context_neighbor_window: int | None = Field(None, ge=0, le=10)
-    context_neighbor_max_total: int | None = Field(None, ge=0, le=200)
-    context_neighbor_dedup_coverage: float | None = Field(None, ge=0.5, le=1.0)
+    context_neighbor_window: int | None = Field(default=None, ge=0, le=10)
+    context_neighbor_max_total: int | None = Field(default=None, ge=0, le=200)
+    context_neighbor_dedup_coverage: float | None = Field(default=None, ge=0.5, le=1.0)
     retrieval_query_planner_enabled: bool | None = None
     retrieval_query_planner_model_id: str | None = None
-    retrieval_query_planner_max_queries: int | None = Field(None, ge=1, le=8)
-    retrieval_query_planner_timeout_seconds: int | None = Field(None, ge=1, le=30)
+    retrieval_query_planner_max_queries: int | None = Field(default=None, ge=1, le=8)
+    retrieval_query_planner_timeout_seconds: int | None = Field(default=None, ge=1, le=30)
     structured_source_context_enabled: bool | None = None
     query_transform_enabled: bool | None = None
     query_transform_mode: Literal["none", "rewrite"] | None = None
     query_transform_model_id: str | None = None
-    query_transform_timeout_seconds: int | None = Field(None, ge=1, le=30)
+    query_transform_timeout_seconds: int | None = Field(default=None, ge=1, le=30)
     query_transform_guard_enabled: bool | None = None
-    query_transform_guard_max_new_terms: int | None = Field(None, ge=0, le=20)
+    query_transform_guard_max_new_terms: int | None = Field(default=None, ge=0, le=20)
     query_transform_crag_enabled: bool | None = None
-    query_transform_crag_lower_threshold: float | None = Field(None, ge=0.0, le=1.0)
-    query_transform_crag_upper_threshold: float | None = Field(None, ge=0.0, le=1.0)
+    query_transform_crag_lower_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    query_transform_crag_upper_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     rerank_enabled: bool | None = None
     rerank_api_model: str | None = None
     rerank_api_base_url: str | None = None
     rerank_api_key: str | None = None
-    rerank_timeout_seconds: int | None = Field(None, ge=1, le=120)
-    rerank_weight: float | None = Field(None, ge=0.0, le=1.0)
+    rerank_timeout_seconds: int | None = Field(default=None, ge=1, le=120)
+    rerank_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     vector_store_backend: Literal["sqlite_vec", "chroma"] | None = None
     vector_sqlite_path: str | None = None
     persist_directory: str | None = None
@@ -146,7 +147,7 @@ def get_rag_config_service() -> RagConfigService:
 
 
 @router.get("/config", response_model=RagConfigResponse)
-async def get_config(service: RagConfigService = Depends(get_rag_config_service)):
+async def get_config(service: FlatConfigServiceLike = Depends(get_rag_config_service)):
     """Get current RAG configuration"""
     try:
         flat = service.get_flat_config()
@@ -158,7 +159,7 @@ async def get_config(service: RagConfigService = Depends(get_rag_config_service)
 
 @router.put("/config")
 async def update_config(
-    updates: RagConfigUpdate, service: RagConfigService = Depends(get_rag_config_service)
+    updates: RagConfigUpdate, service: FlatConfigServiceLike = Depends(get_rag_config_service)
 ):
     """Update RAG configuration"""
     try:

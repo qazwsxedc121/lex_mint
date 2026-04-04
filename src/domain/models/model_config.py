@@ -171,17 +171,17 @@ class ProviderCreate(BaseModel):
 class ProviderUpdate(BaseModel):
     """更新提供商请求"""
 
-    name: str | None = Field(None, description="提供商显示名称")
-    protocol: ApiProtocol | None = Field(None, description="API 协议类型")
-    call_mode: CallMode | None = Field(None, description="调用模式")
-    base_url: str | None = Field(None, description="API 基础 URL")
-    endpoint_profile_id: str | None = Field(None, description="endpoint 配置 ID")
-    enabled: bool | None = Field(None, description="是否启用")
+    name: str | None = Field(default=None, description="提供商显示名称")
+    protocol: ApiProtocol | None = Field(default=None, description="API 协议类型")
+    call_mode: CallMode | None = Field(default=None, description="调用模式")
+    base_url: str | None = Field(default=None, description="API 基础 URL")
+    endpoint_profile_id: str | None = Field(default=None, description="endpoint 配置 ID")
+    enabled: bool | None = Field(default=None, description="是否启用")
     api_key: str | None = Field(
         None, min_length=1, description="API 密钥（可选，不提供则保持不变）"
     )
-    default_capabilities: ModelCapabilities | None = Field(None, description="默认模型能力")
-    auto_append_path: bool | None = Field(None, description="是否自动拼接路径")
+    default_capabilities: ModelCapabilities | None = Field(default=None, description="默认模型能力")
+    auto_append_path: bool | None = Field(default=None, description="是否自动拼接路径")
 
 
 class ProviderApiKeyUpdate(BaseModel):

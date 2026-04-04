@@ -2,34 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
 
 from src.application.chat.file_reference_context_builder import FileReferenceContextBuilder
-
-
-@dataclass
-class _FileContent:
-    content: str
+from src.domain.models.project_config import FileContent
+from src.infrastructure.config.file_reference_config_service import FileReferenceConfig
 
 
 class _ConfigService:
     def __init__(self, *, fail: bool = False):
         self.fail = fail
-        self.config = type(
-            "Cfg",
-            (),
-            {
-                "ui_preview_max_chars": 100,
-                "ui_preview_max_lines": 10,
-                "injection_preview_max_chars": 30,
-                "injection_preview_max_lines": 3,
-                "chunk_size": 20,
-                "max_chunks": 3,
-                "total_budget_chars": 450,
-            },
-        )()
+        self.config = FileReferenceConfig(
+            ui_preview_max_chars=100,
+            ui_preview_max_lines=10,
+            injection_preview_max_chars=30,
+            injection_preview_max_lines=3,
+            chunk_size=20,
+            max_chunks=3,
+            total_budget_chars=450,
+        )
 
     def reload_config(self) -> None:
         if self.fail:
@@ -41,10 +32,10 @@ class _ProjectService:
         self.content = content
         self.fail = fail
 
-    async def read_file(self, project_id: str, relative_path: str) -> _FileContent:
+    async def read_file(self, project_id: str, relative_path: str) -> FileContent:
         if self.fail:
             raise RuntimeError("cannot read")
-        return _FileContent(content=self.content)
+        return FileContent(path=relative_path, content=self.content, size=len(self.content))
 
 
 def test_select_chunk_indexes_and_abbreviate():

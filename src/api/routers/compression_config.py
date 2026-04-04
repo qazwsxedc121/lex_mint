@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.routers.service_protocols import ConfigSaveServiceLike
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 
 logger = logging.getLogger(__name__)
@@ -53,27 +54,27 @@ class CompressionConfigUpdate(BaseModel):
     provider: str | None = None
     model_id: str | None = None
     local_gguf_model_path: str | None = None
-    local_gguf_n_ctx: int | None = Field(None, ge=512, le=65536)
-    local_gguf_n_threads: int | None = Field(None, ge=0, le=256)
-    local_gguf_n_gpu_layers: int | None = Field(None, ge=0, le=1024)
-    local_gguf_max_tokens: int | None = Field(None, ge=64, le=16384)
-    temperature: float | None = Field(None, ge=0.0, le=2.0)
-    min_messages: int | None = Field(None, ge=1, le=50)
-    timeout_seconds: int | None = Field(None, ge=10, le=300)
+    local_gguf_n_ctx: int | None = Field(default=None, ge=512, le=65536)
+    local_gguf_n_threads: int | None = Field(default=None, ge=0, le=256)
+    local_gguf_n_gpu_layers: int | None = Field(default=None, ge=0, le=1024)
+    local_gguf_max_tokens: int | None = Field(default=None, ge=64, le=16384)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    min_messages: int | None = Field(default=None, ge=1, le=50)
+    timeout_seconds: int | None = Field(default=None, ge=10, le=300)
     prompt_template: str | None = None
     compression_output_language: str | None = None
     compression_strategy: Literal["single_pass", "hierarchical"] | None = None
-    hierarchical_chunk_target_tokens: int | None = Field(None, ge=0, le=8192)
-    hierarchical_chunk_overlap_messages: int | None = Field(None, ge=0, le=20)
-    hierarchical_reduce_target_tokens: int | None = Field(None, ge=0, le=16384)
-    hierarchical_reduce_overlap_items: int | None = Field(None, ge=0, le=10)
-    hierarchical_max_levels: int | None = Field(None, ge=1, le=8)
+    hierarchical_chunk_target_tokens: int | None = Field(default=None, ge=0, le=8192)
+    hierarchical_chunk_overlap_messages: int | None = Field(default=None, ge=0, le=20)
+    hierarchical_reduce_target_tokens: int | None = Field(default=None, ge=0, le=16384)
+    hierarchical_reduce_overlap_items: int | None = Field(default=None, ge=0, le=10)
+    hierarchical_max_levels: int | None = Field(default=None, ge=1, le=8)
     quality_guard_enabled: bool | None = None
-    quality_guard_min_coverage: float | None = Field(None, ge=0.5, le=1.0)
-    quality_guard_max_facts: int | None = Field(None, ge=5, le=100)
+    quality_guard_min_coverage: float | None = Field(default=None, ge=0.5, le=1.0)
+    quality_guard_max_facts: int | None = Field(default=None, ge=5, le=100)
     compression_metrics_enabled: bool | None = None
     auto_compress_enabled: bool | None = None
-    auto_compress_threshold: float | None = Field(None, ge=0.1, le=0.9)
+    auto_compress_threshold: float | None = Field(default=None, ge=0.1, le=0.9)
 
 
 # Dependency
@@ -84,7 +85,7 @@ def get_compression_config_service() -> CompressionConfigService:
 
 # Endpoints
 @router.get("/config", response_model=CompressionConfigResponse)
-async def get_config(service: CompressionConfigService = Depends(get_compression_config_service)):
+async def get_config(service: ConfigSaveServiceLike = Depends(get_compression_config_service)):
     """Get current compression configuration"""
     try:
         config = service.config
@@ -122,7 +123,7 @@ async def get_config(service: CompressionConfigService = Depends(get_compression
 @router.put("/config")
 async def update_config(
     updates: CompressionConfigUpdate,
-    service: CompressionConfigService = Depends(get_compression_config_service),
+    service: ConfigSaveServiceLike = Depends(get_compression_config_service),
 ):
     """Update compression configuration"""
     try:

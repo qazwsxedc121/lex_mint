@@ -112,7 +112,7 @@ def build_chat_application_service(
     single_chat_flow_service: Any,
     compare_flow_service: Any,
     group_chat_service: Any,
-    session_command_service: ChatSessionCommandService,
+    session_command_service: ChatSessionCommandService | None = None,
 ) -> ChatApplicationService:
     """Build the application-facing chat entry service."""
     return ChatApplicationService(

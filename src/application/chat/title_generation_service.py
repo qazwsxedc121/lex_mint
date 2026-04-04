@@ -8,6 +8,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol
 
 import yaml
 
@@ -21,9 +22,19 @@ from src.infrastructure.config.yaml_config_utils import (
     load_layered_yaml_section,
     save_yaml_section_updates,
 )
-from src.infrastructure.storage.conversation_storage import ConversationStorage
-
 logger = logging.getLogger(__name__)
+
+
+class ConversationTitleStorageLike(Protocol):
+    async def get_session(self, session_id: str) -> dict[str, Any] | None: ...
+
+    async def update_session_metadata(
+        self,
+        session_id: str,
+        metadata_updates: dict[str, Any],
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> None: ...
 
 
 def _response_content_to_text(content: object) -> str:
@@ -58,7 +69,7 @@ class TitleGenerationConfig:
 class TitleGenerationService:
     """Service for automatic title generation"""
 
-    def __init__(self, storage: ConversationStorage, config_path: str | None = None):
+    def __init__(self, storage: ConversationTitleStorageLike, config_path: str | None = None):
         self.storage = storage
         self.defaults_path: Path | None = config_defaults_dir() / "title_generation_config.yaml"
 

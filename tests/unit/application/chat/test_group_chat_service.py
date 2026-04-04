@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -16,6 +17,8 @@ from src.application.chat.request_contexts import (
     SearchOptions,
     UserInputPayload,
 )
+from src.application.chat.service_contracts import SupportsModelDump
+from src.domain.models.assistant_config import Assistant
 
 
 class _FakeChatInputService:
@@ -53,7 +56,7 @@ class _FakeSearchService:
             raise RuntimeError("search failed")
         return [_SearchSource(url=f"https://example.com/{query}")]
 
-    def build_search_context(self, query: str, sources: list[_SearchSource]):
+    def build_search_context(self, query: str, sources: Sequence[SupportsModelDump]):
         return f"context:{query}:{len(sources)}"
 
 
@@ -61,7 +64,8 @@ class _FakeRoundRobinOrchestrator:
     def __init__(self):
         self.requests: list[Any] = []
 
-    async def stream(self, request):
+    async def stream(self, request, *, cancel_token=None):
+        _ = cancel_token
         self.requests.append(request)
         yield {"type": "assistant_chunk", "content": "reply"}
         yield {"type": "group_done", "mode": "round_robin", "rounds": 1}
@@ -71,7 +75,8 @@ class _FakeCommitteeOrchestrator:
     def __init__(self):
         self.requests: list[Any] = []
 
-    async def stream(self, request):
+    async def stream(self, request, *, cancel_token=None):
+        _ = cancel_token
         self.requests.append(request)
         yield {"type": "assistant_chunk", "content": "committee"}
         yield {"type": "group_done", "mode": "committee", "rounds": 1}
@@ -89,7 +94,16 @@ def _make_service(*, search_fail: bool = False, trace_enabled: bool = False):
     async def _build_group_runtime_assistant(token: str):
         if token == "missing":
             return None
-        return (token, {"id": token}, token.upper())
+        return (
+            token,
+            Assistant(
+                id=token,
+                name=token.upper(),
+                model_id="provider:model",
+                icon=None,
+            ),
+            token.upper(),
+        )
 
     def _resolve_group_settings(**kwargs):
         mode = kwargs["group_mode"]

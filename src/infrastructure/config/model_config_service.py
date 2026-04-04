@@ -31,6 +31,7 @@ from src.providers import (
 )
 from src.providers.model_capability_rules import infer_capability_overrides
 from src.providers.types import ProviderConfig
+from src.providers.types import ProviderDefinition
 
 from .model_config_repository import ModelConfigRepository
 from .model_runtime_service import ModelRuntimeService
@@ -341,7 +342,7 @@ class ModelConfigService:
         return changed
 
     def _sync_single_builtin_provider_entry(
-        self, provider_entry: dict[str, Any], definition: ProviderConfig
+        self, provider_entry: dict[str, Any], definition: ProviderDefinition
     ) -> bool:
         changed = False
         current_base_url = self._normalize_url(provider_entry.get("base_url"))
@@ -540,7 +541,7 @@ class ModelConfigService:
         await self._get_repository().save_keys_config(keys_data)
 
     @staticmethod
-    def _normalize_url(value: str) -> str:
+    def _normalize_url(value: Any) -> str:
         return str(value or "").strip().rstrip("/")
 
     @classmethod

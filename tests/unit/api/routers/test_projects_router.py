@@ -33,15 +33,15 @@ class _ProjectService:
 
     def list_browse_roots(self):
         self._maybe_raise()
-        return [{"path": "/tmp", "name": "tmp", "is_directory": True}]
+        return [{"path": "/tmp", "name": "tmp", "is_dir": True}]
 
     def list_directories(self, path: str):
         self._maybe_raise()
-        return [{"path": path, "name": "child", "is_directory": True}]
+        return [{"path": path, "name": "child", "is_dir": True}]
 
     def create_browse_directory(self, parent_path: str, name: str):
         self._maybe_raise()
-        return {"path": f"{parent_path}/{name}", "name": name, "is_directory": True}
+        return {"path": f"{parent_path}/{name}", "name": name, "is_dir": True}
 
     async def add_project(self, project):
         self._maybe_raise()
@@ -65,11 +65,16 @@ class _ProjectService:
 
     async def read_file(self, project_id: str, path: str):
         self._maybe_raise()
-        return {"path": path, "content": "hello", "encoding": "utf-8"}
+        return {"path": path, "content": "hello", "encoding": "utf-8", "size": 5}
 
     async def create_file(self, project_id: str, path: str, content: str, encoding: str | None):
         self._maybe_raise()
-        return {"path": path, "content": content, "encoding": encoding or "utf-8"}
+        return {
+            "path": path,
+            "content": content,
+            "encoding": encoding or "utf-8",
+            "size": len(content),
+        }
 
     async def create_directory(self, project_id: str, path: str):
         self._maybe_raise()
@@ -88,15 +93,16 @@ class _ProjectService:
             "path": path,
             "content": content,
             "encoding": encoding or "utf-8",
-            "hash": expected_hash,
+            "content_hash": expected_hash,
+            "size": len(content),
         }
 
     async def rename_path(self, project_id: str, source_path: str, target_path: str):
         self._maybe_raise()
         return {
-            "source_path": source_path,
-            "target_path": target_path,
-            "updated_paths": [target_path],
+            "old_path": source_path,
+            "new_path": target_path,
+            "type": "file",
         }
 
     async def delete_file(self, project_id: str, path: str):
@@ -146,14 +152,14 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
     )
 
     projects = await projects_router.list_projects()
-    assert projects[0]["id"] == "proj_123"
-    assert (await projects_router.list_browse_roots())[0]["name"] == "tmp"
-    assert (await projects_router.list_directories(path="/tmp"))[0]["path"] == "/tmp"
+    assert projects[0].id == "proj_123"
+    assert (await projects_router.list_browse_roots())[0].name == "tmp"
+    assert (await projects_router.list_directories(path="/tmp"))[0].path == "/tmp"
     assert (
         await projects_router.create_browse_directory(
             projects_router.BrowseDirectoryCreate(parent_path="/tmp", name="demo")
         )
-    )["name"] == "demo"
+    ).name == "demo"
 
     project_root = tmp_path / "demo_project"
     project_root.mkdir()
@@ -162,16 +168,16 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
     )
     assert created.id == "proj_abcdef123456"
 
-    assert (await projects_router.get_project("proj_123"))["id"] == "proj_123"
+    assert (await projects_router.get_project("proj_123")).id == "proj_123"
     assert (
         await projects_router.update_project(
             "proj_123", projects_router.ProjectUpdate(name="Updated")
         )
-    )["name"] == "Updated"
+    ).name == "Updated"
     await projects_router.delete_project("proj_123")
 
     workspace_state = await projects_router.get_workspace_state("proj_123")
-    assert workspace_state["project_id"] == "proj_123"
+    assert workspace_state.project_id == "proj_123"
     upserted = await projects_router.add_workspace_state_item(
         "proj_123",
         projects_router.ProjectWorkspaceItemUpsert(
@@ -181,22 +187,22 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
             path="src/app.py",
         ),
     )
-    assert upserted["recent_items"][0]["path"] == "src/app.py"
+    assert upserted.recent_items[0].path == "src/app.py"
 
     tree = await projects_router.get_file_tree("proj_123", path="src")
-    assert tree["path"] == "src"
+    assert tree.path == "src"
     file_content = await projects_router.read_file("proj_123", path="src/app.py")
-    assert file_content["content"] == "hello"
+    assert file_content.content == "hello"
     created_file = await projects_router.create_file(
         "proj_123",
         projects_router.FileCreate(path="src/new.py", content="print('x')"),
     )
-    assert created_file["path"] == "src/new.py"
+    assert created_file.path == "src/new.py"
     created_dir = await projects_router.create_directory(
         "proj_123",
         projects_router.DirectoryCreate(path="src/lib"),
     )
-    assert created_dir["type"] == "directory"
+    assert created_dir.type == "directory"
     written = await projects_router.write_file(
         "proj_123",
         projects_router.FileWrite(
@@ -205,7 +211,7 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
             expected_hash="0123456789abcdef",
         ),
     )
-    assert written["hash"] == "0123456789abcdef"
+    assert written.content_hash == "0123456789abcdef"
 
     applied = await projects_router.apply_chat_diff(
         "proj_123",
@@ -217,7 +223,7 @@ async def test_projects_router_success_paths(monkeypatch, tmp_path):
         "proj_123",
         projects_router.FileRename(source_path="src/app.py", target_path="src/main.py"),
     )
-    assert renamed["target_path"] == "src/main.py"
+    assert renamed.new_path == "src/main.py"
     await projects_router.delete_file("proj_123", path="src/main.py")
     await projects_router.delete_directory("proj_123", path="src/lib", recursive=True)
 

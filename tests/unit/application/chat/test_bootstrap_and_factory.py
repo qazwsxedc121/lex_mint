@@ -3,22 +3,17 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 from src.application.chat import bootstrap, factory
 
 
 def test_factory_builders_only_pass_non_none_optional_dependencies(monkeypatch):
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(factory, "SingleChatFlowDeps", lambda **kwargs: kwargs)
-    monkeypatch.setattr(factory, "SingleChatFlowService", lambda deps: ("single", deps))
-    monkeypatch.setattr(factory, "CompareFlowDeps", lambda **kwargs: kwargs)
-    monkeypatch.setattr(factory, "CompareFlowService", lambda deps: ("compare", deps))
-    monkeypatch.setattr(factory, "ChatApplicationDeps", lambda **kwargs: kwargs)
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(
         factory,
         "ChatApplicationService",
-        lambda deps: captured.setdefault("chat", deps) or ("chat", deps),
+        lambda deps: captured.setdefault("chat", deps) or SimpleNamespace(),
     )
 
     single = factory.build_single_chat_flow_service(
@@ -32,8 +27,8 @@ def test_factory_builders_only_pass_non_none_optional_dependencies(monkeypatch):
         build_file_context_block="file_block",
         model_service_factory="model_factory",
     )
-    assert single[1]["model_service_factory"] == "model_factory"
-    assert "compression_service_factory" not in single[1]
+    assert single.deps.model_service_factory == "model_factory"
+    assert callable(single.deps.compression_service_factory)
 
     compare = factory.build_compare_flow_service(
         storage="storage",
@@ -43,21 +38,22 @@ def test_factory_builders_only_pass_non_none_optional_dependencies(monkeypatch):
         prepare_context="prepare",
         build_file_context_block="file_block",
     )
-    assert compare[1]["comparison_storage"] == "comparison_storage"
+    assert compare.deps.comparison_storage == "comparison_storage"
 
     chat = factory.build_chat_application_service(
         storage="storage",
         single_chat_flow_service="single",
         compare_flow_service="compare",
         group_chat_service="group",
-        session_command_service="session_cmd",
+        session_command_service=None,
     )
-    assert chat["single_chat_flow_service"] == "single"
-    assert chat["group_chat_service"] == "group"
+    chat_deps = captured["chat"]
+    assert chat_deps.single_chat_flow_service == "single"
+    assert chat_deps.group_chat_service == "group"
 
 
 def test_bootstrap_helpers_and_builder(monkeypatch):
-    records: dict[str, object] = {}
+    records: dict[str, Any] = {}
 
     monkeypatch.setenv("LEX_MINT_GROUP_TRACE", "true")
     assert bootstrap._is_group_trace_enabled() is True
@@ -181,7 +177,8 @@ def test_bootstrap_helpers_and_builder(monkeypatch):
     monkeypatch.setattr(
         bootstrap,
         "build_chat_application_service",
-        lambda **kwargs: records.setdefault("chat_application", kwargs) or {"service": kwargs},
+        lambda **kwargs: records.setdefault("chat_application", kwargs)
+        or SimpleNamespace(**kwargs),
     )
     monkeypatch.setattr(
         bootstrap,
@@ -202,10 +199,10 @@ def test_bootstrap_helpers_and_builder(monkeypatch):
     monkeypatch.setattr(bootstrap, "WebToolService", lambda: "web_tool_service")
     monkeypatch.setattr(bootstrap, "get_tool_registry", lambda: "tool_registry")
 
-    service = bootstrap.build_default_chat_application_service(storage="storage")
+    _ = bootstrap.build_default_chat_application_service(storage="storage")
 
-    assert service["single_chat_flow_service"] == records["single_flow"]
-    assert service["compare_flow_service"] == records["compare_flow"]
+    assert records["chat_application"]["single_chat_flow_service"] == records["single_flow"]
+    assert records["chat_application"]["compare_flow_service"] == records["compare_flow"]
     assert records["single_flow"]["tool_registry_getter"] is bootstrap.get_tool_registry
     assert (
         records["group_orchestration_support"]["build_rag_context_and_sources"]

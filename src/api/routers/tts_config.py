@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.infrastructure.config.tts_config_service import TTSConfigService
+from src.api.routers.service_protocols import ConfigSaveServiceLike
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tts", tags=["tts"])
@@ -36,7 +37,7 @@ class TTSConfigUpdate(BaseModel):
     voice_zh: str | None = None
     rate: str | None = None
     volume: str | None = None
-    max_text_length: int | None = Field(None, ge=100, le=100000)
+    max_text_length: int | None = Field(default=None, ge=100, le=100000)
 
 
 class VoiceInfo(BaseModel):
@@ -55,7 +56,7 @@ def get_tts_config_service() -> TTSConfigService:
 
 # Endpoints
 @router.get("/config", response_model=TTSConfigResponse)
-async def get_config(service: TTSConfigService = Depends(get_tts_config_service)):
+async def get_config(service: ConfigSaveServiceLike = Depends(get_tts_config_service)):
     """Get current TTS configuration"""
     try:
         config = service.config
@@ -74,7 +75,7 @@ async def get_config(service: TTSConfigService = Depends(get_tts_config_service)
 
 @router.put("/config")
 async def update_config(
-    updates: TTSConfigUpdate, service: TTSConfigService = Depends(get_tts_config_service)
+    updates: TTSConfigUpdate, service: ConfigSaveServiceLike = Depends(get_tts_config_service)
 ):
     """Update TTS configuration"""
     try:

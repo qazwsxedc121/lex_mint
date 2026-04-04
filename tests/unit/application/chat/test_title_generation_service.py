@@ -24,8 +24,15 @@ class _FakeStorage:
     async def get_session(self, session_id: str):
         return {"session_id": session_id, "state": {"messages": list(self.messages)}}
 
-    async def update_session_metadata(self, session_id: str, updates: dict[str, str]):
-        self.updated = (session_id, updates)
+    async def update_session_metadata(
+        self,
+        session_id: str,
+        metadata_updates: dict[str, str],
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ):
+        _ = context_type, project_id
+        self.updated = (session_id, metadata_updates)
 
 
 def test_response_content_to_text_variants():

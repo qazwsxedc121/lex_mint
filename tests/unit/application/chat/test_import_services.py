@@ -23,9 +23,9 @@ class _FakeStorage:
             ("set_messages", {"session_id": session_id, "messages": messages, **kwargs})
         )
 
-    async def update_session_metadata(self, session_id: str, metadata: dict[str, Any], **kwargs):
+    async def update_session_metadata(self, session_id: str, updates: dict[str, Any], **kwargs):
         self.calls.append(
-            ("update_metadata", {"session_id": session_id, "metadata": metadata, **kwargs})
+            ("update_metadata", {"session_id": session_id, "updates": updates, **kwargs})
         )
 
 

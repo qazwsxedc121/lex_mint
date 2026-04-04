@@ -6,13 +6,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.infrastructure.storage.conversation_storage import ConversationStorage
+from src.application.chat.service_contracts import ImportConversationStorageLike
 
 
 class MarkdownImportService:
     """Import a conversation from a Markdown file."""
 
-    def __init__(self, storage: ConversationStorage):
+    def __init__(self, storage: ImportConversationStorageLike):
         self.storage = storage
 
     async def import_markdown(

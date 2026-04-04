@@ -42,7 +42,7 @@ class _CompressionConfig:
 class _CompressionService:
     def __init__(self):
         self.config = _CompressionConfig()
-        self.saved: dict[str, Any] | None = None
+        self.saved: dict[str, Any] = {}
 
     def save_config(self, updates: dict[str, Any]) -> None:
         self.saved = updates
@@ -50,7 +50,7 @@ class _CompressionService:
 
 class _RagService:
     def __init__(self):
-        self.saved: dict[str, Any] | None = None
+        self.saved: dict[str, Any] = {}
         self.flat = {
             "embedding_provider": "api",
             "embedding_api_model": "text-embedding-3-small",
@@ -120,7 +120,7 @@ class _RagService:
 
 class _MemoryConfigService:
     def __init__(self):
-        self.saved: dict[str, Any] | None = None
+        self.saved: dict[str, Any] = {}
 
     def get_flat_config(self) -> dict[str, Any]:
         return {

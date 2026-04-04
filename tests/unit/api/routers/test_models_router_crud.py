@@ -156,7 +156,7 @@ async def test_provider_route_errors_and_probe_paths(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await models_router.update_provider(
             "missing",
-            ProviderUpdate(name="Updated"),
+            ProviderUpdate(name="Updated", api_key=None),
             service=service,  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 404
@@ -164,7 +164,7 @@ async def test_provider_route_errors_and_probe_paths(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await models_router.update_provider(
             "custom-provider",
-            ProviderUpdate(endpoint_profile_id="unknown-profile"),
+            ProviderUpdate(endpoint_profile_id="unknown-profile", api_key=None),
             service=service,  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 400

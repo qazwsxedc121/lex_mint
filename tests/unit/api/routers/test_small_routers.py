@@ -15,6 +15,7 @@ from src.api.routers import search_config as search_config_router
 from src.api.routers import title_generation as title_router
 from src.api.routers import tools as tools_router
 from src.api.routers import tts as tts_router
+from src.domain.models.tool_catalog import ToolCatalogResponse
 from src.infrastructure.config.folder_service import Folder
 
 
@@ -374,9 +375,9 @@ async def test_search_config_and_tools_router_paths(monkeypatch):
     monkeypatch.setattr(
         tools_router.ToolCatalogService,
         "build_catalog",
-        lambda: {"builtin_tools": [], "request_scoped_tools": []},
+        lambda: ToolCatalogResponse(groups=[], tools=[]),
     )
-    assert (await tools_router.get_tool_catalog())["builtin_tools"] == []
+    assert (await tools_router.get_tool_catalog()).tools == []
 
     monkeypatch.setattr(
         tools_router.ToolCatalogService,

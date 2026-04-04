@@ -226,7 +226,7 @@ class OrchestrationEngine:
             terminal_reason=terminal_reason,
             payload=payload,
         )
-        event = {
+        event: dict[str, Any] = {
             "type": event_type,
             "run_id": state.run_id,
             "terminal_reason": terminal_reason,
@@ -268,7 +268,7 @@ class OrchestrationEngine:
             terminal_status=terminal_status,
             terminal_reason=terminal_reason,
         )
-        event = {
+        event: dict[str, Any] = {
             "type": event_type,
             "run_id": state.run_id,
             "node_id": node.node_id,

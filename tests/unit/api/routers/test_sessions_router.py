@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -62,6 +63,15 @@ class _FakeStorage:
         self.calls.append(
             ("update_metadata", {"session_id": session_id, "updates": updates, **kwargs})
         )
+
+    async def _find_session_file(
+        self,
+        session_id: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> Path | None:
+        _ = session_id, context_type, project_id
+        return Path("session.md")
 
 
 class _FakeSessionService:

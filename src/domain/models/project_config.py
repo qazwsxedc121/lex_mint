@@ -121,14 +121,14 @@ class ProjectCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     root_path: str
-    description: str | None = Field(None, max_length=500)
+    description: str | None = Field(default=None, max_length=500)
     settings: ProjectSettings | None = None
 
 
 class ProjectUpdate(BaseModel):
     """Request model for updating project."""
 
-    name: str | None = Field(None, min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     root_path: str | None = None
     description: str | None = None
     settings: ProjectSettings | None = None
@@ -140,9 +140,9 @@ class FileNode(BaseModel):
     name: str = Field(..., description="File/directory name")
     path: str = Field(..., description="Relative path from project root")
     type: str = Field(..., description="'file' or 'directory'")
-    size: int | None = Field(None, description="File size in bytes (files only)")
-    modified_at: str | None = Field(None, description="Last modified timestamp")
-    children: list["FileNode"] | None = Field(None, description="Child nodes (directories only)")
+    size: int | None = Field(default=None, description="File size in bytes (files only)")
+    modified_at: str | None = Field(default=None, description="Last modified timestamp")
+    children: list["FileNode"] | None = Field(default=None, description="Child nodes (directories only)")
 
 
 class FileContent(BaseModel):
@@ -153,7 +153,7 @@ class FileContent(BaseModel):
     content_hash: str | None = Field(default=None, description="SHA-256 hash of content")
     encoding: str = Field(default="utf-8", description="File encoding")
     size: int = Field(..., description="File size in bytes")
-    mime_type: str | None = Field(None, description="MIME type")
+    mime_type: str | None = Field(default=None, description="MIME type")
 
 
 class FileCreate(BaseModel):
@@ -191,8 +191,8 @@ class FileRenameResult(BaseModel):
     old_path: str = Field(..., description="Original relative path")
     new_path: str = Field(..., description="New relative path")
     type: str = Field(..., description="'file' or 'directory'")
-    size: int | None = Field(None, description="File size in bytes (files only)")
-    modified_at: str | None = Field(None, description="Last modified timestamp")
+    size: int | None = Field(default=None, description="File size in bytes (files only)")
+    modified_at: str | None = Field(default=None, description="Last modified timestamp")
 
 
 class DirectoryCreate(BaseModel):

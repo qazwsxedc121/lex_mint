@@ -1,6 +1,7 @@
 """Unit tests for API dependency providers."""
 
 from types import SimpleNamespace
+from typing import Any
 
 from src.api import dependencies
 
@@ -62,7 +63,7 @@ def test_dependency_getters_cache_instances(monkeypatch):
     monkeypatch.setattr(
         dependencies,
         "AssistantConfigService",
-        lambda **kwargs: assistant_calls.append(kwargs) or {"assistant": kwargs},
+        lambda **kwargs: assistant_calls.append(kwargs) or SimpleNamespace(**kwargs),
     )
     monkeypatch.setattr(
         dependencies, "ProjectService", lambda: project_calls.append("project") or "project-service"
@@ -71,36 +72,39 @@ def test_dependency_getters_cache_instances(monkeypatch):
         dependencies,
         "ProjectWorkspaceStateService",
         lambda project_service: (
-            workspace_calls.append(project_service) or {"workspace": project_service}
+            workspace_calls.append(project_service)
+            or SimpleNamespace(project_service=project_service)
         ),
     )
     monkeypatch.setattr(
         dependencies,
         "create_storage_with_project_resolver",
         lambda conversations_dir, **kwargs: (
-            storage_calls.append((conversations_dir, kwargs)) or {"storage": kwargs}
+            storage_calls.append((conversations_dir, kwargs))
+            or SimpleNamespace(**kwargs)
         ),
     )
     monkeypatch.setattr(
         dependencies,
         "FileService",
         lambda attachments_dir, max_size: (
-            file_calls.append((attachments_dir, max_size)) or {"file": (attachments_dir, max_size)}
+            file_calls.append((attachments_dir, max_size))
+            or SimpleNamespace(attachments_dir=attachments_dir, max_size=max_size)
         ),
     )
     monkeypatch.setattr(dependencies, "SessionApplicationDeps", lambda **kwargs: kwargs)
     monkeypatch.setattr(
         dependencies,
         "SessionApplicationService",
-        lambda deps: session_calls.append(deps) or {"session": deps},
+        lambda deps: session_calls.append(deps) or SimpleNamespace(deps=deps),
     )
 
     assert dependencies.get_model_service() == "model-service"
     assert dependencies.get_model_service() == "model-service"
     assert model_calls == ["model"]
 
-    assistant_service = dependencies.get_assistant_service()
-    assert assistant_service["assistant"]["model_service"] == "model-service"
+    assistant_service: Any = dependencies.get_assistant_service()
+    assert assistant_service.model_service == "model-service"
     assert dependencies.get_assistant_service() is assistant_service
     assert len(assistant_calls) == 1
 
@@ -108,15 +112,15 @@ def test_dependency_getters_cache_instances(monkeypatch):
     assert dependencies.get_project_service() == "project-service"
     assert project_calls == ["project"]
 
-    workspace_service = dependencies.get_project_workspace_state_service()
-    assert workspace_service["workspace"] == "project-service"
+    workspace_service: Any = dependencies.get_project_workspace_state_service()
+    assert workspace_service.project_service == "project-service"
     assert dependencies.get_project_workspace_state_service() is workspace_service
     assert workspace_calls == ["project-service"]
 
-    storage = dependencies.get_storage()
-    assert storage["storage"]["project_service"] == "project-service"
-    assert storage["storage"]["assistant_service"] is assistant_service
-    assert storage["storage"]["model_service"] == "model-service"
+    storage: Any = dependencies.get_storage()
+    assert storage.project_service == "project-service"
+    assert storage.assistant_service is assistant_service
+    assert storage.model_service == "model-service"
     assert dependencies.get_storage() is storage
     assert storage_calls == [
         (
@@ -129,15 +133,15 @@ def test_dependency_getters_cache_instances(monkeypatch):
         )
     ]
 
-    file_service = dependencies.get_file_service()
-    assert file_service["file"] == ("/tmp/attachments", 16)
+    file_service: Any = dependencies.get_file_service()
+    assert (file_service.attachments_dir, file_service.max_size) == ("/tmp/attachments", 16)
     assert dependencies.get_file_service() is file_service
     assert file_calls == [("/tmp/attachments", 16)]
 
-    session_service = dependencies.get_session_application_service()
-    assert session_service["session"]["storage"] is storage
-    assert session_service["session"]["assistant_service"] is assistant_service
-    assert session_service["session"]["model_service"] == "model-service"
-    assert session_service["session"]["file_service"] is file_service
+    session_service: Any = dependencies.get_session_application_service()
+    assert session_service.deps["storage"] is storage
+    assert session_service.deps["assistant_service"] is assistant_service
+    assert session_service.deps["model_service"] == "model-service"
+    assert session_service.deps["file_service"] is file_service
     assert dependencies.get_session_application_service() is session_service
     assert len(session_calls) == 1

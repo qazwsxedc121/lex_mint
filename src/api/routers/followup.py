@@ -15,6 +15,7 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
+from src.api.routers.service_protocols import FollowupServiceLike, SessionStorageLike
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/followup", tags=["followup"])
@@ -40,10 +41,10 @@ class FollowupConfigUpdate(BaseModel):
     """Request model for updating follow-up configuration"""
 
     enabled: bool | None = None
-    count: int | None = Field(None, ge=0, le=5)
+    count: int | None = Field(default=None, ge=0, le=5)
     model_id: str | None = None
-    max_context_rounds: int | None = Field(None, ge=1, le=10)
-    timeout_seconds: int | None = Field(None, ge=5, le=60)
+    max_context_rounds: int | None = Field(default=None, ge=1, le=10)
+    timeout_seconds: int | None = Field(default=None, ge=5, le=60)
     prompt_template: str | None = None
 
 
@@ -55,7 +56,7 @@ def get_followup_service() -> FollowupService:
 
 # Endpoints
 @router.get("/config", response_model=FollowupConfigResponse)
-async def get_config(service: FollowupService = Depends(get_followup_service)):
+async def get_config(service: FollowupServiceLike = Depends(get_followup_service)):
     """Get current follow-up configuration"""
     try:
         config = service.config
@@ -74,7 +75,7 @@ async def get_config(service: FollowupService = Depends(get_followup_service)):
 
 @router.put("/config")
 async def update_config(
-    updates: FollowupConfigUpdate, service: FollowupService = Depends(get_followup_service)
+    updates: FollowupConfigUpdate, service: FollowupServiceLike = Depends(get_followup_service)
 ):
     """Update follow-up configuration"""
     try:
@@ -100,8 +101,8 @@ async def generate_followups(
     session_id: str = Query(..., description="Session ID"),
     context_type: str = Query("chat", description="Session context"),
     project_id: str | None = Query(None, description="Project ID"),
-    service: FollowupService = Depends(get_followup_service),
-    storage: ConversationStorage = Depends(get_storage),
+    service: FollowupServiceLike = Depends(get_followup_service),
+    storage: SessionStorageLike = Depends(get_storage),
 ):
     """Generate follow-up questions for an existing session on demand."""
     try:

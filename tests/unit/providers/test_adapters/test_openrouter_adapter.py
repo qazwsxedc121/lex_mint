@@ -35,6 +35,8 @@ def test_create_llm_uses_interleaved_wrapper_when_required(monkeypatch):
             self.kwargs = kwargs
 
     class FakeChatOpenRouterInterleaved(FakeChatOpenRouter):
+        _requires_interleaved_thinking = False
+
         pass
 
     monkeypatch.setattr(

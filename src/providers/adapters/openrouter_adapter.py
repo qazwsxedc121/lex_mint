@@ -7,7 +7,7 @@ Adapter for OpenRouter API with provider-native reasoning controls.
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Any
 
 from .openai_adapter import OpenAIAdapter
 from .reasoning_openai import inject_tool_call_reasoning_content
@@ -17,30 +17,35 @@ logger = logging.getLogger(__name__)
 try:  # pragma: no cover - optional dependency in CI
     from langchain_openrouter import ChatOpenRouter
 except Exception:  # pragma: no cover - fallback keeps app usable without extra package
-    ChatOpenRouter = cast(Any, None)  # type: ignore[misc]
+    ChatOpenRouter = None
 
 
-if ChatOpenRouter is not None:
+class _ChatOpenRouterFallback:
+    """Type-safe fallback base when langchain-openrouter is unavailable."""
 
-    class ChatOpenRouterInterleaved(ChatOpenRouter):
-        """ChatOpenRouter wrapper with conditional interleaved payload patching."""
 
-        def _get_request_payload(
-            self,
-            input_: Any,
-            *,
-            stop: list[str] | None = None,
-            **kwargs: Any,
-        ) -> dict:
-            payload = cast(Any, super())._get_request_payload(input_, stop=stop, **kwargs)
-            source_messages = self._convert_input(input_).to_messages()
-            return inject_tool_call_reasoning_content(
-                payload,
-                source_messages=source_messages,
-                enabled=bool(getattr(self, "_requires_interleaved_thinking", False)),
-            )
-else:
-    ChatOpenRouterInterleaved = cast(Any, None)  # type: ignore[misc]
+_ChatOpenRouterBase: type[Any] = ChatOpenRouter or _ChatOpenRouterFallback
+
+
+class ChatOpenRouterInterleaved(_ChatOpenRouterBase):
+    """ChatOpenRouter wrapper with conditional interleaved payload patching."""
+
+    _requires_interleaved_thinking: bool = False
+
+    def _get_request_payload(
+        self,
+        input_: Any,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        source_messages = self._convert_input(input_).to_messages()
+        return inject_tool_call_reasoning_content(
+            payload,
+            source_messages=source_messages,
+            enabled=bool(getattr(self, "_requires_interleaved_thinking", False)),
+        )
 
 
 class OpenRouterAdapter(OpenAIAdapter):
@@ -149,11 +154,9 @@ class OpenRouterAdapter(OpenAIAdapter):
             llm_kwargs["model_kwargs"] = model_kwargs
 
         requires_interleaved = bool(kwargs.get("requires_interleaved_thinking", False))
-        llm_cls = (
-            ChatOpenRouterInterleaved
-            if requires_interleaved and ChatOpenRouterInterleaved is not None
-            else ChatOpenRouter
-        )
+        llm_cls = ChatOpenRouterInterleaved if requires_interleaved else ChatOpenRouter
+        if llm_cls is None:
+            raise RuntimeError("langchain-openrouter is not installed")
         llm = llm_cls(**llm_kwargs)
         if requires_interleaved:
             object.__setattr__(llm, "_requires_interleaved_thinking", True)

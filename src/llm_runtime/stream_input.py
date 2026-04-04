@@ -131,7 +131,7 @@ def _log_context_filtering(
     *,
     original_count: int,
     filtered_count: int,
-    summary_content: str,
+    summary_content: str | None,
 ) -> None:
     if filtered_count >= original_count:
         return

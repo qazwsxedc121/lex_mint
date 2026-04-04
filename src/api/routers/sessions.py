@@ -8,7 +8,7 @@ import zipfile
 from typing import Any, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -17,6 +17,12 @@ from src.application.chat.chatgpt_import_service import ChatGPTImportService
 from src.application.chat.markdown_import_service import MarkdownImportService
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.storage.conversation_storage import ConversationStorage
+from src.api.routers.service_protocols import (
+    ConversationImportStorageLike,
+    ConversationQueryStorageLike,
+    SessionApplicationServiceLike,
+    UploadFileLike,
+)
 
 from ..dependencies import get_session_application_service as get_shared_session_application_service
 from ..dependencies import get_storage as get_shared_storage
@@ -109,7 +115,7 @@ async def create_session(
     request: CreateSessionRequest | None = None,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Create a new conversation session.
 
@@ -164,7 +170,7 @@ async def create_session(
 async def list_sessions(
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    storage: ConversationQueryStorageLike = Depends(get_storage),
 ):
     """List all conversation sessions.
 
@@ -207,7 +213,7 @@ async def search_sessions(
     q: str = Query(""),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    storage: ConversationQueryStorageLike = Depends(get_storage),
 ):
     """Search sessions by title and message content.
 
@@ -234,7 +240,7 @@ async def get_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    storage: ConversationQueryStorageLike = Depends(get_storage),
 ):
     """Get a specific conversation session with full history.
 
@@ -295,7 +301,7 @@ async def delete_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Delete a conversation session.
 
@@ -337,7 +343,7 @@ async def save_temporary_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Convert a temporary session to a permanent one.
 
@@ -379,7 +385,7 @@ async def update_session_model(
     request: UpdateModelRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """更新会话使用的模型.
 
@@ -425,7 +431,7 @@ async def update_session_assistant(
     request: UpdateAssistantRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """更新会话使用的助手.
 
@@ -471,7 +477,7 @@ async def update_session_target(
     request: UpdateTargetRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Update session chat target (assistant or model)."""
     if context_type == "project" and not project_id:
@@ -520,7 +526,7 @@ async def update_group_assistants(
     request: UpdateGroupAssistantsRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Update the group assistants list for a session.
 
@@ -562,7 +568,7 @@ async def get_group_settings(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Read structured group settings with effective runtime values."""
     if context_type == "project" and not project_id:
@@ -586,7 +592,7 @@ async def update_group_settings(
     request: UpdateGroupSettingsRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Update group_mode/group_assistants/group_settings for one session."""
     if context_type == "project" and not project_id:
@@ -613,7 +619,7 @@ async def update_session_title(
     request: UpdateTitleRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """更新会话标题.
 
@@ -658,7 +664,7 @@ async def update_param_overrides(
     request: UpdateParamOverridesRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Update per-session parameter overrides.
 
@@ -702,7 +708,7 @@ async def branch_session(
     request: BranchSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Branch a session from a specific message.
 
@@ -748,7 +754,7 @@ async def duplicate_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """复制会话.
 
@@ -791,7 +797,7 @@ async def move_session(
     request: TransferSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Move a session between chat/projects context."""
     if context_type == "project" and not project_id:
@@ -834,7 +840,7 @@ async def copy_session(
     request: TransferSessionRequest,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """Copy a session between chat/projects context."""
     if context_type == "project" and not project_id:
@@ -917,7 +923,7 @@ async def export_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    storage: ConversationQueryStorageLike = Depends(get_storage),
 ):
     """Export a conversation session as a clean Markdown file.
 
@@ -967,10 +973,10 @@ async def export_session(
 
 @router.post("/import/chatgpt", response_model=ImportChatGPTResponse)
 async def import_chatgpt_conversations(
-    file: UploadFile = File(...),
+    file: UploadFileLike = File(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    storage: ConversationImportStorageLike = Depends(get_storage),
 ):
     """Import ChatGPT conversations from exported conversations.json."""
     if context_type == "project" and not project_id:
@@ -1027,10 +1033,10 @@ async def import_chatgpt_conversations(
 
 @router.post("/import/markdown", response_model=ImportChatGPTResponse)
 async def import_markdown_conversation(
-    file: UploadFile = File(...),
+    file: UploadFileLike = File(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    storage: ConversationStorage = Depends(get_storage),
+    storage: ConversationImportStorageLike = Depends(get_storage),
 ):
     """Import a Markdown conversation file."""
     if context_type == "project" and not project_id:
@@ -1059,7 +1065,7 @@ async def update_session_folder(
     request: dict = Body(...),
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
-    session_service: SessionApplicationService = Depends(get_session_application_service),
+    session_service: SessionApplicationServiceLike = Depends(get_session_application_service),
 ):
     """
     Update session's folder assignment.

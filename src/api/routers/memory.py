@@ -8,6 +8,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.api.routers.service_protocols import FlatConfigServiceLike, MemoryServiceLike
 from src.infrastructure.config.memory_config_service import MemoryConfigService
 from src.infrastructure.memory.memory_service import MemoryService
 
@@ -97,7 +98,7 @@ def get_memory_service() -> MemoryService:
 
 @router.get("/settings", response_model=MemorySettingsResponse)
 async def get_memory_settings(
-    service: MemoryConfigService = Depends(get_memory_config_service),
+    service: FlatConfigServiceLike = Depends(get_memory_config_service),
 ):
     try:
         return MemorySettingsResponse(**service.get_flat_config())
@@ -109,7 +110,7 @@ async def get_memory_settings(
 @router.put("/settings")
 async def update_memory_settings(
     updates: MemorySettingsUpdate,
-    service: MemoryConfigService = Depends(get_memory_config_service),
+    service: FlatConfigServiceLike = Depends(get_memory_config_service),
 ):
     try:
         data = updates.model_dump(exclude_none=True)
@@ -133,7 +134,7 @@ async def list_memories(
     layer: str | None = None,
     include_inactive: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryServiceLike = Depends(get_memory_service),
 ):
     try:
         items = service.list_memories(
@@ -155,7 +156,7 @@ async def list_memories(
 @router.post("")
 async def create_memory(
     request: MemoryCreateRequest,
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryServiceLike = Depends(get_memory_service),
 ):
     try:
         item = service.upsert_memory(
@@ -182,7 +183,7 @@ async def create_memory(
 async def update_memory(
     memory_id: str,
     request: MemoryUpdateRequest,
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryServiceLike = Depends(get_memory_service),
 ):
     try:
         updates = request.model_dump(exclude_none=True)
@@ -205,7 +206,7 @@ async def update_memory(
 @router.delete("/{memory_id}")
 async def delete_memory(
     memory_id: str,
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryServiceLike = Depends(get_memory_service),
 ):
     try:
         service.delete_memory(memory_id)
@@ -218,7 +219,7 @@ async def delete_memory(
 @router.post("/search")
 async def search_memory(
     request: MemorySearchRequest,
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryServiceLike = Depends(get_memory_service),
 ):
     try:
         if request.scope:

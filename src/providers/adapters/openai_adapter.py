@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 class ChatOpenAIInterleaved(ChatReasoningOpenAI):
     """ChatReasoningOpenAI wrapper with conditional interleaved payload patching."""
 
+    _requires_interleaved_thinking: bool = False
+
     def _get_request_payload(
         self,
         input_: Any,

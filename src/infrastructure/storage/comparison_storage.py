@@ -7,19 +7,26 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import aiofiles
 
-from src.infrastructure.storage.conversation_storage import ConversationStorage
-
 logger = logging.getLogger(__name__)
+
+
+class _SessionFileResolverLike(Protocol):
+    async def _find_session_file(
+        self,
+        session_id: str,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> Path | None: ...
 
 
 class ComparisonStorage:
     """Manages sidecar .compare.json files for multi-model comparison data."""
 
-    def __init__(self, conversation_storage: ConversationStorage):
+    def __init__(self, conversation_storage: _SessionFileResolverLike):
         self._conversation_storage = conversation_storage
         self._file_locks: dict[str, asyncio.Lock] = {}
 

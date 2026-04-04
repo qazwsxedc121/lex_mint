@@ -28,6 +28,9 @@ class AssistantLike(Protocol):
     def name(self) -> str: ...
 
     @property
+    def icon(self) -> str | None: ...
+
+    @property
     def model_id(self) -> str: ...
 
     @property
@@ -74,6 +77,35 @@ class SessionStorageLike(Protocol):
         context_type: str = "chat",
         project_id: str | None = None,
     ) -> dict[str, Any]: ...
+
+
+class ImportConversationStorageLike(Protocol):
+    """Conversation storage APIs consumed by import services."""
+
+    async def create_session(
+        self,
+        *,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> str: ...
+
+    async def set_messages(
+        self,
+        session_id: str,
+        messages: list[MessagePayload],
+        *,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> None: ...
+
+    async def update_session_metadata(
+        self,
+        session_id: str,
+        updates: dict[str, Any],
+        *,
+        context_type: str = "chat",
+        project_id: str | None = None,
+    ) -> None: ...
 
 
 class MemoryContextServiceLike(Protocol):

@@ -11,6 +11,7 @@ from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
+from src.api.routers.service_protocols import FolderServiceLike, FolderStorageLike
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def get_storage() -> ConversationStorage:
 
 
 @router.get("", response_model=list[Folder])
-async def list_folders(service: FolderService = Depends(get_folder_service)):
+async def list_folders(service: FolderServiceLike = Depends(get_folder_service)):
     """
     List all chat folders ordered by order field.
 
@@ -69,7 +70,7 @@ async def list_folders(service: FolderService = Depends(get_folder_service)):
 
 @router.post("", response_model=Folder, status_code=201)
 async def create_folder(
-    request: CreateFolderRequest, service: FolderService = Depends(get_folder_service)
+    request: CreateFolderRequest, service: FolderServiceLike = Depends(get_folder_service)
 ):
     """
     Create a new folder.
@@ -92,7 +93,7 @@ async def create_folder(
 async def update_folder(
     folder_id: str,
     request: UpdateFolderRequest,
-    service: FolderService = Depends(get_folder_service),
+    service: FolderServiceLike = Depends(get_folder_service),
 ):
     """
     Update folder name.
@@ -120,8 +121,8 @@ async def update_folder(
 @router.delete("/{folder_id}", status_code=204)
 async def delete_folder(
     folder_id: str,
-    service: FolderService = Depends(get_folder_service),
-    storage: ConversationStorage = Depends(get_storage),
+    service: FolderServiceLike = Depends(get_folder_service),
+    storage: FolderStorageLike = Depends(get_storage),
 ):
     """
     Delete a folder.
@@ -164,7 +165,7 @@ async def delete_folder(
 async def reorder_folder(
     folder_id: str,
     request: ReorderFolderRequest,
-    service: FolderService = Depends(get_folder_service),
+    service: FolderServiceLike = Depends(get_folder_service),
 ):
     """
     Reorder a folder to a new position.

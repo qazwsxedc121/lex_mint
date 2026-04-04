@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
+from src.api.routers.service_protocols import ConfigSaveServiceLike
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/file-reference", tags=["file-reference"])
@@ -26,13 +27,13 @@ class FileReferenceConfigResponse(BaseModel):
 class FileReferenceConfigUpdate(BaseModel):
     """Update payload for file reference configuration."""
 
-    ui_preview_max_chars: int | None = Field(None, ge=100, le=10000)
-    ui_preview_max_lines: int | None = Field(None, ge=1, le=300)
-    injection_preview_max_chars: int | None = Field(None, ge=100, le=5000)
-    injection_preview_max_lines: int | None = Field(None, ge=1, le=500)
-    chunk_size: int | None = Field(None, ge=200, le=20000)
-    max_chunks: int | None = Field(None, ge=1, le=50)
-    total_budget_chars: int | None = Field(None, ge=1000, le=500000)
+    ui_preview_max_chars: int | None = Field(default=None, ge=100, le=10000)
+    ui_preview_max_lines: int | None = Field(default=None, ge=1, le=300)
+    injection_preview_max_chars: int | None = Field(default=None, ge=100, le=5000)
+    injection_preview_max_lines: int | None = Field(default=None, ge=1, le=500)
+    chunk_size: int | None = Field(default=None, ge=200, le=20000)
+    max_chunks: int | None = Field(default=None, ge=1, le=50)
+    total_budget_chars: int | None = Field(default=None, ge=1000, le=500000)
 
 
 def get_file_reference_config_service() -> FileReferenceConfigService:
@@ -41,7 +42,7 @@ def get_file_reference_config_service() -> FileReferenceConfigService:
 
 @router.get("/config", response_model=FileReferenceConfigResponse)
 async def get_config(
-    service: FileReferenceConfigService = Depends(get_file_reference_config_service),
+    service: ConfigSaveServiceLike = Depends(get_file_reference_config_service),
 ):
     """Get current file reference configuration."""
     try:
@@ -63,7 +64,7 @@ async def get_config(
 @router.put("/config")
 async def update_config(
     updates: FileReferenceConfigUpdate,
-    service: FileReferenceConfigService = Depends(get_file_reference_config_service),
+    service: ConfigSaveServiceLike = Depends(get_file_reference_config_service),
 ):
     """Update file reference configuration."""
     try:
