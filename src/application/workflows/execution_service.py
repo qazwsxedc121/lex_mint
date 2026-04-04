@@ -499,6 +499,7 @@ class WorkflowExecutionService:
         node_id = str(runtime_event.get("node_id") or "")
         payload = self._runtime_payload(runtime_event)
         emitted_type = str(runtime_event.get("event_type") or "")
+        event: dict[str, Any]
 
         if emitted_type == "text_delta":
             event = {

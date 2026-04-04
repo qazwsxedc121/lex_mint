@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from src.application.chat.chat_runtime.turn_executor import CommitteeTurnExecutor
 from src.application.chat.chat_runtime.turn_context_builder import GroupTurnContext
+from src.application.chat.chat_runtime.turn_executor import CommitteeTurnExecutor
 from src.application.chat.request_contexts import (
     CommitteeExecutionContext,
     CommitteeMemberTurnContext,

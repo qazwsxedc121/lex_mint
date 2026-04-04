@@ -10,8 +10,8 @@ import edge_tts
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.infrastructure.config.tts_config_service import TTSConfigService
 from src.api.routers.service_protocols import ConfigSaveServiceLike
+from src.infrastructure.config.tts_config_service import TTSConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tts", tags=["tts"])

@@ -5,8 +5,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 from src.api.routers.service_protocols import ConfigSaveServiceLike
+from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/file-reference", tags=["file-reference"])

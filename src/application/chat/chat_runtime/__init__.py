@@ -22,8 +22,8 @@ from .compare_models import CompareModelsOrchestrator, CompareModelsSettings
 from .policy import CommitteePolicy
 from .round_robin import RoundRobinOrchestrator
 from .runtime import CommitteeRuntime
-from .single_direct import SingleDirectOrchestrator, SingleDirectSettings
 from .settings import GroupSettingsResolver, ResolvedCommitteeSettings, ResolvedGroupSettings
+from .single_direct import SingleDirectOrchestrator, SingleDirectSettings
 from .supervisor import CommitteeSupervisor
 from .terminal import build_compare_complete_event, build_group_done_event, cancellation_reason
 from .turn_executor import CommitteeTurnExecutor

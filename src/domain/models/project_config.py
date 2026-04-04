@@ -142,7 +142,9 @@ class FileNode(BaseModel):
     type: str = Field(..., description="'file' or 'directory'")
     size: int | None = Field(default=None, description="File size in bytes (files only)")
     modified_at: str | None = Field(default=None, description="Last modified timestamp")
-    children: list["FileNode"] | None = Field(default=None, description="Child nodes (directories only)")
+    children: list["FileNode"] | None = Field(
+        default=None, description="Child nodes (directories only)"
+    )
 
 
 class FileContent(BaseModel):

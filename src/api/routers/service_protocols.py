@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
 from pathlib import Path
+from typing import Any, Protocol
 
 from src.domain.models.assistant_config import Assistant
 from src.domain.models.prompt_template import PromptTemplate

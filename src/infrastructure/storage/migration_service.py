@@ -51,7 +51,9 @@ def _iter_project_files(project_dir: Path) -> list[Path]:
     return list(project_dir.glob("*.md")) + list(project_dir.glob("*.compare.json"))
 
 
-def _resolve_target_dir(project_id: str, project_map: dict[str, str], result: dict[str, int]) -> Path | None:
+def _resolve_target_dir(
+    project_id: str, project_map: dict[str, str], result: dict[str, int]
+) -> Path | None:
     root_path = project_map.get(project_id)
     if not root_path:
         logger.warning("Migration: project '%s' not found in config, skipping", project_id)
@@ -114,7 +116,9 @@ def _move_project_files(
     return migrated_count
 
 
-def _migrate_project_dir(proj_dir: Path, project_map: dict[str, str], result: dict[str, int]) -> None:
+def _migrate_project_dir(
+    proj_dir: Path, project_map: dict[str, str], result: dict[str, int]
+) -> None:
     target_dir = _resolve_target_dir(proj_dir.name, project_map, result)
     if target_dir is None:
         return
@@ -127,7 +131,9 @@ def _migrate_project_dir(proj_dir: Path, project_map: dict[str, str], result: di
     if not _ensure_target_dir(target_dir, result):
         return
 
-    result["migrated"] += _move_project_files(proj_dir.name, proj_dir, target_dir, files_to_move, result)
+    result["migrated"] += _move_project_files(
+        proj_dir.name, proj_dir, target_dir, files_to_move, result
+    )
 
 
 def migrate_project_conversations(conversations_dir: Path) -> dict[str, int]:

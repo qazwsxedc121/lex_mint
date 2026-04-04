@@ -14,6 +14,7 @@ from typing import (
     Any,
     Protocol,
     TypeVar,
+    cast,
 )
 from urllib.parse import urlparse
 
@@ -362,10 +363,9 @@ class LmStudioAdapter(BaseLLMAdapter):
         for method_name in required_methods:
             if not callable(getattr(chat_obj, method_name, None)):
                 raise TypeError(
-                    "LM Studio history object is missing required method: "
-                    f"{method_name}"
+                    f"LM Studio history object is missing required method: {method_name}"
                 )
-        return chat_obj
+        return cast(_ChatHistoryLike, chat_obj)
 
     @staticmethod
     def _tool_parameters_from_langchain(tool: BaseTool) -> dict[str, Any]:

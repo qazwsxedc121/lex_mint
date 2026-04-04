@@ -201,9 +201,8 @@ async def test_committee_orchestrator_speak_then_finish():
     assert _called_assistant_id(turn_calls[0]) == "a2"
     assert _called_instruction(turn_calls[0]) == "Focus on backend risks."
     assert _called_assistant_id(turn_calls[1]) == "a1"
-    assert (
-        "Committee orchestration is ending (reason: discussion_complete)."
-        in (_called_instruction(turn_calls[1]) or "")
+    assert "Committee orchestration is ending (reason: discussion_complete)." in (
+        _called_instruction(turn_calls[1]) or ""
     )
 
     assert events[-1] == {
@@ -275,9 +274,8 @@ async def test_committee_orchestrator_invalid_supervisor_output_uses_fallback():
     assert len(turn_calls) == 2
     assert _called_assistant_id(turn_calls[0]) == "a2"
     assert _called_assistant_id(turn_calls[1]) == "a1"
-    assert (
-        "Committee orchestration is ending (reason: max_rounds_reached)."
-        in (_called_instruction(turn_calls[1]) or "")
+    assert "Committee orchestration is ending (reason: max_rounds_reached)." in (
+        _called_instruction(turn_calls[1]) or ""
     )
 
     assert events[-1]["type"] == "group_done"

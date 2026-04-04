@@ -55,7 +55,9 @@ class _DefCollector(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
         self._visit_function(node, is_async=True)
 
-    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, *, is_async: bool) -> None:
+    def _visit_function(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, *, is_async: bool
+    ) -> None:
         kind = "async method" if self.class_stack and is_async else "method"
         if not self.class_stack:
             kind = "async function" if is_async else "function"
@@ -209,8 +211,12 @@ def _in_scope(path: Path, scope_root: Path | None) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Find src callables that appear used only in tests.")
-    parser.add_argument("--repo-root", default=".", help="Repository root path (default: current dir).")
+    parser = argparse.ArgumentParser(
+        description="Find src callables that appear used only in tests."
+    )
+    parser.add_argument(
+        "--repo-root", default=".", help="Repository root path (default: current dir)."
+    )
     parser.add_argument(
         "--scope",
         default=None,
@@ -340,9 +346,7 @@ def main() -> int:
 
     candidates.sort(key=lambda item: (-item[2], _rel(item[0].path, repo_root), item[0].lineno))
 
-    print(
-        "path\tline\tkind\tqualname\tname\tsrc_calls\ttest_calls\tdef_name_count"
-    )
+    print("path\tline\tkind\tqualname\tname\tsrc_calls\ttest_calls\tdef_name_count")
     for d, src_count, test_count, ambiguous_count in candidates:
         print(
             f"{_rel(d.path, repo_root)}\t{d.lineno}\t{d.kind}\t{d.qualname}\t{d.name}\t"

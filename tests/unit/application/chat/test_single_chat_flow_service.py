@@ -1,8 +1,8 @@
 """Unit tests for single-chat flow service extraction."""
 
 import asyncio
-
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -19,6 +19,8 @@ from src.application.chat.service_contracts import ContextPayload
 from src.application.chat.single_chat_flow_service import (
     SingleChatFlowDeps,
     SingleChatFlowService,
+    SingleChatResolvedTools,
+    SingleDirectOrchestrator,
 )
 from src.providers.types import CostInfo, TokenUsage
 
@@ -442,7 +444,7 @@ async def test_single_chat_flow_cancellation_saves_partial_response(monkeypatch)
             )
         ),
         build_file_context_block=lambda _refs: _return_async(""),
-        single_direct_orchestrator=_CancelledOrchestrator(),
+        single_direct_orchestrator=cast(SingleDirectOrchestrator, _CancelledOrchestrator()),
     )
     service = SingleChatFlowService(deps)
     monkeypatch.setattr(
@@ -596,7 +598,11 @@ async def test_maybe_auto_compress_returns_compressed_messages(monkeypatch):
         project_id=None,
     )
     assert messages == [{"role": "assistant", "content": "compressed"}]
-    assert event == {"type": "auto_compressed", "compressed_count": 4, "message_id": "compress-msg-1"}
+    assert event == {
+        "type": "auto_compressed",
+        "compressed_count": 4,
+        "message_id": "compress-msg-1",
+    }
 
 
 @pytest.mark.asyncio
@@ -646,7 +652,7 @@ async def test_combined_tool_executor_blocks_and_falls_back():
     async def _async_executor(_name, _args):
         return "async-result"
 
-    def _broken_executor(_name, _args):
+    async def _broken_executor(_name, _args):
         raise RuntimeError("boom")
 
     blocked_request = ToolResolutionContext(
@@ -657,7 +663,7 @@ async def test_combined_tool_executor_blocks_and_falls_back():
         editor=EditorContext(),
         use_web_search=False,
     )
-    resolved_tools = SimpleNamespace(
+    resolved_tools = SingleChatResolvedTools(
         allowed_tool_names={"allowed_tool"},
         tool_executors=[_broken_executor, _async_executor],
     )

@@ -9,8 +9,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.application.chat.title_generation_service import TitleGenerationService
 from src.api.routers.service_protocols import TitleGenerationServiceLike
+from src.application.chat.title_generation_service import TitleGenerationService
 from src.core.config import settings
 from src.infrastructure.storage.conversation_storage import (
     create_storage_with_project_resolver,

@@ -80,8 +80,7 @@ def test_dependency_getters_cache_instances(monkeypatch):
         dependencies,
         "create_storage_with_project_resolver",
         lambda conversations_dir, **kwargs: (
-            storage_calls.append((conversations_dir, kwargs))
-            or SimpleNamespace(**kwargs)
+            storage_calls.append((conversations_dir, kwargs)) or SimpleNamespace(**kwargs)
         ),
     )
     monkeypatch.setattr(

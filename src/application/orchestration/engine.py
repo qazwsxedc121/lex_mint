@@ -347,7 +347,7 @@ class OrchestrationEngine:
                 stream = node.actor.handler(execution_context)
 
                 async def _iterate_signals(
-                    active_stream: AsyncIterator[ActorSignal] = stream,
+                    active_stream: AsyncIterator[ActorSignal],
                 ) -> AsyncIterator[dict[str, Any]]:
                     nonlocal result
                     nonlocal emitted_runtime_events
@@ -374,13 +374,13 @@ class OrchestrationEngine:
                         )
 
                 if node.timeout_ms is None:
-                    async for event in _iterate_signals():
+                    async for event in _iterate_signals(stream):
                         yield event
                 else:
                     timeout_seconds = max(1, int(node.timeout_ms)) / 1000.0
                     try:
                         async with asyncio.timeout(timeout_seconds):
-                            async for event in _iterate_signals():
+                            async for event in _iterate_signals(stream):
                                 yield event
                     except TimeoutError as exc:
                         if str(exc):

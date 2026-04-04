@@ -1,4 +1,3 @@
-
 """Single-chat streaming flow orchestration."""
 
 from __future__ import annotations
@@ -810,11 +809,14 @@ class SingleChatFlowService:
         request: ToolResolutionContext,
         candidate_tools: list[Any],
     ) -> set[str]:
-        return await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
-            context_type=request.scope.context_type,
-            project_id=request.scope.project_id,
-            candidate_tool_names=[tool.name for tool in candidate_tools],
+        allowed_tool_names = (
+            await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
+                context_type=request.scope.context_type,
+                project_id=request.scope.project_id,
+                candidate_tool_names=[tool.name for tool in candidate_tools],
+            )
         )
+        return {str(tool_name) for tool_name in allowed_tool_names}
 
     @staticmethod
     def _apply_project_tool_policy(

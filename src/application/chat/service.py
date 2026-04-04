@@ -139,7 +139,7 @@ class ChatApplicationService:
         group_mode = session_data.get("group_mode", "round_robin")
         group_settings = session_data.get("group_settings")
         if isinstance(group_assistants, list) and len(group_assistants) >= 2:
-            request = GroupChatRequestContext(
+            group_request = GroupChatRequestContext(
                 scope=self._build_scope(
                     session_id=session_id,
                     context_type=context_type,
@@ -163,12 +163,12 @@ class ChatApplicationService:
                 ),
             )
             async for event in self._orchestration_gateway.stream_group(
-                request=request,
+                request=group_request,
             ):
                 yield event
             return
 
-        request = SingleChatRequestContext(
+        single_request = SingleChatRequestContext(
             scope=self._build_scope(
                 session_id=session_id,
                 context_type=context_type,
@@ -193,7 +193,7 @@ class ChatApplicationService:
             ),
         )
         async for event in self._orchestration_gateway.stream_single(
-            request=request,
+            request=single_request,
         ):
             yield event
 

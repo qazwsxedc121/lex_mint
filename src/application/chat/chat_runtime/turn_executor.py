@@ -383,7 +383,9 @@ class CommitteeTurnExecutor:
                     "final_system_prompt": self.truncate_log_text(
                         prompt_context.system_prompt, self.group_trace_preview_chars
                     ),
-                    "messages_preview": self.build_messages_preview_for_log(prompt_context.messages),
+                    "messages_preview": self.build_messages_preview_for_log(
+                        prompt_context.messages
+                    ),
                 },
             )
 

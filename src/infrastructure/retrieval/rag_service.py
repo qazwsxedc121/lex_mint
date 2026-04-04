@@ -587,11 +587,15 @@ class RagService:
                 "override_model": kb.embedding_model,
             }
             if vector_backend == "sqlite_vec":
-                cache_key = (str(kb.embedding_model).strip() if kb.embedding_model else "") or "__default__"
+                cache_key = (
+                    str(kb.embedding_model).strip() if kb.embedding_model else ""
+                ) or "__default__"
                 cached_embedding = query_embedding_cache.get((retrieval_query, cache_key))
                 if cached_embedding is not None:
                     vector_kwargs["query_embedding"] = cached_embedding
-            channel_jobs.append(("vector", asyncio.to_thread(self._search_collection, **vector_kwargs)))
+            channel_jobs.append(
+                ("vector", asyncio.to_thread(self._search_collection, **vector_kwargs))
+            )
 
         if retrieval_mode in {"bm25", "hybrid"}:
             channel_jobs.append(

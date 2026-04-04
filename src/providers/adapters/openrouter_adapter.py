@@ -15,16 +15,20 @@ from .reasoning_openai import inject_tool_call_reasoning_content
 logger = logging.getLogger(__name__)
 
 try:  # pragma: no cover - optional dependency in CI
-    from langchain_openrouter import ChatOpenRouter
+    import langchain_openrouter as _langchain_openrouter
 except Exception:  # pragma: no cover - fallback keeps app usable without extra package
-    ChatOpenRouter = None
+    ChatOpenRouter: type[Any] | None = None
+else:
+    ChatOpenRouter = getattr(_langchain_openrouter, "ChatOpenRouter", None)
 
 
 class _ChatOpenRouterFallback:
     """Type-safe fallback base when langchain-openrouter is unavailable."""
 
 
-_ChatOpenRouterBase: type[Any] = ChatOpenRouter or _ChatOpenRouterFallback
+_ChatOpenRouterBase: type[Any] = (
+    ChatOpenRouter if ChatOpenRouter is not None else _ChatOpenRouterFallback
+)
 
 
 class ChatOpenRouterInterleaved(_ChatOpenRouterBase):

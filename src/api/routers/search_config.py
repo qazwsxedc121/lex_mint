@@ -9,8 +9,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.infrastructure.web.search_service import SearchService
 from src.api.routers.service_protocols import ConfigSaveServiceLike
+from src.infrastructure.web.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])

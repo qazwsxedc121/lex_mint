@@ -9,8 +9,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.infrastructure.config.translation_config_service import TranslationConfigService
 from src.api.routers.service_protocols import ConfigSaveServiceLike
+from src.infrastructure.config.translation_config_service import TranslationConfigService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/translation", tags=["translation"])

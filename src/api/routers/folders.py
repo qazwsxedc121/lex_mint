@@ -5,13 +5,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from src.api.routers.service_protocols import FolderServiceLike, FolderStorageLike
 from src.core.config import settings
 from src.infrastructure.config.folder_service import Folder, FolderService
 from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.api.routers.service_protocols import FolderServiceLike, FolderStorageLike
 
 logger = logging.getLogger(__name__)
 

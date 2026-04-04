@@ -253,7 +253,9 @@ class ChatOrchestrationGateway:
     ) -> Callable[[ActorExecutionContext], AsyncIterator[ActorEmit | ActorResult]]:
         """Wrap one chat source iterator into an orchestration actor."""
 
-        async def _adapter_actor(_: ActorExecutionContext) -> AsyncIterator[ActorEmit | ActorResult]:
+        async def _adapter_actor(
+            _: ActorExecutionContext,
+        ) -> AsyncIterator[ActorEmit | ActorResult]:
             async for event in source_factory():
                 yield ActorEmit(event_type="chat_event", payload={"event": event})
             yield ActorResult(

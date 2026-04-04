@@ -30,8 +30,7 @@ from src.providers import (
     get_builtin_provider,
 )
 from src.providers.model_capability_rules import infer_capability_overrides
-from src.providers.types import ProviderConfig
-from src.providers.types import ProviderDefinition
+from src.providers.types import ProviderConfig, ProviderDefinition
 
 from .model_config_repository import ModelConfigRepository
 from .model_runtime_service import ModelRuntimeService
@@ -347,7 +346,9 @@ class ModelConfigService:
         changed = False
         current_base_url = self._normalize_url(provider_entry.get("base_url"))
 
-        for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(definition.id, {}).items():
+        for legacy_url, target_url in self._BUILTIN_BASE_URL_MIGRATIONS.get(
+            definition.id, {}
+        ).items():
             if current_base_url == self._normalize_url(legacy_url) and self._normalize_url(
                 definition.base_url
             ) == self._normalize_url(target_url):
@@ -362,7 +363,9 @@ class ModelConfigService:
             provider_entry["sdk_class"] = definition.sdk_class
             changed = True
 
-        profile_payload = [profile.model_dump(mode="json") for profile in definition.endpoint_profiles]
+        profile_payload = [
+            profile.model_dump(mode="json") for profile in definition.endpoint_profiles
+        ]
         if provider_entry.get("endpoint_profiles") != profile_payload:
             provider_entry["endpoint_profiles"] = profile_payload
             changed = True
@@ -407,7 +410,9 @@ class ModelConfigService:
             return True
         return False
 
-    def _sync_default_selection(self, data: dict[str, Any], providers: list[Any], models: list[Any]) -> bool:
+    def _sync_default_selection(
+        self, data: dict[str, Any], providers: list[Any], models: list[Any]
+    ) -> bool:
         changed = False
         normalized_default = self._normalize_default_payload(data.get("default"))
         default_provider = normalized_default["provider"]
@@ -476,7 +481,10 @@ class ModelConfigService:
             if not isinstance(model_caps, dict):
                 continue
 
-            if inferred.get("function_calling") is True and model_caps.get("function_calling") is False:
+            if (
+                inferred.get("function_calling") is True
+                and model_caps.get("function_calling") is False
+            ):
                 model_caps["function_calling"] = True
                 changed = True
             if inferred.get("reasoning") is True and model_caps.get("reasoning") is False:

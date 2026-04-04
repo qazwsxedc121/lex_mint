@@ -414,7 +414,9 @@ async def test_engine_resolve_next_node_uses_branch_result():
     events = [event async for event in engine.run_stream(spec)]
 
     decide_finished = next(
-        event for event in events if event["type"] == "node_finished" and event["node_id"] == "decide"
+        event
+        for event in events
+        if event["type"] == "node_finished" and event["node_id"] == "decide"
     )
     assert decide_finished["payload"] == {}
     assert decide_finished["node_id"] == "decide"
@@ -532,6 +534,4 @@ def test_engine_static_backoff_delay_and_reason_normalization():
         )
         == 1500
     )
-    assert (
-        OrchestrationEngine._normalize_reason("  ", fallback="failed") == "failed"
-    )
+    assert OrchestrationEngine._normalize_reason("  ", fallback="failed") == "failed"

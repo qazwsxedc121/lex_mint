@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from .service_contracts import AssistantLike, SourcePayload
 
@@ -170,10 +170,10 @@ class CommitteeExecutionContext:
             trace_id=request.trace_id,
         )
 
-    def with_updates(self, **changes: object) -> CommitteeExecutionContext:
+    def with_updates(self, **changes: Any) -> CommitteeExecutionContext:
         """Return a copy with selected execution fields updated."""
 
-        return replace(self, **changes)
+        return replace(self, **cast(Any, changes))
 
     def to_orchestration_request(
         self,

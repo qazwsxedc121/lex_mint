@@ -6,13 +6,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.routers.service_protocols import PromptTemplateConfigServiceLike
 from src.domain.models.prompt_template import (
     PromptTemplate,
     PromptTemplateCreate,
     PromptTemplateUpdate,
 )
 from src.infrastructure.config.prompt_template_service import PromptTemplateConfigService
-from src.api.routers.service_protocols import PromptTemplateConfigServiceLike
 
 router = APIRouter(prefix="/api/prompt-templates", tags=["prompt-templates"])
 

@@ -9,18 +9,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 from src.api.routers import sessions as sessions_router
 
 
-class _FakeUploadFile:
+class _FakeUploadFile(UploadFile):
     def __init__(self, filename: str, data: bytes):
-        self.filename = filename
-        self._data = data
-
-    async def read(self) -> bytes:
-        return self._data
+        super().__init__(file=io.BytesIO(data), filename=filename)
 
 
 class _FakeStorage:

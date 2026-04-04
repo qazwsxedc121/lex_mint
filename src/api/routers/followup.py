@@ -9,13 +9,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.api.routers.service_protocols import FollowupServiceLike, SessionStorageLike
 from src.application.chat.followup_service import FollowupService
 from src.core.config import settings
 from src.infrastructure.storage.conversation_storage import (
     ConversationStorage,
     create_storage_with_project_resolver,
 )
-from src.api.routers.service_protocols import FollowupServiceLike, SessionStorageLike
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/followup", tags=["followup"])

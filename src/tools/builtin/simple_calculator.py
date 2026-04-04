@@ -60,10 +60,10 @@ def _safe_eval_expr(node: ast.AST) -> float:
         right = _safe_eval_expr(node.right)
         return float(op_func(left, right))
     if isinstance(node, ast.UnaryOp):
-        op_func = _SAFE_UNARY_OPERATORS.get(type(node.op))
-        if op_func is None:
+        unary_op_func = _SAFE_UNARY_OPERATORS.get(type(node.op))
+        if unary_op_func is None:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
-        return float(op_func(_safe_eval_expr(node.operand)))
+        return float(unary_op_func(_safe_eval_expr(node.operand)))
     raise ValueError(f"Unsupported expression type: {type(node).__name__}")
 
 

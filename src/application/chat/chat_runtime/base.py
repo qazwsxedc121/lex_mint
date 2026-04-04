@@ -36,8 +36,8 @@ class ChatOrchestrationCancelToken:
 if TYPE_CHECKING:
     # Forward references keep runtime import graph light.
     from .compare_models import CompareModelsSettings
-    from .single_direct import SingleDirectSettings
     from .settings import ResolvedCommitteeSettings
+    from .single_direct import SingleDirectSettings
 
 
 ChatOrchestrationSettings = Union[

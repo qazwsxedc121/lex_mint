@@ -9,8 +9,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.infrastructure.web.webpage_service import WebpageService
 from src.api.routers.service_protocols import ConfigSaveServiceLike
+from src.infrastructure.web.webpage_service import WebpageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webpage", tags=["webpage"])

@@ -124,7 +124,9 @@ async def get_default_assistant_id(
 
 
 @router.get("/default/assistant", response_model=Assistant)
-async def get_default_assistant(service: AssistantConfigServiceLike = Depends(get_assistant_service)):
+async def get_default_assistant(
+    service: AssistantConfigServiceLike = Depends(get_assistant_service),
+):
     """Get default assistant details"""
     try:
         return await service.get_default_assistant()

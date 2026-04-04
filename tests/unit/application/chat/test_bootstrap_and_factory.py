@@ -40,7 +40,7 @@ def test_factory_builders_only_pass_non_none_optional_dependencies(monkeypatch):
     )
     assert compare.deps.comparison_storage == "comparison_storage"
 
-    chat = factory.build_chat_application_service(
+    _ = factory.build_chat_application_service(
         storage="storage",
         single_chat_flow_service="single",
         compare_flow_service="compare",
@@ -177,8 +177,9 @@ def test_bootstrap_helpers_and_builder(monkeypatch):
     monkeypatch.setattr(
         bootstrap,
         "build_chat_application_service",
-        lambda **kwargs: records.setdefault("chat_application", kwargs)
-        or SimpleNamespace(**kwargs),
+        lambda **kwargs: (
+            records.setdefault("chat_application", kwargs) or SimpleNamespace(**kwargs)
+        ),
     )
     monkeypatch.setattr(
         bootstrap,
