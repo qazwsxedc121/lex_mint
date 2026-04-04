@@ -8,7 +8,7 @@ describe('ContextUsageBar', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders usage summary and segment states', () => {
+  it('renders usage summary and truncation warning', () => {
     render(
       <ContextUsageBar
         promptTokens={750}
@@ -16,6 +16,7 @@ describe('ContextUsageBar', () => {
           context_budget: 1000,
           context_window: 2000,
           estimated_prompt_tokens: 700,
+          context_truncated: true,
           segments: [
             {
               name: 'system',
@@ -48,9 +49,6 @@ describe('ContextUsageBar', () => {
     );
 
     expect(screen.getByText('Context: 750 / 1,000 / 2,000 (75%)')).toBeInTheDocument();
-    expect(screen.getByText('system')).toBeInTheDocument();
-    expect(screen.getByText('kept')).toBeInTheDocument();
-    expect(screen.getByText('trimmed')).toBeInTheDocument();
-    expect(screen.getByText('budget')).toBeInTheDocument();
+    expect(document.querySelector('[data-name="context-usage-warning"]')).toBeInTheDocument();
   });
 });
