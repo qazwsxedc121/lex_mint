@@ -10,7 +10,9 @@ from src.llm_runtime import (
     _build_context_plan,
     _build_reasoning_decision_payload,
     _get_context_limit,
+    _is_context_plan_truncated,
     _truncate_by_rounds,
+    build_context_info_event,
     call_llm,
     call_llm_stream,
 )
@@ -255,6 +257,31 @@ def test_build_reasoning_decision_payload_contains_effective_adapter_args():
     assert payload["decision"]["thinking_enabled"] is True
     assert payload["adapter_args"]["reasoning_option"] == "high"
     assert payload["adapter_args"]["reasoning_effort"] == "high"
+
+
+def test_context_info_event_excludes_segments_and_includes_truncation_flag():
+    plan = _build_context_plan(
+        messages=[{"role": "user", "content": "hello"}],
+        system_prompt="system",
+        context_segments={"memory_context": "x" * 2000},
+        summary_content=None,
+        max_rounds=None,
+        context_budget_tokens=120,
+    )
+
+    assert _is_context_plan_truncated(plan) is True
+
+    event = build_context_info_event(
+        context_plan=plan,
+        context_budget=120,
+        context_window=160,
+        estimated_prompt_tokens=80,
+        context_truncated=True,
+    )
+
+    assert event["type"] == "context_info"
+    assert event["context_truncated"] is True
+    assert "segments" not in event
 
 
 class TestCallLLMStream:

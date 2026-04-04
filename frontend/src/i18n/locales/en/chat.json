@@ -45,6 +45,7 @@
   "view.save": "Save",
   "view.suggestFollowups": "Suggest follow-ups",
   "view.generatingFollowups": "Generating...",
+  "view.contextTrimmedWarning": "Some context was trimmed to fit the model limit.",
 
   "input.placeholder": "Type a message... (Enter to send, Shift+Enter for new line)",
   "input.send": "Send",

@@ -96,6 +96,14 @@ def trim_to_context_limit(messages: list[BaseMessage], max_input_tokens: int) ->
     return trimmed
 
 
+def trim_to_context_limit_with_flag(
+    messages: list[BaseMessage], max_input_tokens: int
+) -> tuple[list[BaseMessage], bool]:
+    """Trim messages and report whether any safety trim happened."""
+    trimmed = trim_to_context_limit(messages, max_input_tokens)
+    return trimmed, len(trimmed) < len(messages)
+
+
 def estimate_total_tokens(messages: list[dict[str, Any]]) -> int:
     """Estimate total token count for raw message dicts."""
     total = 0
@@ -162,6 +170,7 @@ def build_context_info_event(
     context_budget: int,
     context_window: int,
     estimated_prompt_tokens: int,
+    context_truncated: bool,
 ) -> dict[str, Any]:
     """Build the frontend-facing context budget event."""
     return {
@@ -170,8 +179,18 @@ def build_context_info_event(
         "context_window": context_window,
         "estimated_prompt_tokens": estimated_prompt_tokens,
         "remaining_tokens": context_budget - estimated_prompt_tokens,
-        "segments": [segment.to_dict() for segment in context_plan.segment_reports],
+        "context_truncated": context_truncated,
     }
+
+
+def is_context_plan_truncated(context_plan: ContextPlan) -> bool:
+    """Whether planning dropped or trimmed any context segment/history."""
+    for segment in context_plan.segment_reports:
+        if segment.truncated:
+            return True
+        if not segment.included and segment.drop_reason == "budget_exhausted":
+            return True
+    return False
 
 
 def context_segment_to_system_content(name: str, content: str) -> str:

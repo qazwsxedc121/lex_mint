@@ -18,7 +18,9 @@ from .context import (
     estimate_total_tokens,
     filter_messages_by_context_boundary,
     get_context_limit,
+    is_context_plan_truncated,
     trim_to_context_limit,
+    trim_to_context_limit_with_flag,
     truncate_by_rounds,
 )
 from .messages import convert_to_langchain_messages
@@ -114,7 +116,9 @@ _estimate_langchain_messages_tokens = estimate_langchain_messages_tokens
 _estimate_total_tokens = estimate_total_tokens
 _filter_messages_by_context_boundary = filter_messages_by_context_boundary
 _get_context_limit = get_context_limit
+_is_context_plan_truncated = is_context_plan_truncated
 _trim_to_context_limit = trim_to_context_limit
+_trim_to_context_limit_with_flag = trim_to_context_limit_with_flag
 _truncate_by_rounds = truncate_by_rounds
 
 __all__ = [
@@ -131,11 +135,13 @@ __all__ = [
     "estimate_total_tokens",
     "filter_messages_by_context_boundary",
     "get_context_limit",
+    "is_context_plan_truncated",
     "log_reasoning_decision",
     "resolve_reasoning_decision",
     "ThinkTagStreamFilter",
     "strip_think_blocks",
     "trim_to_context_limit",
+    "trim_to_context_limit_with_flag",
     "truncate_by_rounds",
     "_build_context_plan",
     "_build_reasoning_decision_payload",
@@ -145,6 +151,8 @@ __all__ = [
     "_estimate_total_tokens",
     "_filter_messages_by_context_boundary",
     "_get_context_limit",
+    "_is_context_plan_truncated",
     "_trim_to_context_limit",
+    "_trim_to_context_limit_with_flag",
     "_truncate_by_rounds",
 ]

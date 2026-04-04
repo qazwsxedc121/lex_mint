@@ -16,7 +16,8 @@ from src.llm_runtime.context import (
     estimate_langchain_messages_tokens,
     filter_messages_by_context_boundary,
     get_context_limit,
-    trim_to_context_limit,
+    is_context_plan_truncated,
+    trim_to_context_limit_with_flag,
 )
 from src.llm_runtime.messages import convert_to_langchain_messages
 
@@ -67,8 +68,20 @@ async def prepare_stream_input(
         session_id=session_id,
         file_service=file_service,
     )
-    langchain_messages = trim_to_context_limit(langchain_messages, max_input_tokens)
+    langchain_messages, safety_trimmed = trim_to_context_limit_with_flag(
+        langchain_messages, max_input_tokens
+    )
     estimated_prompt_tokens = estimate_langchain_messages_tokens(langchain_messages)
+    context_truncated = is_context_plan_truncated(context_plan) or safety_trimmed
+    _log_context_diagnostics(
+        context_plan=context_plan,
+        context_truncated=context_truncated,
+        safety_trimmed=safety_trimmed,
+        context_budget=max_input_tokens,
+        context_window=context_window,
+        estimated_prompt_tokens=estimated_prompt_tokens,
+        filtered_count=len(filtered_messages),
+    )
 
     return PreparedStreamInput(
         langchain_messages=langchain_messages,
@@ -77,6 +90,7 @@ async def prepare_stream_input(
             context_budget=max_input_tokens,
             context_window=context_window,
             estimated_prompt_tokens=estimated_prompt_tokens,
+            context_truncated=context_truncated,
         ),
     )
 
@@ -157,3 +171,35 @@ def _log_chat_messages(
             print(f"      Message {index + 1}: {role} - {content_preview}...{suffix}")
         elif role in {"user", "assistant"}:
             print(f"      Message {index + 1}: {role} - {content_preview}...")
+
+
+def _log_context_diagnostics(
+    *,
+    context_plan: Any,
+    context_truncated: bool,
+    safety_trimmed: bool,
+    context_budget: int,
+    context_window: int,
+    estimated_prompt_tokens: int,
+    filtered_count: int,
+) -> None:
+    logger.info(
+        "[CONTEXT] Plan diagnostics: truncated=%s safety_trimmed=%s budget=%s window=%s prompt_tokens=%s filtered_messages=%s segments=%s",
+        context_truncated,
+        safety_trimmed,
+        context_budget,
+        context_window,
+        estimated_prompt_tokens,
+        filtered_count,
+        [
+            {
+                "name": segment.name,
+                "included": segment.included,
+                "before": segment.estimated_tokens_before,
+                "after": segment.estimated_tokens_after,
+                "truncated": segment.truncated,
+                "drop_reason": segment.drop_reason,
+            }
+            for segment in context_plan.segment_reports
+        ],
+    )

@@ -21,15 +21,7 @@ export interface ContextInfo {
   context_window: number;
   estimated_prompt_tokens?: number;
   remaining_tokens?: number;
-  segments?: Array<{
-    name: string;
-    kind: string;
-    included: boolean;
-    estimated_tokens_before: number;
-    estimated_tokens_after: number;
-    truncated: boolean;
-    drop_reason?: string | null;
-  }>;
+  context_truncated?: boolean;
 }
 
 export interface FileAttachment {

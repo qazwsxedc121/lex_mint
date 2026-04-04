@@ -75,7 +75,7 @@ class ContextInfoEvent(_EventBase):
     context_window: int | None = None
     estimated_prompt_tokens: int | None = None
     remaining_tokens: int | None = None
-    segments: Any | None = None
+    context_truncated: bool | None = None
 
 
 class ThinkingDurationEvent(_EventBase):

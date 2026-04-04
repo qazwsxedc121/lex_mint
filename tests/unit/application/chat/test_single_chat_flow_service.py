@@ -43,7 +43,7 @@ async def _fake_call_llm_stream(*_args, **_kwargs):
         "context_window": 128,
         "estimated_prompt_tokens": 4,
         "remaining_tokens": 96,
-        "segments": [],
+        "context_truncated": False,
     }
     yield "hello"
     yield {"type": "usage", "usage": usage}
@@ -373,7 +373,7 @@ async def test_single_chat_flow_streams_tool_events_from_runtime(monkeypatch):
             "context_window": 128,
             "estimated_prompt_tokens": 4,
             "remaining_tokens": 96,
-            "segments": [],
+            "context_truncated": False,
         }
         yield {
             "type": "tool_calls",
@@ -403,7 +403,7 @@ async def test_single_chat_flow_streams_tool_events_from_runtime(monkeypatch):
         "context_window": 128,
         "estimated_prompt_tokens": 4,
         "remaining_tokens": 96,
-        "segments": [],
+        "context_truncated": False,
     } in events
     assert "round-1" in events and "round-2" in events
     assert any(isinstance(event, dict) and event.get("type") == "tool_calls" for event in events)

@@ -45,6 +45,7 @@
   "view.save": "保存",
   "view.suggestFollowups": "建议后续问题",
   "view.generatingFollowups": "生成中...",
+  "view.contextTrimmedWarning": "部分上下文因模型上限被裁剪。",
 
   "input.placeholder": "输入消息... (Enter 发送，Shift+Enter 换行)",
   "input.send": "发送",
