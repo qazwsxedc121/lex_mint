@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
 
-from .orchestration_gateway import ChatOrchestrationGateway, ChatOrchestrationGatewayDeps
+from .orchestration_gateway import (
+    ChatOrchestrationGateway,
+    ChatOrchestrationGatewayDeps,
+    CompareFlowServiceLike,
+    GroupChatFlowServiceLike,
+    SingleChatFlowServiceLike,
+)
 from .request_contexts import (
     CompareChatRequestContext,
     ConversationScope,
@@ -17,6 +22,7 @@ from .request_contexts import (
     StreamOptions,
     UserInputPayload,
 )
+from .service_contracts import SessionStorageLike, SourcePayload, StreamItem
 from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
 
 
@@ -24,10 +30,10 @@ from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandS
 class ChatApplicationDeps:
     """Dependencies required by ChatApplicationService."""
 
-    storage: Any
-    single_chat_flow_service: Any
-    compare_flow_service: Any
-    group_chat_service: Any
+    storage: SessionStorageLike
+    single_chat_flow_service: SingleChatFlowServiceLike
+    compare_flow_service: CompareFlowServiceLike
+    group_chat_service: GroupChatFlowServiceLike
     session_command_service: ChatSessionCommandService | None = None
     orchestration_gateway: ChatOrchestrationGateway | None = None
 
@@ -65,7 +71,7 @@ class ChatApplicationService:
     def _build_user_input(
         *,
         user_message: str,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[SourcePayload] | None = None,
         file_references: list[dict[str, str]] | None = None,
     ) -> UserInputPayload:
         return UserInputPayload(
@@ -85,7 +91,7 @@ class ChatApplicationService:
         file_references: list[dict[str, str]] | None = None,
         active_file_path: str | None = None,
         active_file_hash: str | None = None,
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> tuple[str, list[SourcePayload]]:
         """Run the single-chat use case and collect the final response."""
         request = SingleChatRequestContext(
             scope=self._build_scope(
@@ -114,7 +120,7 @@ class ChatApplicationService:
         user_message: str,
         skip_user_append: bool = False,
         reasoning_effort: str | None = None,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
         project_id: str | None = None,
         use_web_search: bool = False,
@@ -122,7 +128,7 @@ class ChatApplicationService:
         file_references: list[dict[str, str]] | None = None,
         active_file_path: str | None = None,
         active_file_hash: str | None = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream the single-chat use case."""
         request = SingleChatRequestContext(
             scope=self._build_scope(
@@ -159,7 +165,7 @@ class ChatApplicationService:
         user_message: str,
         skip_user_append: bool = False,
         reasoning_effort: str | None = None,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
         project_id: str | None = None,
         use_web_search: bool = False,
@@ -167,7 +173,7 @@ class ChatApplicationService:
         file_references: list[dict[str, str]] | None = None,
         active_file_path: str | None = None,
         active_file_hash: str | None = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream chat with unified mode resolution through orchestration gateway."""
         session_data = await self.storage.get_session(
             session_id,
@@ -242,16 +248,16 @@ class ChatApplicationService:
         user_message: str,
         group_assistants: list[str],
         group_mode: str = "round_robin",
-        group_settings: dict[str, Any] | None = None,
+        group_settings: dict[str, object] | None = None,
         skip_user_append: bool = False,
         reasoning_effort: str | None = None,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
         project_id: str | None = None,
         use_web_search: bool = False,
         search_query: str | None = None,
         file_references: list[dict[str, str]] | None = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream the group-chat use case."""
         request = GroupChatRequestContext(
             scope=self._build_scope(
@@ -287,13 +293,13 @@ class ChatApplicationService:
         user_message: str,
         model_ids: list[str],
         reasoning_effort: str | None = None,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
         project_id: str | None = None,
         use_web_search: bool = False,
         search_query: str | None = None,
         file_references: list[dict[str, str]] | None = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream the compare-model use case."""
         request = CompareChatRequestContext(
             scope=self._build_scope(
@@ -399,7 +405,7 @@ class ChatApplicationService:
         session_id: str,
         context_type: str = "chat",
         project_id: str | None = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         async for event in self._session_commands.compress_context_stream(
             session_id=session_id,
             context_type=context_type,

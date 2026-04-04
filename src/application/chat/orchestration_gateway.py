@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Protocol
 
 from src.application.orchestration import (
     ActorEmit,
@@ -24,6 +24,7 @@ from .request_contexts import (
     GroupChatRequestContext,
     SingleChatRequestContext,
 )
+from .service_contracts import SourcePayload, StreamItem
 
 
 @dataclass(frozen=True)
@@ -31,16 +32,46 @@ class _GatewayRuntimeRoute:
     """Resolved runtime route for one chat gateway request."""
 
     mode: str
-    source_factory: Callable[[], AsyncIterator[Any]]
+    source_factory: Callable[[], AsyncIterator[StreamItem]]
+
+
+class SingleChatFlowServiceLike(Protocol):
+    """Minimal single-chat flow interface consumed by gateway routes."""
+
+    def process_message_stream(
+        self,
+        *,
+        request: SingleChatRequestContext,
+    ) -> AsyncIterator[StreamItem]: ...
+
+
+class CompareFlowServiceLike(Protocol):
+    """Minimal compare-chat flow interface consumed by gateway routes."""
+
+    def process_compare_stream(
+        self,
+        *,
+        request: CompareChatRequestContext,
+    ) -> AsyncIterator[StreamItem]: ...
+
+
+class GroupChatFlowServiceLike(Protocol):
+    """Minimal group-chat flow interface consumed by gateway routes."""
+
+    def process_group_message_stream(
+        self,
+        *,
+        request: GroupChatRequestContext,
+    ) -> AsyncIterator[StreamItem]: ...
 
 
 @dataclass(frozen=True)
 class ChatOrchestrationGatewayDeps:
     """Dependencies required by ChatOrchestrationGateway."""
 
-    single_chat_flow_service: Any
-    compare_flow_service: Any
-    group_chat_service: Any
+    single_chat_flow_service: SingleChatFlowServiceLike
+    compare_flow_service: CompareFlowServiceLike
+    group_chat_service: GroupChatFlowServiceLike
     orchestration_engine: OrchestrationEngine | None = None
 
 
@@ -57,10 +88,10 @@ class ChatOrchestrationGateway:
         self,
         *,
         request: SingleChatRequestContext,
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> tuple[str, list[SourcePayload]]:
         """Run one single_direct orchestration request through the runtime and collect output."""
         response_chunks: list[str] = []
-        latest_sources: list[dict[str, Any]] = []
+        latest_sources: list[SourcePayload] = []
 
         async for event in self.stream_single(
             request=request,
@@ -79,7 +110,7 @@ class ChatOrchestrationGateway:
         self,
         *,
         request: SingleChatRequestContext,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream single_direct mode through the unified gateway."""
         async for event in self._stream_route(
             self._single_route(request),
@@ -90,7 +121,7 @@ class ChatOrchestrationGateway:
         self,
         *,
         request: GroupChatRequestContext,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream round_robin/committee modes through the unified gateway."""
         async for event in self._stream_route(
             self._group_route(request),
@@ -101,7 +132,7 @@ class ChatOrchestrationGateway:
         self,
         *,
         request: CompareChatRequestContext,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream compare_models mode through the unified gateway."""
         async for event in self._stream_route(
             self._compare_route(request),
@@ -143,7 +174,7 @@ class ChatOrchestrationGateway:
     async def _stream_route(
         self,
         route: _GatewayRuntimeRoute,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamItem]:
         """Stream one resolved route through the orchestration runtime."""
         async for event in self._stream_via_runtime(
             mode=route.mode,
@@ -155,8 +186,8 @@ class ChatOrchestrationGateway:
         self,
         *,
         mode: str,
-        source_factory: Callable[[], AsyncIterator[Any]],
-    ) -> AsyncIterator[Any]:
+        source_factory: Callable[[], AsyncIterator[StreamItem]],
+    ) -> AsyncIterator[StreamItem]:
         run_id = f"chat-{mode}-{uuid.uuid4().hex}"
         spec = self._build_runtime_spec(
             run_id=run_id,
@@ -169,7 +200,9 @@ class ChatOrchestrationGateway:
             if event_type == "node_event" and runtime_event.get("event_type") == "chat_event":
                 payload = runtime_event.get("payload") or {}
                 if isinstance(payload, dict) and "event" in payload:
-                    yield payload["event"]
+                    event = payload["event"]
+                    if isinstance(event, str) or isinstance(event, dict):
+                        yield event
                 continue
             if event_type in {"failed", "cancelled"}:
                 raise RuntimeError(
@@ -181,7 +214,7 @@ class ChatOrchestrationGateway:
         *,
         run_id: str,
         mode: str,
-        source_factory: Callable[[], AsyncIterator[Any]],
+        source_factory: Callable[[], AsyncIterator[StreamItem]],
     ) -> RunSpec:
         """Build a minimal one-node runtime spec for one chat route."""
         return RunSpec(
@@ -216,11 +249,11 @@ class ChatOrchestrationGateway:
     def _build_adapter_actor(
         *,
         mode: str,
-        source_factory: Callable[[], AsyncIterator[Any]],
-    ) -> Callable[[ActorExecutionContext], AsyncIterator[Any]]:
+        source_factory: Callable[[], AsyncIterator[StreamItem]],
+    ) -> Callable[[ActorExecutionContext], AsyncIterator[ActorEmit | ActorResult]]:
         """Wrap one chat source iterator into an orchestration actor."""
 
-        async def _adapter_actor(_: ActorExecutionContext) -> AsyncIterator[Any]:
+        async def _adapter_actor(_: ActorExecutionContext) -> AsyncIterator[ActorEmit | ActorResult]:
             async for event in source_factory():
                 yield ActorEmit(event_type="chat_event", payload={"event": event})
             yield ActorResult(

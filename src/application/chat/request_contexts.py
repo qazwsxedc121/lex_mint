@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .service_contracts import AssistantLike, SourcePayload
 
@@ -76,7 +76,7 @@ class GroupChatRequestContext:
     user_input: UserInputPayload
     group_assistants: list[str]
     group_mode: str = "round_robin"
-    group_settings: dict[str, Any] | None = None
+    group_settings: dict[str, object] | None = None
     search: SearchOptions = field(default_factory=SearchOptions)
     stream: StreamOptions = field(default_factory=StreamOptions)
 
@@ -166,11 +166,11 @@ class CommitteeExecutionContext:
             reasoning_effort=request.reasoning_effort,
             search_context=request.search_context,
             search_sources=request.search_sources,
-            group_mode=request.mode,
+            group_mode=str(request.mode),
             trace_id=request.trace_id,
         )
 
-    def with_updates(self, **changes: Any) -> CommitteeExecutionContext:
+    def with_updates(self, **changes: object) -> CommitteeExecutionContext:
         """Return a copy with selected execution fields updated."""
 
         return replace(self, **changes)
@@ -211,6 +211,6 @@ class CommitteeMemberTurnContext:
     assistant_id: str
     assistant_obj: AssistantLike
     instruction: str | None = None
-    committee_turn_packet: dict[str, Any] | None = None
+    committee_turn_packet: dict[str, object] | None = None
     trace_round: int | None = None
     trace_mode: str | None = None
