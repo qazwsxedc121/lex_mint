@@ -114,51 +114,6 @@ class ChatApplicationService:
         )
         return await self._orchestration_gateway.run_single_message(request=request)
 
-    async def process_message_stream(
-        self,
-        session_id: str,
-        user_message: str,
-        skip_user_append: bool = False,
-        reasoning_effort: str | None = None,
-        attachments: list[SourcePayload] | None = None,
-        context_type: str = "chat",
-        project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
-        file_references: list[dict[str, str]] | None = None,
-        active_file_path: str | None = None,
-        active_file_hash: str | None = None,
-    ) -> AsyncIterator[StreamItem]:
-        """Stream the single-chat use case."""
-        request = SingleChatRequestContext(
-            scope=self._build_scope(
-                session_id=session_id,
-                context_type=context_type,
-                project_id=project_id,
-            ),
-            user_input=self._build_user_input(
-                user_message=user_message,
-                attachments=attachments,
-                file_references=file_references,
-            ),
-            search=SearchOptions(
-                use_web_search=use_web_search,
-                search_query=search_query,
-            ),
-            stream=StreamOptions(
-                skip_user_append=skip_user_append,
-                reasoning_effort=reasoning_effort,
-            ),
-            editor=EditorContext(
-                active_file_path=active_file_path,
-                active_file_hash=active_file_hash,
-            ),
-        )
-        async for event in self._orchestration_gateway.stream_single(
-            request=request,
-        ):
-            yield event
-
     async def process_chat_stream(
         self,
         session_id: str,
@@ -238,51 +193,6 @@ class ChatApplicationService:
             ),
         )
         async for event in self._orchestration_gateway.stream_single(
-            request=request,
-        ):
-            yield event
-
-    async def process_group_message_stream(
-        self,
-        session_id: str,
-        user_message: str,
-        group_assistants: list[str],
-        group_mode: str = "round_robin",
-        group_settings: dict[str, object] | None = None,
-        skip_user_append: bool = False,
-        reasoning_effort: str | None = None,
-        attachments: list[SourcePayload] | None = None,
-        context_type: str = "chat",
-        project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
-        file_references: list[dict[str, str]] | None = None,
-    ) -> AsyncIterator[StreamItem]:
-        """Stream the group-chat use case."""
-        request = GroupChatRequestContext(
-            scope=self._build_scope(
-                session_id=session_id,
-                context_type=context_type,
-                project_id=project_id,
-            ),
-            user_input=self._build_user_input(
-                user_message=user_message,
-                attachments=attachments,
-                file_references=file_references,
-            ),
-            group_assistants=group_assistants,
-            group_mode=group_mode,
-            group_settings=group_settings,
-            search=SearchOptions(
-                use_web_search=use_web_search,
-                search_query=search_query,
-            ),
-            stream=StreamOptions(
-                skip_user_append=skip_user_append,
-                reasoning_effort=reasoning_effort,
-            ),
-        )
-        async for event in self._orchestration_gateway.stream_group(
             request=request,
         ):
             yield event

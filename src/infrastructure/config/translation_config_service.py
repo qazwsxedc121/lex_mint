@@ -17,7 +17,6 @@ from src.core.paths import (
 )
 
 from .yaml_config_utils import (
-    load_default_yaml_section,
     load_layered_yaml_section,
     save_yaml_section_updates,
 )
@@ -70,10 +69,6 @@ class TranslationConfigService:
             defaults_path=self.defaults_path,
             initial_text=yaml.safe_dump({"translation": {}}, allow_unicode=True, sort_keys=False),
         )
-
-    def _load_default_section(self) -> dict:
-        """Load fallback defaults from the repo default config file."""
-        return load_default_yaml_section(self.defaults_path, "translation")
 
     def _load_config(self) -> TranslationConfig:
         """Load configuration from YAML file"""

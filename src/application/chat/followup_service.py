@@ -18,7 +18,6 @@ from src.core.paths import (
 )
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.yaml_config_utils import (
-    load_default_yaml_section,
     load_layered_yaml_section,
     save_yaml_section_updates,
 )
@@ -72,10 +71,6 @@ class FollowupService:
             initial_text=yaml.safe_dump({"followup": {}}, allow_unicode=True, sort_keys=False),
         )
         self.config = self._load_config()
-
-    def _load_default_section(self) -> dict:
-        """Load fallback defaults from the repo default config file."""
-        return load_default_yaml_section(self.defaults_path, "followup")
 
     def _load_config(self) -> FollowupConfig:
         """Load configuration from YAML file"""

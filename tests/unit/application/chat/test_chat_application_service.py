@@ -129,35 +129,6 @@ async def test_chat_application_service_delegates_single_message():
     assert request.scope.session_id == "s1"
 
 
-async def test_chat_application_service_delegates_single_stream():
-    single = _FakeSingleChatFlowService()
-    service = ChatApplicationService(
-        ChatApplicationDeps(
-            storage=object(),
-            single_chat_flow_service=single,
-            compare_flow_service=_FakeCompareFlowService(),
-            group_chat_service=_FakeGroupChatService(),
-        )
-    )
-
-    events = await _collect(
-        service.process_message_stream(
-            session_id="s1",
-            user_message="hello",
-        )
-    )
-
-    assert events == [
-        "answer",
-        {"type": "sources", "sources": [{"type": "memory"}]},
-        {"type": "usage"},
-    ]
-    assert len(single.process_message_stream_calls) == 1
-    request = single.process_message_stream_calls[0]["request"]
-    assert isinstance(request, SingleChatRequestContext)
-    assert request.user_input.user_message == "hello"
-
-
 async def test_chat_application_service_delegates_compare_stream():
     compare = _FakeCompareFlowService()
     service = ChatApplicationService(
@@ -182,32 +153,6 @@ async def test_chat_application_service_delegates_compare_stream():
     request = compare.calls[0]["request"]
     assert isinstance(request, CompareChatRequestContext)
     assert request.model_ids == ["p:m1", "p:m2"]
-
-
-async def test_chat_application_service_delegates_group_stream():
-    group = _FakeGroupChatService()
-    service = ChatApplicationService(
-        ChatApplicationDeps(
-            storage=object(),
-            single_chat_flow_service=_FakeSingleChatFlowService(),
-            compare_flow_service=_FakeCompareFlowService(),
-            group_chat_service=group,
-        )
-    )
-
-    events = await _collect(
-        service.process_group_message_stream(
-            session_id="s1",
-            user_message="hello",
-            group_assistants=["a1", "a2"],
-        )
-    )
-
-    assert events == [{"type": "group_start"}, {"type": "group_done"}]
-    assert len(group.calls) == 1
-    request = group.calls[0]["request"]
-    assert isinstance(request, GroupChatRequestContext)
-    assert request.group_assistants == ["a1", "a2"]
 
 
 async def test_chat_application_service_auto_stream_routes_to_group_mode():

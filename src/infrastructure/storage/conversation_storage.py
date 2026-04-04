@@ -1391,11 +1391,6 @@ class ConversationStorage:
         async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
             await f.write(frontmatter.dumps(post))
 
-    @staticmethod
-    def _extract_model_chat_template_overrides(model_obj: Any) -> dict[str, Any]:
-        """Build session param overrides from model chat_template."""
-        return ConversationSessionTargetResolver.extract_model_chat_template_overrides(model_obj)
-
     async def update_session_target(
         self,
         session_id: str,
