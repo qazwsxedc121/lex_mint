@@ -106,7 +106,7 @@ async def test_chat_application_service_delegates_single_message():
     single = _FakeSingleChatFlowService()
     service = ChatApplicationService(
         ChatApplicationDeps(
-            storage=object(),
+            storage=_FakeStorage({}),
             single_chat_flow_service=single,
             compare_flow_service=_FakeCompareFlowService(),
             group_chat_service=_FakeGroupChatService(),
@@ -133,7 +133,7 @@ async def test_chat_application_service_delegates_compare_stream():
     compare = _FakeCompareFlowService()
     service = ChatApplicationService(
         ChatApplicationDeps(
-            storage=object(),
+            storage=_FakeStorage({}),
             single_chat_flow_service=_FakeSingleChatFlowService(),
             compare_flow_service=compare,
             group_chat_service=_FakeGroupChatService(),
@@ -210,7 +210,7 @@ async def test_chat_application_service_delegates_session_commands():
     commands = _FakeSessionCommandService()
     service = ChatApplicationService(
         ChatApplicationDeps(
-            storage=object(),
+            storage=_FakeStorage({}),
             single_chat_flow_service=_FakeSingleChatFlowService(),
             compare_flow_service=_FakeCompareFlowService(),
             group_chat_service=_FakeGroupChatService(),
