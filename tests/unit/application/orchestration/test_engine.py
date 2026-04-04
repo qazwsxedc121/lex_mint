@@ -283,3 +283,255 @@ async def test_engine_resume_from_node_finished_checkpoint():
     assert resumed_events[1]["node_id"] == "end"
     assert state["start_calls"] == 1
     assert state["end_calls"] == 2
+
+
+@pytest.mark.asyncio
+async def test_engine_resume_requires_run_store():
+    spec = RunSpec(
+        run_id="run-resume-no-store",
+        entry_node_id="node-1",
+        nodes=(
+            NodeSpec(
+                node_id="node-1",
+                actor=ActorRef(actor_id="node-1", kind="test", handler=_end_actor),
+            ),
+        ),
+    )
+    engine = OrchestrationEngine()
+
+    with pytest.raises(ValueError, match="Cannot resume run without a RunStore"):
+        _ = [event async for event in engine.resume_stream(spec, from_checkpoint_id="cp-1")]
+
+
+@pytest.mark.asyncio
+async def test_engine_resume_from_terminal_checkpoint_returns_terminal_event():
+    state = {"calls": 0}
+
+    async def terminal_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        state["calls"] += 1
+        yield ActorResult(
+            terminal_status="completed",
+            terminal_reason="done",
+            payload={"result": "ok"},
+        )
+
+    spec = RunSpec(
+        run_id="run-resume-terminal",
+        entry_node_id="node-1",
+        nodes=(
+            NodeSpec(
+                node_id="node-1",
+                actor=ActorRef(actor_id="node-1", kind="test", handler=terminal_actor),
+            ),
+        ),
+    )
+    store = InMemoryRunStore()
+    engine = OrchestrationEngine(run_store=store)
+
+    _ = [event async for event in engine.run_stream(spec)]
+    checkpoints = await store.list_checkpoints(run_id="run-resume-terminal")
+    terminal_checkpoint = checkpoints[-1]
+
+    resumed_events = [
+        event
+        async for event in engine.resume_stream(
+            spec,
+            from_checkpoint_id=terminal_checkpoint.checkpoint_id,
+        )
+    ]
+
+    assert state["calls"] == 1
+    assert resumed_events[0]["type"] == "resumed"
+    assert resumed_events[1]["type"] == "completed"
+    assert resumed_events[1]["payload"] == {"result": "ok"}
+    assert resumed_events[1]["terminal_reason"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_engine_does_not_retry_when_runtime_events_already_emitted():
+    state = {"attempt": 0}
+
+    async def emits_then_fails(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        state["attempt"] += 1
+        yield ActorEmit(event_type="partial", payload={"text": "hello"})
+        raise TimeoutError("temporary timeout")
+
+    spec = RunSpec(
+        run_id="run-no-retry-after-events",
+        entry_node_id="node-1",
+        nodes=(
+            NodeSpec(
+                node_id="node-1",
+                actor=ActorRef(actor_id="node-1", kind="test", handler=emits_then_fails),
+                retry_policy=RetryPolicy(
+                    max_retries=2,
+                    backoff_ms=0,
+                    retry_only_if_no_events=True,
+                    is_retryable=lambda exc: isinstance(exc, TimeoutError),
+                ),
+            ),
+        ),
+    )
+    engine = OrchestrationEngine()
+
+    events = [event async for event in engine.run_stream(spec)]
+
+    assert state["attempt"] == 1
+    assert not any(event["type"] == "node_retrying" for event in events)
+    assert events[-1]["type"] == "failed"
+    assert "temporary timeout" in events[-1]["terminal_reason"]
+
+
+@pytest.mark.asyncio
+async def test_engine_resolve_next_node_uses_branch_result():
+    async def branch_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        yield ActorResult(branch="yes")
+
+    async def yes_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        yield ActorResult(terminal_status="completed", terminal_reason="yes branch")
+
+    async def no_actor(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        yield ActorResult(terminal_status="completed", terminal_reason="no branch")
+
+    spec = RunSpec(
+        run_id="run-branch",
+        entry_node_id="decide",
+        nodes=(
+            NodeSpec(
+                node_id="decide",
+                actor=ActorRef(actor_id="decide", kind="test", handler=branch_actor),
+            ),
+            NodeSpec(node_id="yes", actor=ActorRef(actor_id="yes", kind="test", handler=yes_actor)),
+            NodeSpec(node_id="no", actor=ActorRef(actor_id="no", kind="test", handler=no_actor)),
+        ),
+        edges=(
+            EdgeSpec(source_id="decide", target_id="no", branch=None),
+            EdgeSpec(source_id="decide", target_id="yes", branch="yes"),
+        ),
+    )
+    engine = OrchestrationEngine()
+
+    events = [event async for event in engine.run_stream(spec)]
+
+    decide_finished = next(
+        event for event in events if event["type"] == "node_finished" and event["node_id"] == "decide"
+    )
+    assert decide_finished["payload"] == {}
+    assert decide_finished["node_id"] == "decide"
+    assert events[-1]["type"] == "completed"
+    assert events[-1]["terminal_reason"] == "yes branch"
+
+
+@pytest.mark.asyncio
+async def test_engine_fails_when_next_node_missing():
+    async def jump_to_missing(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        yield ActorResult(next_node_id="ghost-node")
+
+    spec = RunSpec(
+        run_id="run-missing-node",
+        entry_node_id="start",
+        nodes=(
+            NodeSpec(
+                node_id="start",
+                actor=ActorRef(actor_id="start", kind="test", handler=jump_to_missing),
+            ),
+        ),
+    )
+    engine = OrchestrationEngine()
+
+    events = [event async for event in engine.run_stream(spec)]
+
+    assert events[-1]["type"] == "failed"
+    assert events[-1]["node_id"] == "ghost-node"
+    assert "does not exist" in events[-1]["terminal_reason"]
+
+
+@pytest.mark.asyncio
+async def test_engine_fails_when_node_does_not_resolve_next_node():
+    async def no_next(_: object) -> AsyncIterator[ActorEmit | ActorResult]:
+        yield ActorResult()
+
+    spec = RunSpec(
+        run_id="run-no-next",
+        entry_node_id="start",
+        nodes=(
+            NodeSpec(
+                node_id="start",
+                actor=ActorRef(actor_id="start", kind="test", handler=no_next),
+            ),
+        ),
+    )
+    engine = OrchestrationEngine()
+
+    events = [event async for event in engine.run_stream(spec)]
+
+    assert events[-1]["type"] == "failed"
+    assert events[-1]["node_id"] == "start"
+    assert "did not resolve next node" in events[-1]["terminal_reason"]
+
+
+@pytest.mark.asyncio
+async def test_engine_resume_with_unknown_checkpoint_raises():
+    store = InMemoryRunStore()
+    spec = RunSpec(
+        run_id="run-resume-unknown-checkpoint",
+        entry_node_id="node-1",
+        nodes=(
+            NodeSpec(
+                node_id="node-1",
+                actor=ActorRef(actor_id="node-1", kind="test", handler=_end_actor),
+            ),
+        ),
+    )
+    engine = OrchestrationEngine(run_store=store)
+
+    with pytest.raises(ValueError, match="not found"):
+        _ = [
+            event
+            async for event in engine.resume_stream(
+                spec,
+                from_checkpoint_id="checkpoint-does-not-exist",
+            )
+        ]
+
+
+@pytest.mark.asyncio
+async def test_engine_resume_without_checkpoints_raises():
+    store = InMemoryRunStore()
+    spec = RunSpec(
+        run_id="run-resume-no-checkpoints",
+        entry_node_id="node-1",
+        nodes=(
+            NodeSpec(
+                node_id="node-1",
+                actor=ActorRef(actor_id="node-1", kind="test", handler=_end_actor),
+            ),
+        ),
+    )
+    engine = OrchestrationEngine(run_store=store)
+    context = RunContext(run_id="run-resume-no-checkpoints", metadata={"resume": True})
+
+    with pytest.raises(ValueError, match="has no persisted checkpoints"):
+        _ = [event async for event in engine.resume_stream(spec, context=context)]
+
+
+def test_engine_static_backoff_delay_and_reason_normalization():
+    assert (
+        OrchestrationEngine._compute_backoff_delay_ms(
+            base_delay_ms=100,
+            retry_index=1,
+            max_backoff_ms=1000,
+        )
+        == 100
+    )
+    assert (
+        OrchestrationEngine._compute_backoff_delay_ms(
+            base_delay_ms=1000,
+            retry_index=4,
+            max_backoff_ms=1500,
+        )
+        == 1500
+    )
+    assert (
+        OrchestrationEngine._normalize_reason("  ", fallback="failed") == "failed"
+    )

@@ -1,8 +1,10 @@
+import asyncio
 from dataclasses import dataclass
 
 import pytest
 
 from src.application.chat.chat_runtime.turn_executor import CommitteeTurnExecutor
+from src.application.chat.chat_runtime.turn_context_builder import GroupTurnContext
 from src.application.chat.request_contexts import (
     CommitteeExecutionContext,
     CommitteeMemberTurnContext,
@@ -152,3 +154,158 @@ async def test_group_turn_executor_merges_tool_diagnostics_into_sources(monkeypa
 
     append_kwargs = storage.append_calls[0][1]
     assert append_kwargs["sources"] == sources_event["sources"]
+
+
+def test_extract_bullet_items_and_keyword_sentences():
+    text = """
+    - First actionable point
+    - First actionable point
+    1. Second actionable point
+    random line
+    """
+    bullets = CommitteeTurnExecutor.extract_bullet_items(text, limit=5)
+    assert bullets == ["First actionable point", "Second actionable point"]
+
+    sentences = CommitteeTurnExecutor.extract_keyword_sentences(
+        "We should validate this. Ignore. Next action is rollout.",
+        keywords=["should", "next action"],
+    )
+    assert len(sentences) == 2
+
+
+def test_detect_group_role_drift_and_retry_instruction():
+    reason = CommitteeTurnExecutor.detect_group_role_drift(
+        content="[Reviewer] I am taking over this turn.",
+        expected_assistant_id="architect",
+        expected_assistant_name="Architect",
+        participant_name_map={"architect": "Architect", "reviewer": "Reviewer"},
+    )
+    assert reason == "role_drift_claimed_reviewer"
+
+    corrected = CommitteeTurnExecutor.build_role_retry_instruction(
+        base_instruction="Focus on design",
+        expected_assistant_name="Architect",
+    )
+    assert "Focus on design" in corrected
+    assert "You must answer strictly as Architect" in corrected
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_by_id_found_and_missing():
+    class _StorageWithMessages:
+        async def get_session(self, *_args, **_kwargs):
+            return {
+                "state": {
+                    "messages": [
+                        {"message_id": "m1", "content": "hello"},
+                        {"message_id": "m2", "content": "world"},
+                    ]
+                }
+            }
+
+    executor = CommitteeTurnExecutor(
+        storage=_StorageWithMessages(),
+        pricing_service=object(),
+        memory_service=_MemoryServiceStub(),
+        file_service=None,
+        assistant_params_from_config=lambda _assistant: {},
+        build_group_history_hint=lambda *_args, **_kwargs: "",
+        build_group_identity_prompt=lambda *_args, **_kwargs: "identity",
+        build_group_instruction_prompt=lambda *_args, **_kwargs: None,
+        build_rag_context_and_sources=lambda **_kwargs: _return_async((None, [])),
+        truncate_log_text=lambda text, _limit: text or "",
+        build_messages_preview_for_log=lambda messages: messages,
+        log_group_trace=lambda *_args, **_kwargs: None,
+    )
+    assert (
+        await executor.get_message_content_by_id(
+            session_id="s1", message_id="m2", context_type="chat", project_id=None
+        )
+        == "world"
+    )
+    assert (
+        await executor.get_message_content_by_id(
+            session_id="s1", message_id="not-found", context_type="chat", project_id=None
+        )
+        == ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_group_turn_executor_cancellation_saves_partial(monkeypatch):
+    storage = _StorageStub()
+    executor = CommitteeTurnExecutor(
+        storage=storage,
+        pricing_service=object(),
+        memory_service=_MemoryServiceStub(),
+        file_service=None,
+        assistant_params_from_config=lambda _assistant: {},
+        build_group_history_hint=lambda *_args, **_kwargs: "",
+        build_group_identity_prompt=lambda *_args, **_kwargs: "identity",
+        build_group_instruction_prompt=lambda *_args, **_kwargs: None,
+        build_rag_context_and_sources=lambda **_kwargs: _return_async((None, [])),
+        truncate_log_text=lambda text, _limit: text or "",
+        build_messages_preview_for_log=lambda messages: messages,
+        log_group_trace=lambda *_args, **_kwargs: None,
+    )
+
+    async def _fake_build(*_args, **_kwargs):
+        return GroupTurnContext(
+            assistant_name="Architect",
+            model_id="provider:model-a",
+            messages=[{"role": "user", "content": "hello"}],
+            history_hint="",
+            identity_prompt="identity",
+            instruction_prompt=None,
+            system_prompt="sys",
+            sources=[],
+        )
+
+    async def _cancelled_stream(*, state, **_kwargs):
+        state.full_response = "partial text"
+        raise asyncio.CancelledError
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(executor._context_builder, "build", _fake_build)
+    monkeypatch.setattr(executor._stream_runner, "stream_turn", _cancelled_stream)
+
+    assistant = _AssistantStub(
+        id="a1",
+        name="Architect",
+        model_id="provider:model-a",
+        icon="architect.png",
+        system_prompt="You are helpful.",
+        temperature=0.2,
+        max_tokens=512,
+        top_p=1.0,
+        top_k=40,
+        frequency_penalty=0.0,
+        presence_penalty=0.0,
+        max_rounds=3,
+    )
+    turn_context = CommitteeMemberTurnContext(
+        execution=CommitteeExecutionContext(
+            scope=ConversationScope(session_id="s1"),
+            raw_user_message="hello",
+            group_assistants=["a1"],
+            assistant_name_map={"a1": "Architect"},
+            assistant_config_map={"a1": assistant},
+            group_settings=None,
+            reasoning_effort=None,
+            search_context=None,
+            search_sources=[],
+        ),
+        assistant_id="a1",
+        assistant_obj=assistant,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        _ = await _collect_events(executor.stream_group_assistant_turn(turn_context=turn_context))
+
+    assert len(storage.append_calls) == 1
+    assert storage.append_calls[0][0][1] == "assistant"
+    assert storage.append_calls[0][0][2] == "partial text"
+
+
+async def _return_async(value):
+    return value

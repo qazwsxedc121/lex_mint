@@ -1,5 +1,7 @@
 """Unit tests for single-chat flow service extraction."""
 
+import asyncio
+
 from types import SimpleNamespace
 
 import pytest
@@ -50,8 +52,10 @@ async def _fake_call_llm_stream(*_args, **_kwargs):
 class _FakePostTurnService:
     def __init__(self):
         self.finalize_calls = []
+        self.partial_calls = []
 
-    async def save_partial_assistant_message(self, **_kwargs):
+    async def save_partial_assistant_message(self, **kwargs):
+        self.partial_calls.append(kwargs)
         return None
 
     async def finalize_single_turn(self, **kwargs):
@@ -406,3 +410,263 @@ async def test_single_chat_flow_streams_tool_events_from_runtime(monkeypatch):
     assert any(isinstance(event, dict) and event.get("type") == "tool_results" for event in events)
     assert events[-2] == {"type": "assistant_message_id", "message_id": "assistant-msg-1"}
     assert events[-1] == {"type": "followup_questions", "questions": ["next question"]}
+
+
+@pytest.mark.asyncio
+async def test_single_chat_flow_cancellation_saves_partial_response(monkeypatch):
+    post_turn = _FakePostTurnService()
+
+    class _CancelledOrchestrator:
+        async def stream(self, *_args, **_kwargs):
+            yield {"type": "assistant_chunk", "chunk": "partial"}
+            raise asyncio.CancelledError
+
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=post_turn,
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(
+            ContextPayload(
+                messages=[{"role": "user", "content": "hello"}],
+                assistant_id="assistant-1",
+                assistant_obj=None,
+                model_id="provider:model-a",
+                system_prompt=None,
+                assistant_params={},
+                all_sources=[],
+                max_rounds=None,
+                assistant_memory_enabled=True,
+            )
+        ),
+        build_file_context_block=lambda _refs: _return_async(""),
+        single_direct_orchestrator=_CancelledOrchestrator(),
+    )
+    service = SingleChatFlowService(deps)
+    monkeypatch.setattr(
+        service,
+        "_maybe_auto_compress",
+        lambda **kwargs: _return_async((kwargs["messages"], None)),
+    )
+    monkeypatch.setattr(service, "_resolve_tools", lambda **_kwargs: _return_async((None, None)))
+
+    with pytest.raises(BaseException) as exc:
+        _ = await _collect_events(
+            service.process_message_stream(
+                request=SingleChatRequestContext(
+                    scope=ConversationScope(session_id="s1", context_type="chat"),
+                    user_input=UserInputPayload(user_message="hello"),
+                )
+            )
+        )
+    assert exc.type.__name__ == "CancelledError"
+    assert len(post_turn.partial_calls) == 1
+    assert post_turn.partial_calls[0]["assistant_message"] == "partial"
+
+
+@pytest.mark.asyncio
+async def test_single_chat_flow_merges_tool_diagnostics_before_finalize(monkeypatch):
+    post_turn = _FakePostTurnService()
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=post_turn,
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(
+            ContextPayload(
+                messages=[{"role": "user", "content": "hello"}],
+                assistant_id="assistant-1",
+                assistant_obj=None,
+                model_id="provider:model-a",
+                system_prompt=None,
+                assistant_params={},
+                all_sources=[{"type": "rag_diagnostics", "title": "RAG", "snippet": "base"}],
+                max_rounds=None,
+                assistant_memory_enabled=True,
+            )
+        ),
+        build_file_context_block=lambda _refs: _return_async(""),
+    )
+    service = SingleChatFlowService(deps)
+    monkeypatch.setattr(
+        service,
+        "_maybe_auto_compress",
+        lambda **kwargs: _return_async((kwargs["messages"], None)),
+    )
+    monkeypatch.setattr(service, "_resolve_tools", lambda **_kwargs: _return_async((None, None)))
+
+    async def _fake_stream(*_args, **_kwargs):
+        yield {"type": "tool_diagnostics", "tool_search_count": 1, "tool_finalize_reason": "done"}
+        yield "hello"
+
+    service._single_direct_orchestrator.call_llm_stream = _fake_stream
+
+    events = await _collect_events(
+        service.process_message_stream(
+            request=SingleChatRequestContext(
+                scope=ConversationScope(session_id="s1", context_type="chat"),
+                user_input=UserInputPayload(user_message="hello"),
+            )
+        )
+    )
+
+    assert any(isinstance(item, str) and item == "hello" for item in events)
+    saved_sources = post_turn.finalize_calls[0]["sources"]
+    assert saved_sources[0]["type"] == "rag_diagnostics"
+    assert saved_sources[0]["tool_search_count"] == 1
+    assert "tool s:1" in saved_sources[0]["snippet"]
+
+
+@pytest.mark.asyncio
+async def test_maybe_auto_compress_returns_original_when_disabled():
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+        compression_config_service_factory=lambda: SimpleNamespace(
+            config=SimpleNamespace(auto_compress_enabled=False, auto_compress_threshold=0.7)
+        ),
+    )
+    service = SingleChatFlowService(deps)
+
+    messages = [{"role": "user", "content": "hello"}]
+    result_messages, event = await service._maybe_auto_compress(
+        session_id="s1",
+        model_id="provider:model-a",
+        messages=messages,
+        context_type="chat",
+        project_id=None,
+    )
+    assert result_messages == messages
+    assert event is None
+
+
+@pytest.mark.asyncio
+async def test_maybe_auto_compress_returns_compressed_messages(monkeypatch):
+    class _Storage:
+        async def get_session(self, *_args, **_kwargs):
+            return {"state": {"messages": [{"role": "assistant", "content": "compressed"}]}}
+
+    class _ModelService:
+        def get_model_and_provider_sync(self, _model_id):
+            return (
+                SimpleNamespace(capabilities=SimpleNamespace(context_length=1000)),
+                SimpleNamespace(default_capabilities=SimpleNamespace(context_length=1000)),
+            )
+
+    class _CompressionService:
+        async def compress_context(self, **_kwargs):
+            return ("compress-msg-1", 4)
+
+    deps = SingleChatFlowDeps(
+        storage=_Storage(),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+        model_service_factory=_ModelService,
+        compression_config_service_factory=lambda: SimpleNamespace(
+            config=SimpleNamespace(auto_compress_enabled=True, auto_compress_threshold=0.5)
+        ),
+        compression_service_factory=lambda _storage: _CompressionService(),
+    )
+    service = SingleChatFlowService(deps)
+    monkeypatch.setattr(
+        "src.application.chat.single_chat_flow_service.estimate_total_tokens",
+        lambda _messages: 900,
+    )
+
+    messages, event = await service._maybe_auto_compress(
+        session_id="s1",
+        model_id="provider:model-a",
+        messages=[{"role": "user", "content": "hello"}],
+        context_type="chat",
+        project_id=None,
+    )
+    assert messages == [{"role": "assistant", "content": "compressed"}]
+    assert event == {"type": "auto_compressed", "compressed_count": 4, "message_id": "compress-msg-1"}
+
+
+@pytest.mark.asyncio
+async def test_resolve_tools_handles_resolution_exception(monkeypatch):
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+        tool_registry_getter=lambda: (_ for _ in ()).throw(RuntimeError("registry failed")),
+    )
+    service = SingleChatFlowService(deps)
+    monkeypatch.setattr(service, "_supports_function_calling", lambda _model_id: True)
+
+    tools, executor = await service._resolve_tools(
+        request=ToolResolutionContext(
+            assistant_id=None,
+            assistant_obj=None,
+            model_id="provider:model-a",
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            editor=EditorContext(),
+            use_web_search=False,
+        ),
+    )
+    assert tools is None
+    assert executor is None
+
+
+@pytest.mark.asyncio
+async def test_combined_tool_executor_blocks_and_falls_back():
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+    )
+    service = SingleChatFlowService(deps)
+
+    async def _async_executor(_name, _args):
+        return "async-result"
+
+    def _broken_executor(_name, _args):
+        raise RuntimeError("boom")
+
+    blocked_request = ToolResolutionContext(
+        assistant_id=None,
+        assistant_obj=None,
+        model_id="provider:model-a",
+        scope=ConversationScope(session_id="s1", context_type="project", project_id="p1"),
+        editor=EditorContext(),
+        use_web_search=False,
+    )
+    resolved_tools = SimpleNamespace(
+        allowed_tool_names={"allowed_tool"},
+        tool_executors=[_broken_executor, _async_executor],
+    )
+    blocked_executor = service._build_combined_tool_executor(
+        request=blocked_request,
+        resolved_tools=resolved_tools,
+    )
+    blocked_result = await blocked_executor("not_allowed", {})
+    assert blocked_result == "Error: Tool 'not_allowed' is disabled for this project"
+
+    allowed_result = await blocked_executor("allowed_tool", {})
+    assert allowed_result == "async-result"
