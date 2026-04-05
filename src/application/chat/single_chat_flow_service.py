@@ -833,10 +833,12 @@ class SingleChatFlowService:
         if request.scope.context_type != "project" or not request.scope.project_id:
             return {str(tool_name) for tool_name in assistant_allowed}
 
-        project_allowed = await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
-            context_type=request.scope.context_type,
-            project_id=request.scope.project_id,
-            candidate_tool_names=candidate_tool_names,
+        project_allowed = (
+            await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
+                context_type=request.scope.context_type,
+                project_id=request.scope.project_id,
+                candidate_tool_names=candidate_tool_names,
+            )
         )
         effective_allowed = set(assistant_allowed).intersection(project_allowed)
         return {str(tool_name) for tool_name in effective_allowed}
