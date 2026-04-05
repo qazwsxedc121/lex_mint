@@ -66,6 +66,9 @@ jobs:
       - name: BasedPyright
         run: npm run typecheck
 
+      - name: Backend HTTP contract tests
+        run: ./venv/bin/pytest --no-cov tests/unit/api/routers/test_message_http_contract.py
+
       - name: Pytest
         run: ./venv/bin/pytest tests --ignore=tests/e2e --ignore=tests/test_function_calling.py
 
@@ -98,6 +101,9 @@ jobs:
 
       - name: Unit coverage
         run: npm run test:coverage
+
+      - name: Frontend API contract tests
+        run: npm run test -- tests/unit/services
 
       - name: Build
         run: npm run build

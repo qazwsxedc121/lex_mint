@@ -265,7 +265,14 @@ export async function deleteMessage(sessionId: string, messageId: string, contex
   if (projectId) {
     params.append('project_id', projectId);
   }
-  await api.delete(`/api/sessions/${sessionId}/messages/${messageId}?${params.toString()}`);
+  await api.delete(`/api/chat/message?${params.toString()}`, {
+    data: {
+      session_id: sessionId,
+      message_id: messageId,
+      context_type: contextType,
+      project_id: projectId,
+    },
+  });
 }
 
 /**
@@ -283,7 +290,13 @@ export async function updateMessageContent(
   if (projectId) {
     params.append('project_id', projectId);
   }
-  await api.put(`/api/sessions/${sessionId}/messages/${messageId}?${params.toString()}`, { content });
+  await api.put(`/api/chat/message?${params.toString()}`, {
+    session_id: sessionId,
+    message_id: messageId,
+    content,
+    context_type: contextType,
+    project_id: projectId,
+  });
 }
 
 /**
@@ -295,7 +308,11 @@ export async function insertSeparator(sessionId: string, contextType: string = '
   if (projectId) {
     params.append('project_id', projectId);
   }
-  const response = await api.post<{ message_id: string }>(`/api/sessions/${sessionId}/separator?${params.toString()}`);
+  const response = await api.post<{ message_id: string }>(`/api/chat/separator?${params.toString()}`, {
+    session_id: sessionId,
+    context_type: contextType,
+    project_id: projectId,
+  });
   return response.data.message_id;
 }
 
@@ -308,7 +325,11 @@ export async function clearAllMessages(sessionId: string, contextType: string = 
   if (projectId) {
     params.append('project_id', projectId);
   }
-  await api.delete(`/api/sessions/${sessionId}/messages?${params.toString()}`);
+  await api.post(`/api/chat/clear?${params.toString()}`, {
+    session_id: sessionId,
+    context_type: contextType,
+    project_id: projectId,
+  });
 }
 
 /**

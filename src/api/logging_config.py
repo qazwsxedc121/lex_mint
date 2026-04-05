@@ -120,7 +120,18 @@ def setup_logging():
     logging.getLogger("src").setLevel(logging.INFO)
     logging.getLogger("llm_interactions").setLevel(logging.INFO)
 
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    access_log_file = logs_directory / "access.log"
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_file_handler = logging.FileHandler(access_log_file, encoding="utf-8")
+    access_file_handler.setLevel(logging.INFO)
+    access_file_handler.setFormatter(
+        logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    )
+    access_logger.addHandler(access_file_handler)
+    access_logger.setLevel(logging.INFO)
+    access_logger.propagate = False
+
     logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -131,5 +142,6 @@ def setup_logging():
     print("=" * 80)
     print("Logging system initialized")
     print(f"All output (stdout/stderr) will be saved to: {log_file.absolute()}")
+    print(f"HTTP access logs will be saved to: {access_log_file.absolute()}")
     print("Log rotation: max 10MB per file, keep 3 backups")
     print("=" * 80)

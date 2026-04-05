@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import io
+import logging
 import sys
 from pathlib import Path
 
@@ -91,10 +92,15 @@ def test_setup_logging_initializes_stdout_and_file(tmp_path: Path, monkeypatch):
     logging_config.setup_logging()
 
     log_file = tmp_path / "server.log"
+    access_log_file = tmp_path / "access.log"
     assert log_file.exists()
     assert isinstance(sys.stdout, logging_config.TeeOutput)
     assert isinstance(sys.stderr, logging_config.TeeOutput)
     assert "Logging system initialized" in log_file.read_text(encoding="utf-8")
+
+    logging.getLogger("uvicorn.access").info("DELETE /api/demo HTTP/1.1 405")
+    assert access_log_file.exists()
+    assert "DELETE /api/demo HTTP/1.1 405" in access_log_file.read_text(encoding="utf-8")
 
     sys.stdout.close()
     sys.stderr.close()
