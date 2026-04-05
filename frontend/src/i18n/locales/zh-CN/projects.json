@@ -219,6 +219,8 @@
   "workspace.settings.toolGroups.knowledge.description": "\u5728\u5f53\u524d\u9879\u76ee\u53ef\u8bbf\u95ee\u7684\u77e5\u8bc6\u5e93\u4e2d\u641c\u7d22\u548c\u8bfb\u53d6\u5185\u5bb9\u3002",
   "workspace.settings.tools.get_current_time.title": "\u5f53\u524d\u65f6\u95f4",
   "workspace.settings.tools.get_current_time.description": "\u5141\u8bb8\u6a21\u578b\u67e5\u770b\u6307\u5b9a\u65f6\u533a\u7684\u5f53\u524d\u65f6\u95f4\u3002",
+  "workspace.settings.tools.execute_python.title": "\u6267\u884c Python",
+  "workspace.settings.tools.execute_python.description": "\u5141\u8bb8\u6a21\u578b\u5728\u6d4f\u89c8\u5668\u6c99\u7bb1\u4e2d\u8fd0\u884c Python \u4ee3\u7801\u5e76\u8bfb\u53d6 stdout/stderr/\u7ed3\u679c\u3002",
   "workspace.settings.tools.simple_calculator.title": "\u8ba1\u7b97\u5668",
   "workspace.settings.tools.simple_calculator.description": "\u5141\u8bb8\u6a21\u578b\u8ba1\u7b97\u7b97\u672f\u8868\u8fbe\u5f0f\u3002",
   "workspace.settings.tools.format_json.title": "JSON \u683c\u5f0f\u5316",

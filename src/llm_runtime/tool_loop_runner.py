@@ -587,8 +587,7 @@ class ToolLoopRunner:
     async def execute_tool_calls(
         round_tool_calls: list[dict[str, Any]],
         *,
-        tool_executor: Callable[[str, dict[str, Any]], str | None | Awaitable[str | None]]
-        | None = None,
+        tool_executor: Callable[..., str | None | Awaitable[str | None]] | None = None,
     ) -> list[dict[str, str]]:
         """Execute tool calls with request-scoped executor fallback to registry."""
         from src.tools.registry import get_tool_registry
@@ -600,7 +599,16 @@ class ToolLoopRunner:
             result: str | None = None
             if tool_executor is not None:
                 try:
-                    maybe_result = tool_executor(tc["name"], tc["args"])
+                    try:
+                        maybe_result = tool_executor(
+                            tc["name"],
+                            tc["args"],
+                            tool_call_id=(tc.get("id") or ""),
+                        )
+                    except TypeError as type_error:
+                        if "tool_call_id" not in str(type_error):
+                            raise
+                        maybe_result = tool_executor(tc["name"], tc["args"])
                     if inspect.isawaitable(maybe_result):
                         maybe_result = await maybe_result
                     if maybe_result is not None:

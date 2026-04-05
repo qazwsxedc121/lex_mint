@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 ModelServiceFactory = Callable[[], ModelConfigService]
 LoggerFactory = Callable[[], Any]
-ToolExecutor = Callable[[str, dict[str, Any]], str | None | Awaitable[str | None]]
+ToolExecutor = Callable[..., str | None | Awaitable[str | None]]
 
 
 @dataclass(frozen=True)

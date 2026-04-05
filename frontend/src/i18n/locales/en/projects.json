@@ -218,6 +218,8 @@
   "workspace.settings.toolGroups.knowledge.description": "Search and read from the knowledge bases available to this project.",
   "workspace.settings.tools.get_current_time.title": "Current time",
   "workspace.settings.tools.get_current_time.description": "Lets the model check the current time in a specific timezone.",
+  "workspace.settings.tools.execute_python.title": "Execute Python",
+  "workspace.settings.tools.execute_python.description": "Lets the model run Python code in the browser sandbox and read stdout/stderr/results.",
   "workspace.settings.tools.simple_calculator.title": "Calculator",
   "workspace.settings.tools.simple_calculator.description": "Lets the model evaluate arithmetic expressions.",
   "workspace.settings.tools.format_json.title": "Format JSON",

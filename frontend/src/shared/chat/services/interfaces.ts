@@ -53,6 +53,12 @@ export interface ChatAPI {
   ): Promise<void>;
   updateGroupAssistants(sessionId: string, groupAssistants: string[]): Promise<void>;
   updateSessionParamOverrides(sessionId: string, paramOverrides: ParamOverrides): Promise<void>;
+  submitToolResult(
+    sessionId: string,
+    toolCallId: string,
+    name: string,
+    result: string
+  ): Promise<void>;
 
   // Message operations
   sendMessageStream(

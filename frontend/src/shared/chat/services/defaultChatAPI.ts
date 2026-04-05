@@ -28,6 +28,7 @@ export const defaultChatAPI: ChatAPI = {
     api.updateSessionTarget(sessionId, targetType, 'chat', undefined, options),
   updateGroupAssistants: api.updateGroupAssistants,
   updateSessionParamOverrides: api.updateSessionParamOverrides,
+  submitToolResult: api.submitChatToolResult,
 
   // Message operations
   sendMessageStream: async (

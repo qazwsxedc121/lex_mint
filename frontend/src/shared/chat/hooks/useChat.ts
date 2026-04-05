@@ -35,6 +35,7 @@ import {
   type GroupProjectionEvent,
   type GroupTimelineProjectionInput,
 } from './useChatGroupProjection';
+import { pyodideService } from '../services/pyodideService';
 
 type SendMessageOptions = {
   reasoningEffort?: string;
@@ -46,6 +47,56 @@ type SendMessageOptions = {
 type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
 
 type MessageStateSetter = Dispatch<SetStateAction<Message[]>>;
+
+type ToolCallPayload = {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+};
+
+async function executePythonToolCallIfNeeded(params: {
+  sessionId: string;
+  api: ReturnType<typeof useChatServices>['api'];
+  call: ToolCallPayload;
+}): Promise<void> {
+  const { sessionId, api, call } = params;
+  if (call.name !== 'execute_python') {
+    return;
+  }
+
+  const toolCallId = call.id;
+  if (!toolCallId) {
+    return;
+  }
+
+  const rawCode = call.args.code;
+  const code = typeof rawCode === 'string' ? rawCode : '';
+  const rawTimeout = call.args.timeout_ms;
+  const timeoutMs =
+    typeof rawTimeout === 'number' && Number.isFinite(rawTimeout)
+      ? Math.max(1000, Math.min(120000, Math.floor(rawTimeout)))
+      : 30000;
+
+  let resultPayload: string;
+  try {
+    const result = await pyodideService.runPython(code, timeoutMs);
+    resultPayload = JSON.stringify({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    resultPayload = JSON.stringify({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await api.submitToolResult(sessionId, toolCallId, call.name, resultPayload);
+  } catch (error) {
+    console.error('Failed to submit client tool result:', error);
+  }
+}
 
 function createHydrateUserMessageFromServer(params: {
   sessionId: string | null;
@@ -709,6 +760,7 @@ export function useChat(sessionId: string | null) {
     let latestUserMessageId: string | null = null;
     let activeAssistantTurnId: string | null = null;
     let runtimeIsGroupChat = initialIsGroupChat;
+    const handledPythonToolCallIds = new Set<string>();
     const {
       updateAssistantMessage,
       handleAssistantStart,
@@ -871,6 +923,20 @@ export function useChat(sessionId: string | null) {
             (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
             { allowSingleFallback: true }
           );
+          for (const call of calls) {
+            if (call.name !== 'execute_python' || !call.id) {
+              continue;
+            }
+            if (handledPythonToolCallIds.has(call.id)) {
+              continue;
+            }
+            handledPythonToolCallIds.add(call.id);
+            void executePythonToolCallIfNeeded({
+              sessionId,
+              api,
+              call,
+            });
+          }
         },
         // Tool results: onToolResults
         (results: Array<{ name: string; result: string; tool_call_id: string }>) => {
@@ -1162,6 +1228,7 @@ export function useChat(sessionId: string | null) {
     let streamedContent = '';
     let runtimeIsGroupChat = initialIsGroupChat;
     let activeAssistantTurnId: string | null = null;
+    const handledPythonToolCallIds = new Set<string>();
     if (initialIsGroupChat) {
       setGroupTimeline([]);
     }
@@ -1276,6 +1343,20 @@ export function useChat(sessionId: string | null) {
             (message) => ({ ...message, toolCalls: [...(message.toolCalls || []), ...toolCalls] }),
             { allowSingleFallback: true }
           );
+          for (const call of calls) {
+            if (call.name !== 'execute_python' || !call.id) {
+              continue;
+            }
+            if (handledPythonToolCallIds.has(call.id)) {
+              continue;
+            }
+            handledPythonToolCallIds.add(call.id);
+            void executePythonToolCallIfNeeded({
+              sessionId,
+              api,
+              call,
+            });
+          }
         },
         // onToolResults (regenerate)
         (results: Array<{ name: string; result: string; tool_call_id: string }>) => {

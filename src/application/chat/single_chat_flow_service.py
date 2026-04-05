@@ -13,6 +13,9 @@ from src.application.chat.chat_runtime import (
     SingleDirectOrchestrator,
     SingleDirectSettings,
 )
+from src.application.chat.client_tool_call_coordinator import (
+    get_client_tool_call_coordinator,
+)
 from src.application.chat.rag_tool_service import RagToolService
 from src.application.chat.request_contexts import (
     SingleChatRequestContext,
@@ -712,7 +715,8 @@ class SingleChatFlowService:
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
 
-        if not resolved_tools.tool_executors:
+        needs_client_python_bridge = "execute_python" in resolved_tools.allowed_tool_names
+        if not resolved_tools.tool_executors and not needs_client_python_bridge:
             return resolved_tools.llm_tools or None, None
 
         return (
@@ -855,8 +859,12 @@ class SingleChatFlowService:
         *,
         request: ToolResolutionContext,
         resolved_tools: SingleChatResolvedTools,
-    ) -> Callable[[str, dict[str, Any]], Awaitable[str | None]]:
-        async def _combined_tool_executor(name: str, args: dict[str, Any]) -> str | None:
+    ) -> Callable[..., Awaitable[str | None]]:
+        async def _combined_tool_executor(
+            name: str,
+            args: dict[str, Any],
+            tool_call_id: str = "",
+        ) -> str | None:
             if name not in resolved_tools.allowed_tool_names:
                 logger.info(
                     "Blocked tool by policy: %s (context=%s, project=%s, assistant=%s)",
@@ -868,6 +876,24 @@ class SingleChatFlowService:
                 if request.scope.context_type == "project" and request.scope.project_id:
                     return f"Error: Tool '{name}' is disabled for this project or assistant"
                 return f"Error: Tool '{name}' is disabled for this assistant"
+            if name == "execute_python":
+                if not tool_call_id:
+                    return "Error: execute_python missing tool_call_id"
+                timeout_ms_raw = args.get("timeout_ms", 30000)
+                try:
+                    timeout_ms = int(timeout_ms_raw)
+                except Exception:
+                    timeout_ms = 30000
+                timeout_ms = max(1000, min(timeout_ms, 120000))
+                coordinator = get_client_tool_call_coordinator()
+                try:
+                    return await coordinator.await_result(
+                        session_id=request.scope.session_id,
+                        tool_call_id=tool_call_id,
+                        timeout_s=timeout_ms / 1000.0,
+                    )
+                except asyncio.TimeoutError:
+                    return f"Error: execute_python timed out after {timeout_ms}ms"
             for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)

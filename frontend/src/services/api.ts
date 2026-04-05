@@ -227,6 +227,13 @@ interface CompareStreamCallbacks {
   onError: (error: string) => void;
 }
 
+interface SubmitChatToolResultPayload {
+  session_id: string;
+  tool_call_id: string;
+  name: string;
+  result: string;
+}
+
 function toUploadedFilePayload(attachments: UploadedFile[]): UploadedFilePayload[] {
   return attachments.map((attachment) => ({
     filename: attachment.filename,
@@ -629,6 +636,21 @@ export async function sendMessage(
     use_web_search: useWebSearch || false,
   } as ChatRequest);
   return response.data.response;
+}
+
+export async function submitChatToolResult(
+  sessionId: string,
+  toolCallId: string,
+  name: string,
+  result: string
+): Promise<void> {
+  const payload: SubmitChatToolResultPayload = {
+    session_id: sessionId,
+    tool_call_id: toolCallId,
+    name,
+    result,
+  };
+  await api.post('/api/chat/tool-result', payload);
 }
 
 /**

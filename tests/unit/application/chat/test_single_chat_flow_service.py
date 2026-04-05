@@ -211,6 +211,7 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     service = SingleChatFlowService(deps)
 
     import src.infrastructure.config.model_config_service as model_config_service
+    import src.infrastructure.config.assistant_tool_policy_resolver as assistant_tool_policy_resolver
     import src.infrastructure.projects.project_knowledge_base_resolver as project_knowledge_base_resolver
     import src.infrastructure.projects.project_tool_policy_resolver as project_tool_policy_resolver
     import src.infrastructure.web.web_tool_service as web_tool_service
@@ -231,6 +232,10 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
         async def get_allowed_tool_names(self, **kwargs):
             return set(kwargs["candidate_tool_names"])
 
+    class _FakeAssistantPolicyResolver:
+        async def get_allowed_tool_names(self, **kwargs):
+            return set(kwargs["candidate_tool_names"])
+
     class _FakeWebToolService:
         def get_tools(self):
             return [SimpleNamespace(name="web_search"), SimpleNamespace(name="read_webpage")]
@@ -248,6 +253,9 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     )
     monkeypatch.setattr(
         project_tool_policy_resolver, "ProjectToolPolicyResolver", _FakePolicyResolver
+    )
+    monkeypatch.setattr(
+        assistant_tool_policy_resolver, "AssistantToolPolicyResolver", _FakeAssistantPolicyResolver
     )
     monkeypatch.setattr(web_tool_service, "WebToolService", _FakeWebToolService)
     monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
@@ -672,7 +680,7 @@ async def test_combined_tool_executor_blocks_and_falls_back():
         resolved_tools=resolved_tools,
     )
     blocked_result = await blocked_executor("not_allowed", {})
-    assert blocked_result == "Error: Tool 'not_allowed' is disabled for this project"
+    assert blocked_result == "Error: Tool 'not_allowed' is disabled for this project or assistant"
 
     allowed_result = await blocked_executor("allowed_tool", {})
     assert allowed_result == "async-result"

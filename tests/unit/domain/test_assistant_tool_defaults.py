@@ -10,6 +10,7 @@ def test_assistant_default_tool_map_contains_expected_core_tools():
     defaults = get_default_assistant_tool_enabled_map()
 
     assert defaults["get_current_time"] is False
+    assert defaults["execute_python"] is True
     assert defaults["simple_calculator"] is False
     assert defaults["format_json"] is False
     assert defaults["text_statistics"] is False
@@ -30,4 +31,3 @@ def test_assistant_tool_map_merges_partial_overrides():
     assert assistant.tool_enabled_map["simple_calculator"] is True
     # Unspecified tools keep default values.
     assert assistant.tool_enabled_map["web_search"] is False
-

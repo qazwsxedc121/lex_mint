@@ -11,6 +11,7 @@ def test_build_catalog_includes_all_tool_names():
 
     assert tool_names == [
         "get_current_time",
+        "execute_python",
         "simple_calculator",
         "format_json",
         "text_statistics",
@@ -37,6 +38,7 @@ def test_build_catalog_groups_tools_in_ui_order():
     ]
     assert [tool.name for tool in catalog.groups[0].tools] == [
         "get_current_time",
+        "execute_python",
         "simple_calculator",
         "format_json",
         "text_statistics",

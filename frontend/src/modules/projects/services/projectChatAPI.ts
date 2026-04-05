@@ -129,6 +129,9 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
     updateSessionParamOverrides: async (sessionId: string, paramOverrides) => {
       return api.updateSessionParamOverrides(sessionId, paramOverrides, contextType, projectId);
     },
+    submitToolResult: async (sessionId: string, toolCallId: string, name: string, result: string) => {
+      return api.submitChatToolResult(sessionId, toolCallId, name, result);
+    },
 
     // Message operations
     sendMessageStream: async (

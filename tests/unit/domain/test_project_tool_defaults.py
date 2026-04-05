@@ -23,6 +23,7 @@ def test_project_tool_defaults_include_all_known_tools():
 
     assert list(defaults.keys()) == [
         "get_current_time",
+        "execute_python",
         "simple_calculator",
         "format_json",
         "text_statistics",

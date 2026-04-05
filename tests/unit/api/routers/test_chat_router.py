@@ -225,6 +225,31 @@ async def test_stream_helpers_build_and_produce_payloads():
         }
     ]
 
+
+@pytest.mark.asyncio
+async def test_submit_chat_tool_result_validates_and_submits():
+    request = chat_router.SubmitToolResultRequest(
+        session_id="session-1",
+        tool_call_id="call-1",
+        name="execute_python",
+        result='{"ok":true}',
+    )
+    response = await chat_router.submit_chat_tool_result(request)
+    assert response == {"success": True}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await chat_router.submit_chat_tool_result(
+            chat_router.SubmitToolResultRequest(
+                session_id=" ",
+                tool_call_id="call-1",
+                name="execute_python",
+                result="x",
+            )
+        )
+    assert exc_info.value.status_code == 400
+
+    agent = _FakeAgent()
+    agent.stream_items = ["part-1", {"done": True}]
     runtime = FlowStreamRuntime()
     runtime.create_stream(
         stream_id="stream-1", conversation_id="session-1", context_type="chat", project_id=None

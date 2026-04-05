@@ -10,6 +10,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from src.application.chat.client_tool_call_coordinator import (
+    get_client_tool_call_coordinator,
+)
 from src.application.chat import ChatApplicationService
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_mapper import FlowEventMapper
@@ -144,6 +147,15 @@ class ResumeStreamRequest(BaseModel):
     last_event_id: str
     context_type: str = "chat"
     project_id: str | None = None
+
+
+class SubmitToolResultRequest(BaseModel):
+    """Request model for submitting a client-executed tool result."""
+
+    session_id: str
+    tool_call_id: str
+    name: str
+    result: str
 
 
 def get_chat_application_service() -> ChatApplicationService:
@@ -499,6 +511,23 @@ async def resume_chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/chat/tool-result")
+async def submit_chat_tool_result(request: SubmitToolResultRequest):
+    """Submit result for a client-executed tool call (for example pyodide)."""
+    if not request.session_id.strip():
+        raise HTTPException(status_code=400, detail="session_id is required")
+    if not request.tool_call_id.strip():
+        raise HTTPException(status_code=400, detail="tool_call_id is required")
+
+    coordinator = get_client_tool_call_coordinator()
+    await coordinator.submit_result(
+        session_id=request.session_id.strip(),
+        tool_call_id=request.tool_call_id.strip(),
+        result=request.result,
+    )
+    return {"success": True}
 
 
 @router.post("/chat/upload")

@@ -14,6 +14,7 @@ def test_builtin_registry_exposes_all_builtin_tools():
 
     assert tool_names == [
         "get_current_time",
+        "execute_python",
         "simple_calculator",
         "format_json",
         "text_statistics",
@@ -51,6 +52,7 @@ def test_builtin_registry_default_project_map_tracks_definitions():
 
     assert registry.get_default_project_enabled_map() == {
         "get_current_time": False,
+        "execute_python": True,
         "simple_calculator": False,
         "format_json": False,
         "text_statistics": False,
