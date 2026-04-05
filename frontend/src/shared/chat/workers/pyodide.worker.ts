@@ -28,8 +28,8 @@ type PyodideWorkerResponse = PyodideRunSuccessMessage | PyodideRunErrorMessage;
 
 type PyodideGlobal = {
   runPythonAsync: (code: string) => Promise<unknown>;
-  setStdout: (options: { batched: (msg: string) => void }) => void;
-  setStderr: (options: { batched: (msg: string) => void }) => void;
+  setStdout: (options: { raw: (charCode: number) => void }) => void;
+  setStderr: (options: { raw: (charCode: number) => void }) => void;
 };
 
 const PYODIDE_INDEX_URL = new URL('/pyodide/', self.location.origin).toString();
@@ -87,13 +87,13 @@ self.onmessage = async (event: MessageEvent<PyodideRunRequest>) => {
     const pyodide = await getPyodide();
 
     pyodide.setStdout({
-      batched: (msg: string) => {
-        stdout += msg;
+      raw: (charCode: number) => {
+        stdout += String.fromCharCode(charCode);
       },
     });
     pyodide.setStderr({
-      batched: (msg: string) => {
-        stderr += msg;
+      raw: (charCode: number) => {
+        stderr += String.fromCharCode(charCode);
       },
     });
 
@@ -103,9 +103,9 @@ self.onmessage = async (event: MessageEvent<PyodideRunRequest>) => {
       type: 'result',
       id,
       payload: {
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        value: stringifyValue(value).trim(),
+        stdout,
+        stderr,
+        value: stringifyValue(value),
       },
     };
     self.postMessage(response);
