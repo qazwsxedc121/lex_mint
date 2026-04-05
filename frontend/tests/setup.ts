@@ -3,6 +3,10 @@ import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '../src/i18n';
 
+if (!process.env.VITE_API_URL) {
+  vi.stubEnv('VITE_API_URL', 'http://localhost:18080');
+}
+
 afterEach(() => {
   cleanup();
 });

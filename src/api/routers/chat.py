@@ -10,10 +10,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from src.application.chat import ChatApplicationService
 from src.application.chat.client_tool_call_coordinator import (
     get_client_tool_call_coordinator,
 )
-from src.application.chat import ChatApplicationService
 from src.application.flow.flow_event_emitter import FlowEventEmitter
 from src.application.flow.flow_event_mapper import FlowEventMapper
 from src.application.flow.flow_event_types import (

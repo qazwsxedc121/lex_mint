@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
 from src.api.routers import chat as chat_router
 from src.api.routers import sessions as sessions_router

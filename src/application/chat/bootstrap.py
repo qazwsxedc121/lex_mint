@@ -23,12 +23,12 @@ from src.application.chat.source_context_service import SourceContextService
 from src.core.config import settings
 from src.infrastructure.compression.compression_config_service import CompressionConfigService
 from src.infrastructure.compression.compression_service import CompressionService
+from src.infrastructure.config.assistant_tool_policy_resolver import AssistantToolPolicyResolver
 from src.infrastructure.config.file_reference_config_service import FileReferenceConfigService
 from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.config.rag_config_service import RagConfigService
-from src.infrastructure.config.assistant_tool_policy_resolver import AssistantToolPolicyResolver
 from src.infrastructure.files.file_service import FileService
 from src.infrastructure.memory.memory_service import MemoryService
 from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
