@@ -194,7 +194,38 @@ export function MessageBubbleUserContent({
           <div className="h-px bg-blue-300/40" />
         </div>
       )}
-      <p className="whitespace-pre-wrap m-0">{displayUserMessage}</p>
+      {displayUserMessage.includes('```') ? (
+        <div className="prose prose-sm max-w-none prose-invert [&_pre]:max-w-full [&_pre]:overflow-x-auto">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+            components={{
+              code({ className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || '');
+                const language = match ? match[1] : '';
+                const value = String(children).replace(/\n$/, '');
+                const isInline = !className;
+
+                return !isInline && language ? (
+                  language === 'mermaid'
+                    ? <MermaidBlock value={value} />
+                    : language === 'svg'
+                      ? <SvgBlock value={value} />
+                      : <CodeBlock language={language} value={value} />
+                ) : (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              },
+            }}
+          >
+            {prepareMarkdownForRender(displayUserMessage)}
+          </ReactMarkdown>
+        </div>
+      ) : (
+        <p className="whitespace-pre-wrap m-0">{displayUserMessage}</p>
+      )}
     </>
   );
 }

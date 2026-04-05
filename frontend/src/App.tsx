@@ -40,6 +40,7 @@ import { RagSettings } from './modules/settings/RagSettings';
 import { DeveloperSettings } from './modules/settings/DeveloperSettings';
 import { PromptTemplatesPage } from './modules/settings/PromptTemplatesPage';
 import { MemorySettings } from './modules/settings/MemorySettings';
+import { CodeExecutionSettingsPage } from './modules/settings/CodeExecutionSettings';
 import { DeveloperModule } from './modules/developer';
 import { WorkflowsModule } from './modules/workflows';
 import './index.css';
@@ -92,6 +93,7 @@ function App() {
             <Route path="followup" element={<FollowupSettings />} />
             <Route path="compression" element={<CompressionSettings />} />
             <Route path="file-reference" element={<FileReferenceSettings />} />
+            <Route path="code-execution" element={<CodeExecutionSettingsPage />} />
             <Route path="translation" element={<TranslationSettings />} />
             <Route path="tts" element={<TTSSettings />} />
             <Route path="developer" element={<DeveloperSettings />} />
