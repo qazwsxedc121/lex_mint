@@ -181,7 +181,3 @@ export function buildFileReferencePreview(
     truncated: hiddenChars > 0 || hiddenLines > 0,
   };
 }
-
-
-
-

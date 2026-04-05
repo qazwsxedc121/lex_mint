@@ -100,7 +100,7 @@ Runtime (Legacy non-Agents path):
 
 ### 4.2 工具定义与执行
 
-- 原生工具 schema：`query`（自然语言检索）  
+- 原生工具 schema：`query`（自然语言检索）
   `learn_proj/LibreChat/packages/api/src/tools/registry/definitions.ts:543`
 - 工具工厂：
   - 列出可检索文件并生成 toolContext：`learn_proj/LibreChat/api/app/clients/tools/util/fileSearch.js:32`
@@ -111,12 +111,12 @@ Runtime (Legacy non-Agents path):
 
 ### 4.3 引用与结果后处理
 
-- tool artifact 命中 `file_search` 后，走 citations 处理：  
+- tool artifact 命中 `file_search` 后，走 citations 处理：
   `learn_proj/LibreChat/api/server/controllers/agents/callbacks.js:348`
 - relevance 阈值、每文件上限、总上限：
-  - `maxCitations` / `maxCitationsPerFile` / `minRelevanceScore`  
+  - `maxCitations` / `maxCitationsPerFile` / `minRelevanceScore`
   - `learn_proj/LibreChat/api/server/services/Files/Citations/index.js:55`
-- 处理后作为 attachment 流式回传：  
+- 处理后作为 attachment 流式回传：
   `learn_proj/LibreChat/api/server/controllers/agents/callbacks.js:365`
 
 ---
@@ -125,13 +125,13 @@ Runtime (Legacy non-Agents path):
 
 这是另一条“非工具调用”的链路：
 
-- 触发条件：`message_file_map` 存在且不是 Agents endpoint  
+- 触发条件：`message_file_map` 存在且不是 Agents endpoint
   `learn_proj/LibreChat/api/server/controllers/agents/client.js:417`
 - 对每个 `embedded` 文件发查询：
   - 默认：`/query` + `k=4`
   - `RAG_USE_FULL_CONTEXT` 开启时：`/documents/{id}/context`
   - `learn_proj/LibreChat/api/app/clients/prompts/createContextHandlers.js:22`
-- 结果会封装为 XML 风格上下文并拼到共享运行上下文  
+- 结果会封装为 XML 风格上下文并拼到共享运行上下文
   `learn_proj/LibreChat/api/server/controllers/agents/client.js:486`
 
 这条链路更像“系统主动检索并硬注入 prompt”，不是工具调用式的自主决策。
@@ -148,11 +148,11 @@ Runtime (Legacy non-Agents path):
 
 ### 6.2 文件访问控制
 
-- 文件搜索前可按 agent 权限过滤文件：  
+- 文件搜索前可按 agent 权限过滤文件：
   `learn_proj/LibreChat/api/server/services/Files/permissions.js:97`
-- 下载时支持“文件继承 agent 权限”：  
+- 下载时支持“文件继承 agent 权限”：
   `learn_proj/LibreChat/api/server/middleware/accessResources/fileAccess.js:11`
-- 向 agent 的永久资源上传要求 EDIT 权限：  
+- 向 agent 的永久资源上传要求 EDIT 权限：
   `learn_proj/LibreChat/api/server/routes/files/files.js:388`
 
 ---
@@ -162,23 +162,23 @@ Runtime (Legacy non-Agents path):
 - 删除文件时会尝试同步删除 RAG 向量：
   - local 文件：`learn_proj/LibreChat/api/server/services/Files/Local/crud.js:216`
   - vector strategy：`learn_proj/LibreChat/api/server/services/Files/VectorDB/crud.js:20`
-- 删除请求还会处理 agent/assistant 的 `tool_resource` 解绑：  
+- 删除请求还会处理 agent/assistant 的 `tool_resource` 解绑：
   `learn_proj/LibreChat/api/server/services/Files/process.js:158`、`learn_proj/LibreChat/api/server/services/Files/process.js:211`
 
 ---
 
 ## 8. 配置面（RAG 相关）
 
-- `.env` 暴露 RAG 相关变量：  
+- `.env` 暴露 RAG 相关变量：
   `learn_proj/LibreChat/.env.example:386`
   - `RAG_OPENAI_BASEURL`
   - `RAG_OPENAI_API_KEY`
   - `RAG_USE_FULL_CONTEXT`
   - `EMBEDDINGS_PROVIDER`
   - `EMBEDDINGS_MODEL`
-- `rag.yml` 给出推荐本地编排：`pgvector + rag_api`  
+- `rag.yml` 给出推荐本地编排：`pgvector + rag_api`
   `learn_proj/LibreChat/rag.yml:4`
-- `interface.fileSearch` 只影响聊天区开关，不等于关闭 Agents capability：  
+- `interface.fileSearch` 只影响聊天区开关，不等于关闭 Agents capability：
   `learn_proj/LibreChat/librechat.example.yaml:31`
 
 ---

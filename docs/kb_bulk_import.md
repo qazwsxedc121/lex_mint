@@ -48,4 +48,3 @@ Use these overrides only when needed:
 
 - `--allow-api-embedding`: allow API embedding
 - `--allow-cpu-embedding`: allow local embedding without GPU offload
-

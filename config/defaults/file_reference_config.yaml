@@ -6,4 +6,3 @@ file_reference:
   chunk_size: 2500
   max_chunks: 6
   total_budget_chars: 18000
-

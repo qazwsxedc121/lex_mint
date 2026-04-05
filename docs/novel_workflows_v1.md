@@ -33,4 +33,3 @@ All workflows generate markdown with YAML frontmatter and default `language=zh-C
 
 Workflow stream now emits `workflow_artifact_written` when an artifact node runs.
 Payload includes file path, write mode, whether the file was written, and content hash.
-

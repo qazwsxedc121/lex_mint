@@ -49,5 +49,3 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch Lex Mint"; Flags: nowait p
 
 [UninstallRun]
 Filename: "{app}\{#AppStopExeName}"; RunOnceId: "StopLexMint"; Flags: runhidden shellexec skipifdoesntexist
-
-

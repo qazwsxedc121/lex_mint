@@ -67,7 +67,7 @@ macOS / Linux（推荐）：
 ./scripts/init_worktree.sh --slot <SLOT>
 ```
 
-> 注意：`-ApiPort` 和 `-FrontendPort` 要按 **当前 worktree** 单独设置，避免和其他 worktree 冲突。  
+> 注意：`-ApiPort` 和 `-FrontendPort` 要按 **当前 worktree** 单独设置，避免和其他 worktree 冲突。
 > 脚本要求显式传参，不提供默认端口。
 
 > `scripts/init_worktree.sh` 支持自动分配：如果不传 `--slot` 和端口参数，会自动选择第一个可用 slot，并检查 worktree/进程占用冲突。
@@ -153,14 +153,14 @@ Invoke-WebRequest http://127.0.0.1:<FRONTEND_PORT> -UseBasicParsing
 
 ## 常见问题
 
-1) 后端启动报 `cors_origins` 解析错误  
+1) 后端启动报 `cors_origins` 解析错误
 `CORS_ORIGINS` 必须是 JSON 数组格式，例如：
 `["http://localhost:<FRONTEND_PORT>","http://localhost:3000","http://127.0.0.1:<FRONTEND_PORT>"]`
 
-2) 新 worktree 里没有 `config/local` 或 `data/state`  
+2) 新 worktree 里没有 `config/local` 或 `data/state`
 这是正常的，首次启动后端会自动创建。
 
-3) 还是提示 key 缺失  
+3) 还是提示 key 缺失
 检查：
 - `config/local/keys_config.yaml` 是否存在且包含：
   `providers.deepseek.api_key`

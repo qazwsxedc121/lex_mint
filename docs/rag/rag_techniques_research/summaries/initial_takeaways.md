@@ -13,9 +13,9 @@
 
 ## Most relevant learning areas for lex_mint_rag now
 
-1. Context window enrichment and contextual compression  
-2. Adaptive retrieval strategy selection  
-3. Self-correction loops (Self-RAG/CRAG-lite)  
+1. Context window enrichment and contextual compression
+2. Adaptive retrieval strategy selection
+3. Self-correction loops (Self-RAG/CRAG-lite)
 4. Deeper query-transform variants beyond current planner baseline
 
 These are likely to produce gains faster than large architecture changes (GraphRAG, full agentic pipelines).

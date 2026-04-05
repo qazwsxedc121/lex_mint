@@ -75,7 +75,7 @@ So the biggest gains are likely from **new retrieval strategies**, not from basi
 
 ## Suggested execution order
 
-1. Context enrichment/compression  
-2. Adaptive retrieval routing  
-3. Self-correction (Self-RAG/CRAG-lite)  
+1. Context enrichment/compression
+2. Adaptive retrieval routing
+3. Self-correction (Self-RAG/CRAG-lite)
 4. Graph/RAPTOR exploration (only after measurable gains in 1-3)

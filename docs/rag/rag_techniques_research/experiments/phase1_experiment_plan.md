@@ -61,6 +61,6 @@ Goal: run small, low-risk experiments that can be merged into our existing RAG s
 
 ## Recommended immediate order (updated)
 
-1. Experiment B (Context Window Enrichment tuning)  
-2. Experiment C (Contextual Compression)  
+1. Experiment B (Context Window Enrichment tuning)
+2. Experiment C (Contextual Compression)
 3. Experiment D (Adaptive Routing Lite)

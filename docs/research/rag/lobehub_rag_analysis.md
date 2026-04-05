@@ -184,4 +184,3 @@ LobeHub 的“主动”不仅在工具调用，还在 **首轮用户消息前的
 ## 10. 一句话结论
 
 LobeHub 的“主动式 RAG”本质是：**前置知识感知（context injection）+ 工具驱动两阶段检索（search -> read）+ 应用内向量链路**。这条路线非常适合我们在 lex_mint_rag 里做“可控、可解释、可扩展”的 Agent RAG。
-

@@ -6,12 +6,18 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.13
+  - repo: local
     hooks:
-      - id: ruff
-        args: [--fix]
+      - id: ruff-check
+        name: ruff-check
+        entry: venv/Scripts/python.exe -m ruff check --fix
+        language: system
+        types_or: [python, pyi]
       - id: ruff-format
+        name: ruff-format
+        entry: venv/Scripts/python.exe -m ruff format
+        language: system
+        types_or: [python, pyi]
 
   - repo: local
     hooks:
@@ -19,6 +25,6 @@ repos:
         name: frontend-eslint
         entry: npm
         language: system
-        args: [--prefix, frontend, exec, eslint, --, --fix]
+        args: [--prefix, frontend, exec, eslint, --, --fix, --config, frontend/eslint.config.js]
         files: ^frontend/.*\.(ts|tsx)$
         pass_filenames: true

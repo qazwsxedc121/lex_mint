@@ -94,33 +94,33 @@
 
 ## 7) 参考资料（官方优先，访问时间：2026-02-19）
 
-- LangGraph 文档（核心能力/快速开始）  
+- LangGraph 文档（核心能力/快速开始）
   https://langchain-ai.github.io/langgraph/
-- LangChain 文档（框架定位与生态）  
+- LangChain 文档（框架定位与生态）
   https://docs.langchain.com/oss/python/langchain/overview
-- DeerFlow（开源 deep research 项目，README）  
+- DeerFlow（开源 deep research 项目，README）
   https://github.com/bytedance/deer-flow
-- Dify 文档（工作流/Agent 能力）  
+- Dify 文档（工作流/Agent 能力）
   https://docs.dify.ai/
-- Dify 仓库（开源与许可证说明）  
+- Dify 仓库（开源与许可证说明）
   https://github.com/langgenius/dify
-- n8n 文档（AI 与工作流自动化）  
+- n8n 文档（AI 与工作流自动化）
   https://docs.n8n.io/
-- n8n 仓库（源码与许可）  
+- n8n 仓库（源码与许可）
   https://github.com/n8n-io/n8n
-- Claude Code 文档（终端 agent 形态）  
+- Claude Code 文档（终端 agent 形态）
   https://docs.anthropic.com/en/docs/claude-code/overview
-- OpenAI Agents SDK 文档（agents/tool/handoff）  
+- OpenAI Agents SDK 文档（agents/tool/handoff）
   https://openai.github.io/openai-agents-python/
-- PydanticAI 文档（typed agent framework）  
+- PydanticAI 文档（typed agent framework）
   https://ai.pydantic.dev/
-- AutoGen（AG2）仓库  
+- AutoGen（AG2）仓库
   https://github.com/microsoft/autogen
-- CrewAI 仓库  
+- CrewAI 仓库
   https://github.com/crewAIInc/crewAI
-- Temporal 文档（durable execution / workflows）  
+- Temporal 文档（durable execution / workflows）
   https://docs.temporal.io/workflows
-- Temporal Python SDK 文档（Signals/Updates 等消息交互）  
+- Temporal Python SDK 文档（Signals/Updates 等消息交互）
   https://docs.temporal.io/develop/python/message-passing
 
 ## 8) 备注与假设
@@ -166,53 +166,53 @@
 
 ## 11) 新增参考资料（补充调研来源，访问时间：2026-02-19）
 
-- PocketFlow 文档  
+- PocketFlow 文档
   https://the-pocket.github.io/PocketFlow/
-- PocketFlow 仓库  
+- PocketFlow 仓库
   https://github.com/The-Pocket/PocketFlow
-- PocketFlow PyPI  
+- PocketFlow PyPI
   https://pypi.org/project/pocketflow/
-- DSPy 文档  
+- DSPy 文档
   https://dspy.ai/
-- DSPy 生产化文档  
+- DSPy 生产化文档
   https://dspy.ai/production/
-- DSPy 优化器文档  
+- DSPy 优化器文档
   https://dspy.ai/learn/optimization/overview/
-- DSPy 仓库  
+- DSPy 仓库
   https://github.com/stanfordnlp/dspy
-- DSPy 论文（原始）  
+- DSPy 论文（原始）
   https://arxiv.org/abs/2310.03714
-- GEPA 论文（DSPy 新优化方法）  
+- GEPA 论文（DSPy 新优化方法）
   https://arxiv.org/abs/2507.19457
-- PydanticAI 文档  
+- PydanticAI 文档
   https://ai.pydantic.dev/
-- PydanticAI Graph 文档  
+- PydanticAI Graph 文档
   https://ai.pydantic.dev/graph/
-- PydanticAI Multi-agent 文档  
+- PydanticAI Multi-agent 文档
   https://ai.pydantic.dev/multi-agent-applications/
-- PydanticAI Durable Execution（Temporal）  
+- PydanticAI Durable Execution（Temporal）
   https://ai.pydantic.dev/durable_execution/temporal/
-- PydanticAI PyPI  
+- PydanticAI PyPI
   https://pypi.org/project/pydantic-ai/
-- Agno 文档入口  
+- Agno 文档入口
   https://docs.agno.com/
-- Agno AgentOS 介绍  
+- Agno AgentOS 介绍
   https://docs.agno.com/agent-os/introduction
-- Agno Workflow Patterns  
+- Agno Workflow Patterns
   https://docs.agno.com/workflows/workflow-patterns/overview
-- Agno HITL（User Confirmation）  
+- Agno HITL（User Confirmation）
   https://docs.agno.com/hitl/user-confirmation
-- Agno 评测文档  
+- Agno 评测文档
   https://docs.agno.com/evals/overview
-- Agno Provider Model Index  
+- Agno Provider Model Index
   https://docs.agno.com/models/providers/model-index
-- Agno FAQ（provider 切换）  
+- Agno FAQ（provider 切换）
   https://docs.agno.com/faq/switching-models
-- Agno v2 迁移文档  
+- Agno v2 迁移文档
   https://docs.agno.com/other/v2-migration
-- Agno RBAC  
+- Agno RBAC
   https://docs.agno.com/agent-os/security/rbac
-- Agno 远程执行  
+- Agno 远程执行
   https://docs.agno.com/agent-os/remote-execution/overview
-- Agno PyPI  
+- Agno PyPI
   https://pypi.org/project/agno/

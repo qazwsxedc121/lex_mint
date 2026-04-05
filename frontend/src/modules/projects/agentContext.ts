@@ -97,4 +97,3 @@ export const getAgentContextOriginLabel = (origin: ProjectAgentContextItem['orig
       return 'Context';
   }
 };
-

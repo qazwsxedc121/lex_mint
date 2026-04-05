@@ -1,6 +1,6 @@
 # RAG_Techniques Repository Landscape (Initial Scan)
 
-Date: 2026-02-18  
+Date: 2026-02-18
 Snapshot commit: `69a08b03154ea6087456ad44efebc9292d96667e` (`main`)
 
 ## 1) What is in this repository
@@ -54,4 +54,3 @@ This repository is strongest as:
 It is weaker as:
 - A production-ready package (notebooks are the main delivery format).
 - A reproducible dependency baseline (no clear locked dependency manifest in this snapshot).
-

@@ -37,20 +37,20 @@ lex_mint 已完成主动式 RAG 基础能力，不再处于“缺功能”阶段
 
 ### Sprint 1：评测与门禁
 
-1. 固化 Recall@K / MRR / citation hit rate 阈值  
-2. 建立真实问题回归集（禁止显式 function-call 提示）  
+1. 固化 Recall@K / MRR / citation hit rate 阈值
+2. 建立真实问题回归集（禁止显式 function-call 提示）
 3. 接入 CI gate
 
 ### Sprint 2：主动式工具质量
 
-1. 证据型请求优先 read  
-2. 重复 search 抑制  
+1. 证据型请求优先 read
+2. 重复 search 抑制
 3. 增加工具轨迹诊断（read 触发率、重复率、收敛轮次）
 
 ### Sprint 3：治理与扩展
 
-1. 统一附件/网页/KB 的 source 协议和引用渲染  
-2. 设计并落地 KB ACL  
+1. 统一附件/网页/KB 的 source 协议和引用渲染
+2. 设计并落地 KB ACL
 3. 轻量 query intent routing
 
 ---
