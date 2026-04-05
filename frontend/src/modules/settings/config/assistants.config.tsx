@@ -48,6 +48,23 @@ const getEnabledModelOptions = (context: any) => {
     }));
 };
 
+const getAssistantToolOptions = (context: any) => {
+  const items = Array.isArray(context.toolCatalogItems) ? context.toolCatalogItems : [];
+  return items
+    .filter((tool: any) => (
+      tool?.name
+      && tool?.group !== 'projectDocuments'
+      && tool?.group !== 'knowledge'
+    ))
+    .map((tool: any) => ({
+      value: tool.name,
+      label: i18n.t(tool.title_i18n_key || tool.name, {
+        ns: 'projects',
+        defaultValue: tool.name,
+      }),
+    }));
+};
+
 const buildSuggestedAssistantId = (sourceId: string, existingIds: Iterable<string>): string => {
   const existingIdSet = new Set(Array.from(existingIds, (value) => String(value)));
   const baseId = `${sourceId}-copy`;
@@ -352,6 +369,13 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
           }));
       },
       get helpText() { return i18n.t('settings:assistants.field.knowledgeBases.help'); }
+    },
+    {
+      type: 'tool-map' as const,
+      name: 'tool_enabled_map',
+      get label() { return i18n.t('settings:assistants.field.tools'); },
+      dynamicOptions: getAssistantToolOptions,
+      get helpText() { return i18n.t('settings:assistants.field.tools.help'); }
     }
   ],
 
@@ -451,6 +475,13 @@ export const assistantsConfig: CrudSettingsConfig<Assistant> = {
           }));
       },
       get helpText() { return i18n.t('settings:assistants.field.knowledgeBases.help'); }
+    },
+    {
+      type: 'tool-map' as const,
+      name: 'tool_enabled_map',
+      get label() { return i18n.t('settings:assistants.field.tools'); },
+      dynamicOptions: getAssistantToolOptions,
+      get helpText() { return i18n.t('settings:assistants.field.tools.help'); }
     }
   ],
 

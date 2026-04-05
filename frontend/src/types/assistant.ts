@@ -19,6 +19,7 @@ export interface Assistant {
   enabled: boolean;
   memory_enabled: boolean;
   knowledge_base_ids?: string[];  // Bound knowledge base IDs
+  tool_enabled_map?: Record<string, boolean>;
 }
 
 export interface AssistantCreate {
@@ -38,6 +39,7 @@ export interface AssistantCreate {
   enabled?: boolean;
   memory_enabled?: boolean;
   knowledge_base_ids?: string[];
+  tool_enabled_map?: Record<string, boolean>;
 }
 
 export interface AssistantUpdate {
@@ -56,6 +58,7 @@ export interface AssistantUpdate {
   enabled?: boolean;
   memory_enabled?: boolean;
   knowledge_base_ids?: string[];
+  tool_enabled_map?: Record<string, boolean>;
 }
 
 export interface AssistantsConfig {

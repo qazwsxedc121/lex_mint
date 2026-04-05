@@ -27,6 +27,7 @@ def build_single_chat_flow_service(
     project_document_tool_service_factory: Any = None,
     project_knowledge_base_resolver_factory: Any = None,
     project_tool_policy_resolver_factory: Any = None,
+    assistant_tool_policy_resolver_factory: Any = None,
     web_tool_service_factory: Any = None,
     tool_registry_getter: Any = None,
 ) -> SingleChatFlowService:
@@ -74,6 +75,11 @@ def build_single_chat_flow_service(
             **(
                 {"project_tool_policy_resolver_factory": project_tool_policy_resolver_factory}
                 if project_tool_policy_resolver_factory is not None
+                else {}
+            ),
+            **(
+                {"assistant_tool_policy_resolver_factory": assistant_tool_policy_resolver_factory}
+                if assistant_tool_policy_resolver_factory is not None
                 else {}
             ),
             **(

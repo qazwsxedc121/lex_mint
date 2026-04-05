@@ -5,17 +5,47 @@
 import type { Assistant } from '../../types/assistant';
 import type { Model, Provider } from '../../types/model';
 import type { KnowledgeBase } from '../../types/knowledgeBase';
+import type { ProjectToolCatalogItem } from '../../types/project';
 import type { CrudHook } from './config/types';
 import { assistantsConfig, modelsConfig, providersConfig, knowledgeBasesConfig } from './config';
 import { makeCrudPages } from './components/crud';
 import { useAssistants } from './hooks/useAssistants';
 import { useModels } from './hooks/useModels';
 import { useKnowledgeBases } from './hooks/useKnowledgeBases';
+import { getToolCatalog } from '../../services/api';
+import { useEffect, useState } from 'react';
 
 const useAssistantsCrud = () => {
   const modelsHook = useModels();
   const assistantsHook = useAssistants();
   const kbHook = useKnowledgeBases();
+  const [toolCatalogItems, setToolCatalogItems] = useState<ProjectToolCatalogItem[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadToolCatalog = async () => {
+      try {
+        const catalog = await getToolCatalog();
+        if (cancelled) {
+          return;
+        }
+        setToolCatalogItems(Array.isArray(catalog.tools) ? catalog.tools : []);
+      } catch (error) {
+        console.error('Failed to load tool catalog for assistants crud pages:', error);
+      }
+    };
+    void loadToolCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toolCatalogDefaultMap = toolCatalogItems
+    .filter((tool) => tool.group !== 'projectDocuments')
+    .reduce<Record<string, boolean>>((acc, tool) => {
+      acc[tool.name] = Boolean(tool.enabled_by_default);
+      return acc;
+    }, {});
 
   const hook: CrudHook<Assistant> = {
     items: assistantsHook.assistants,
@@ -31,7 +61,13 @@ const useAssistantsCrud = () => {
 
   return {
     hook,
-    context: { models: modelsHook.models, providers: modelsHook.providers, knowledgeBases: kbHook.knowledgeBases }
+    context: {
+      models: modelsHook.models,
+      providers: modelsHook.providers,
+      knowledgeBases: kbHook.knowledgeBases,
+      toolCatalogItems,
+      toolCatalogDefaultMap,
+    }
   };
 };
 

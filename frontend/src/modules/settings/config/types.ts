@@ -175,6 +175,19 @@ export interface MultiSelectFieldConfig extends BaseFieldConfig {
 }
 
 /**
+ * Tool-map field for editing per-tool enabled state maps.
+ */
+export interface ToolMapFieldConfig extends BaseFieldConfig {
+  type: 'tool-map';
+  /** Default value */
+  defaultValue?: Record<string, boolean>;
+  /** Static options */
+  options?: ConfigOption[];
+  /** Dynamic options from context */
+  dynamicOptions?: (context: ConfigContext, formData?: ConfigFormData) => ConfigOption[];
+}
+
+/**
  * Prompt template variables visual editor
  */
 export interface TemplateVariablesFieldConfig extends BaseFieldConfig {
@@ -242,6 +255,7 @@ export type FieldConfig =
   | TextareaFieldConfig
   | IconPickerFieldConfig
   | MultiSelectFieldConfig
+  | ToolMapFieldConfig
   | TemplateVariablesFieldConfig
   | PresetFieldConfig
   | ModelIdFieldConfig

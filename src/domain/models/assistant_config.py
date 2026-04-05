@@ -1,10 +1,25 @@
 """
-Assistant configuration data models
+Assistant configuration data models.
 
-Defines Pydantic models for AI assistants with system prompts and sampling parameters.
+Defines Pydantic models for AI assistants with system prompts, sampling parameters,
+and assistant-scoped tool policy.
 """
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
+
+from src.tools.builtin import get_builtin_tool_default_enabled_map
+from src.tools.request_scoped import get_request_scoped_tool_default_enabled_map
+
+DEFAULT_ASSISTANT_TOOL_ENABLED_MAP: dict[str, bool] = {
+    **get_builtin_tool_default_enabled_map(),
+    **get_request_scoped_tool_default_enabled_map(),
+}
+
+
+def get_default_assistant_tool_enabled_map() -> dict[str, bool]:
+    return dict(DEFAULT_ASSISTANT_TOOL_ENABLED_MAP)
 
 
 class Assistant(BaseModel):
@@ -41,6 +56,26 @@ class Assistant(BaseModel):
     knowledge_base_ids: list[str] | None = Field(
         default=None, description="Bound knowledge base IDs"
     )
+    tool_enabled_map: dict[str, bool] = Field(
+        default_factory=get_default_assistant_tool_enabled_map,
+        description="Per-tool enablement for assistant-scoped tool policy",
+    )
+
+    @field_validator("tool_enabled_map", mode="before")
+    @classmethod
+    def normalize_tool_enabled_map(cls, value: Any) -> dict[str, bool]:
+        merged = get_default_assistant_tool_enabled_map()
+        if value is None:
+            return merged
+        if not isinstance(value, dict):
+            raise ValueError("tool_enabled_map must be an object")
+
+        for raw_key, raw_enabled in value.items():
+            key = str(raw_key or "").strip()
+            if not key:
+                continue
+            merged[key] = bool(raw_enabled)
+        return merged
 
 
 class AssistantsConfig(BaseModel):
@@ -81,6 +116,10 @@ class AssistantCreate(BaseModel):
     knowledge_base_ids: list[str] | None = Field(
         default=None, description="Bound knowledge base IDs"
     )
+    tool_enabled_map: dict[str, bool] | None = Field(
+        default=None,
+        description="Optional per-tool enablement map override for this assistant",
+    )
 
 
 class AssistantUpdate(BaseModel):
@@ -114,4 +153,8 @@ class AssistantUpdate(BaseModel):
     )
     knowledge_base_ids: list[str] | None = Field(
         default=None, description="Bound knowledge base IDs"
+    )
+    tool_enabled_map: dict[str, bool] | None = Field(
+        default=None,
+        description="Optional per-tool enablement map override for this assistant",
     )

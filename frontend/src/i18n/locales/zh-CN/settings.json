@@ -266,6 +266,8 @@
   "assistants.field.memoryEnabled": "启用助手记忆",
   "assistants.field.knowledgeBases": "知识库",
   "assistants.field.knowledgeBases.help": "选择用于 RAG 检索的知识库",
+  "assistants.field.tools": "工具",
+  "assistants.field.tools.help": "控制该助手在非项目聊天中可使用的工具。",
   "models.title": "模型列表",
   "models.description": "管理不同服务商的语言模型",
   "models.itemName": "模型",

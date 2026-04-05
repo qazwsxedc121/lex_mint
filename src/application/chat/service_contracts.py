@@ -64,6 +64,9 @@ class AssistantLike(Protocol):
     def knowledge_base_ids(self) -> list[str] | None: ...
 
     @property
+    def tool_enabled_map(self) -> dict[str, bool]: ...
+
+    @property
     def enabled(self) -> bool: ...
 
 

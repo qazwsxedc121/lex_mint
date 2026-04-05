@@ -266,6 +266,8 @@
   "assistants.field.memoryEnabled": "Enable assistant memory",
   "assistants.field.knowledgeBases": "Knowledge Bases",
   "assistants.field.knowledgeBases.help": "Select knowledge bases to use for RAG with this assistant",
+  "assistants.field.tools": "Tools",
+  "assistants.field.tools.help": "Control which tools this assistant can use in non-project chat.",
   "models.title": "Model List",
   "models.description": "Manage language models from different providers",
   "models.itemName": "model",

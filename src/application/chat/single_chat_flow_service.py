@@ -71,6 +71,12 @@ def _default_project_tool_policy_resolver_factory() -> Any:
     return ProjectToolPolicyResolver()
 
 
+def _default_assistant_tool_policy_resolver_factory() -> Any:
+    from src.infrastructure.config.assistant_tool_policy_resolver import AssistantToolPolicyResolver
+
+    return AssistantToolPolicyResolver()
+
+
 def _default_web_tool_service_factory() -> Any:
     from src.infrastructure.web.web_tool_service import WebToolService
 
@@ -109,6 +115,9 @@ class SingleChatFlowDeps:
     )
     project_tool_policy_resolver_factory: Callable[[], Any] = (
         _default_project_tool_policy_resolver_factory
+    )
+    assistant_tool_policy_resolver_factory: Callable[[], Any] = (
+        _default_assistant_tool_policy_resolver_factory
     )
     web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
     tool_registry_getter: Callable[[], Any] = _default_tool_registry_getter
@@ -693,7 +702,7 @@ class SingleChatFlowService:
                 request=request,
                 candidate_tools=resolved_tools.llm_tools,
             )
-            self._apply_project_tool_policy(
+            self._apply_tool_policy(
                 request=request,
                 resolved_tools=resolved_tools,
             )
@@ -809,24 +818,32 @@ class SingleChatFlowService:
         request: ToolResolutionContext,
         candidate_tools: list[Any],
     ) -> set[str]:
-        allowed_tool_names = (
-            await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
-                context_type=request.scope.context_type,
-                project_id=request.scope.project_id,
-                candidate_tool_names=[tool.name for tool in candidate_tools],
+        candidate_tool_names = [tool.name for tool in candidate_tools]
+        assistant_allowed = (
+            await self.deps.assistant_tool_policy_resolver_factory().get_allowed_tool_names(
+                assistant_id=request.assistant_id,
+                assistant_obj=request.assistant_obj,
+                candidate_tool_names=candidate_tool_names,
             )
         )
-        return {str(tool_name) for tool_name in allowed_tool_names}
+        if request.scope.context_type != "project" or not request.scope.project_id:
+            return {str(tool_name) for tool_name in assistant_allowed}
+
+        project_allowed = await self.deps.project_tool_policy_resolver_factory().get_allowed_tool_names(
+            context_type=request.scope.context_type,
+            project_id=request.scope.project_id,
+            candidate_tool_names=candidate_tool_names,
+        )
+        effective_allowed = set(assistant_allowed).intersection(project_allowed)
+        return {str(tool_name) for tool_name in effective_allowed}
 
     @staticmethod
-    def _apply_project_tool_policy(
+    def _apply_tool_policy(
         *,
         request: ToolResolutionContext,
         resolved_tools: SingleChatResolvedTools,
     ) -> None:
-        if request.scope.context_type != "project" or not request.scope.project_id:
-            return
-
+        _ = request
         resolved_tools.llm_tools = [
             tool
             for tool in resolved_tools.llm_tools
@@ -840,17 +857,17 @@ class SingleChatFlowService:
         resolved_tools: SingleChatResolvedTools,
     ) -> Callable[[str, dict[str, Any]], Awaitable[str | None]]:
         async def _combined_tool_executor(name: str, args: dict[str, Any]) -> str | None:
-            if (
-                request.scope.context_type == "project"
-                and request.scope.project_id
-                and name not in resolved_tools.allowed_tool_names
-            ):
+            if name not in resolved_tools.allowed_tool_names:
                 logger.info(
-                    "Blocked project tool by policy: %s (project=%s)",
+                    "Blocked tool by policy: %s (context=%s, project=%s, assistant=%s)",
                     name,
+                    request.scope.context_type,
                     request.scope.project_id,
+                    request.assistant_id,
                 )
-                return f"Error: Tool '{name}' is disabled for this project"
+                if request.scope.context_type == "project" and request.scope.project_id:
+                    return f"Error: Tool '{name}' is disabled for this project or assistant"
+                return f"Error: Tool '{name}' is disabled for this assistant"
             for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)

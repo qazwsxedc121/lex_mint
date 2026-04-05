@@ -302,6 +302,51 @@ export const FormField: React.FC<FormFieldProps> = ({
         );
       }
 
+      case 'tool-map': {
+        const options = config.dynamicOptions
+          ? config.dynamicOptions(context, formData)
+          : config.options || [];
+        const defaultsFromContext = (context.toolCatalogDefaultMap || {}) as Record<string, boolean>;
+        const currentMap = (
+          value && typeof value === 'object' ? value : {}
+        ) as Record<string, boolean>;
+        const effectiveMap: Record<string, boolean> = {
+          ...defaultsFromContext,
+          ...currentMap,
+        };
+
+        const toggleValue = (toolName: string) => {
+          onChange({
+            ...effectiveMap,
+            [toolName]: effectiveMap[toolName] !== true,
+          });
+        };
+
+        return (
+          <div className="space-y-1 max-h-64 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md p-2 bg-white dark:bg-gray-700">
+            {options.length === 0 ? (
+              <div className="text-sm text-gray-400 dark:text-gray-500 py-1">{t('common:noOptions')}</div>
+            ) : (
+              options.map((opt) => (
+                <label
+                  key={opt.value}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={effectiveMap[opt.value] === true}
+                    onChange={() => toggleValue(opt.value)}
+                    disabled={config.disabled || opt.disabled}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{opt.label}</span>
+                </label>
+              ))
+            )}
+          </div>
+        );
+      }
+
       case 'preset':
         return (
           <div className="flex flex-wrap gap-2" data-name={`preset-${config.name}`}>

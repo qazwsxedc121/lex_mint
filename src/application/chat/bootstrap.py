@@ -28,6 +28,7 @@ from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.config.rag_config_service import RagConfigService
+from src.infrastructure.config.assistant_tool_policy_resolver import AssistantToolPolicyResolver
 from src.infrastructure.files.file_service import FileService
 from src.infrastructure.memory.memory_service import MemoryService
 from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
@@ -196,6 +197,7 @@ def build_default_chat_application_service(
         project_document_tool_service_factory=ProjectDocumentToolService,
         project_knowledge_base_resolver_factory=ProjectKnowledgeBaseResolver,
         project_tool_policy_resolver_factory=ProjectToolPolicyResolver,
+        assistant_tool_policy_resolver_factory=AssistantToolPolicyResolver,
         web_tool_service_factory=WebToolService,
         tool_registry_getter=get_tool_registry,
     )
