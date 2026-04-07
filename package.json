@@ -2,6 +2,7 @@
   "name": "lex_mint",
   "private": true,
   "scripts": {
+    "ci:local": "powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1",
     "generate:workflow-schema": "node scripts/run_workflow_schema_generation.mjs",
     "check:workflow-schema": "node scripts/run_workflow_schema_generation.mjs --check",
     "pyright": "pyright",

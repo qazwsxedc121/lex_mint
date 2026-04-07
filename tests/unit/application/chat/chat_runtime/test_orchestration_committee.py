@@ -1,6 +1,6 @@
 """Unit tests for committee orchestration behavior."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pytest
 
@@ -33,6 +33,7 @@ class _AssistantStub:
     memory_enabled: bool = True
     knowledge_base_ids: list[str] | None = None
     enabled: bool = True
+    tool_enabled_map: dict[str, bool] = field(default_factory=dict)
 
 
 def _build_assistant(name: str, model_id: str, max_rounds: int = 3) -> AssistantLike:

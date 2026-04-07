@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pytest
 
@@ -29,6 +29,7 @@ class _AssistantStub:
     memory_enabled: bool = True
     knowledge_base_ids: list[str] | None = None
     enabled: bool = True
+    tool_enabled_map: dict[str, bool] = field(default_factory=dict)
 
 
 class _StorageStub:

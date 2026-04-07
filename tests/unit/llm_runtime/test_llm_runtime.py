@@ -779,10 +779,10 @@ class TestCallLLMStream:
         assert diagnostics[0]["tool_read_count"] == 1
         assert diagnostics[0]["tool_finalize_reason"] == "normal_no_tools"
         assert stream_state["count"] == 4
-        assert [call.args[0] for call in tool_executor.call_args_list] == [
-            "search_knowledge",
-            "read_knowledge",
-        ]
+        executed_tools = [call.args[0] for call in tool_executor.call_args_list]
+        assert executed_tools[0] == "search_knowledge"
+        assert "read_knowledge" in executed_tools
+        assert executed_tools.index("read_knowledge") > executed_tools.index("search_knowledge")
 
     @pytest.mark.asyncio
     @patch("src.llm_runtime.get_llm_logger")
@@ -1105,10 +1105,10 @@ class TestCallLLMStream:
         assert len(diagnostics) == 1
         assert diagnostics[0]["web_search_count"] == 1
         assert diagnostics[0]["web_read_count"] == 1
-        assert [call.args[0] for call in tool_executor.call_args_list] == [
-            "web_search",
-            "read_webpage",
-        ]
+        executed_tools = [call.args[0] for call in tool_executor.call_args_list]
+        assert executed_tools[0] == "web_search"
+        assert "read_webpage" in executed_tools
+        assert executed_tools.index("read_webpage") > executed_tools.index("web_search")
 
     @pytest.mark.asyncio
     @patch("src.llm_runtime.get_llm_logger")

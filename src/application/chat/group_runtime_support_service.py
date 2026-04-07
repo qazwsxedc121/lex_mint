@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from src.application.chat.chat_runtime import GroupSettingsResolver
@@ -29,6 +29,7 @@ class _RuntimeAssistant:
     memory_enabled: bool
     knowledge_base_ids: list[str] | None
     enabled: bool
+    tool_enabled_map: dict[str, bool] = field(default_factory=dict)
 
 
 class GroupRuntimeSupportService:

@@ -60,14 +60,20 @@ def test_dotenv_loading():
                 # Verify it matches config
                 from dotenv import load_dotenv
 
-                load_dotenv()
-
-                port_from_env = os.environ.get("API_PORT")
-                assert port_from_env == port_from_file, (
-                    f"Mismatch: .env has {port_from_file}, env has {port_from_env}"
-                )
-                print("[OK] .env file loaded correctly")
-                return
+                previous_api_port = os.environ.pop("API_PORT", None)
+                try:
+                    load_dotenv()
+                    port_from_env = os.environ.get("API_PORT")
+                    assert port_from_env == port_from_file, (
+                        f"Mismatch: .env has {port_from_file}, env has {port_from_env}"
+                    )
+                    print("[OK] .env file loaded correctly")
+                    return
+                finally:
+                    if previous_api_port is not None:
+                        os.environ["API_PORT"] = previous_api_port
+                    else:
+                        os.environ.pop("API_PORT", None)
 
     print("[SKIP] No API_PORT in .env file")
 
