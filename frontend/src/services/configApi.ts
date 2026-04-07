@@ -87,11 +87,22 @@ export interface TitleGenerationConfigUpdate {
 }
 
 export interface CodeExecutionConfig {
-  enable_server_side_tool_execution: boolean;
+  enable_client_tool_execution: boolean;
+  enable_server_jupyter_execution: boolean;
+  enable_server_subprocess_execution: boolean;
+  execution_priority: Array<'client' | 'server_jupyter' | 'server_subprocess'>;
+  jupyter_kernel_name: string;
+  // Legacy compatibility fields
+  enable_server_side_tool_execution?: boolean;
+  server_side_execution_backend?: 'subprocess' | 'jupyter';
 }
 
 export interface CodeExecutionConfigUpdate {
-  enable_server_side_tool_execution?: boolean;
+  enable_client_tool_execution?: boolean;
+  enable_server_jupyter_execution?: boolean;
+  enable_server_subprocess_execution?: boolean;
+  execution_priority?: Array<'client' | 'server_jupyter' | 'server_subprocess'>;
+  jupyter_kernel_name?: string;
 }
 
 export async function getCodeExecutionConfig(): Promise<CodeExecutionConfig> {

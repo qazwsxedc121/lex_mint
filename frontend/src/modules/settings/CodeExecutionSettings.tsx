@@ -10,6 +10,10 @@ import {
 } from '../../shared/chat/config/codeExecution';
 import { pyodideService } from '../../shared/chat/services/pyodideService';
 
+type ExecutionMethod = 'client' | 'server_jupyter' | 'server_subprocess';
+
+const DEFAULT_EXECUTION_PRIORITY: ExecutionMethod[] = ['client', 'server_jupyter', 'server_subprocess'];
+
 const toPositiveInt = (value: string, fallback: number): number => {
   const parsed = Number.parseInt(value, 10);
   if (Number.isFinite(parsed) && parsed > 0) {
@@ -47,7 +51,11 @@ export const CodeExecutionSettingsPage: React.FC = () => {
   const [enablePythonRunner, setEnablePythonRunner] = useState(initialSettings.enablePythonRunner);
   const [executionTimeoutMs, setExecutionTimeoutMs] = useState(String(initialSettings.executionTimeoutMs));
   const [maxCodeChars, setMaxCodeChars] = useState(String(initialSettings.maxCodeChars));
-  const [enableServerSideToolExecution, setEnableServerSideToolExecution] = useState(false);
+  const [enableClientToolExecution, setEnableClientToolExecution] = useState(true);
+  const [enableServerJupyterExecution, setEnableServerJupyterExecution] = useState(false);
+  const [enableServerSubprocessExecution, setEnableServerSubprocessExecution] = useState(false);
+  const [executionPriority, setExecutionPriority] = useState<ExecutionMethod[]>(DEFAULT_EXECUTION_PRIORITY);
+  const [jupyterKernelName, setJupyterKernelName] = useState('python3');
   const [serverConfigLoading, setServerConfigLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -67,7 +75,13 @@ export const CodeExecutionSettingsPage: React.FC = () => {
         if (cancelled) {
           return;
         }
-        setEnableServerSideToolExecution(Boolean(config.enable_server_side_tool_execution));
+        setEnableClientToolExecution(Boolean(config.enable_client_tool_execution));
+        setEnableServerJupyterExecution(Boolean(config.enable_server_jupyter_execution));
+        setEnableServerSubprocessExecution(Boolean(config.enable_server_subprocess_execution));
+        setExecutionPriority(Array.isArray(config.execution_priority) && config.execution_priority.length > 0
+          ? config.execution_priority
+          : DEFAULT_EXECUTION_PRIORITY);
+        setJupyterKernelName(config.jupyter_kernel_name ?? 'python3');
         setError(null);
       } catch (err) {
         if (cancelled) {
@@ -96,7 +110,11 @@ export const CodeExecutionSettingsPage: React.FC = () => {
     const normalized = setCodeExecutionSettings(nextSettings);
     try {
       await api.updateCodeExecutionConfig({
-        enable_server_side_tool_execution: enableServerSideToolExecution,
+        enable_client_tool_execution: enableClientToolExecution,
+        enable_server_jupyter_execution: enableServerJupyterExecution,
+        enable_server_subprocess_execution: enableServerSubprocessExecution,
+        execution_priority: executionPriority,
+        jupyter_kernel_name: jupyterKernelName.trim() || 'python3',
       });
       setExecutionTimeoutMs(String(normalized.executionTimeoutMs));
       setMaxCodeChars(String(normalized.maxCodeChars));
@@ -113,8 +131,52 @@ export const CodeExecutionSettingsPage: React.FC = () => {
     setEnablePythonRunner(defaults.enablePythonRunner);
     setExecutionTimeoutMs(String(defaults.executionTimeoutMs));
     setMaxCodeChars(String(defaults.maxCodeChars));
-    setEnableServerSideToolExecution(false);
+    setEnableClientToolExecution(true);
+    setEnableServerJupyterExecution(false);
+    setEnableServerSubprocessExecution(false);
+    setExecutionPriority(DEFAULT_EXECUTION_PRIORITY);
+    setJupyterKernelName('python3');
     setSaved(false);
+  };
+
+  const executionMethodLabels: Record<ExecutionMethod, string> = {
+    client: t('codeExecution.methodClient'),
+    server_jupyter: t('codeExecution.methodServerJupyter'),
+    server_subprocess: t('codeExecution.methodServerSubprocess'),
+  };
+
+  const executionMethodEnabled: Record<ExecutionMethod, boolean> = {
+    client: enableClientToolExecution,
+    server_jupyter: enableServerJupyterExecution,
+    server_subprocess: enableServerSubprocessExecution,
+  };
+
+  const setExecutionMethodEnabled = (method: ExecutionMethod, enabled: boolean) => {
+    if (method === 'client') {
+      setEnableClientToolExecution(enabled);
+      return;
+    }
+    if (method === 'server_jupyter') {
+      setEnableServerJupyterExecution(enabled);
+      return;
+    }
+    setEnableServerSubprocessExecution(enabled);
+  };
+
+  const moveExecutionMethod = (method: ExecutionMethod, direction: 'up' | 'down') => {
+    setExecutionPriority((current) => {
+      const index = current.indexOf(method);
+      if (index < 0) {
+        return current;
+      }
+      const target = direction === 'up' ? index - 1 : index + 1;
+      if (target < 0 || target >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   };
 
   const handleRunTest = async () => {
@@ -244,25 +306,76 @@ export const CodeExecutionSettingsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-start justify-between gap-4 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+        <div className="rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-3">
           <div>
             <div className="text-sm font-medium text-amber-900 dark:text-amber-300">
-              {t('codeExecution.enableServerSideToolExecution')}
+              {t('codeExecution.executionMethodsTitle')}
             </div>
             <p className="mt-1 text-sm text-amber-800/80 dark:text-amber-200/80">
-              {t('codeExecution.enableServerSideToolExecutionHelp')}
+              {t('codeExecution.executionMethodsHelp')}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-amber-900 dark:text-amber-300">
+          <div className="space-y-2">
+            {executionPriority.map((method, index) => (
+              <div
+                key={method}
+                className="flex items-center justify-between gap-3 rounded-md border border-amber-300/70 dark:border-amber-800/70 bg-amber-100/70 dark:bg-amber-900/20 px-3 py-2"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-amber-900 dark:text-amber-300 w-6 text-center">
+                    {index + 1}
+                  </span>
+                  <span className="text-sm text-amber-900 dark:text-amber-300">
+                    {executionMethodLabels[method]}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300">
+                    <input
+                      type="checkbox"
+                      checked={executionMethodEnabled[method]}
+                      disabled={serverConfigLoading}
+                      onChange={(event) => setExecutionMethodEnabled(method, event.target.checked)}
+                      className="h-4 w-4 text-amber-600 border-amber-400 rounded focus:ring-amber-500"
+                    />
+                    {executionMethodEnabled[method] ? t('common:enabled') : t('common:disabled')}
+                  </label>
+                  <button
+                    type="button"
+                    disabled={index === 0 || serverConfigLoading}
+                    onClick={() => moveExecutionMethod(method, 'up')}
+                    className="px-2 py-1 text-xs rounded border border-amber-400/80 dark:border-amber-700 disabled:opacity-40"
+                  >
+                    {t('codeExecution.priorityUp')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === executionPriority.length - 1 || serverConfigLoading}
+                    onClick={() => moveExecutionMethod(method, 'down')}
+                    className="px-2 py-1 text-xs rounded border border-amber-400/80 dark:border-amber-700 disabled:opacity-40"
+                  >
+                    {t('codeExecution.priorityDown')}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-900 dark:text-white" htmlFor="jupyter-kernel-name">
+              {t('codeExecution.jupyterKernelName')}
+            </label>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {t('codeExecution.jupyterKernelNameHelp')}
+            </p>
             <input
-              type="checkbox"
-              checked={enableServerSideToolExecution}
-              disabled={serverConfigLoading}
-              onChange={(event) => setEnableServerSideToolExecution(event.target.checked)}
-              className="h-4 w-4 text-amber-600 border-amber-400 rounded focus:ring-amber-500"
+              id="jupyter-kernel-name"
+              type="text"
+              value={jupyterKernelName}
+              disabled={serverConfigLoading || !enableServerJupyterExecution}
+              onChange={(event) => setJupyterKernelName(event.target.value)}
+              className="mt-2 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
             />
-            {enableServerSideToolExecution ? t('common:enabled') : t('common:disabled')}
-          </label>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

@@ -1,2 +1,9 @@
 code_execution:
-  enable_server_side_tool_execution: false
+  enable_client_tool_execution: true
+  enable_server_jupyter_execution: false
+  enable_server_subprocess_execution: false
+  execution_priority:
+    - client
+    - server_jupyter
+    - server_subprocess
+  jupyter_kernel_name: python3

@@ -21,7 +21,7 @@ from src.application.chat.request_contexts import (
     SingleChatRequestContext,
     ToolResolutionContext,
 )
-from src.application.chat.server_python_executor import execute_python_server_side
+from src.application.chat.server_python_executor import execute_python_server_side_with_backend
 from src.application.chat.service_contracts import (
     AssistantLike,
     ContextPayload,
@@ -889,8 +889,6 @@ class SingleChatFlowService:
                     return f"Error: Tool '{name}' is disabled for this project or assistant"
                 return f"Error: Tool '{name}' is disabled for this assistant"
             if name == "execute_python":
-                if not tool_call_id:
-                    return "Error: execute_python missing tool_call_id"
                 code = str(args.get("code") or "")
                 timeout_ms_raw = args.get("timeout_ms", 30000)
                 try:
@@ -900,26 +898,95 @@ class SingleChatFlowService:
                 timeout_ms = max(1000, min(timeout_ms, 120000))
                 try:
                     code_execution_config = self.deps.code_execution_config_service_factory().config
-                    enable_server_side_execution = bool(
-                        getattr(code_execution_config, "enable_server_side_tool_execution", False)
+                    enable_client_tool_execution = bool(
+                        getattr(code_execution_config, "enable_client_tool_execution", True)
+                    )
+                    enable_server_jupyter_execution = bool(
+                        getattr(code_execution_config, "enable_server_jupyter_execution", False)
+                    )
+                    enable_server_subprocess_execution = bool(
+                        getattr(code_execution_config, "enable_server_subprocess_execution", False)
+                    )
+                    execution_priority = list(
+                        getattr(
+                            code_execution_config,
+                            "execution_priority",
+                            ["client", "server_jupyter", "server_subprocess"],
+                        )
+                    )
+                    jupyter_kernel_name = str(
+                        getattr(code_execution_config, "jupyter_kernel_name", "python3")
                     )
                 except Exception as config_error:
                     logger.warning("Failed to load code execution config: %s", config_error)
-                    enable_server_side_execution = False
+                    enable_client_tool_execution = True
+                    enable_server_jupyter_execution = False
+                    enable_server_subprocess_execution = False
+                    execution_priority = ["client", "server_jupyter", "server_subprocess"]
+                    jupyter_kernel_name = "python3"
+
+                allowed_methods = {
+                    "client": enable_client_tool_execution,
+                    "server_jupyter": enable_server_jupyter_execution,
+                    "server_subprocess": enable_server_subprocess_execution,
+                }
+                normalized_priority: list[str] = []
+                for method in execution_priority:
+                    method_name = str(method or "").strip()
+                    if (
+                        method_name in {"client", "server_jupyter", "server_subprocess"}
+                        and method_name not in normalized_priority
+                    ):
+                        normalized_priority.append(method_name)
+                for method_name in ("client", "server_jupyter", "server_subprocess"):
+                    if method_name not in normalized_priority:
+                        normalized_priority.append(method_name)
+
                 coordinator = get_client_tool_call_coordinator()
-                try:
-                    return await coordinator.await_result(
-                        session_id=request.scope.session_id,
-                        tool_call_id=tool_call_id,
-                        timeout_s=timeout_ms / 1000.0,
-                    )
-                except asyncio.TimeoutError:
-                    if enable_server_side_execution:
-                        return await execute_python_server_side(code=code, timeout_ms=timeout_ms)
-                    return (
-                        f"Error: execute_python timed out after {timeout_ms}ms "
-                        "(client runtime unavailable and server-side execution disabled)"
-                    )
+
+                for method_name in normalized_priority:
+                    if not allowed_methods.get(method_name, False):
+                        continue
+                    if method_name == "client":
+                        if not tool_call_id:
+                            logger.warning(
+                                "execute_python client method enabled but tool_call_id missing"
+                            )
+                            continue
+                        try:
+                            return await coordinator.await_result(
+                                session_id=request.scope.session_id,
+                                tool_call_id=tool_call_id,
+                                timeout_s=timeout_ms / 1000.0,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.info(
+                                "execute_python client method timed out after %sms, trying next method",
+                                timeout_ms,
+                            )
+                            continue
+                        except Exception as client_error:
+                            logger.warning("execute_python client method failed: %s", client_error)
+                            continue
+                    if method_name == "server_jupyter":
+                        return await execute_python_server_side_with_backend(
+                            code=code,
+                            timeout_ms=timeout_ms,
+                            backend="jupyter",
+                            jupyter_kernel_name=jupyter_kernel_name,
+                        )
+                    if method_name == "server_subprocess":
+                        return await execute_python_server_side_with_backend(
+                            code=code,
+                            timeout_ms=timeout_ms,
+                            backend="subprocess",
+                            jupyter_kernel_name=jupyter_kernel_name,
+                        )
+
+                return (
+                    "Error: execute_python failed because no enabled execution method succeeded "
+                    "(check code execution settings)"
+                )
             for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)
