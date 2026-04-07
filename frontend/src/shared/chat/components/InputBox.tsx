@@ -105,6 +105,16 @@ const findAtFileCommand = (text: string, cursorPosition: number): AtFileMatch | 
   };
 };
 
+const BTW_COMMAND_PREFIX = /^\/btw(?:\s+|$)/i;
+
+const stripBtwCommand = (message: string): { temporaryTurn: boolean; strippedMessage: string } => {
+  if (!BTW_COMMAND_PREFIX.test(message)) {
+    return { temporaryTurn: false, strippedMessage: message };
+  }
+  const stripped = message.replace(/^\/btw\b/i, '').trimStart();
+  return { temporaryTurn: true, strippedMessage: stripped };
+};
+
 const createBlockId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
@@ -113,7 +123,7 @@ const createBlockId = () => {
 };
 
 interface InputBoxProps {
-  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
+  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }>; temporaryTurn?: boolean }) => void;
   onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
@@ -293,6 +303,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setInput,
     textareaRef,
   });
+
+  const isBtwSlashCommand = useMemo(() => {
+    if (!slashCommand) {
+      return false;
+    }
+    const token = input.slice(slashCommand.start, slashCommand.end);
+    return /^\/btw$/i.test(token);
+  }, [input, slashCommand]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextInput = e.target.value;
@@ -549,7 +567,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const handleSend = () => {
     const blocksMessage = buildBlocksMessage();
     const messageParts = [blocksMessage, input.trim()].filter(Boolean);
-    const message = messageParts.join('\n\n');
+    const rawMessage = messageParts.join('\n\n');
+    const { temporaryTurn, strippedMessage } = stripBtwCommand(rawMessage);
+    const message = strippedMessage;
 
     if (message || attachments.length > 0) {
       // Parse file references from message
@@ -567,13 +587,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
         attachments: attachments.length > 0 ? attachments : undefined,
         useWebSearch,
         fileReferences: fileReferences.length > 0 ? fileReferences : undefined,
+        temporaryTurn,
       };
 
-      if (pendingCompareModelIds.length >= 2 && onCompare) {
+      if (!temporaryTurn && pendingCompareModelIds.length >= 2 && onCompare) {
         onCompare(message, pendingCompareModelIds, sendOptions);
         setPendingCompareModelIds([]);
       } else {
         onSend(message, sendOptions);
+        if (pendingCompareModelIds.length >= 2) {
+          setPendingCompareModelIds([]);
+        }
       }
 
       setInput('');
@@ -614,7 +638,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
 
     // Handle slash command navigation
-    if (slashCommand) {
+    if (slashCommand && !isBtwSlashCommand) {
       if (e.key === 'ArrowDown' && slashMatchedTemplates.length > 0) {
         e.preventDefault();
         setSlashMenuIndex((prev) => (prev + 1) % slashMatchedTemplates.length);
@@ -1015,7 +1039,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       <div data-name="input-box-input-area" className="p-4">
         <div data-name="input-box-input-controls" className="flex gap-2 items-end">
           <div className="relative flex-1" data-name="input-box-textarea-wrap">
-            {slashCommand && (
+            {slashCommand && !isBtwSlashCommand && (
               <SlashTemplateMenu
                 loading={templatesLoading}
                 error={templatesError}

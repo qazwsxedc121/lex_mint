@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from src.application.chat.request_contexts import (
     CompareChatRequestContext,
     GroupChatRequestContext,
@@ -204,6 +206,59 @@ async def test_chat_application_service_auto_stream_routes_to_single_mode():
         {"type": "usage"},
     ]
     assert len(single.process_message_stream_calls) == 1
+
+
+async def test_chat_application_service_passes_temporary_turn_to_single_request():
+    single = _FakeSingleChatFlowService()
+    storage = _FakeStorage({})
+    service = ChatApplicationService(
+        ChatApplicationDeps(
+            storage=storage,
+            single_chat_flow_service=single,
+            compare_flow_service=_FakeCompareFlowService(),
+            group_chat_service=_FakeGroupChatService(),
+        )
+    )
+
+    _ = await _collect(
+        service.process_chat_stream(
+            session_id="s1",
+            user_message="hello",
+            temporary_turn=True,
+        )
+    )
+
+    request = single.process_message_stream_calls[0]["request"]
+    assert isinstance(request, SingleChatRequestContext)
+    assert request.stream.temporary_turn is True
+    assert request.stream.skip_user_append is False
+
+
+async def test_chat_application_service_rejects_temporary_turn_for_group_chat():
+    storage = _FakeStorage(
+        {
+            "group_assistants": ["a1", "a2"],
+            "group_mode": "committee",
+            "group_settings": {"max_rounds": 2},
+        }
+    )
+    service = ChatApplicationService(
+        ChatApplicationDeps(
+            storage=storage,
+            single_chat_flow_service=_FakeSingleChatFlowService(),
+            compare_flow_service=_FakeCompareFlowService(),
+            group_chat_service=_FakeGroupChatService(),
+        )
+    )
+
+    with pytest.raises(ValueError, match="temporary_turn"):
+        _ = await _collect(
+            service.process_chat_stream(
+                session_id="s1",
+                user_message="hello",
+                temporary_turn=True,
+            )
+        )
 
 
 async def test_chat_application_service_delegates_session_commands():

@@ -39,7 +39,7 @@ export const defaultChatAPI: ChatAPI = {
     useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?,
     onToolCalls?, onToolResults?,
     onAssistantStart?, onAssistantDone?, onGroupEvent?,
-    activeFilePath?, activeFileHash?
+    activeFilePath?, activeFileHash?, temporaryTurn?
   ) => {
     return api.sendMessageStream(
       sessionId, message, truncateAfterIndex, skipUserMessage,
@@ -59,7 +59,8 @@ export const defaultChatAPI: ChatAPI = {
       onAssistantDone,
       onGroupEvent,
       activeFilePath,
-      activeFileHash
+      activeFileHash,
+      temporaryTurn
     );
   },
   deleteMessage: api.deleteMessage,

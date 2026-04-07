@@ -197,6 +197,7 @@ interface ChatStreamRequestBody {
   message: string;
   truncate_after_index: number | null;
   skip_user_message: boolean;
+  temporary_turn?: boolean;
   context_type: string;
   reasoning_effort?: string;
   project_id?: string;
@@ -728,6 +729,7 @@ export async function sendMessageStream(
   }) => void,
   activeFilePath?: string,
   activeFileHash?: string,
+  temporaryTurn?: boolean,
 ): Promise<void> {
   // Create AbortController for cancellation support
   const controller = new AbortController();
@@ -951,6 +953,9 @@ export async function sendMessageStream(
     }
     if (activeFileHash) {
       requestBody.active_file_hash = activeFileHash;
+    }
+    if (temporaryTurn) {
+      requestBody.temporary_turn = true;
     }
 
     let activeStreamId: string | undefined;

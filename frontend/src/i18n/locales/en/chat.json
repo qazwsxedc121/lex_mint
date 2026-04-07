@@ -218,6 +218,7 @@
 
   "bubble.modelTargetLabel": "Model",
   "bubble.responderInfo": "Assistant: {{assistant}} | Model: {{model}}",
+  "message.temporaryTurn": "Temporary turn",
 
   "toolCall.calling": "Calling {{name}}...",
   "toolCall.arguments": "Arguments",

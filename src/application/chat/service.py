@@ -119,6 +119,7 @@ class ChatApplicationService:
         session_id: str,
         user_message: str,
         skip_user_append: bool = False,
+        temporary_turn: bool = False,
         reasoning_effort: str | None = None,
         attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
@@ -139,6 +140,8 @@ class ChatApplicationService:
         group_mode = session_data.get("group_mode", "round_robin")
         group_settings = session_data.get("group_settings")
         if isinstance(group_assistants, list) and len(group_assistants) >= 2:
+            if temporary_turn:
+                raise ValueError("temporary_turn is only supported for single-assistant chat")
             group_request = GroupChatRequestContext(
                 scope=self._build_scope(
                     session_id=session_id,
@@ -159,6 +162,7 @@ class ChatApplicationService:
                 ),
                 stream=StreamOptions(
                     skip_user_append=skip_user_append,
+                    temporary_turn=temporary_turn,
                     reasoning_effort=reasoning_effort,
                 ),
             )
@@ -185,6 +189,7 @@ class ChatApplicationService:
             ),
             stream=StreamOptions(
                 skip_user_append=skip_user_append,
+                temporary_turn=temporary_turn,
                 reasoning_effort=reasoning_effort,
             ),
             editor=EditorContext(

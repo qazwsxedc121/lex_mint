@@ -61,6 +61,7 @@ class ChatRequest(BaseModel):
     )
     truncate_after_index: int | None = None  # 截断索引，删除此索引之后的消息
     skip_user_message: bool = False  # 是否跳过追加用户消息（重新生成时使用）
+    temporary_turn: bool = False  # Whether this turn should be ephemeral and non-persistent
     reasoning_effort: str | None = None  # Reasoning effort: "low", "medium", "high"
     context_type: str = "chat"  # Context type: "chat" or "project"
     project_id: str | None = None  # Project ID (required when context_type="project")
@@ -194,6 +195,7 @@ async def _build_stream_fn(
         request.session_id,
         request.message,
         skip_user_append=request.skip_user_message,
+        temporary_turn=request.temporary_turn,
         reasoning_effort=request.reasoning_effort,
         attachments=request.attachments,
         context_type=request.context_type,

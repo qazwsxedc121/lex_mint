@@ -209,6 +209,7 @@ async def test_stream_helpers_build_and_produce_payloads():
         message="stream me",
         truncate_after_index=2,
         skip_user_message=True,
+        temporary_turn=True,
         reasoning_effort="medium",
         use_web_search=True,
     )
@@ -216,6 +217,7 @@ async def test_stream_helpers_build_and_produce_payloads():
     stream_fn = await chat_router._build_stream_fn(request, agent)  # type: ignore[arg-type]
     assert [item async for item in stream_fn] == ["part-1", {"done": True}]
     truncate_calls = [payload for name, payload in agent.calls if name == "truncate"]
+    stream_calls = [payload for name, payload in agent.calls if name == "process_chat_stream"]
     assert truncate_calls == [
         {
             "session_id": "session-1",
@@ -224,6 +226,7 @@ async def test_stream_helpers_build_and_produce_payloads():
             "project_id": None,
         }
     ]
+    assert stream_calls and stream_calls[0]["temporary_turn"] is True
 
 
 @pytest.mark.asyncio

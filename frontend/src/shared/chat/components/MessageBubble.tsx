@@ -470,9 +470,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [showTranslateMenu]);
 
-  const canEdit = !isStreaming && !isSeparator && !isSummary && (isUser ? (onEdit || onSaveOnly) : onSaveOnly);
-  const canRegenerate = !isStreaming && onRegenerate && message.content.trim() !== '';
-  const canDelete = !isStreaming && onDelete;
+  const canEdit = !message.ephemeral && !isStreaming && !isSeparator && !isSummary && (isUser ? (onEdit || onSaveOnly) : onSaveOnly);
+  const canRegenerate = !message.ephemeral && !isStreaming && onRegenerate && message.content.trim() !== '';
+  const canDelete = !message.ephemeral && !isStreaming && onDelete;
 
   // Auto-resize textarea
   const autoResize = useCallback(() => {
@@ -808,6 +808,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     <span>{formatCost(message.cost.total_cost)}</span>
                   </>
                 )}
+              </>
+            )}
+            {message.ephemeral && (
+              <>
+                {(message.created_at || responderInfoText || (!isUser && message.usage && !isStreaming)) && (
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                )}
+                <span>{t('message.temporaryTurn')}</span>
               </>
             )}
           </div>

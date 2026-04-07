@@ -218,6 +218,7 @@
 
   "bubble.modelTargetLabel": "模型",
   "bubble.responderInfo": "助手：{{assistant}} | 模型：{{model}}",
+  "message.temporaryTurn": "临时问答",
 
   "toolCall.calling": "正在调用 {{name}}...",
   "toolCall.arguments": "参数",

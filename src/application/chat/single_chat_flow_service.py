@@ -185,6 +185,7 @@ class SingleChatPreparedInput:
     """Prepared user input after optional file-context expansion."""
 
     raw_user_message: str
+    full_message_content: str
     user_message_id: str | None
 
 
@@ -246,6 +247,7 @@ class SingleChatFlowService:
         request: SingleChatRequestContext,
     ) -> AsyncIterator[StreamItem]:
         """Prepare context, run single-direct orchestration, and persist outputs."""
+        is_temporary_turn = bool(request.stream.temporary_turn)
         runtime = await self._prepare_runtime(request=request)
         outcome = SingleTurnOutcome()
 
@@ -255,8 +257,12 @@ class SingleChatFlowService:
                 "message_id": runtime.user_message_id,
             }
         else:
-            print("[Step 1] Skipping user message save (regeneration mode)")
-            logger.info("[Step 1] Skipping user message save")
+            if is_temporary_turn:
+                print("[Step 1] Skipping user message save (temporary turn)")
+                logger.info("[Step 1] Skipping user message save (temporary turn)")
+            else:
+                print("[Step 1] Skipping user message save (regeneration mode)")
+                logger.info("[Step 1] Skipping user message save (regeneration mode)")
 
         if runtime.all_sources:
             yield {
@@ -320,12 +326,13 @@ class SingleChatFlowService:
                 "Single-direct stream cancelled, saving partial content (%s chars)",
                 len(outcome.full_response),
             )
-            await self.deps.post_turn_service.save_partial_assistant_message(
-                session_id=runtime.session_id,
-                assistant_message=outcome.full_response,
-                context_type=runtime.context_type,
-                project_id=runtime.project_id,
-            )
+            if not is_temporary_turn:
+                await self.deps.post_turn_service.save_partial_assistant_message(
+                    session_id=runtime.session_id,
+                    assistant_message=outcome.full_response,
+                    context_type=runtime.context_type,
+                    project_id=runtime.project_id,
+                )
             raise
 
         self._apply_usage_to_outcome(
@@ -333,7 +340,11 @@ class SingleChatFlowService:
             outcome=outcome,
             usage_data=outcome.usage_data,
         )
-        async for event in self._persist_and_emit(runtime=runtime, outcome=outcome):
+        async for event in self._persist_and_emit(
+            runtime=runtime,
+            outcome=outcome,
+            temporary_turn=is_temporary_turn,
+        ):
             yield event
 
     @staticmethod
@@ -356,6 +367,7 @@ class SingleChatFlowService:
         prepared_context = await self._prepare_single_chat_context(
             request=request,
             raw_user_message=prepared_input.raw_user_message,
+            full_message_content=prepared_input.full_message_content,
         )
 
         return SingleChatRuntime(
@@ -394,12 +406,13 @@ class SingleChatFlowService:
             raw_user_message=user_message,
             expanded_user_message=expanded_user_message,
             attachments=request.user_input.attachments,
-            skip_user_append=request.stream.skip_user_append,
+            skip_user_append=request.stream.skip_user_append or request.stream.temporary_turn,
             context_type=request.scope.context_type,
             project_id=request.scope.project_id,
         )
         return SingleChatPreparedInput(
             raw_user_message=prepared_input.raw_user_message,
+            full_message_content=prepared_input.full_message_content,
             user_message_id=prepared_input.user_message_id,
         )
 
@@ -419,6 +432,7 @@ class SingleChatFlowService:
         *,
         request: SingleChatRequestContext,
         raw_user_message: str,
+        full_message_content: str,
     ) -> SingleChatPreparedContext:
         print("[Step 2] Loading session state...")
         logger.info("[Step 2] Loading session state")
@@ -439,13 +453,18 @@ class SingleChatFlowService:
         print(f"[OK] Session loaded, {len(ctx.messages)} messages")
         print(f"   Assistant: {ctx.assistant_id}, Model: {ctx.model_id}")
 
-        messages, compression_event = await self._maybe_auto_compress(
-            session_id=request.scope.session_id,
-            model_id=ctx.model_id,
-            messages=ctx.messages,
-            context_type=request.scope.context_type,
-            project_id=request.scope.project_id,
-        )
+        messages = list(ctx.messages)
+        if request.stream.temporary_turn:
+            messages.append({"role": "user", "content": full_message_content})
+        compression_event: StreamEvent | None = None
+        if not request.stream.temporary_turn:
+            messages, compression_event = await self._maybe_auto_compress(
+                session_id=request.scope.session_id,
+                model_id=ctx.model_id,
+                messages=ctx.messages,
+                context_type=request.scope.context_type,
+                project_id=request.scope.project_id,
+            )
         system_prompt, context_segments, all_sources = self._normalize_context_payload(
             context_payload=ctx,
             prefer_web_tools=prefer_web_tools,
@@ -573,14 +592,32 @@ class SingleChatFlowService:
         *,
         runtime: SingleChatRuntime,
         outcome: SingleTurnOutcome,
+        temporary_turn: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        print("[Step 4] Saving complete AI response to file...")
-        logger.info("[Step 4] Saving complete AI response")
         if outcome.tool_diagnostics:
             runtime.all_sources = merge_tool_diagnostics_into_sources(
                 runtime.all_sources,
                 outcome.tool_diagnostics,
             )
+
+        if temporary_turn:
+            if outcome.usage_data:
+                usage_event = {
+                    "type": "usage",
+                    "usage": outcome.usage_data.model_dump(),
+                }
+                if outcome.cost_data:
+                    usage_event["cost"] = outcome.cost_data.model_dump()
+                yield usage_event
+            if runtime.all_sources:
+                yield {
+                    "type": "sources",
+                    "sources": runtime.all_sources,
+                }
+            return
+
+        print("[Step 4] Saving complete AI response to file...")
+        logger.info("[Step 4] Saving complete AI response")
         assistant_message_id = await self.deps.post_turn_service.finalize_single_turn(
             session_id=runtime.session_id,
             assistant_message=outcome.full_response,

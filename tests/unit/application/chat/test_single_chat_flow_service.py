@@ -12,6 +12,7 @@ from src.application.chat.request_contexts import (
     EditorContext,
     SearchOptions,
     SingleChatRequestContext,
+    StreamOptions,
     ToolResolutionContext,
     UserInputPayload,
 )
@@ -69,12 +70,17 @@ class _FakePostTurnService:
 
 
 class _FakeInputService:
-    async def prepare_user_input(self, **_kwargs):
+    def __init__(self):
+        self.calls = []
+
+    async def prepare_user_input(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        skip_user_append = bool(kwargs.get("skip_user_append"))
         return PreparedUserInput(
             raw_user_message="hello",
             full_message_content="hello",
             attachment_metadata=[],
-            user_message_id="user-msg-1",
+            user_message_id=None if skip_user_append else "user-msg-1",
         )
 
 
@@ -148,6 +154,92 @@ async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
     )
     assert response == "hello"
     assert sources == [{"type": "memory"}]
+
+
+@pytest.mark.asyncio
+async def test_single_chat_flow_temporary_turn_skips_persistence_and_followups(monkeypatch):
+    post_turn = _FakePostTurnService()
+    input_service = _FakeInputService()
+    sent_messages: list[list[dict]] = []
+
+    async def _capture_call_llm_stream(messages, *_args, **_kwargs):
+        sent_messages.append(messages)
+        usage = TokenUsage(prompt_tokens=5, completion_tokens=7, total_tokens=12)
+        yield {
+            "type": "context_info",
+            "context_budget": 100,
+            "context_window": 128,
+            "estimated_prompt_tokens": 4,
+            "remaining_tokens": 96,
+            "context_truncated": False,
+        }
+        yield "hello"
+        yield {"type": "usage", "usage": usage}
+
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
+        chat_input_service=input_service,
+        post_turn_service=post_turn,
+        call_llm_stream=_capture_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(
+            ContextPayload(
+                messages=[{"role": "user", "content": "hello"}],
+                assistant_id="assistant-1",
+                assistant_obj=None,
+                model_id="provider:model-a",
+                system_prompt=None,
+                assistant_params={},
+                all_sources=[{"type": "memory"}],
+                max_rounds=None,
+                assistant_memory_enabled=True,
+            )
+        ),
+        build_file_context_block=lambda _refs: _return_async(""),
+    )
+    service = SingleChatFlowService(deps)
+
+    auto_compress_calls: list[dict] = []
+
+    async def _track_auto_compress(**kwargs):
+        auto_compress_calls.append(kwargs)
+        return kwargs["messages"], None
+
+    monkeypatch.setattr(service, "_maybe_auto_compress", _track_auto_compress)
+    monkeypatch.setattr(service, "_resolve_tools", lambda **_kwargs: _return_async((None, None)))
+
+    events = await _collect_events(
+        service.process_message_stream(
+            request=SingleChatRequestContext(
+                scope=ConversationScope(session_id="s1", context_type="chat"),
+                user_input=UserInputPayload(user_message="hello"),
+                stream=StreamOptions(temporary_turn=True),
+            )
+        )
+    )
+
+    assert events[0] == {"type": "sources", "sources": [{"type": "memory"}]}
+    assert events[1]["type"] == "context_info"
+    assert events[2] == "hello"
+    assert events[3]["type"] == "usage"
+    assert events[4] == {"type": "sources", "sources": [{"type": "memory"}]}
+    assert all(
+        not (isinstance(event, dict) and event.get("type") == "assistant_message_id")
+        for event in events
+    )
+    assert all(
+        not (isinstance(event, dict) and event.get("type") == "followup_questions")
+        for event in events
+    )
+    assert post_turn.finalize_calls == []
+    assert post_turn.partial_calls == []
+    assert auto_compress_calls == []
+    assert len(input_service.calls) == 1
+    assert input_service.calls[0]["skip_user_append"] is True
+    assert sent_messages
+    assert sent_messages[0][-1]["role"] == "user"
+    assert sent_messages[0][-1]["content"] == "hello"
 
 
 async def _return_async(value):

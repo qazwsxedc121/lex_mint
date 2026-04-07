@@ -46,6 +46,7 @@ class StreamOptions:
     """Streaming execution controls for chat flows."""
 
     skip_user_append: bool = False
+    temporary_turn: bool = False
     reasoning_effort: str | None = None
 
 

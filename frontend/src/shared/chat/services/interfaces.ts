@@ -109,7 +109,8 @@ export interface ChatAPI {
       [key: string]: unknown;
     }) => void,
     activeFilePath?: string,
-    activeFileHash?: string
+    activeFileHash?: string,
+    temporaryTurn?: boolean
   ): Promise<void>;
   deleteMessage(sessionId: string, messageId: string): Promise<void>;
   updateMessageContent(sessionId: string, messageId: string, content: string): Promise<void>;

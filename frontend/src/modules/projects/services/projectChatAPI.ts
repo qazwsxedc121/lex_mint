@@ -160,7 +160,8 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
       onAssistantDone?,
       onGroupEvent?,
       activeFilePath?,
-      activeFileHash?
+      activeFileHash?,
+      temporaryTurn?
     ) => {
       const activeContext = preparedActiveContext || options?.getActiveDocumentContext?.() || {};
       preparedActiveContext = null;
@@ -194,7 +195,8 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
         onAssistantDone,
         onGroupEvent,
         resolvedActiveFilePath,
-        resolvedActiveFileHash
+        resolvedActiveFileHash,
+        temporaryTurn
       );
     },
 

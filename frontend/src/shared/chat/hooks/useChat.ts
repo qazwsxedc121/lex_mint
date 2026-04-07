@@ -44,6 +44,7 @@ type SendMessageOptions = {
   attachments?: UploadedFile[];
   useWebSearch?: boolean;
   fileReferences?: Array<{ path: string; project_id: string }>;
+  temporaryTurn?: boolean;
 };
 
 type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
@@ -746,6 +747,7 @@ export function useChat(sessionId: string | null) {
 
     // Clear follow-up questions when sending a new message
     setFollowupQuestions([]);
+    const isTemporaryTurn = options?.temporaryTurn === true;
 
     const initialIsGroupChat = Boolean(groupAssistants && groupAssistants.length >= 2);
     if (initialIsGroupChat) {
@@ -757,6 +759,7 @@ export function useChat(sessionId: string | null) {
       role: 'user',
       content,
       created_at: nowTimestamp(),
+      ephemeral: isTemporaryTurn,
       attachments: options?.attachments?.map(a => ({
         filename: a.filename,
         size: a.size,
@@ -771,6 +774,7 @@ export function useChat(sessionId: string | null) {
         role: 'assistant',
         content: '',
         created_at: nowTimestamp(),
+        ephemeral: isTemporaryTurn,
       };
       setMessages(prev => [...prev, assistantMessage]);
     }
@@ -824,7 +828,7 @@ export function useChat(sessionId: string | null) {
           setLoading(false);
           setIsStreaming(false);
           isProcessingRef.current = false;
-          if (latestUserMessageId) {
+          if (!isTemporaryTurn && latestUserMessageId) {
             void hydrateUserMessageFromServer(latestUserMessageId);
           }
         },
@@ -873,6 +877,9 @@ export function useChat(sessionId: string | null) {
         },
         options?.attachments,
         (userMessageId: string) => {
+          if (isTemporaryTurn) {
+            return;
+          }
           latestUserMessageId = userMessageId;
           // Backend returned user message ID, update the user message
           setMessages(prev => {
@@ -904,6 +911,9 @@ export function useChat(sessionId: string | null) {
           void hydrateUserMessageFromServer(userMessageId);
         },
         (assistantMessageId: string) => {
+          if (isTemporaryTurn) {
+            return;
+          }
           if (runtimeIsGroupChat) {
             return;
           }
@@ -1007,7 +1017,10 @@ export function useChat(sessionId: string | null) {
         },
         (event) => {
           applyGroupEvent(event);
-        }
+        },
+        undefined,
+        undefined,
+        isTemporaryTurn
       );
     } catch (err) {
       activeAssistantTurnId = null;
