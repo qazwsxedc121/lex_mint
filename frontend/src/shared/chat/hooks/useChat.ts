@@ -35,7 +35,9 @@ import {
   type GroupProjectionEvent,
   type GroupTimelineProjectionInput,
 } from './useChatGroupProjection';
+import { javascriptService } from '../services/javascriptService';
 import { pyodideService } from '../services/pyodideService';
+import { getCodeExecutionSettings } from '../config/codeExecution';
 
 type SendMessageOptions = {
   reasoningEffort?: string;
@@ -54,13 +56,13 @@ type ToolCallPayload = {
   args: Record<string, unknown>;
 };
 
-async function executePythonToolCallIfNeeded(params: {
+async function executeBrowserToolCallIfNeeded(params: {
   sessionId: string;
   api: ReturnType<typeof useChatServices>['api'];
   call: ToolCallPayload;
 }): Promise<void> {
   const { sessionId, api, call } = params;
-  if (call.name !== 'execute_python') {
+  if (call.name !== 'execute_python' && call.name !== 'execute_javascript') {
     return;
   }
 
@@ -79,7 +81,28 @@ async function executePythonToolCallIfNeeded(params: {
 
   let resultPayload: string;
   try {
-    const result = await pyodideService.runPython(code, timeoutMs);
+    const runnerSettings = getCodeExecutionSettings();
+    if (call.name === 'execute_python' && !runnerSettings.enablePythonRunner) {
+      resultPayload = JSON.stringify({
+        ok: false,
+        error: 'Python runner is disabled in settings',
+      });
+      await api.submitToolResult(sessionId, toolCallId, call.name, resultPayload);
+      return;
+    }
+    if (call.name === 'execute_javascript' && !runnerSettings.enableJavaScriptRunner) {
+      resultPayload = JSON.stringify({
+        ok: false,
+        error: 'JavaScript runner is disabled in settings',
+      });
+      await api.submitToolResult(sessionId, toolCallId, call.name, resultPayload);
+      return;
+    }
+
+    const result =
+      call.name === 'execute_javascript'
+        ? await javascriptService.runJavaScript(code, timeoutMs)
+        : await pyodideService.runPython(code, timeoutMs);
     resultPayload = JSON.stringify({
       ok: true,
       ...result,
@@ -760,7 +783,7 @@ export function useChat(sessionId: string | null) {
     let latestUserMessageId: string | null = null;
     let activeAssistantTurnId: string | null = null;
     let runtimeIsGroupChat = initialIsGroupChat;
-    const handledPythonToolCallIds = new Set<string>();
+    const handledClientToolCallIds = new Set<string>();
     const {
       updateAssistantMessage,
       handleAssistantStart,
@@ -924,14 +947,17 @@ export function useChat(sessionId: string | null) {
             { allowSingleFallback: true }
           );
           for (const call of calls) {
-            if (call.name !== 'execute_python' || !call.id) {
+            if (
+              (call.name !== 'execute_python' && call.name !== 'execute_javascript') ||
+              !call.id
+            ) {
               continue;
             }
-            if (handledPythonToolCallIds.has(call.id)) {
+            if (handledClientToolCallIds.has(call.id)) {
               continue;
             }
-            handledPythonToolCallIds.add(call.id);
-            void executePythonToolCallIfNeeded({
+            handledClientToolCallIds.add(call.id);
+            void executeBrowserToolCallIfNeeded({
               sessionId,
               api,
               call,
@@ -1228,7 +1254,7 @@ export function useChat(sessionId: string | null) {
     let streamedContent = '';
     let runtimeIsGroupChat = initialIsGroupChat;
     let activeAssistantTurnId: string | null = null;
-    const handledPythonToolCallIds = new Set<string>();
+    const handledClientToolCallIds = new Set<string>();
     if (initialIsGroupChat) {
       setGroupTimeline([]);
     }
@@ -1344,14 +1370,17 @@ export function useChat(sessionId: string | null) {
             { allowSingleFallback: true }
           );
           for (const call of calls) {
-            if (call.name !== 'execute_python' || !call.id) {
+            if (
+              (call.name !== 'execute_python' && call.name !== 'execute_javascript') ||
+              !call.id
+            ) {
               continue;
             }
-            if (handledPythonToolCallIds.has(call.id)) {
+            if (handledClientToolCallIds.has(call.id)) {
               continue;
             }
-            handledPythonToolCallIds.add(call.id);
-            void executePythonToolCallIfNeeded({
+            handledClientToolCallIds.add(call.id);
+            void executeBrowserToolCallIfNeeded({
               sessionId,
               api,
               call,

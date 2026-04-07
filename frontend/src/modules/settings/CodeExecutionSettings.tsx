@@ -8,9 +8,11 @@ import {
   setCodeExecutionSettings,
   type CodeExecutionSettings,
 } from '../../shared/chat/config/codeExecution';
+import { javascriptService } from '../../shared/chat/services/javascriptService';
 import { pyodideService } from '../../shared/chat/services/pyodideService';
 
 type ExecutionMethod = 'client' | 'server_jupyter' | 'server_subprocess';
+type RuntimeTab = 'python' | 'javascript';
 
 const DEFAULT_EXECUTION_PRIORITY: ExecutionMethod[] = ['client', 'server_jupyter', 'server_subprocess'];
 
@@ -25,7 +27,7 @@ const toPositiveInt = (value: string, fallback: number): number => {
 export const CodeExecutionSettingsPage: React.FC = () => {
   const { t } = useTranslation('settings');
   const initialSettings = useMemo(() => getCodeExecutionSettings(), []);
-  const codeTemplates = useMemo(() => ([
+  const pythonCodeTemplates = useMemo(() => ([
     {
       key: 'hello',
       label: t('codeExecution.templateHello'),
@@ -47,8 +49,32 @@ export const CodeExecutionSettingsPage: React.FC = () => {
       code: 'try:\n    1 / 0\nexcept Exception as e:\n    print("caught:", e)\n"recovered"',
     },
   ]), [t]);
+  const javascriptCodeTemplates = useMemo(() => ([
+    {
+      key: 'hello_js',
+      label: t('codeExecution.templateHello'),
+      code: 'console.log("hello from javascript");\nreturn 2 + 3;',
+    },
+    {
+      key: 'loop_js',
+      label: t('codeExecution.templateLoop'),
+      code: 'for (let i = 0; i < 3; i += 1) {\n  console.log("index:", i);\n}\nreturn "done";',
+    },
+    {
+      key: 'function_js',
+      label: t('codeExecution.templateFunction'),
+      code: 'function fib(n) {\n  const out = [];\n  let a = 0;\n  let b = 1;\n  for (let i = 0; i < n; i += 1) {\n    out.push(a);\n    [a, b] = [b, a + b];\n  }\n  return out;\n}\nreturn fib(8);',
+    },
+    {
+      key: 'exception_js',
+      label: t('codeExecution.templateException'),
+      code: 'try {\n  throw new Error("boom");\n} catch (e) {\n  console.error("caught:", e.message);\n}\nreturn "recovered";',
+    },
+  ]), [t]);
 
+  const [activeRuntimeTab, setActiveRuntimeTab] = useState<RuntimeTab>('python');
   const [enablePythonRunner, setEnablePythonRunner] = useState(initialSettings.enablePythonRunner);
+  const [enableJavaScriptRunner, setEnableJavaScriptRunner] = useState(initialSettings.enableJavaScriptRunner);
   const [executionTimeoutMs, setExecutionTimeoutMs] = useState(String(initialSettings.executionTimeoutMs));
   const [maxCodeChars, setMaxCodeChars] = useState(String(initialSettings.maxCodeChars));
   const [enableClientToolExecution, setEnableClientToolExecution] = useState(true);
@@ -100,10 +126,21 @@ export const CodeExecutionSettingsPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const templates = activeRuntimeTab === 'python' ? pythonCodeTemplates : javascriptCodeTemplates;
+    if (templates.length > 0) {
+      setTestCode(templates[0].code);
+    }
+    setTestStdout('');
+    setTestStderr('');
+    setTestResult('');
+  }, [activeRuntimeTab, javascriptCodeTemplates, pythonCodeTemplates]);
+
   const handleSave = async () => {
     const current = getCodeExecutionSettings();
     const nextSettings: CodeExecutionSettings = {
       enablePythonRunner,
+      enableJavaScriptRunner,
       executionTimeoutMs: toPositiveInt(executionTimeoutMs, current.executionTimeoutMs),
       maxCodeChars: toPositiveInt(maxCodeChars, current.maxCodeChars),
     };
@@ -129,6 +166,7 @@ export const CodeExecutionSettingsPage: React.FC = () => {
   const handleReset = () => {
     const defaults = getDefaultCodeExecutionSettings();
     setEnablePythonRunner(defaults.enablePythonRunner);
+    setEnableJavaScriptRunner(defaults.enableJavaScriptRunner);
     setExecutionTimeoutMs(String(defaults.executionTimeoutMs));
     setMaxCodeChars(String(defaults.maxCodeChars));
     setEnableClientToolExecution(true);
@@ -182,7 +220,10 @@ export const CodeExecutionSettingsPage: React.FC = () => {
   const handleRunTest = async () => {
     const timeoutMs = toPositiveInt(executionTimeoutMs, initialSettings.executionTimeoutMs);
     const codeCharLimit = toPositiveInt(maxCodeChars, initialSettings.maxCodeChars);
-    if (!enablePythonRunner || isRunningTest || testCode.length > codeCharLimit) {
+    const activeRunnerEnabled = activeRuntimeTab === 'python'
+      ? enablePythonRunner
+      : enableJavaScriptRunner;
+    if (!activeRunnerEnabled || isRunningTest || testCode.length > codeCharLimit) {
       return;
     }
 
@@ -191,7 +232,9 @@ export const CodeExecutionSettingsPage: React.FC = () => {
     setTestStderr('');
     setTestResult('');
     try {
-      const result = await pyodideService.runPython(testCode, timeoutMs);
+      const result = activeRuntimeTab === 'javascript'
+        ? await javascriptService.runJavaScript(testCode, timeoutMs)
+        : await pyodideService.runPython(testCode, timeoutMs);
       setTestStdout(result.stdout);
       setTestStderr(result.stderr);
       setTestResult(result.value);
@@ -204,6 +247,8 @@ export const CodeExecutionSettingsPage: React.FC = () => {
   };
 
   const testCodeTooLong = testCode.length > toPositiveInt(maxCodeChars, initialSettings.maxCodeChars);
+  const activeRunnerEnabled = activeRuntimeTab === 'python' ? enablePythonRunner : enableJavaScriptRunner;
+  const activeTemplates = activeRuntimeTab === 'python' ? pythonCodeTemplates : javascriptCodeTemplates;
   const hasTestOutput = Boolean(testStdout || testStderr || testResult);
 
   const handleTestCodeKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -248,23 +293,60 @@ export const CodeExecutionSettingsPage: React.FC = () => {
         className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-4"
         data-name="code-execution-controls"
       >
+        <div className="flex flex-wrap gap-2" data-name="code-execution-runtime-tabs">
+          <button
+            type="button"
+            onClick={() => setActiveRuntimeTab('python')}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+              activeRuntimeTab === 'python'
+                ? 'border-blue-600 bg-blue-600 text-white'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            {t('codeExecution.runtimeTabPython')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveRuntimeTab('javascript')}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+              activeRuntimeTab === 'javascript'
+                ? 'border-blue-600 bg-blue-600 text-white'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            {t('codeExecution.runtimeTabJavaScript')}
+          </button>
+        </div>
+
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-gray-900 dark:text-white">
-              {t('codeExecution.enablePythonRunner')}
+              {activeRuntimeTab === 'python'
+                ? t('codeExecution.enablePythonRunner')
+                : t('codeExecution.enableJavaScriptRunner')}
             </div>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {t('codeExecution.enablePythonRunnerHelp')}
+              {activeRuntimeTab === 'python'
+                ? t('codeExecution.enablePythonRunnerHelp')
+                : t('codeExecution.enableJavaScriptRunnerHelp')}
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
-              checked={enablePythonRunner}
-              onChange={(event) => setEnablePythonRunner(event.target.checked)}
+              checked={activeRuntimeTab === 'python' ? enablePythonRunner : enableJavaScriptRunner}
+              onChange={(event) => {
+                if (activeRuntimeTab === 'python') {
+                  setEnablePythonRunner(event.target.checked);
+                  return;
+                }
+                setEnableJavaScriptRunner(event.target.checked);
+              }}
               className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
-            {enablePythonRunner ? t('common:enabled') : t('common:disabled')}
+            {(activeRuntimeTab === 'python' ? enablePythonRunner : enableJavaScriptRunner)
+              ? t('common:enabled')
+              : t('common:disabled')}
           </label>
         </div>
 
@@ -306,6 +388,7 @@ export const CodeExecutionSettingsPage: React.FC = () => {
           </div>
         </div>
 
+        {activeRuntimeTab === 'python' && (
         <div className="rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-3">
           <div>
             <div className="text-sm font-medium text-amber-900 dark:text-amber-300">
@@ -377,6 +460,7 @@ export const CodeExecutionSettingsPage: React.FC = () => {
             />
           </div>
         </div>
+        )}
 
         <div className="flex items-center gap-2">
           <button
@@ -399,13 +483,15 @@ export const CodeExecutionSettingsPage: React.FC = () => {
         data-name="code-execution-usage"
       >
         <div className="text-sm font-semibold text-blue-900 dark:text-blue-300">
-          {t('codeExecution.howToUseTitle')}
+          {activeRuntimeTab === 'python'
+            ? t('codeExecution.howToUseTitlePython')
+            : t('codeExecution.howToUseTitleJavaScript')}
         </div>
         <ol className="list-decimal pl-5 text-sm text-blue-900/90 dark:text-blue-200 space-y-1">
-          <li>{t('codeExecution.howToUseStep1')}</li>
-          <li>{t('codeExecution.howToUseStep2')}</li>
-          <li>{t('codeExecution.howToUseStep3')}</li>
-          <li>{t('codeExecution.howToUseStep4')}</li>
+          <li>{activeRuntimeTab === 'python' ? t('codeExecution.howToUseStep1Python') : t('codeExecution.howToUseStep1JavaScript')}</li>
+          <li>{activeRuntimeTab === 'python' ? t('codeExecution.howToUseStep2Python') : t('codeExecution.howToUseStep2JavaScript')}</li>
+          <li>{activeRuntimeTab === 'python' ? t('codeExecution.howToUseStep3Python') : t('codeExecution.howToUseStep3JavaScript')}</li>
+          <li>{activeRuntimeTab === 'python' ? t('codeExecution.howToUseStep4Python') : t('codeExecution.howToUseStep4JavaScript')}</li>
         </ol>
       </section>
 
@@ -414,15 +500,19 @@ export const CodeExecutionSettingsPage: React.FC = () => {
         data-name="code-execution-test-panel"
       >
         <div className="text-sm font-semibold text-gray-900 dark:text-white">
-          {t('codeExecution.testPanelTitle')}
+          {activeRuntimeTab === 'python'
+            ? t('codeExecution.testPanelTitlePython')
+            : t('codeExecution.testPanelTitleJavaScript')}
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          {t('codeExecution.testPanelDescription')}
+          {activeRuntimeTab === 'python'
+            ? t('codeExecution.testPanelDescriptionPython')
+            : t('codeExecution.testPanelDescriptionJavaScript')}
         </p>
 
         <div>
           <div className="mb-2 flex flex-wrap gap-2">
-            {codeTemplates.map((template) => (
+            {activeTemplates.map((template) => (
               <button
                 key={template.key}
                 type="button"
@@ -454,14 +544,16 @@ export const CodeExecutionSettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={handleRunTest}
-            disabled={!enablePythonRunner || isRunningTest || testCodeTooLong}
+            disabled={!activeRunnerEnabled || isRunningTest || testCodeTooLong}
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-md transition-colors"
           >
             {isRunningTest ? t('codeExecution.running') : t('codeExecution.runTest')}
           </button>
-          {!enablePythonRunner && (
+          {!activeRunnerEnabled && (
             <span className="text-xs text-amber-600 dark:text-amber-400">
-              {t('codeExecution.testDisabledHint')}
+              {activeRuntimeTab === 'python'
+                ? t('codeExecution.testDisabledHintPython')
+                : t('codeExecution.testDisabledHintJavaScript')}
             </span>
           )}
         </div>

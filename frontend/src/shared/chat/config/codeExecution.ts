@@ -1,5 +1,6 @@
 export interface CodeExecutionSettings {
   enablePythonRunner: boolean;
+  enableJavaScriptRunner: boolean;
   executionTimeoutMs: number;
   maxCodeChars: number;
 }
@@ -8,6 +9,7 @@ const STORAGE_KEY = 'lex-mint.code-execution.settings.v1';
 
 const DEFAULT_SETTINGS: CodeExecutionSettings = {
   enablePythonRunner: true,
+  enableJavaScriptRunner: true,
   executionTimeoutMs: 45000,
   maxCodeChars: 20000,
 };
@@ -36,6 +38,7 @@ const normalizeSettings = (value: unknown): CodeExecutionSettings => {
   const record = value as Record<string, unknown>;
   return {
     enablePythonRunner: record.enablePythonRunner !== false,
+    enableJavaScriptRunner: record.enableJavaScriptRunner !== false,
     executionTimeoutMs: toPositiveInt(record.executionTimeoutMs, DEFAULT_SETTINGS.executionTimeoutMs),
     maxCodeChars: toPositiveInt(record.maxCodeChars, DEFAULT_SETTINGS.maxCodeChars),
   };

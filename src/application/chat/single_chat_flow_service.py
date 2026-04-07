@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -725,8 +726,10 @@ class SingleChatFlowService:
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
 
-        needs_client_python_bridge = "execute_python" in resolved_tools.allowed_tool_names
-        if not resolved_tools.tool_executors and not needs_client_python_bridge:
+        needs_client_browser_bridge = bool(
+            {"execute_python", "execute_javascript"} & set(resolved_tools.allowed_tool_names)
+        )
+        if not resolved_tools.tool_executors and not needs_client_browser_bridge:
             return resolved_tools.llm_tools or None, None
 
         return (
@@ -888,6 +891,43 @@ class SingleChatFlowService:
                 if request.scope.context_type == "project" and request.scope.project_id:
                     return f"Error: Tool '{name}' is disabled for this project or assistant"
                 return f"Error: Tool '{name}' is disabled for this assistant"
+            if name == "execute_javascript":
+                if not tool_call_id:
+                    logger.warning(
+                        "execute_javascript client method enabled but tool_call_id missing"
+                    )
+                    return "Error: execute_javascript requires client tool_call_id for browser execution"
+                coordinator = get_client_tool_call_coordinator()
+                try:
+                    return await coordinator.await_result(
+                        session_id=request.scope.session_id,
+                        tool_call_id=tool_call_id,
+                        timeout_s=max(
+                            1.0,
+                            min(
+                                float(args.get("timeout_ms", 30000) or 30000) / 1000.0,
+                                120.0,
+                            ),
+                        ),
+                    )
+                except asyncio.TimeoutError:
+                    return json.dumps(
+                        {
+                            "ok": False,
+                            "error": "JavaScript execution timed out waiting for browser runtime",
+                        },
+                        ensure_ascii=False,
+                    )
+                except Exception as client_error:
+                    logger.warning("execute_javascript client method failed: %s", client_error)
+                    return json.dumps(
+                        {
+                            "ok": False,
+                            "error": f"JavaScript execution failed in browser runtime: {client_error}",
+                        },
+                        ensure_ascii=False,
+                    )
+
             if name == "execute_python":
                 code = str(args.get("code") or "")
                 timeout_ms_raw = args.get("timeout_ms", 30000)

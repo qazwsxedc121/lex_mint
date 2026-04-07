@@ -271,4 +271,90 @@ test.describe('Chat pyodide code runner', () => {
       await api.dispose();
     }
   });
+
+  test('auto executes execute_javascript tool call and submits tool result', async ({ page }) => {
+    test.slow();
+    test.setTimeout(180000);
+
+    const api = await pwRequest.newContext({ baseURL: API_BASE });
+    let sessionId = '';
+    const toolResultBodies: Array<Record<string, unknown>> = [];
+
+    try {
+      const createRes = await api.post('/api/sessions?context_type=chat', { data: {} });
+      expect(createRes.ok()).toBeTruthy();
+      const created = await createRes.json();
+      sessionId = created.session_id as string;
+      expect(sessionId).toMatch(/^[a-f0-9-]+$/);
+
+      await page.route('**/api/chat/tool-result', async (route) => {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        toolResultBodies.push(body);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      });
+
+      await page.route('**/api/chat/stream', async (route) => {
+        const events = [
+          buildFlowEvent(1, 'stream_started', 'transport', { context_type: 'chat' }),
+          buildFlowEvent(2, 'tool_call_started', 'tool', {
+            calls: [
+              {
+                id: 'tool-js-1',
+                name: 'execute_javascript',
+                args: {
+                  code: 'console.log("auto-js-ok"); return 3 + 4;',
+                  timeout_ms: 30000,
+                },
+              },
+            ],
+          }),
+          buildFlowEvent(3, 'stream_ended', 'transport', { done: true }),
+        ];
+
+        const sseBody = events.map((evt) => `data: ${JSON.stringify(evt)}\n\n`).join('');
+        await route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+          body: sseBody,
+        });
+      });
+
+      await page.goto(`/chat/${sessionId}`);
+      await expect(page.locator('[data-name="chat-view-root"]')).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/chat/${sessionId}$`));
+
+      const input = page.locator('[data-name="input-box-root"] textarea');
+      await expect(input).toBeVisible();
+      await input.fill('Please use javascript tool.');
+
+      const sendButton = page
+        .locator('[data-name="input-box-input-controls"] button')
+        .filter({ hasText: /Send|发送/ })
+        .first();
+      await expect(sendButton).toBeVisible();
+      await sendButton.click();
+
+      await expect.poll(() => toolResultBodies.length, { timeout: 15000 }).toBeGreaterThan(0);
+      const toolBody = toolResultBodies[0] || {};
+      expect(toolBody.session_id).toBe(sessionId);
+      expect(toolBody.tool_call_id).toBe('tool-js-1');
+      expect(toolBody.name).toBe('execute_javascript');
+
+      const rawResult = toolBody.result;
+      expect(typeof rawResult).toBe('string');
+      const parsedResult = JSON.parse(String(rawResult)) as Record<string, unknown>;
+      expect(parsedResult.ok).toBe(true);
+      expect(parsedResult.value).toBe('7');
+      expect(String(parsedResult.stdout || '')).toContain('auto-js-ok');
+    } finally {
+      if (sessionId) {
+        await api.delete(`/api/sessions/${sessionId}?context_type=chat`);
+      }
+      await api.dispose();
+    }
+  });
 });

@@ -10,6 +10,7 @@ import {
   ClipboardDocumentCheckIcon,
   PlayIcon,
 } from '@heroicons/react/24/outline';
+import { javascriptService } from '../services/javascriptService';
 import { pyodideService } from '../services/pyodideService';
 import {
   getCodeExecutionSettings,
@@ -38,9 +39,22 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
   const executableLanguage = useMemo(() => {
     const normalized = (language || '').trim().toLowerCase();
     const isPython = normalized === 'python' || normalized === 'py';
+    const isJavaScript = normalized === 'javascript' || normalized === 'js';
     const underCodeSizeLimit = value.length <= runnerSettings.maxCodeChars;
-    return runnerSettings.enablePythonRunner && isPython && underCodeSizeLimit;
-  }, [language, runnerSettings.enablePythonRunner, runnerSettings.maxCodeChars, value.length]);
+    return (
+      underCodeSizeLimit
+      && (
+        (runnerSettings.enablePythonRunner && isPython)
+        || (runnerSettings.enableJavaScriptRunner && isJavaScript)
+      )
+    );
+  }, [
+    language,
+    runnerSettings.enableJavaScriptRunner,
+    runnerSettings.enablePythonRunner,
+    runnerSettings.maxCodeChars,
+    value.length,
+  ]);
 
   const handleCopy = async () => {
     try {
@@ -62,7 +76,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
     setRunStderr('');
     setRunValue('');
     try {
-      const result = await pyodideService.runPython(value, runnerSettings.executionTimeoutMs);
+      const normalized = (language || '').trim().toLowerCase();
+      const isJavaScript = normalized === 'javascript' || normalized === 'js';
+      const result = isJavaScript
+        ? await javascriptService.runJavaScript(value, runnerSettings.executionTimeoutMs)
+        : await pyodideService.runPython(value, runnerSettings.executionTimeoutMs);
       setRunStdout(result.stdout);
       setRunStderr(result.stderr);
       setRunValue(result.value);
@@ -87,7 +105,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
               onClick={handleRun}
               disabled={isRunning}
               className="flex items-center gap-1.5 px-2 py-1 text-xs bg-indigo-700 hover:bg-indigo-600 disabled:opacity-60 disabled:cursor-not-allowed rounded transition-colors"
-              title={isRunning ? 'Running python code' : 'Run Python with Pyodide'}
+              title={isRunning ? 'Running code' : 'Run code in browser runtime'}
             >
               <PlayIcon className="w-4 h-4" />
               <span>{isRunning ? 'Running' : 'Run'}</span>
