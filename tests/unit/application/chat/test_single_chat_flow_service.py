@@ -684,3 +684,67 @@ async def test_combined_tool_executor_blocks_and_falls_back():
 
     allowed_result = await blocked_executor("allowed_tool", {})
     assert allowed_result == "async-result"
+
+
+@pytest.mark.asyncio
+async def test_execute_python_falls_back_to_server_execution_when_enabled(monkeypatch):
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+        code_execution_config_service_factory=lambda: SimpleNamespace(
+            config=SimpleNamespace(enable_server_side_tool_execution=True)
+        ),
+    )
+    service = SingleChatFlowService(deps)
+
+    class _TimeoutCoordinator:
+        async def await_result(
+            self, *, session_id: str, tool_call_id: str, timeout_s: float
+        ) -> str:
+            _ = session_id
+            _ = tool_call_id
+            _ = timeout_s
+            raise asyncio.TimeoutError
+
+    async def _fake_server_exec(*, code: str, timeout_ms: int) -> str:
+        assert code == "print('hi')\n1+1"
+        assert timeout_ms == 30000
+        return '{"ok": true, "stdout": "hi\\n", "stderr": "", "value": "2"}'
+
+    monkeypatch.setattr(
+        "src.application.chat.single_chat_flow_service.get_client_tool_call_coordinator",
+        lambda: _TimeoutCoordinator(),
+    )
+    monkeypatch.setattr(
+        "src.application.chat.single_chat_flow_service.execute_python_server_side",
+        _fake_server_exec,
+    )
+
+    executor = service._build_combined_tool_executor(
+        request=ToolResolutionContext(
+            assistant_id=None,
+            assistant_obj=None,
+            model_id="provider:model-a",
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            editor=EditorContext(),
+            use_web_search=False,
+        ),
+        resolved_tools=SingleChatResolvedTools(
+            llm_tools=[],
+            tool_executors=[],
+            allowed_tool_names={"execute_python"},
+        ),
+    )
+
+    result = await executor(
+        "execute_python",
+        {"code": "print('hi')\n1+1", "timeout_ms": 30000},
+        tool_call_id="call-1",
+    )
+    assert result == '{"ok": true, "stdout": "hi\\n", "stderr": "", "value": "2"}'

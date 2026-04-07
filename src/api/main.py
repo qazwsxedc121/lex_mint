@@ -23,6 +23,7 @@ from .errors import register_exception_handlers
 from .routers import (
     assistants,
     chat,
+    code_execution_config,
     compression_config,
     file_reference_config,
     folders,
@@ -97,6 +98,7 @@ app.add_middleware(
 # Register routers
 app.include_router(sessions.router)
 app.include_router(chat.router)
+app.include_router(code_execution_config.router)
 app.include_router(models.router)
 app.include_router(assistants.router)
 app.include_router(title_generation.router)

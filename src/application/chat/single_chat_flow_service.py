@@ -21,6 +21,7 @@ from src.application.chat.request_contexts import (
     SingleChatRequestContext,
     ToolResolutionContext,
 )
+from src.application.chat.server_python_executor import execute_python_server_side
 from src.application.chat.service_contracts import (
     AssistantLike,
     ContextPayload,
@@ -86,6 +87,12 @@ def _default_web_tool_service_factory() -> Any:
     return WebToolService()
 
 
+def _default_code_execution_config_service_factory() -> Any:
+    from src.infrastructure.config.code_execution_config_service import CodeExecutionConfigService
+
+    return CodeExecutionConfigService()
+
+
 def _default_tool_registry_getter() -> Any:
     from src.tools.registry import get_tool_registry
 
@@ -123,6 +130,9 @@ class SingleChatFlowDeps:
         _default_assistant_tool_policy_resolver_factory
     )
     web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
+    code_execution_config_service_factory: Callable[[], Any] = (
+        _default_code_execution_config_service_factory
+    )
     tool_registry_getter: Callable[[], Any] = _default_tool_registry_getter
 
 
@@ -881,12 +891,21 @@ class SingleChatFlowService:
             if name == "execute_python":
                 if not tool_call_id:
                     return "Error: execute_python missing tool_call_id"
+                code = str(args.get("code") or "")
                 timeout_ms_raw = args.get("timeout_ms", 30000)
                 try:
                     timeout_ms = int(timeout_ms_raw)
                 except Exception:
                     timeout_ms = 30000
                 timeout_ms = max(1000, min(timeout_ms, 120000))
+                try:
+                    code_execution_config = self.deps.code_execution_config_service_factory().config
+                    enable_server_side_execution = bool(
+                        getattr(code_execution_config, "enable_server_side_tool_execution", False)
+                    )
+                except Exception as config_error:
+                    logger.warning("Failed to load code execution config: %s", config_error)
+                    enable_server_side_execution = False
                 coordinator = get_client_tool_call_coordinator()
                 try:
                     return await coordinator.await_result(
@@ -895,7 +914,12 @@ class SingleChatFlowService:
                         timeout_s=timeout_ms / 1000.0,
                     )
                 except asyncio.TimeoutError:
-                    return f"Error: execute_python timed out after {timeout_ms}ms"
+                    if enable_server_side_execution:
+                        return await execute_python_server_side(code=code, timeout_ms=timeout_ms)
+                    return (
+                        f"Error: execute_python timed out after {timeout_ms}ms "
+                        "(client runtime unavailable and server-side execution disabled)"
+                    )
             for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)

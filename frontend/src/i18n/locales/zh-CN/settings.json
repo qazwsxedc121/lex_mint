@@ -790,6 +790,8 @@
   "codeExecution.executionTimeoutMsHelp": "单次代码执行最大等待时长。超过后会自动终止并返回超时错误。",
   "codeExecution.maxCodeChars": "最大代码长度（字符）",
   "codeExecution.maxCodeCharsHelp": "超过该长度的 Python 代码块不会显示 Run 按钮。",
+  "codeExecution.enableServerSideToolExecution": "启用后端本地 Python 执行",
+  "codeExecution.enableServerSideToolExecutionHelp": "高风险：当客户端沙箱执行超时未回传时，后端会在本机直接执行 Python 代码。",
   "codeExecution.resetDefaults": "恢复默认值",
   "codeExecution.testPanelTitle": "Python 代码测试",
   "codeExecution.testPanelDescription": "在这里直接输入 Python 代码，验证当前运行配置是否生效。",

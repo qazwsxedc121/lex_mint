@@ -86,6 +86,25 @@ export interface TitleGenerationConfigUpdate {
   timeout_seconds?: number;
 }
 
+export interface CodeExecutionConfig {
+  enable_server_side_tool_execution: boolean;
+}
+
+export interface CodeExecutionConfigUpdate {
+  enable_server_side_tool_execution?: boolean;
+}
+
+export async function getCodeExecutionConfig(): Promise<CodeExecutionConfig> {
+  const response = await api.get<CodeExecutionConfig>('/api/code-execution/config');
+  return response.data;
+}
+
+export async function updateCodeExecutionConfig(
+  updates: CodeExecutionConfigUpdate
+): Promise<void> {
+  await api.put('/api/code-execution/config', updates);
+}
+
 /**
  * Get title generation configuration
  */

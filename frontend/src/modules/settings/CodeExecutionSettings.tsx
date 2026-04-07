@@ -1,6 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, SuccessMessage } from './components/common';
+import * as api from '../../services/api';
 import {
   getCodeExecutionSettings,
   getDefaultCodeExecutionSettings,
@@ -46,6 +47,9 @@ export const CodeExecutionSettingsPage: React.FC = () => {
   const [enablePythonRunner, setEnablePythonRunner] = useState(initialSettings.enablePythonRunner);
   const [executionTimeoutMs, setExecutionTimeoutMs] = useState(String(initialSettings.executionTimeoutMs));
   const [maxCodeChars, setMaxCodeChars] = useState(String(initialSettings.maxCodeChars));
+  const [enableServerSideToolExecution, setEnableServerSideToolExecution] = useState(false);
+  const [serverConfigLoading, setServerConfigLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [testCode, setTestCode] = useState('print("hello")\n2 + 3');
   const [isRunningTest, setIsRunningTest] = useState(false);
@@ -54,7 +58,35 @@ export const CodeExecutionSettingsPage: React.FC = () => {
   const [testResult, setTestResult] = useState('');
   const testCodeRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const handleSave = () => {
+  useEffect(() => {
+    let cancelled = false;
+    const loadServerConfig = async () => {
+      setServerConfigLoading(true);
+      try {
+        const config = await api.getCodeExecutionConfig();
+        if (cancelled) {
+          return;
+        }
+        setEnableServerSideToolExecution(Boolean(config.enable_server_side_tool_execution));
+        setError(null);
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) {
+          setServerConfigLoading(false);
+        }
+      }
+    };
+    void loadServerConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSave = async () => {
     const current = getCodeExecutionSettings();
     const nextSettings: CodeExecutionSettings = {
       enablePythonRunner,
@@ -62,10 +94,18 @@ export const CodeExecutionSettingsPage: React.FC = () => {
       maxCodeChars: toPositiveInt(maxCodeChars, current.maxCodeChars),
     };
     const normalized = setCodeExecutionSettings(nextSettings);
-    setExecutionTimeoutMs(String(normalized.executionTimeoutMs));
-    setMaxCodeChars(String(normalized.maxCodeChars));
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2000);
+    try {
+      await api.updateCodeExecutionConfig({
+        enable_server_side_tool_execution: enableServerSideToolExecution,
+      });
+      setExecutionTimeoutMs(String(normalized.executionTimeoutMs));
+      setMaxCodeChars(String(normalized.maxCodeChars));
+      setSaved(true);
+      setError(null);
+      window.setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleReset = () => {
@@ -73,6 +113,7 @@ export const CodeExecutionSettingsPage: React.FC = () => {
     setEnablePythonRunner(defaults.enablePythonRunner);
     setExecutionTimeoutMs(String(defaults.executionTimeoutMs));
     setMaxCodeChars(String(defaults.maxCodeChars));
+    setEnableServerSideToolExecution(false);
     setSaved(false);
   };
 
@@ -134,6 +175,11 @@ export const CodeExecutionSettingsPage: React.FC = () => {
 
       {saved && (
         <SuccessMessage message={t('config.savedSuccess')} />
+      )}
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
       )}
 
       <section
@@ -198,9 +244,30 @@ export const CodeExecutionSettingsPage: React.FC = () => {
           </div>
         </div>
 
+        <div className="flex items-start justify-between gap-4 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+          <div>
+            <div className="text-sm font-medium text-amber-900 dark:text-amber-300">
+              {t('codeExecution.enableServerSideToolExecution')}
+            </div>
+            <p className="mt-1 text-sm text-amber-800/80 dark:text-amber-200/80">
+              {t('codeExecution.enableServerSideToolExecutionHelp')}
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-amber-900 dark:text-amber-300">
+            <input
+              type="checkbox"
+              checked={enableServerSideToolExecution}
+              disabled={serverConfigLoading}
+              onChange={(event) => setEnableServerSideToolExecution(event.target.checked)}
+              className="h-4 w-4 text-amber-600 border-amber-400 rounded focus:ring-amber-500"
+            />
+            {enableServerSideToolExecution ? t('common:enabled') : t('common:disabled')}
+          </label>
+        </div>
+
         <div className="flex items-center gap-2">
           <button
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
           >
             {t('config.saveSettings')}

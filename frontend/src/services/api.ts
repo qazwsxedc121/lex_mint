@@ -112,15 +112,19 @@ export {
   updateProvider,
 } from './modelRegistryApi';
 export {
+  getCodeExecutionConfig,
   generateTitleManually,
   getSearchConfig,
   getTitleGenerationConfig,
   getWebpageConfig,
+  updateCodeExecutionConfig,
   updateSearchConfig,
   updateTitleGenerationConfig,
   updateWebpageConfig,
 } from './configApi';
 export type {
+  CodeExecutionConfig,
+  CodeExecutionConfigUpdate,
   SearchConfig,
   SearchConfigUpdate,
   TitleGenerationConfig,

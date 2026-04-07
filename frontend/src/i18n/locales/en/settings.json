@@ -790,6 +790,8 @@
   "codeExecution.executionTimeoutMsHelp": "Maximum wait time for one run before returning a timeout error.",
   "codeExecution.maxCodeChars": "Max code length (chars)",
   "codeExecution.maxCodeCharsHelp": "Python blocks longer than this limit will not show the Run button.",
+  "codeExecution.enableServerSideToolExecution": "Enable backend local Python execution",
+  "codeExecution.enableServerSideToolExecutionHelp": "Dangerous: when client sandbox execution does not return in time, the backend will execute Python code locally on this machine.",
   "codeExecution.resetDefaults": "Reset to defaults",
   "codeExecution.testPanelTitle": "Python Test Panel",
   "codeExecution.testPanelDescription": "Type Python code here to verify runtime behavior with current settings.",
