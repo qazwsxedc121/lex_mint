@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { PageHeader } from './components/common';
 import * as api from '../../services/api';
 import type { ProjectToolCatalogItem } from '../../types/project';
@@ -10,6 +11,7 @@ type ToolRow = ProjectToolCatalogItem & {
 };
 
 export const ToolDescriptionsSettings: React.FC = () => {
+  const { t } = useTranslation('settings');
   const [toolRows, setToolRows] = useState<ToolRow[]>([]);
   const [plugins, setPlugins] = useState<ToolPluginStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +68,11 @@ export const ToolDescriptionsSettings: React.FC = () => {
   );
 
   if (loading) {
-    return <div className="text-sm text-gray-600 dark:text-gray-300" data-name="tool-descriptions-loading">Loading tool settings...</div>;
+    return (
+      <div className="text-sm text-gray-600 dark:text-gray-300" data-name="tool-descriptions-loading">
+        {t('toolsPage.loading')}
+      </div>
+    );
   }
 
   if (error) {
@@ -76,21 +82,23 @@ export const ToolDescriptionsSettings: React.FC = () => {
   return (
     <div className="space-y-6" data-name="tool-descriptions-page">
       <PageHeader
-        title="Tool Configurations"
-        description="Configure tool descriptions and inspect plugin load status. Click one tool to edit."
+        title={t('toolsPage.title')}
+        description={t('toolsPage.description')}
       />
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800" data-name="tool-plugin-summary">
-        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Plugins</div>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('toolsPage.pluginsTitle')}</div>
         <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-          Loaded {pluginLoadedCount} / {plugins.length}
+          {t('toolsPage.pluginsLoaded', { loaded: pluginLoadedCount, total: plugins.length })}
         </div>
         <div className="mt-3 space-y-2">
           {plugins.map((plugin) => (
             <div key={plugin.id} className="rounded-md border border-gray-200 px-3 py-2 text-xs dark:border-gray-700">
               <div className="font-medium text-gray-900 dark:text-gray-100">{plugin.name} ({plugin.version})</div>
               <div className={plugin.loaded ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}>
-                {plugin.loaded ? 'Loaded' : `Failed: ${plugin.error || 'unknown error'}`}
+                {plugin.loaded
+                  ? t('toolsPage.pluginLoaded')
+                  : t('toolsPage.pluginFailed', { error: plugin.error || t('toolsPage.unknownError') })}
               </div>
               <div className="text-gray-500 dark:text-gray-400">{plugin.entrypoint}</div>
             </div>
@@ -99,7 +107,7 @@ export const ToolDescriptionsSettings: React.FC = () => {
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800" data-name="tool-description-list">
-        <div className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Tools</div>
+        <div className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{t('toolsPage.toolsTitle')}</div>
         <div className="space-y-2">
           {toolRows.map((tool) => (
             <Link
@@ -115,7 +123,9 @@ export const ToolDescriptionsSettings: React.FC = () => {
                 {tool.description}
               </div>
               <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                {tool.override_description ? 'Custom description configured' : 'Using default description'}
+                {tool.override_description
+                  ? t('toolsPage.customDescriptionConfigured')
+                  : t('toolsPage.usingDefaultDescription')}
               </div>
             </Link>
           ))}
