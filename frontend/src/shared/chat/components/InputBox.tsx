@@ -22,11 +22,16 @@ import { CompareModelButton } from './CompareModelButton';
 import { FilePickerPopover } from './FilePickerPopover';
 import { ClearMessagesConfirmModal, TranslateInputControl } from './InputBoxAuxiliaryControls';
 import { InputComposerAttachments, InputComposerBlocks, type ChatBlock } from './InputComposerPanels';
-import { PromptTemplateMenu, SlashTemplateMenu, TemplateVariableModal } from './PromptTemplateMenus';
+import { PromptTemplateMenu, SlashSuggestionMenu, TemplateVariableModal } from './PromptTemplateMenus';
 import { useFileSearch } from '../../../modules/projects/hooks/useFileSearch';
 import { useProjectWorkspaceStore } from '../../../stores/projectWorkspaceStore';
 import type { ReasoningControls } from '../../../types/model';
 import { usePromptTemplateComposer } from '../hooks/usePromptTemplateComposer';
+import {
+  applyOutgoingSlashCommandEffects,
+  buildSlashCommandSuggestions,
+  type SlashCommandSuggestion,
+} from '../slashCommands';
 
 // Legacy fallback reasoning options.
 const LEGACY_REASONING_OPTIONS = [
@@ -103,16 +108,6 @@ const findAtFileCommand = (text: string, cursorPosition: number): AtFileMatch | 
     start: atStart,
     end: safeCursor,
   };
-};
-
-const BTW_COMMAND_PREFIX = /^\/btw(?:\s+|$)/i;
-
-const stripBtwCommand = (message: string): { temporaryTurn: boolean; strippedMessage: string } => {
-  if (!BTW_COMMAND_PREFIX.test(message)) {
-    return { temporaryTurn: false, strippedMessage: message };
-  }
-  const stripped = message.replace(/^\/btw\b/i, '').trimStart();
-  return { temporaryTurn: true, strippedMessage: stripped };
 };
 
 const createBlockId = () => {
@@ -304,13 +299,36 @@ export const InputBox: React.FC<InputBoxProps> = ({
     textareaRef,
   });
 
-  const isBtwSlashCommand = useMemo(() => {
+  const slashCommandSuggestions = useMemo<SlashCommandSuggestion[]>(() => {
     if (!slashCommand) {
-      return false;
+      return [];
     }
-    const token = input.slice(slashCommand.start, slashCommand.end);
-    return /^\/btw$/i.test(token);
-  }, [input, slashCommand]);
+
+    return buildSlashCommandSuggestions(slashCommand.query, t);
+  }, [slashCommand, t]);
+
+  const slashSuggestionCount = slashCommandSuggestions.length + slashMatchedTemplates.length;
+  const activeSlashIndex = slashSuggestionCount > 0 ? Math.min(slashMenuIndex, slashSuggestionCount - 1) : 0;
+
+  const handleSelectSlashCommand = useCallback((command: SlashCommandSuggestion) => {
+    if (!slashCommand) {
+      return;
+    }
+
+    const replacement = `/${command.trigger} `;
+    const cursorPosition = slashCommand.start + replacement.length;
+    setInput((prev) => `${prev.slice(0, slashCommand.start)}${replacement}${prev.slice(slashCommand.end)}`);
+    clearSlashCommand();
+
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  }, [clearSlashCommand, slashCommand]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextInput = e.target.value;
@@ -568,7 +586,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     const blocksMessage = buildBlocksMessage();
     const messageParts = [blocksMessage, input.trim()].filter(Boolean);
     const rawMessage = messageParts.join('\n\n');
-    const { temporaryTurn, strippedMessage } = stripBtwCommand(rawMessage);
+    const { temporaryTurn, strippedMessage } = applyOutgoingSlashCommandEffects(rawMessage);
     const message = strippedMessage;
 
     if (message || attachments.length > 0) {
@@ -638,25 +656,32 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
 
     // Handle slash command navigation
-    if (slashCommand && !isBtwSlashCommand) {
-      if (e.key === 'ArrowDown' && slashMatchedTemplates.length > 0) {
+    if (slashCommand) {
+      if (e.key === 'ArrowDown' && slashSuggestionCount > 0) {
         e.preventDefault();
-        setSlashMenuIndex((prev) => (prev + 1) % slashMatchedTemplates.length);
+        setSlashMenuIndex((prev) => (prev + 1) % slashSuggestionCount);
         return;
       }
 
-      if (e.key === 'ArrowUp' && slashMatchedTemplates.length > 0) {
+      if (e.key === 'ArrowUp' && slashSuggestionCount > 0) {
         e.preventDefault();
-        setSlashMenuIndex((prev) => (prev - 1 + slashMatchedTemplates.length) % slashMatchedTemplates.length);
+        setSlashMenuIndex((prev) => (prev - 1 + slashSuggestionCount) % slashSuggestionCount);
         return;
       }
 
       if (e.key === 'Enter' && !e.shiftKey) {
-        if (slashMatchedTemplates.length > 0) {
+        if (slashSuggestionCount > 0) {
           e.preventDefault();
-          const selectedTemplate = slashMatchedTemplates[slashMenuIndex];
-          if (selectedTemplate) {
-            handleInsertSlashTemplate(selectedTemplate);
+          if (activeSlashIndex < slashCommandSuggestions.length) {
+            const selectedCommand = slashCommandSuggestions[activeSlashIndex];
+            if (selectedCommand) {
+              handleSelectSlashCommand(selectedCommand);
+            }
+          } else {
+            const selectedTemplate = slashMatchedTemplates[activeSlashIndex - slashCommandSuggestions.length];
+            if (selectedTemplate) {
+              handleInsertSlashTemplate(selectedTemplate);
+            }
           }
           return;
         }
@@ -1039,10 +1064,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
       <div data-name="input-box-input-area" className="p-4">
         <div data-name="input-box-input-controls" className="flex gap-2 items-end">
           <div className="relative flex-1" data-name="input-box-textarea-wrap">
-            {slashCommand && !isBtwSlashCommand && (
-              <SlashTemplateMenu
+            {slashCommand && (
+              <SlashSuggestionMenu
+                commandSuggestions={slashCommandSuggestions}
                 loading={templatesLoading}
                 error={templatesError}
+                onSelectCommand={handleSelectSlashCommand}
                 onInsertTemplate={handleInsertSlashTemplate}
                 onRetry={loadPromptTemplates}
                 onSetActiveIndex={setSlashMenuIndex}
@@ -1050,7 +1077,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                 promptTemplates={promptTemplates}
                 query={slashCommand.query}
                 recentTemplateSet={recentTemplateSet}
-                selectedIndex={slashMenuIndex}
+                selectedIndex={activeSlashIndex}
                 templates={slashMatchedTemplates}
               />
             )}

@@ -2,6 +2,7 @@ import type { KeyboardEventHandler, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PromptTemplate } from '../../../types/promptTemplate';
 import { normalizeTemplateTrigger, type PendingTemplateInsert } from '../hooks/usePromptTemplateComposer';
+import type { SlashCommandSuggestion } from '../slashCommands';
 
 interface PromptTemplateMenuProps {
   filteredTemplates: PromptTemplate[];
@@ -169,9 +170,11 @@ export function PromptTemplateMenu({
   );
 }
 
-interface SlashTemplateMenuProps {
+interface SlashSuggestionMenuProps {
   loading: boolean;
+  commandSuggestions: SlashCommandSuggestion[];
   error: string | null;
+  onSelectCommand: (command: SlashCommandSuggestion) => void;
   onInsertTemplate: (template: PromptTemplate) => void;
   onRetry: () => void;
   onSetActiveIndex: (index: number) => void;
@@ -183,9 +186,11 @@ interface SlashTemplateMenuProps {
   templates: PromptTemplate[];
 }
 
-export function SlashTemplateMenu({
+export function SlashSuggestionMenu({
   loading,
+  commandSuggestions,
   error,
+  onSelectCommand,
   onInsertTemplate,
   onRetry,
   onSetActiveIndex,
@@ -195,8 +200,9 @@ export function SlashTemplateMenu({
   recentTemplateSet,
   selectedIndex,
   templates,
-}: SlashTemplateMenuProps) {
+}: SlashSuggestionMenuProps) {
   const { t } = useTranslation('chat');
+  const totalSuggestions = commandSuggestions.length + templates.length;
 
   return (
     <div className="absolute left-0 right-0 bottom-full mb-2 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 shadow-lg z-20" data-name="input-box-slash-menu">
@@ -228,13 +234,43 @@ export function SlashTemplateMenu({
             {t('input.noTemplates')}
           </div>
         )}
-        {!loading && !error && promptTemplates.length > 0 && templates.length === 0 && (
+        {!loading && !error && promptTemplates.length > 0 && totalSuggestions === 0 && (
           <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
             {t('input.noMatchingSlash', { query })}
           </div>
         )}
-        {!loading && !error && templates.map((template, index) => {
+        {!loading && !error && commandSuggestions.map((command, index) => {
           const isActive = index === selectedIndex;
+          return (
+            <button
+              key={command.id}
+              type="button"
+              onMouseEnter={() => onSetActiveIndex(index)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelectCommand(command)}
+              className={`w-full text-left px-3 py-2 border-b border-gray-100 dark:border-gray-700/60 ${
+                isActive
+                  ? 'bg-blue-50 dark:bg-blue-900/20'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  /{command.trigger}
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-[10px] uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                  {t('input.slashCommandType')}
+                </span>
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                {command.description}
+              </div>
+            </button>
+          );
+        })}
+        {!loading && !error && templates.map((template, index) => {
+          const globalIndex = commandSuggestions.length + index;
+          const isActive = globalIndex === selectedIndex;
           const isPinned = pinnedTemplateSet.has(template.id);
           const isRecent = recentTemplateSet.has(template.id);
           const templateTrigger = normalizeTemplateTrigger(template);
@@ -243,7 +279,7 @@ export function SlashTemplateMenu({
             <button
               key={template.id}
               type="button"
-              onMouseEnter={() => onSetActiveIndex(index)}
+              onMouseEnter={() => onSetActiveIndex(globalIndex)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onInsertTemplate(template)}
               className={`w-full text-left px-3 py-2 border-b border-gray-100 dark:border-gray-700/60 ${
@@ -260,6 +296,11 @@ export function SlashTemplateMenu({
                   /{templateTrigger}
                 </div>
               )}
+              <div className="mt-1">
+                <span className="px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/40 text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                  {t('input.slashTemplateType')}
+                </span>
+              </div>
               {template.description && (
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   {template.description}
