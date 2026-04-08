@@ -1,0 +1,7 @@
+schema_version: 1
+id: knowledge_tools
+name: Knowledge Tools
+version: 1.0.0
+enabled: true
+entrypoint: src.tools.plugins.knowledge_tools_plugin:register
+description: Request-scoped tools for assistant knowledge retrieval.

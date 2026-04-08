@@ -1,0 +1,7 @@
+schema_version: 1
+id: web_tools
+name: Web Tools
+version: 1.0.0
+enabled: true
+entrypoint: src.tools.plugins.web_tools_plugin:register
+description: Request-scoped tools for web search and webpage reading.

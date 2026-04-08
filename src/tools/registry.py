@@ -11,6 +11,7 @@ from .definitions import ToolDefinition
 from .plugins import ToolPluginLoader, ToolPluginStatus
 
 logger = logging.getLogger(__name__)
+_TOOL_GROUP_ORDER = ("builtin", "web", "projectDocuments", "knowledge")
 
 
 class ToolRegistry:
@@ -68,7 +69,11 @@ class ToolRegistry:
                 continue
             seen_names.add(definition.name)
             deduped.append(definition)
-        return deduped
+        group_index = {group: idx for idx, group in enumerate(_TOOL_GROUP_ORDER)}
+        return sorted(
+            deduped,
+            key=lambda definition: group_index.get(definition.group, len(group_index)),
+        )
 
     @staticmethod
     def _dedupe_tools(tools: list[BaseTool]) -> list[BaseTool]:
