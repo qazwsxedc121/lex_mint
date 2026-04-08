@@ -56,7 +56,7 @@ class ContextAssemblyService:
         search_query: str | None = None,
     ) -> ContextPayload:
         """Prepare context payload consumed by orchestrators."""
-        web_tools_loaded = bool(get_tool_registry().is_plugin_loaded("web_tools"))
+        web_tools_loaded = bool(get_tool_registry().get_tool_names_by_group("web"))
         session = await self.storage.get_session(
             session_id,
             context_type=context_type,

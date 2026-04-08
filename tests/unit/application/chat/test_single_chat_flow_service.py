@@ -264,7 +264,9 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         file_service=None,
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
-        tool_registry_getter=lambda: SimpleNamespace(is_plugin_loaded=lambda _plugin_id: True),
+        tool_registry_getter=lambda: SimpleNamespace(
+            get_tool_names_by_group=lambda _group: {"web_search", "read_webpage"}
+        ),
     )
     service = SingleChatFlowService(deps)
 
@@ -335,6 +337,11 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
                 SimpleNamespace(name="web_search"),
                 SimpleNamespace(name="read_webpage"),
             ]
+
+        def get_tool_names_by_group(self, group):
+            if group == "web":
+                return {"web_search", "read_webpage"}
+            return set()
 
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
     monkeypatch.setattr(
@@ -430,6 +437,11 @@ async def test_resolve_tools_applies_regex_gate(monkeypatch):
                 SimpleNamespace(name="web_search"),
             ]
 
+        def get_tool_names_by_group(self, group):
+            if group == "web":
+                return {"web_search"}
+            return set()
+
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
     monkeypatch.setattr(
         project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", _FakeKnowledgeResolver
@@ -513,6 +525,10 @@ async def test_resolve_tools_applies_description_overrides(monkeypatch):
     class _FakeRegistry:
         def get_all_tools(self):
             return [_FakeTool(name="execute_python", description="old description")]
+
+        def get_tool_names_by_group(self, group):
+            _ = group
+            return set()
 
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
     monkeypatch.setattr(

@@ -228,7 +228,7 @@ async def test_prepare_context_skips_web_context_when_web_tools_plugin_unavailab
 
     monkeypatch.setattr(
         "src.application.chat.context_assembly_service.get_tool_registry",
-        lambda: SimpleNamespace(is_plugin_loaded=lambda _plugin_id: False),
+        lambda: SimpleNamespace(get_tool_names_by_group=lambda _group: set()),
     )
     service = ContextAssemblyService(
         storage=_FakeStorage(),

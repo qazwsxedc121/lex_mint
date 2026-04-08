@@ -226,8 +226,6 @@ class SingleChatPreparedContext:
 class SingleChatFlowService:
     """Runs single-chat stream flow and emits chat stream events."""
 
-    _WEB_TOOL_NAMES = {"web_search", "read_webpage"}
-
     def __init__(self, deps: SingleChatFlowDeps):
         self.deps = deps
         self._single_direct_orchestrator = (
@@ -237,6 +235,12 @@ class SingleChatFlowService:
                 file_service=deps.file_service,
             )
         )
+
+    def _web_tool_names(self) -> set[str]:
+        try:
+            return set(self.deps.tool_registry_getter().get_tool_names_by_group("web"))
+        except Exception:
+            return set()
 
     async def process_message(
         self,
@@ -565,7 +569,7 @@ class SingleChatFlowService:
     ) -> bool:
         if not use_web_search:
             return False
-        if not self.deps.tool_registry_getter().is_plugin_loaded("web_tools"):
+        if not self._web_tool_names():
             return False
 
         try:
@@ -761,10 +765,9 @@ class SingleChatFlowService:
             tool_registry = self.deps.tool_registry_getter()
             resolved_tools.llm_tools = list(tool_registry.get_all_tools())
             if not request.use_web_search:
+                web_tool_names = self._web_tool_names()
                 resolved_tools.llm_tools = [
-                    tool
-                    for tool in resolved_tools.llm_tools
-                    if tool.name not in self._WEB_TOOL_NAMES
+                    tool for tool in resolved_tools.llm_tools if tool.name not in web_tool_names
                 ]
             await self._add_rag_tools_if_needed(
                 request=request,

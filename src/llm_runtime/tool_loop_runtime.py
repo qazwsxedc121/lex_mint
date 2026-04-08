@@ -83,6 +83,9 @@ def build_tool_loop_state(
     tool_names: set[str],
 ) -> tuple[ToolLoopRunner, ToolLoopState]:
     """Create the shared tool-loop runner/state pair for one request."""
+    from src.tools.registry import get_tool_registry
+
+    web_tool_names = get_tool_registry().get_tool_names_by_group("web")
     max_tool_rounds = ToolLoopRunner.resolve_max_tool_rounds(
         tool_names=tool_names,
         latest_user_text=latest_user_text,
@@ -91,7 +94,7 @@ def build_tool_loop_state(
     tool_loop_runner = ToolLoopRunner(max_tool_rounds=max_tool_rounds)
     tool_loop_state = ToolLoopState(
         current_messages=list(langchain_messages),
-        web_research_enabled=bool(tool_names.intersection({"web_search", "read_webpage"})),
+        web_research_enabled=bool(tool_names.intersection(web_tool_names)),
         max_tool_rounds=max_tool_rounds,
     )
     tool_loop_state.evidence_intent = tool_loop_runner.detect_evidence_intent(latest_user_text)

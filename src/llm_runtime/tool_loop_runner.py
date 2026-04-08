@@ -80,12 +80,43 @@ class ToolLoopRunner:
         normalized_tool_names = {
             str(name or "").strip() for name in tool_names if str(name or "").strip()
         }
-        if not normalized_tool_names.intersection({"web_search", "read_webpage"}):
+        web_search_tool_names, web_read_tool_names = ToolLoopRunner._web_tool_names_by_kind()
+        if not normalized_tool_names.intersection(web_search_tool_names | web_read_tool_names):
             return max_rounds
         max_rounds = max(max_rounds, 5)
         if ToolLoopRunner.detect_multihop_web_research_intent(latest_user_text):
             max_rounds = max(max_rounds, 6)
         return max_rounds
+
+    @staticmethod
+    def _web_tool_names_by_kind() -> tuple[set[str], set[str]]:
+        from src.tools.registry import get_tool_registry
+
+        search_names: set[str] = set()
+        read_names: set[str] = set()
+        for definition in get_tool_registry().get_all_definitions():
+            if str(definition.group or "").strip() != "web":
+                continue
+            name = str(definition.name or "").strip()
+            if not name:
+                continue
+            fields = set(getattr(definition.args_schema, "model_fields", {}).keys())
+            normalized_name = name.lower()
+            if "query" in fields or "search" in normalized_name:
+                search_names.add(name)
+            if "url" in fields or "refs" in fields or "read" in normalized_name:
+                read_names.add(name)
+        return search_names, read_names
+
+    @staticmethod
+    def _is_web_search_tool_name(name: str) -> bool:
+        web_search_tool_names, _ = ToolLoopRunner._web_tool_names_by_kind()
+        return str(name or "").strip() in web_search_tool_names
+
+    @staticmethod
+    def _is_web_read_tool_name(name: str) -> bool:
+        _, web_read_tool_names = ToolLoopRunner._web_tool_names_by_kind()
+        return str(name or "").strip() in web_read_tool_names
 
     @staticmethod
     def detect_evidence_intent(user_text: str) -> bool:
@@ -199,9 +230,9 @@ class ToolLoopRunner:
         raw_args = tool_call.get("args")
         args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
 
-        if name in {"search_knowledge", "web_search"}:
+        if name == "search_knowledge" or self._is_web_search_tool_name(name):
             return self._record_search_tool_call(state, name=name, args=args)
-        if name in {"read_knowledge", "read_webpage"}:
+        if name == "read_knowledge" or self._is_web_read_tool_name(name):
             return self._record_read_tool_call(state, name=name, args=args)
         return False
 
@@ -213,7 +244,7 @@ class ToolLoopRunner:
         args: dict[str, Any],
     ) -> bool:
         state.tool_search_count += 1
-        if name == "web_search":
+        if self._is_web_search_tool_name(name):
             state.web_search_count += 1
 
         query_text = str(args.get("query") or "")
@@ -236,7 +267,7 @@ class ToolLoopRunner:
         args: dict[str, Any],
     ) -> bool:
         state.tool_read_count += 1
-        if name == "read_webpage":
+        if self._is_web_read_tool_name(name):
             state.web_read_count += 1
 
         normalized_target = self._normalize_target(self._read_target(name=name, args=args))
@@ -251,7 +282,7 @@ class ToolLoopRunner:
 
     @staticmethod
     def _read_target(*, name: str, args: dict[str, Any]) -> str:
-        if name == "read_webpage":
+        if ToolLoopRunner._is_web_read_tool_name(name):
             return str(args.get("url") or "")
 
         raw_refs = args.get("refs")
@@ -282,11 +313,11 @@ class ToolLoopRunner:
 
         if name == "search_knowledge":
             return self._record_search_knowledge_result(state, parsed)
-        if name == "web_search":
+        if self._is_web_search_tool_name(name):
             return self._record_web_search_result(state, parsed)
         if name == "read_knowledge":
             return self._record_read_knowledge_result(state, parsed)
-        if name == "read_webpage":
+        if self._is_web_read_tool_name(name):
             return self._record_read_webpage_result(state, parsed)
         return False
 

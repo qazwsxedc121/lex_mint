@@ -159,6 +159,17 @@ class ToolRegistry:
         """Return whether a tool definition/object exists by name."""
         return name in self._tool_map or name in self._tool_handler_map
 
+    def get_tool_names_by_group(self, group: str) -> set[str]:
+        """Return tool names that belong to one logical tool group."""
+        normalized_group = str(group or "").strip()
+        if not normalized_group:
+            return set()
+        return {
+            definition.name
+            for definition in self._definitions
+            if str(definition.group or "").strip() == normalized_group
+        }
+
     def is_plugin_loaded(self, plugin_id: str) -> bool:
         """Return whether the plugin is enabled and loaded successfully."""
         normalized_id = str(plugin_id or "").strip()
