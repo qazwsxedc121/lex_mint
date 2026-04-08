@@ -4,16 +4,22 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from './components/common';
 import * as api from '../../services/api';
 import type { ProjectToolCatalogItem } from '../../types/project';
-import type { ToolDescriptionItem, ToolPluginStatus } from '../../services/api';
+import type { ToolDescriptionItem } from '../../services/api';
 
 type ToolRow = ProjectToolCatalogItem & {
   override_description?: string | null;
 };
 
+interface ToolGroup {
+  key: string;
+  label: string;
+  version: string | null;
+  tools: ToolRow[];
+}
+
 export const ToolDescriptionsSettings: React.FC = () => {
   const { t } = useTranslation('settings');
   const [toolRows, setToolRows] = useState<ToolRow[]>([]);
-  const [plugins, setPlugins] = useState<ToolPluginStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,10 +28,9 @@ export const ToolDescriptionsSettings: React.FC = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [catalog, descriptions, pluginPayload] = await Promise.all([
+        const [catalog, descriptions] = await Promise.all([
           api.getToolCatalog(),
           api.getToolDescriptionsConfig(),
-          api.getToolPluginsConfig(),
         ]);
         if (cancelled) {
           return;
@@ -42,7 +47,6 @@ export const ToolDescriptionsSettings: React.FC = () => {
         }));
 
         setToolRows(rows);
-        setPlugins(pluginPayload.plugins || []);
         setError(null);
       } catch (err) {
         if (cancelled) {
@@ -62,10 +66,46 @@ export const ToolDescriptionsSettings: React.FC = () => {
     };
   }, []);
 
-  const pluginLoadedCount = useMemo(
-    () => plugins.filter((item) => item.loaded).length,
-    [plugins],
-  );
+  const groupedTools = useMemo<ToolGroup[]>(() => {
+    const groups = new Map<string, ToolGroup>();
+    for (const tool of toolRows) {
+      const pluginName = String(tool.plugin_name || '').trim();
+      const isBuiltin = pluginName.length === 0;
+      const key = isBuiltin ? '__builtin__' : String(tool.plugin_id || pluginName).trim();
+      const label = isBuiltin ? t('toolsPage.builtinPluginLabel') : pluginName;
+      const version = tool.plugin_version || null;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.tools.push(tool);
+        if (!existing.version && version) {
+          existing.version = version;
+        }
+        continue;
+      }
+      groups.set(key, {
+        key,
+        label,
+        version,
+        tools: [tool],
+      });
+    }
+
+    const ordered = Array.from(groups.values()).sort((a, b) => {
+      if (a.key === '__builtin__') {
+        return -1;
+      }
+      if (b.key === '__builtin__') {
+        return 1;
+      }
+      return a.label.localeCompare(b.label);
+    });
+
+    for (const group of ordered) {
+      group.tools.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return ordered;
+  }, [toolRows, t]);
 
   if (loading) {
     return (
@@ -86,50 +126,51 @@ export const ToolDescriptionsSettings: React.FC = () => {
         description={t('toolsPage.description')}
       />
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800" data-name="tool-plugin-summary">
-        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('toolsPage.pluginsTitle')}</div>
-        <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-          {t('toolsPage.pluginsLoaded', { loaded: pluginLoadedCount, total: plugins.length })}
-        </div>
-        <div className="mt-3 space-y-2">
-          {plugins.map((plugin) => (
-            <div key={plugin.id} className="rounded-md border border-gray-200 px-3 py-2 text-xs dark:border-gray-700">
-              <div className="font-medium text-gray-900 dark:text-gray-100">{plugin.name} ({plugin.version})</div>
-              <div className={plugin.loaded ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}>
-                {plugin.loaded
-                  ? t('toolsPage.pluginLoaded')
-                  : t('toolsPage.pluginFailed', { error: plugin.error || t('toolsPage.unknownError') })}
+      <section className="space-y-4" data-name="tool-description-plugin-groups">
+        {groupedTools.map((group) => (
+          <div
+            key={group.key}
+            className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+            data-name="tool-description-plugin-group"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {group.label}
+                {group.version ? ` (${group.version})` : ''}
               </div>
-              <div className="text-gray-500 dark:text-gray-400">{plugin.entrypoint}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {t('toolsPage.pluginToolsCount', { count: group.tools.length })}
+              </div>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800" data-name="tool-description-list">
-        <div className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{t('toolsPage.toolsTitle')}</div>
-        <div className="space-y-2">
-          {toolRows.map((tool) => (
-            <Link
-              key={tool.name}
-              to={`/settings/tools/${encodeURIComponent(tool.name)}`}
-              className="block rounded-md border border-gray-200 px-3 py-3 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{tool.name}</div>
-                <div className="text-[11px] text-gray-500 dark:text-gray-400">{tool.plugin_name || tool.source}</div>
-              </div>
-              <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                {tool.description}
-              </div>
-              <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                {tool.override_description
-                  ? t('toolsPage.customDescriptionConfigured')
-                  : t('toolsPage.usingDefaultDescription')}
-              </div>
-            </Link>
-          ))}
-        </div>
+            <div className="space-y-2">
+              {group.tools.map((tool) => (
+                <Link
+                  key={tool.name}
+                  to={`/settings/tools/${encodeURIComponent(tool.name)}`}
+                  className="block rounded-md border border-gray-200 px-3 py-3 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{tool.name}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400">{tool.group}</div>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                    {tool.description}
+                  </div>
+                  <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                    {tool.override_description
+                      ? t('toolsPage.customDescriptionConfigured')
+                      : t('toolsPage.usingDefaultDescription')}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+        {groupedTools.length === 0 && (
+          <div className="rounded-md border border-dashed border-gray-300 px-3 py-4 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+            {t('toolsPage.empty')}
+          </div>
+        )}
       </section>
     </div>
   );

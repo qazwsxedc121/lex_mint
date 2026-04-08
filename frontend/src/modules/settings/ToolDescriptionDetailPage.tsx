@@ -98,10 +98,6 @@ export const ToolDescriptionDetailPage: React.FC = () => {
             <div className="text-sm text-gray-900 dark:text-gray-100">{item.group}</div>
           </div>
           <div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">{t('toolDetail.sourceLabel')}</div>
-            <div className="text-sm text-gray-900 dark:text-gray-100">{item.source}</div>
-          </div>
-          <div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{t('toolDetail.pluginLabel')}</div>
             <div className="text-sm text-gray-900 dark:text-gray-100">{item.plugin_name || item.plugin_id || '-'}</div>
           </div>
