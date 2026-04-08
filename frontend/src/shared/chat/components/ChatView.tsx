@@ -13,7 +13,7 @@ import { ContextUsageBar } from './ContextUsageBar';
 import { useChat } from '../hooks/useChat';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
-import { listModels } from '../../../services/api';
+import { getToolPluginsConfig, listModels } from '../../../services/api';
 import type { UploadedFile } from '../../../types/message';
 import type { GroupTimelineEvent, Message } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
@@ -76,6 +76,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState('default');
   const [useWebSearch, setUseWebSearch] = useState(false);
+  const [webToolsAvailable, setWebToolsAvailable] = useState(false);
   const [groupAssistantNameMap, setGroupAssistantNameMap] = useState<Record<string, string>>({});
   const [enabledAssistants, setEnabledAssistants] = useState<Assistant[]>([]);
   const [enabledModels, setEnabledModels] = useState<Model[]>([]);
@@ -197,6 +198,33 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const handleCompare = (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => {
     sendCompareMessage(message, modelIds, options);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadWebToolsAvailability = async () => {
+      try {
+        const payload = await getToolPluginsConfig();
+        if (cancelled) {
+          return;
+        }
+        const plugin = (payload.plugins || []).find((item) => item.id === 'web_tools');
+        const available = Boolean(plugin?.enabled && plugin?.loaded);
+        setWebToolsAvailable(available);
+        if (!available) {
+          setUseWebSearch(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setWebToolsAvailable(false);
+          setUseWebSearch(false);
+        }
+      }
+    };
+    void loadWebToolsAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleInsertSeparator = () => {
     insertSeparator();
@@ -940,6 +968,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         onReasoningEffortChange={setReasoningEffort}
         useWebSearch={useWebSearch}
         onUseWebSearchChange={setUseWebSearch}
+        showWebSearchToggle={webToolsAvailable}
         sessionId={currentSessionId}
         currentAssistantId={currentTargetType === 'assistant' ? currentAssistantId || undefined : undefined}
         paramOverrides={paramOverrides}

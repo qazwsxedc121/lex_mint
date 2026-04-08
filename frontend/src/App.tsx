@@ -27,8 +27,6 @@ import {
 } from './modules/settings/CrudPages';
 import { KnowledgeBaseCreatePage } from './modules/settings/KnowledgeBaseCreatePage';
 import { KnowledgeBaseEditPage } from './modules/settings/KnowledgeBaseEditPage';
-import { SearchSettings } from './modules/settings/SearchSettings';
-import { WebpageSettings } from './modules/settings/WebpageSettings';
 import { TitleGenerationSettings } from './modules/settings/TitleGenerationSettings';
 import { FollowupSettings } from './modules/settings/FollowupSettings';
 import { CompressionSettings } from './modules/settings/CompressionSettings';
@@ -91,8 +89,6 @@ function App() {
             <Route path="prompt-templates" element={<PromptTemplatesPage />} />
             <Route path="memory" element={<MemorySettings />} />
             <Route path="rag" element={<RagSettings />} />
-            <Route path="search" element={<SearchSettings />} />
-            <Route path="webpage" element={<WebpageSettings />} />
             <Route path="title-generation" element={<TitleGenerationSettings />} />
             <Route path="followup" element={<FollowupSettings />} />
             <Route path="compression" element={<CompressionSettings />} />

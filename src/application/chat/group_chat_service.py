@@ -24,6 +24,7 @@ from src.application.chat.service_contracts import (
     SourcePayload,
     StreamEvent,
 )
+from src.tools.registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,7 @@ class GroupChatService:
     ) -> tuple[str | None, list[SourcePayload]]:
         search_sources: list[SourcePayload] = []
         search_context = None
-        if not use_web_search:
+        if not use_web_search or not get_tool_registry().is_plugin_loaded("web_tools"):
             return search_context, search_sources
         query = (search_query or raw_user_message).strip()
         if not query:

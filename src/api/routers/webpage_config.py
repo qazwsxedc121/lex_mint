@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.routers.service_protocols import ConfigSaveServiceLike
+from src.infrastructure.web.web_tools_settings import save_web_tools_settings_updates
 from src.infrastructure.web.webpage_service import WebpageService
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,9 @@ async def update_config(
         if not update_dict:
             raise HTTPException(status_code=400, detail="No updates provided")
 
-        service.save_config(update_dict)
+        save_web_tools_settings_updates({"webpage": update_dict})
+        if hasattr(service, "_load_config"):
+            service.config = service._load_config()
         return {"message": "Configuration updated successfully"}
     except HTTPException:
         raise

@@ -264,6 +264,7 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         file_service=None,
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
+        tool_registry_getter=lambda: SimpleNamespace(is_plugin_loaded=lambda _plugin_id: True),
     )
     service = SingleChatFlowService(deps)
 
@@ -306,7 +307,6 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     import src.infrastructure.config.model_config_service as model_config_service
     import src.infrastructure.projects.project_knowledge_base_resolver as project_knowledge_base_resolver
     import src.infrastructure.projects.project_tool_policy_resolver as project_tool_policy_resolver
-    import src.infrastructure.web.web_tool_service as web_tool_service
     import src.tools.registry as tool_registry
 
     class _FakeModelService:
@@ -328,16 +328,13 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
         async def get_allowed_tool_names(self, **kwargs):
             return set(kwargs["candidate_tool_names"])
 
-    class _FakeWebToolService:
-        def get_tools(self):
-            return [SimpleNamespace(name="web_search"), SimpleNamespace(name="read_webpage")]
-
-        async def execute_tool(self, _name, _args):
-            return None
-
     class _FakeRegistry:
         def get_all_tools(self):
-            return [SimpleNamespace(name="simple_calculator")]
+            return [
+                SimpleNamespace(name="simple_calculator"),
+                SimpleNamespace(name="web_search"),
+                SimpleNamespace(name="read_webpage"),
+            ]
 
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
     monkeypatch.setattr(
@@ -349,7 +346,6 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
     monkeypatch.setattr(
         assistant_tool_policy_resolver, "AssistantToolPolicyResolver", _FakeAssistantPolicyResolver
     )
-    monkeypatch.setattr(web_tool_service, "WebToolService", _FakeWebToolService)
     monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
 
     tools, executor = await service._resolve_tools(
@@ -453,7 +449,7 @@ async def test_resolve_tools_applies_regex_gate(monkeypatch):
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=False,
+            use_web_search=True,
             user_message="这是常识题，定义是什么？",
         ),
     )

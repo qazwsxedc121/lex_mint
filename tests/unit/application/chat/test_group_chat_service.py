@@ -209,3 +209,26 @@ async def test_group_chat_service_committee_flow_and_trace_id():
     assert committee.requests[0].trace_id is not None
     assert committee.requests[0].settings.supervisor_id == "lead"
     assert post_turn.calls[0]["session_id"] == "session-12345678"
+
+
+@pytest.mark.asyncio
+async def test_group_chat_service_skips_search_when_web_tools_plugin_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        "src.application.chat.group_chat_service.get_tool_registry",
+        lambda: type("Registry", (), {"is_plugin_loaded": lambda self, _plugin_id: False})(),
+    )
+    service, round_robin, _, _ = _make_service()
+
+    _ = [
+        event
+        async for event in service.process_group_message_stream(
+            request=GroupChatRequestContext(
+                scope=ConversationScope(session_id="session-1234"),
+                user_input=UserInputPayload(user_message="hello"),
+                group_assistants=["a", "b"],
+                search=SearchOptions(use_web_search=True),
+            )
+        )
+    ]
+
+    assert round_robin.requests[0].search_context is None

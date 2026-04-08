@@ -38,7 +38,6 @@ from src.infrastructure.projects.project_knowledge_base_resolver import ProjectK
 from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.web.search_service import SearchService
-from src.infrastructure.web.web_tool_service import WebToolService
 from src.infrastructure.web.webpage_service import WebpageService
 from src.llm_runtime import call_llm, call_llm_stream
 from src.tools.registry import get_tool_registry
@@ -201,7 +200,6 @@ def build_default_chat_application_service(
         project_knowledge_base_resolver_factory=ProjectKnowledgeBaseResolver,
         project_tool_policy_resolver_factory=ProjectToolPolicyResolver,
         assistant_tool_policy_resolver_factory=AssistantToolPolicyResolver,
-        web_tool_service_factory=WebToolService,
         tool_gate_config_service_factory=ToolGateConfigService,
         tool_gate_service_factory=ToolGateService,
         tool_description_config_service_factory=ToolDescriptionConfigService,

@@ -17,6 +17,7 @@ from src.core.paths import (
 )
 from src.domain.models.search import SearchSource
 from src.infrastructure.config.model_config_service import ModelConfigService
+from src.infrastructure.web.web_tools_settings import load_effective_web_tools_settings
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,10 @@ class SearchService:
             )
 
     def _load_config(self) -> SearchConfig:
+        plugin_config = self._load_plugin_search_config()
+        if plugin_config is not None:
+            return plugin_config
+
         self._ensure_config_exists()
         try:
             with open(self.config_path, encoding="utf-8") as f:
@@ -88,6 +93,22 @@ class SearchService:
         except Exception as e:
             logger.warning(f"Failed to load search config: {e}")
             return SearchConfig()
+
+    @staticmethod
+    def _load_plugin_search_config() -> SearchConfig | None:
+        try:
+            settings = load_effective_web_tools_settings()
+            search_data = settings.get("search", {})
+            if not isinstance(search_data, dict):
+                return None
+            return SearchConfig(
+                provider=str(search_data.get("provider", "duckduckgo")),
+                max_results=int(search_data.get("max_results", 10)),
+                timeout_seconds=int(search_data.get("timeout_seconds", 10)),
+            )
+        except Exception as exc:
+            logger.warning("Failed to load web_tools.search settings: %s", exc)
+            return None
 
     def save_config(self, updates: dict) -> None:
         self._ensure_config_exists()

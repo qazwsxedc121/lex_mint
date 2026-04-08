@@ -19,6 +19,8 @@ def test_builtin_registry_exposes_all_builtin_tools():
         "simple_calculator",
         "format_json",
         "text_statistics",
+        "web_search",
+        "read_webpage",
     ]
 
 

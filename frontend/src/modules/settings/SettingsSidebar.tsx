@@ -12,8 +12,6 @@ import {
   UserGroupIcon,
   CpuChipIcon,
   ServerIcon,
-  MagnifyingGlassIcon,
-  GlobeAltIcon,
   SparklesIcon,
   ChatBubbleLeftRightIcon,
   ArchiveBoxArrowDownIcon,
@@ -65,8 +63,6 @@ export const SettingsSidebar: React.FC = () => {
     {
       titleKey: 'navGroup.experience',
       items: [
-        { path: '/settings/search', labelKey: 'nav.search', icon: MagnifyingGlassIcon },
-        { path: '/settings/webpage', labelKey: 'nav.webpage', icon: GlobeAltIcon },
         { path: '/settings/title-generation', labelKey: 'nav.titleGeneration', icon: SparklesIcon },
         { path: '/settings/followup', labelKey: 'nav.followup', icon: ChatBubbleLeftRightIcon },
         { path: '/settings/compression', labelKey: 'nav.compression', icon: ArchiveBoxArrowDownIcon },

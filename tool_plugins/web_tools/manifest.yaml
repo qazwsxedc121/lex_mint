@@ -5,3 +5,5 @@ version: 1.0.0
 enabled: true
 entrypoint: src.tools.plugins.web_tools_plugin:register
 description: Request-scoped tools for web search and webpage reading.
+settings_schema_path: settings.schema.json
+settings_defaults_path: settings.defaults.yaml

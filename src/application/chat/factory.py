@@ -28,7 +28,6 @@ def build_single_chat_flow_service(
     project_knowledge_base_resolver_factory: Any = None,
     project_tool_policy_resolver_factory: Any = None,
     assistant_tool_policy_resolver_factory: Any = None,
-    web_tool_service_factory: Any = None,
     tool_gate_config_service_factory: Any = None,
     tool_gate_service_factory: Any = None,
     tool_description_config_service_factory: Any = None,
@@ -83,11 +82,6 @@ def build_single_chat_flow_service(
             **(
                 {"assistant_tool_policy_resolver_factory": assistant_tool_policy_resolver_factory}
                 if assistant_tool_policy_resolver_factory is not None
-                else {}
-            ),
-            **(
-                {"web_tool_service_factory": web_tool_service_factory}
-                if web_tool_service_factory is not None
                 else {}
             ),
             **(

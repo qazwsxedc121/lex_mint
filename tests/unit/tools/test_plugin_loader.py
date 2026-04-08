@@ -20,7 +20,7 @@ def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
         "\n".join(
             [
                 "from src.tools.plugins.models import ToolPluginContribution",
-                "from src.tools.request_scoped import WEB_SEARCH_TOOL",
+                "from src.tools.plugins.web_tools_definitions import WEB_SEARCH_TOOL",
                 "",
                 "def register():",
                 "    return ToolPluginContribution(definitions=[WEB_SEARCH_TOOL])",

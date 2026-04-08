@@ -219,3 +219,33 @@ async def test_prepare_context_disables_assistant_memory_when_assistant_setting_
             "include_assistant": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_prepare_context_skips_web_context_when_web_tools_plugin_unavailable(monkeypatch):
+    async def fake_rag_context_builder(**_kwargs):
+        return None, []
+
+    monkeypatch.setattr(
+        "src.application.chat.context_assembly_service.get_tool_registry",
+        lambda: SimpleNamespace(is_plugin_loaded=lambda _plugin_id: False),
+    )
+    service = ContextAssemblyService(
+        storage=_FakeStorage(),
+        memory_service=_FakeMemoryService(),
+        webpage_service=_FakeWebpageService(),
+        search_service=_FakeSearchService(),
+        source_context_service=_FakeSourceContextService(),
+        rag_config_service=_FakeRagConfigService(enabled=False),
+        rag_context_builder=fake_rag_context_builder,
+    )
+
+    ctx = await service.prepare_context(
+        session_id="s4",
+        raw_user_message="hello",
+        use_web_search=True,
+    )
+
+    assert ctx.webpage_context is None
+    assert ctx.search_context is None
+    assert [s["type"] for s in ctx.all_sources] == ["memory"]

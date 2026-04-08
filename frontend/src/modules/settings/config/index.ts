@@ -15,9 +15,7 @@ export { knowledgeBasesConfig } from './knowledgeBases.config.tsx';
 export { promptTemplatesConfig } from './promptTemplates.config.tsx';
 
 // Simple Config Configs
-export { searchConfig } from './search.config';
 export { titleGenerationConfig } from './titleGeneration.config';
-export { webpageConfig } from './webpage.config';
 export { followupConfig } from './followup.config';
 export { compressionConfig } from './compression.config';
 export { translationConfig } from './translation.config';

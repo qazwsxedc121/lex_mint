@@ -83,12 +83,6 @@ def _default_assistant_tool_policy_resolver_factory() -> Any:
     return AssistantToolPolicyResolver()
 
 
-def _default_web_tool_service_factory() -> Any:
-    from src.infrastructure.web.web_tool_service import WebToolService
-
-    return WebToolService()
-
-
 def _default_code_execution_config_service_factory() -> Any:
     from src.infrastructure.config.code_execution_config_service import CodeExecutionConfigService
 
@@ -149,7 +143,6 @@ class SingleChatFlowDeps:
     assistant_tool_policy_resolver_factory: Callable[[], Any] = (
         _default_assistant_tool_policy_resolver_factory
     )
-    web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
     code_execution_config_service_factory: Callable[[], Any] = (
         _default_code_execution_config_service_factory
     )
@@ -232,6 +225,8 @@ class SingleChatPreparedContext:
 
 class SingleChatFlowService:
     """Runs single-chat stream flow and emits chat stream events."""
+
+    _WEB_TOOL_NAMES = {"web_search", "read_webpage"}
 
     def __init__(self, deps: SingleChatFlowDeps):
         self.deps = deps
@@ -570,6 +565,8 @@ class SingleChatFlowService:
     ) -> bool:
         if not use_web_search:
             return False
+        if not self.deps.tool_registry_getter().is_plugin_loaded("web_tools"):
+            return False
 
         try:
             session = await self.deps.storage.get_session(
@@ -761,11 +758,14 @@ class SingleChatFlowService:
             if not self._supports_function_calling(request.model_id):
                 return None, None
 
-            resolved_tools.llm_tools = list(self.deps.tool_registry_getter().get_all_tools())
-            self._add_web_tools_if_needed(
-                request=request,
-                resolved_tools=resolved_tools,
-            )
+            tool_registry = self.deps.tool_registry_getter()
+            resolved_tools.llm_tools = list(tool_registry.get_all_tools())
+            if not request.use_web_search:
+                resolved_tools.llm_tools = [
+                    tool
+                    for tool in resolved_tools.llm_tools
+                    if tool.name not in self._WEB_TOOL_NAMES
+                ]
             await self._add_rag_tools_if_needed(
                 request=request,
                 resolved_tools=resolved_tools,
@@ -799,12 +799,8 @@ class SingleChatFlowService:
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
 
-        needs_client_browser_bridge = bool(
-            {"execute_python", "execute_javascript"} & set(resolved_tools.allowed_tool_names)
-        )
-        if not resolved_tools.tool_executors and not needs_client_browser_bridge:
-            return resolved_tools.llm_tools or None, None
-
+        if not resolved_tools.llm_tools:
+            return None, None
         return (
             resolved_tools.llm_tools or None,
             self._build_combined_tool_executor(
@@ -891,24 +887,6 @@ class SingleChatFlowService:
         model_cfg, provider_cfg = model_service.get_model_and_provider_sync(model_id)
         merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
         return bool(merged_caps.function_calling)
-
-    def _add_web_tools_if_needed(
-        self,
-        *,
-        request: ToolResolutionContext,
-        resolved_tools: SingleChatResolvedTools,
-    ) -> None:
-        if not request.use_web_search:
-            return
-
-        web_tool_service = self.deps.web_tool_service_factory()
-        web_tools = web_tool_service.get_tools()
-        if not web_tools:
-            return
-
-        resolved_tools.llm_tools.extend(web_tools)
-        resolved_tools.tool_executors.append(web_tool_service.execute_tool)
-        print(f"[TOOLS] Added web tools: {len(web_tools)}")
 
     async def _add_rag_tools_if_needed(
         self,
@@ -1173,6 +1151,10 @@ class SingleChatFlowService:
                     "Error: execute_python failed because no enabled execution method succeeded "
                     "(check code execution settings)"
                 )
+            registry = self.deps.tool_registry_getter()
+            registry_result = await registry.try_execute_tool_async(name, args)
+            if registry_result is not None:
+                return registry_result
             for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)

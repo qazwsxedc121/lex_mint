@@ -136,6 +136,7 @@ interface InputBoxProps {
   supportsVision?: boolean;
   useWebSearch?: boolean;
   onUseWebSearchChange?: (enabled: boolean) => void;
+  showWebSearchToggle?: boolean;
   sessionId?: string;
   currentAssistantId?: string;
   paramOverrides?: ParamOverrides;
@@ -161,6 +162,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   supportsVision = false,
   useWebSearch: controlledUseWebSearch,
   onUseWebSearchChange,
+  showWebSearchToggle = true,
   sessionId,
   currentAssistantId: _currentAssistantId,
   paramOverrides,
@@ -938,20 +940,22 @@ export const InputBox: React.FC<InputBoxProps> = ({
         )}
 
         {/* Web search toggle */}
-        <button
-          type="button"
-          onClick={() => setUseWebSearch(!useWebSearch)}
-          disabled={disabled || isStreaming}
-          data-name="input-box-web-search-toggle"
-          className={`${TOOLBAR_BTN} ${
-            useWebSearch
-              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-              : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-          }`}
-          title={useWebSearch ? t('input.webSearchEnabled') : t('input.enableWebSearch')}
-        >
-          <GlobeAltIcon className="h-4 w-4" />
-        </button>
+        {showWebSearchToggle && (
+          <button
+            type="button"
+            onClick={() => setUseWebSearch(!useWebSearch)}
+            disabled={disabled || isStreaming}
+            data-name="input-box-web-search-toggle"
+            className={`${TOOLBAR_BTN} ${
+              useWebSearch
+                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+            }`}
+            title={useWebSearch ? t('input.webSearchEnabled') : t('input.enableWebSearch')}
+          >
+            <GlobeAltIcon className="h-4 w-4" />
+          </button>
+        )}
 
         {/* Compare models button */}
         <CompareModelButton

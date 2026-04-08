@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "duckduckgo",
+            "tavily"
+          ]
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60
+        }
+      }
+    },
+    "webpage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_urls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 120
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 20000000
+        },
+        "max_content_chars": {
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 200000
+        },
+        "user_agent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "proxy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trust_env": {
+          "type": "boolean"
+        },
+        "diagnostics_enabled": {
+          "type": "boolean"
+        },
+        "diagnostics_timeout_seconds": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 5.0
+        }
+      }
+    }
+  }
+}

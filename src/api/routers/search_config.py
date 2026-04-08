@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from src.api.routers.service_protocols import ConfigSaveServiceLike
 from src.infrastructure.web.search_service import SearchService
+from src.infrastructure.web.web_tools_settings import save_web_tools_settings_updates
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -71,7 +72,9 @@ async def update_config(
             raise HTTPException(status_code=400, detail="No updates provided")
 
         _validate_provider(update_dict.get("provider"))
-        service.save_config(update_dict)
+        save_web_tools_settings_updates({"search": update_dict})
+        if hasattr(service, "_load_config"):
+            service.config = service._load_config()
         return {"message": "Configuration updated successfully"}
     except HTTPException:
         raise

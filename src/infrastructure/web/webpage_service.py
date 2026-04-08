@@ -30,6 +30,7 @@ from src.core.paths import (
     ensure_local_file,
 )
 from src.domain.models.search import SearchSource
+from src.infrastructure.web.web_tools_settings import load_effective_web_tools_settings
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +235,10 @@ class WebpageService:
             )
 
     def _load_config(self) -> WebpageConfig:
+        plugin_config = self._load_plugin_webpage_config()
+        if plugin_config is not None:
+            return plugin_config
+
         self._ensure_config_exists()
         try:
             with open(self.config_path, encoding="utf-8") as f:
@@ -256,6 +261,31 @@ class WebpageService:
         except Exception as e:
             logger.warning(f"Failed to load webpage config: {e}")
             return WebpageConfig()
+
+    @staticmethod
+    def _load_plugin_webpage_config() -> WebpageConfig | None:
+        try:
+            settings = load_effective_web_tools_settings()
+            page_data = settings.get("webpage", {})
+            if not isinstance(page_data, dict):
+                return None
+            return WebpageConfig(
+                enabled=bool(page_data.get("enabled", True)),
+                max_urls=int(page_data.get("max_urls", 2)),
+                timeout_seconds=int(page_data.get("timeout_seconds", 10)),
+                max_bytes=int(page_data.get("max_bytes", 3_000_000)),
+                max_content_chars=int(page_data.get("max_content_chars", 20_000)),
+                user_agent=str(page_data.get("user_agent", "lex_mint/1.0")),
+                proxy=WebpageService._normalize_proxy(page_data.get("proxy")),
+                trust_env=bool(page_data.get("trust_env", True)),
+                diagnostics_enabled=bool(page_data.get("diagnostics_enabled", True)),
+                diagnostics_timeout_seconds=float(
+                    page_data.get("diagnostics_timeout_seconds", 2.0)
+                ),
+            )
+        except Exception as exc:
+            logger.warning("Failed to load web_tools.webpage settings: %s", exc)
+            return None
 
     def save_config(self, updates: dict) -> None:
         self._ensure_config_exists()

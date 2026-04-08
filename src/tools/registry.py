@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from dataclasses import replace
 
@@ -58,6 +59,9 @@ class ToolRegistry:
         self._tools = self._dedupe_tools(tools)
         self._tool_map = {tool.name: tool for tool in self._tools}
         self._tool_handler_map = handler_map
+        self._loaded_plugin_ids = {
+            status.id for status in self._plugin_statuses if status.loaded and status.enabled
+        }
 
     @staticmethod
     def _dedupe_definitions(definitions: list[ToolDefinition]) -> list[ToolDefinition]:
@@ -108,16 +112,57 @@ class ToolRegistry:
 
     def execute_tool(self, name: str, args: dict) -> str:
         """Execute a builtin tool by name with validated LangChain args."""
+        maybe_result = self.try_execute_tool(name, args)
+        if maybe_result is None:
+            return f"Error: Unknown tool '{name}'"
+        return maybe_result
+
+    def try_execute_tool(self, name: str, args: dict) -> str | None:
+        """Try to execute a registered tool handler, returning None when not found."""
         handler = self._tool_handler_map.get(name)
         if handler is None:
-            return f"Error: Unknown tool '{name}'"
+            return None
 
         try:
             result = handler(**(args or {}))
+            if inspect.isawaitable(result):
+                logger.warning("Tool '%s' requires async execution path", name)
+                return f"Error executing {name}: tool requires async execution"
             return str(result)
         except Exception as exc:
             logger.error("Tool execution error (%s): %s", name, exc, exc_info=True)
             return f"Error executing {name}: {exc}"
+
+    async def execute_tool_async(self, name: str, args: dict) -> str:
+        """Execute a registered tool handler by name in async context."""
+        maybe_result = await self.try_execute_tool_async(name, args)
+        if maybe_result is None:
+            return f"Error: Unknown tool '{name}'"
+        return maybe_result
+
+    async def try_execute_tool_async(self, name: str, args: dict) -> str | None:
+        """Try to execute a registered tool handler in async context."""
+        handler = self._tool_handler_map.get(name)
+        if handler is None:
+            return None
+
+        try:
+            result = handler(**(args or {}))
+            if inspect.isawaitable(result):
+                result = await result
+            return str(result)
+        except Exception as exc:
+            logger.error("Tool execution error (%s): %s", name, exc, exc_info=True)
+            return f"Error executing {name}: {exc}"
+
+    def has_tool(self, name: str) -> bool:
+        """Return whether a tool definition/object exists by name."""
+        return name in self._tool_map or name in self._tool_handler_map
+
+    def is_plugin_loaded(self, plugin_id: str) -> bool:
+        """Return whether the plugin is enabled and loaded successfully."""
+        normalized_id = str(plugin_id or "").strip()
+        return bool(normalized_id) and normalized_id in self._loaded_plugin_ids
 
     def get_default_project_enabled_map(self) -> dict[str, bool]:
         """Default per-project enablement state for all registered tool definitions."""

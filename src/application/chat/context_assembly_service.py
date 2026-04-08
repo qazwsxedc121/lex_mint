@@ -18,6 +18,7 @@ from src.application.chat.service_contracts import (
     WebpageServiceLike,
 )
 from src.application.chat.source_diagnostics import merge_source_groups
+from src.tools.registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class ContextAssemblyService:
         search_query: str | None = None,
     ) -> ContextPayload:
         """Prepare context payload consumed by orchestrators."""
+        web_tools_loaded = bool(get_tool_registry().is_plugin_loaded("web_tools"))
         session = await self.storage.get_session(
             session_id,
             context_type=context_type,
@@ -122,17 +124,18 @@ class ContextAssemblyService:
             logger.warning("Memory retrieval failed: %s", e)
 
         webpage_sources: list[SourcePayload] = []
-        try:
-            webpage_context, webpage_source_models = await self.webpage_service.build_context(
-                raw_user_message
-            )
-            if webpage_source_models:
-                webpage_sources = [s.model_dump() for s in webpage_source_models]
-        except Exception as e:
-            logger.warning("Webpage parsing failed: %s", e)
+        if web_tools_loaded:
+            try:
+                webpage_context, webpage_source_models = await self.webpage_service.build_context(
+                    raw_user_message
+                )
+                if webpage_source_models:
+                    webpage_sources = [s.model_dump() for s in webpage_source_models]
+            except Exception as e:
+                logger.warning("Webpage parsing failed: %s", e)
 
         search_sources: list[SourcePayload] = []
-        if use_web_search:
+        if use_web_search and web_tools_loaded:
             query = (search_query or raw_user_message).strip()
             if len(query) > 200:
                 query = query[:200]
