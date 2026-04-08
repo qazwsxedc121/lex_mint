@@ -29,6 +29,8 @@ from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.pricing_service import PricingService
 from src.infrastructure.config.project_service import ProjectService
 from src.infrastructure.config.rag_config_service import RagConfigService
+from src.infrastructure.config.tool_description_config_service import ToolDescriptionConfigService
+from src.infrastructure.config.tool_gate_config_service import ToolGateConfigService
 from src.infrastructure.files.file_service import FileService
 from src.infrastructure.memory.memory_service import MemoryService
 from src.infrastructure.projects.project_document_tool_service import ProjectDocumentToolService
@@ -53,6 +55,7 @@ from .group_runtime_support_service import GroupRuntimeSupportService
 from .post_turn_service import PostTurnService
 from .service import ChatApplicationService
 from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandService
+from .tool_gate_service import ToolGateService
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +202,9 @@ def build_default_chat_application_service(
         project_tool_policy_resolver_factory=ProjectToolPolicyResolver,
         assistant_tool_policy_resolver_factory=AssistantToolPolicyResolver,
         web_tool_service_factory=WebToolService,
+        tool_gate_config_service_factory=ToolGateConfigService,
+        tool_gate_service_factory=ToolGateService,
+        tool_description_config_service_factory=ToolDescriptionConfigService,
         tool_registry_getter=get_tool_registry,
     )
     compare_flow_service = build_compare_flow_service(

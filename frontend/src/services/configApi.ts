@@ -105,6 +105,46 @@ export interface CodeExecutionConfigUpdate {
   jupyter_kernel_name?: string;
 }
 
+export interface ToolGateRule {
+  id: string;
+  enabled: boolean;
+  priority: number;
+  pattern: string;
+  flags: string;
+  include_tools: string[];
+  exclude_tools: string[];
+  description?: string | null;
+}
+
+export interface ToolGateConfig {
+  enabled: boolean;
+  rules: ToolGateRule[];
+}
+
+export interface ToolGateConfigUpdate {
+  enabled?: boolean;
+  rules?: ToolGateRule[];
+}
+
+export interface ToolDescriptionItem {
+  name: string;
+  group: string;
+  source: string;
+  default_description: string;
+  override_description?: string | null;
+  effective_description: string;
+  title_i18n_key: string;
+  description_i18n_key: string;
+}
+
+export interface ToolDescriptionsConfig {
+  tools: ToolDescriptionItem[];
+}
+
+export interface ToolDescriptionsUpdate {
+  overrides: Record<string, string | null>;
+}
+
 export async function getCodeExecutionConfig(): Promise<CodeExecutionConfig> {
   const response = await api.get<CodeExecutionConfig>('/api/code-execution/config');
   return response.data;
@@ -114,6 +154,26 @@ export async function updateCodeExecutionConfig(
   updates: CodeExecutionConfigUpdate
 ): Promise<void> {
   await api.put('/api/code-execution/config', updates);
+}
+
+export async function getToolGateConfig(): Promise<ToolGateConfig> {
+  const response = await api.get<ToolGateConfig>('/api/tool-gate/config');
+  return response.data;
+}
+
+export async function updateToolGateConfig(updates: ToolGateConfigUpdate): Promise<void> {
+  await api.put('/api/tool-gate/config', updates);
+}
+
+export async function getToolDescriptionsConfig(): Promise<ToolDescriptionsConfig> {
+  const response = await api.get<ToolDescriptionsConfig>('/api/tools/descriptions');
+  return response.data;
+}
+
+export async function updateToolDescriptionsConfig(
+  updates: ToolDescriptionsUpdate
+): Promise<void> {
+  await api.put('/api/tools/descriptions', updates);
 }
 
 /**

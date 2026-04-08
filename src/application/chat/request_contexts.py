@@ -126,6 +126,7 @@ class ToolResolutionContext:
     assistant_obj: AssistantLike | None
     model_id: str
     use_web_search: bool
+    user_message: str = ""
 
 
 @dataclass(frozen=True)

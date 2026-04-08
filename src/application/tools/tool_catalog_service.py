@@ -29,9 +29,16 @@ class ToolCatalogService:
         return unique_definitions
 
     @classmethod
-    def build_catalog(cls) -> ToolCatalogResponse:
+    def build_catalog(
+        cls,
+        *,
+        description_overrides: dict[str, str] | None = None,
+    ) -> ToolCatalogResponse:
         definitions = cls.get_tool_definitions()
-        items = [cls._to_item(definition) for definition in definitions]
+        items = [
+            cls._to_item(definition, description_overrides=description_overrides)
+            for definition in definitions
+        ]
 
         grouped: dict[str, list[ToolCatalogItem]] = {group: [] for group in cls.GROUP_ORDER}
         for item in items:
@@ -50,10 +57,19 @@ class ToolCatalogService:
         return ToolCatalogResponse(groups=groups, tools=items)
 
     @staticmethod
-    def _to_item(definition: ToolDefinition) -> ToolCatalogItem:
+    def _to_item(
+        definition: ToolDefinition,
+        *,
+        description_overrides: dict[str, str] | None = None,
+    ) -> ToolCatalogItem:
+        effective_description = definition.description
+        if description_overrides and definition.name in description_overrides:
+            candidate = str(description_overrides[definition.name] or "").strip()
+            if candidate:
+                effective_description = candidate
         return ToolCatalogItem(
             name=definition.name,
-            description=definition.description,
+            description=effective_description,
             group=definition.group,
             source=definition.source,
             enabled_by_default=definition.enabled_by_default,

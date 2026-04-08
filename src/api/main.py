@@ -38,6 +38,7 @@ from .routers import (
     search_config,
     sessions,
     title_generation,
+    tool_gate_config,
     tools,
     translation,
     translation_config,
@@ -109,6 +110,7 @@ app.include_router(webpage_config.router)
 app.include_router(followup.router)
 app.include_router(compression_config.router)
 app.include_router(file_reference_config.router)
+app.include_router(tool_gate_config.router)
 app.include_router(translation_config.router)
 app.include_router(translation.router)
 app.include_router(tts_config.router)

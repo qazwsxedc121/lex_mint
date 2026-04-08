@@ -25,6 +25,7 @@ import {
   DocumentTextIcon,
   AtSymbolIcon,
   CommandLineIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavItem {
@@ -70,6 +71,7 @@ export const SettingsSidebar: React.FC = () => {
         { path: '/settings/followup', labelKey: 'nav.followup', icon: ChatBubbleLeftRightIcon },
         { path: '/settings/compression', labelKey: 'nav.compression', icon: ArchiveBoxArrowDownIcon },
         { path: '/settings/code-execution', labelKey: 'nav.codeExecution', icon: CommandLineIcon },
+        { path: '/settings/tool-gate', labelKey: 'nav.toolGate', icon: FunnelIcon },
       ],
     },
     {

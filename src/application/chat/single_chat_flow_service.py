@@ -32,6 +32,7 @@ from src.application.chat.service_contracts import (
     StreamItem,
 )
 from src.application.chat.source_diagnostics import merge_tool_diagnostics_into_sources
+from src.application.chat.tool_gate_service import ToolGateDecision, ToolGateService
 from src.llm_runtime import estimate_total_tokens
 from src.providers.types import CostInfo, TokenUsage
 
@@ -94,6 +95,24 @@ def _default_code_execution_config_service_factory() -> Any:
     return CodeExecutionConfigService()
 
 
+def _default_tool_gate_config_service_factory() -> Any:
+    from src.infrastructure.config.tool_gate_config_service import ToolGateConfigService
+
+    return ToolGateConfigService()
+
+
+def _default_tool_gate_service_factory() -> Any:
+    return ToolGateService()
+
+
+def _default_tool_description_config_service_factory() -> Any:
+    from src.infrastructure.config.tool_description_config_service import (
+        ToolDescriptionConfigService,
+    )
+
+    return ToolDescriptionConfigService()
+
+
 def _default_tool_registry_getter() -> Any:
     from src.tools.registry import get_tool_registry
 
@@ -133,6 +152,11 @@ class SingleChatFlowDeps:
     web_tool_service_factory: Callable[[], Any] = _default_web_tool_service_factory
     code_execution_config_service_factory: Callable[[], Any] = (
         _default_code_execution_config_service_factory
+    )
+    tool_gate_config_service_factory: Callable[[], Any] = _default_tool_gate_config_service_factory
+    tool_gate_service_factory: Callable[[], Any] = _default_tool_gate_service_factory
+    tool_description_config_service_factory: Callable[[], Any] = (
+        _default_tool_description_config_service_factory
     )
     tool_registry_getter: Callable[[], Any] = _default_tool_registry_getter
 
@@ -279,6 +303,7 @@ class SingleChatFlowService:
                 assistant_obj=runtime.assistant_obj,
                 model_id=runtime.model_id,
                 use_web_search=request.search.use_web_search,
+                user_message=runtime.raw_user_message,
             )
         )
 
@@ -757,9 +782,20 @@ class SingleChatFlowService:
                 request=request,
                 resolved_tools=resolved_tools,
             )
+            self._apply_tool_description_overrides(resolved_tools=resolved_tools)
+            gate_decision = self._apply_regex_tool_gate(
+                request=request,
+                resolved_tools=resolved_tools,
+            )
             print(
                 f"[TOOLS] Function calling enabled, {len(resolved_tools.llm_tools)} tools available"
             )
+            if gate_decision.applied:
+                print(
+                    "[TOOLS] Gate matched rule "
+                    f"{gate_decision.matched_rule_id} (priority={gate_decision.matched_rule_priority}), "
+                    f"tools after gate: {len(resolved_tools.llm_tools)}"
+                )
         except Exception as e:
             logger.warning(f"Failed to resolve tools: {e}")
 
@@ -776,6 +812,79 @@ class SingleChatFlowService:
                 resolved_tools=resolved_tools,
             ),
         )
+
+    def _apply_tool_description_overrides(
+        self,
+        *,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> None:
+        if not resolved_tools.llm_tools:
+            return
+        config_service = self.deps.tool_description_config_service_factory()
+        effective_map = (
+            config_service.get_effective_description_map()
+            if hasattr(config_service, "get_effective_description_map")
+            else {}
+        )
+        if not effective_map:
+            return
+        overridden_tools: list[Any] = []
+        for tool in resolved_tools.llm_tools:
+            name = str(getattr(tool, "name", "") or "").strip()
+            if not name or name not in effective_map:
+                overridden_tools.append(tool)
+                continue
+            next_description = str(effective_map[name] or "").strip()
+            if (
+                not next_description
+                or str(getattr(tool, "description", "") or "") == next_description
+            ):
+                overridden_tools.append(tool)
+                continue
+            if hasattr(tool, "model_copy"):
+                overridden_tools.append(tool.model_copy(update={"description": next_description}))
+            elif hasattr(tool, "copy"):
+                overridden_tools.append(tool.copy(update={"description": next_description}))
+            else:
+                overridden_tools.append(tool)
+        resolved_tools.llm_tools = overridden_tools
+
+    def _apply_regex_tool_gate(
+        self,
+        *,
+        request: ToolResolutionContext,
+        resolved_tools: SingleChatResolvedTools,
+    ) -> ToolGateDecision:
+        candidate_names = {
+            str(tool.name).strip()
+            for tool in resolved_tools.llm_tools
+            if str(getattr(tool, "name", "")).strip()
+        }
+        if not candidate_names:
+            return ToolGateDecision(final_allowed_tool_names=set(), reason="no_candidate_tools")
+
+        config_service = self.deps.tool_gate_config_service_factory()
+        tool_gate_config = getattr(config_service, "config", None)
+        if tool_gate_config is None:
+            return ToolGateDecision(
+                final_allowed_tool_names=set(candidate_names),
+                reason="missing_tool_gate_config",
+            )
+        gate_service = self.deps.tool_gate_service_factory()
+        decision = gate_service.apply(
+            candidate_tool_names=set(candidate_names),
+            user_message=request.user_message,
+            config=tool_gate_config,
+        )
+        resolved_tools.allowed_tool_names = set(resolved_tools.allowed_tool_names).intersection(
+            decision.final_allowed_tool_names
+        )
+        resolved_tools.llm_tools = [
+            tool
+            for tool in resolved_tools.llm_tools
+            if tool.name in resolved_tools.allowed_tool_names
+        ]
+        return decision
 
     def _supports_function_calling(self, model_id: str) -> bool:
         model_service = self.deps.model_service_factory()

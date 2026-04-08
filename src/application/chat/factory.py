@@ -29,6 +29,9 @@ def build_single_chat_flow_service(
     project_tool_policy_resolver_factory: Any = None,
     assistant_tool_policy_resolver_factory: Any = None,
     web_tool_service_factory: Any = None,
+    tool_gate_config_service_factory: Any = None,
+    tool_gate_service_factory: Any = None,
+    tool_description_config_service_factory: Any = None,
     tool_registry_getter: Any = None,
 ) -> SingleChatFlowService:
     """Build the single-chat application flow service."""
@@ -85,6 +88,21 @@ def build_single_chat_flow_service(
             **(
                 {"web_tool_service_factory": web_tool_service_factory}
                 if web_tool_service_factory is not None
+                else {}
+            ),
+            **(
+                {"tool_gate_config_service_factory": tool_gate_config_service_factory}
+                if tool_gate_config_service_factory is not None
+                else {}
+            ),
+            **(
+                {"tool_gate_service_factory": tool_gate_service_factory}
+                if tool_gate_service_factory is not None
+                else {}
+            ),
+            **(
+                {"tool_description_config_service_factory": tool_description_config_service_factory}
+                if tool_description_config_service_factory is not None
                 else {}
             ),
             **(

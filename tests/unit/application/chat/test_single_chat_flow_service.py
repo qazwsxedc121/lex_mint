@@ -373,6 +373,179 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_resolve_tools_applies_regex_gate(monkeypatch):
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+        tool_gate_config_service_factory=lambda: SimpleNamespace(
+            config=SimpleNamespace(
+                enabled=True,
+                rules=[
+                    SimpleNamespace(
+                        id="common_knowledge",
+                        enabled=True,
+                        priority=10,
+                        pattern="常识|定义|是什么",
+                        flags="",
+                        include_tools=["web_search"],
+                        exclude_tools=["execute_python", "execute_javascript"],
+                    )
+                ],
+            )
+        ),
+    )
+    service = SingleChatFlowService(deps)
+
+    import src.infrastructure.config.assistant_tool_policy_resolver as assistant_tool_policy_resolver
+    import src.infrastructure.config.model_config_service as model_config_service
+    import src.infrastructure.projects.project_knowledge_base_resolver as project_knowledge_base_resolver
+    import src.infrastructure.projects.project_tool_policy_resolver as project_tool_policy_resolver
+    import src.tools.registry as tool_registry
+
+    class _FakeModelService:
+        def get_model_and_provider_sync(self, _model_id):
+            return SimpleNamespace(), SimpleNamespace()
+
+        def get_merged_capabilities(self, _model_cfg, _provider_cfg):
+            return SimpleNamespace(function_calling=True)
+
+    class _FakeKnowledgeResolver:
+        async def resolve_effective_kb_ids(self, **_kwargs):
+            return []
+
+    class _FakePolicyResolver:
+        async def get_allowed_tool_names(self, **kwargs):
+            return set(kwargs["candidate_tool_names"])
+
+    class _FakeAssistantPolicyResolver:
+        async def get_allowed_tool_names(self, **kwargs):
+            return set(kwargs["candidate_tool_names"])
+
+    class _FakeRegistry:
+        def get_all_tools(self):
+            return [
+                SimpleNamespace(name="execute_python"),
+                SimpleNamespace(name="web_search"),
+            ]
+
+    monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
+    monkeypatch.setattr(
+        project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", _FakeKnowledgeResolver
+    )
+    monkeypatch.setattr(
+        project_tool_policy_resolver, "ProjectToolPolicyResolver", _FakePolicyResolver
+    )
+    monkeypatch.setattr(
+        assistant_tool_policy_resolver, "AssistantToolPolicyResolver", _FakeAssistantPolicyResolver
+    )
+    monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
+
+    tools, _executor = await service._resolve_tools(
+        request=ToolResolutionContext(
+            assistant_id=None,
+            assistant_obj=None,
+            model_id="provider:model-a",
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            editor=EditorContext(),
+            use_web_search=False,
+            user_message="这是常识题，定义是什么？",
+        ),
+    )
+
+    assert tools is not None
+    assert [tool.name for tool in tools] == ["web_search"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_tools_applies_description_overrides(monkeypatch):
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(None),
+        build_file_context_block=lambda _refs: _return_async(""),
+        tool_description_config_service_factory=lambda: SimpleNamespace(
+            get_effective_description_map=lambda: {"execute_python": "custom python guidance"}
+        ),
+    )
+    service = SingleChatFlowService(deps)
+
+    import src.infrastructure.config.assistant_tool_policy_resolver as assistant_tool_policy_resolver
+    import src.infrastructure.config.model_config_service as model_config_service
+    import src.infrastructure.projects.project_knowledge_base_resolver as project_knowledge_base_resolver
+    import src.infrastructure.projects.project_tool_policy_resolver as project_tool_policy_resolver
+    import src.tools.registry as tool_registry
+
+    class _FakeModelService:
+        def get_model_and_provider_sync(self, _model_id):
+            return SimpleNamespace(), SimpleNamespace()
+
+        def get_merged_capabilities(self, _model_cfg, _provider_cfg):
+            return SimpleNamespace(function_calling=True)
+
+    class _FakeKnowledgeResolver:
+        async def resolve_effective_kb_ids(self, **_kwargs):
+            return []
+
+    class _FakePolicyResolver:
+        async def get_allowed_tool_names(self, **kwargs):
+            return set(kwargs["candidate_tool_names"])
+
+    class _FakeAssistantPolicyResolver:
+        async def get_allowed_tool_names(self, **kwargs):
+            return set(kwargs["candidate_tool_names"])
+
+    class _FakeTool:
+        def __init__(self, name: str, description: str):
+            self.name = name
+            self.description = description
+
+        def model_copy(self, update):
+            return _FakeTool(
+                name=self.name, description=update.get("description", self.description)
+            )
+
+    class _FakeRegistry:
+        def get_all_tools(self):
+            return [_FakeTool(name="execute_python", description="old description")]
+
+    monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
+    monkeypatch.setattr(
+        project_knowledge_base_resolver, "ProjectKnowledgeBaseResolver", _FakeKnowledgeResolver
+    )
+    monkeypatch.setattr(
+        project_tool_policy_resolver, "ProjectToolPolicyResolver", _FakePolicyResolver
+    )
+    monkeypatch.setattr(
+        assistant_tool_policy_resolver, "AssistantToolPolicyResolver", _FakeAssistantPolicyResolver
+    )
+    monkeypatch.setattr(tool_registry, "get_tool_registry", lambda: _FakeRegistry())
+
+    tools, _executor = await service._resolve_tools(
+        request=ToolResolutionContext(
+            assistant_id=None,
+            assistant_obj=None,
+            model_id="provider:model-a",
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            editor=EditorContext(),
+            use_web_search=False,
+        ),
+    )
+
+    assert tools is not None
+    assert tools[0].description == "custom python guidance"
+
+
+@pytest.mark.asyncio
 async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tools(monkeypatch):
     deps = SingleChatFlowDeps(
         storage=SimpleNamespace(get_session=lambda *args, **kwargs: _return_async(None)),
@@ -512,6 +685,65 @@ async def test_single_chat_flow_streams_tool_events_from_runtime(monkeypatch):
     assert any(isinstance(event, dict) and event.get("type") == "tool_results" for event in events)
     assert events[-2] == {"type": "assistant_message_id", "message_id": "assistant-msg-1"}
     assert events[-1] == {"type": "followup_questions", "questions": ["next question"]}
+
+
+@pytest.mark.asyncio
+async def test_single_chat_flow_uses_base_system_prompt(monkeypatch):
+    post_turn = _FakePostTurnService()
+    captured_system_prompts: list[str | None] = []
+
+    class _CaptureOrchestrator:
+        async def stream(self, request):
+            captured_system_prompts.append(request.settings.system_prompt)
+            yield {"type": "assistant_chunk", "chunk": "ok"}
+
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
+        chat_input_service=_FakeInputService(),
+        post_turn_service=post_turn,
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(
+            ContextPayload(
+                messages=[{"role": "user", "content": "hello"}],
+                assistant_id="assistant-1",
+                assistant_obj=None,
+                model_id="provider:model-a",
+                system_prompt="base prompt",
+                assistant_params={},
+                all_sources=[],
+                max_rounds=None,
+                assistant_memory_enabled=True,
+            )
+        ),
+        build_file_context_block=lambda _refs: _return_async(""),
+        single_direct_orchestrator=cast(SingleDirectOrchestrator, _CaptureOrchestrator()),
+    )
+    service = SingleChatFlowService(deps)
+    monkeypatch.setattr(
+        service,
+        "_maybe_auto_compress",
+        lambda **kwargs: _return_async((kwargs["messages"], None)),
+    )
+    monkeypatch.setattr(
+        service,
+        "_resolve_tools",
+        lambda **_kwargs: _return_async((None, None)),
+    )
+
+    events = await _collect_events(
+        service.process_message_stream(
+            request=SingleChatRequestContext(
+                scope=ConversationScope(session_id="s1", context_type="chat"),
+                user_input=UserInputPayload(user_message="hello"),
+            )
+        )
+    )
+
+    assert any(isinstance(item, str) and item == "ok" for item in events)
+    assert captured_system_prompts
+    assert captured_system_prompts[0] == "base prompt"
 
 
 @pytest.mark.asyncio
