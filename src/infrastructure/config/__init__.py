@@ -14,6 +14,7 @@ from .provider_probe_service import ProviderProbeService
 from .rag_config_service import RagConfigService
 from .tool_description_config_service import ToolDescriptionConfigService
 from .tool_gate_config_service import ToolGateConfigService
+from .tool_plugin_settings_service import ToolPluginSettingsService
 from .translation_config_service import TranslationConfigService
 from .tts_config_service import TTSConfigService
 from .workflow_config_service import WorkflowConfigService
@@ -36,6 +37,7 @@ __all__ = [
     "RagConfigService",
     "ToolDescriptionConfigService",
     "ToolGateConfigService",
+    "ToolPluginSettingsService",
     "TranslationConfigService",
     "TTSConfigService",
     "WorkflowConfigService",

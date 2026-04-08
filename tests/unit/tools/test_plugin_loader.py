@@ -40,6 +40,8 @@ def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
                 "version: 0.1.0",
                 "enabled: true",
                 "entrypoint: testpkg.plugin:register",
+                "settings_schema_path: settings.schema.json",
+                "settings_defaults_path: settings.defaults.yaml",
             ]
         ),
     )
@@ -51,6 +53,9 @@ def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
     assert len(loaded[0][1].definitions) == 1
     assert len(statuses) == 1
     assert statuses[0].loaded is True
+    assert statuses[0].has_settings_schema is True
+    assert statuses[0].settings_schema_path == "settings.schema.json"
+    assert statuses[0].settings_defaults_path == "settings.defaults.yaml"
 
 
 def test_loader_reports_invalid_manifest(tmp_path):

@@ -44,6 +44,7 @@ import { CodeExecutionSettingsPage } from './modules/settings/CodeExecutionSetti
 import { ToolGateSettings } from './modules/settings/ToolGateSettings';
 import { ToolDescriptionsSettings } from './modules/settings/ToolDescriptionsSettings';
 import { ToolDescriptionDetailPage } from './modules/settings/ToolDescriptionDetailPage';
+import { ToolPluginSettingsPage } from './modules/settings/ToolPluginSettingsPage';
 import { DeveloperModule } from './modules/developer';
 import { WorkflowsModule } from './modules/workflows';
 import './index.css';
@@ -98,6 +99,7 @@ function App() {
             <Route path="file-reference" element={<FileReferenceSettings />} />
             <Route path="code-execution" element={<CodeExecutionSettingsPage />} />
             <Route path="tools" element={<ToolDescriptionsSettings />} />
+            <Route path="tools/plugins/:pluginId" element={<ToolPluginSettingsPage />} />
             <Route path="tools/:toolName" element={<ToolDescriptionDetailPage />} />
             <Route path="tool-gate" element={<ToolGateSettings />} />
             <Route path="translation" element={<TranslationSettings />} />

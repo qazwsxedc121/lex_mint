@@ -158,11 +158,29 @@ export interface ToolPluginStatus {
   loaded: boolean;
   definitions_count: number;
   tools_count: number;
+  has_settings_schema: boolean;
+  settings_configured: boolean;
   error?: string | null;
 }
 
 export interface ToolPluginsConfig {
   plugins: ToolPluginStatus[];
+}
+
+export interface ToolPluginSettingsConfig {
+  plugin_id: string;
+  schema: Record<string, unknown>;
+  defaults: Record<string, unknown>;
+  settings: Record<string, unknown>;
+  effective_settings: Record<string, unknown>;
+}
+
+export interface ToolPluginSettingsUpdate {
+  settings: Record<string, unknown>;
+}
+
+export interface ToolPluginSettingsValidateResult {
+  valid: boolean;
 }
 
 export async function getCodeExecutionConfig(): Promise<CodeExecutionConfig> {
@@ -198,6 +216,31 @@ export async function updateToolDescriptionsConfig(
 
 export async function getToolPluginsConfig(): Promise<ToolPluginsConfig> {
   const response = await api.get<ToolPluginsConfig>('/api/tools/plugins');
+  return response.data;
+}
+
+export async function getToolPluginSettings(pluginId: string): Promise<ToolPluginSettingsConfig> {
+  const response = await api.get<ToolPluginSettingsConfig>(
+    `/api/tools/plugins/${encodeURIComponent(pluginId)}/settings`
+  );
+  return response.data;
+}
+
+export async function updateToolPluginSettings(
+  pluginId: string,
+  updates: ToolPluginSettingsUpdate,
+): Promise<void> {
+  await api.put(`/api/tools/plugins/${encodeURIComponent(pluginId)}/settings`, updates);
+}
+
+export async function validateToolPluginSettings(
+  pluginId: string,
+  updates: ToolPluginSettingsUpdate,
+): Promise<ToolPluginSettingsValidateResult> {
+  const response = await api.post<ToolPluginSettingsValidateResult>(
+    `/api/tools/plugins/${encodeURIComponent(pluginId)}/settings/validate`,
+    updates,
+  );
   return response.data;
 }
 

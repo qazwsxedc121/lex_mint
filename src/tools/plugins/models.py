@@ -22,6 +22,8 @@ class ToolPluginManifest:
     entrypoint: str
     description: str | None = None
     enabled: bool = True
+    settings_schema_path: str | None = None
+    settings_defaults_path: str | None = None
     directory: Path | None = None
 
 
@@ -56,4 +58,7 @@ class ToolPluginStatus:
     loaded: bool
     definitions_count: int = 0
     tools_count: int = 0
+    has_settings_schema: bool = False
+    settings_schema_path: str | None = None
+    settings_defaults_path: str | None = None
     error: str | None = None

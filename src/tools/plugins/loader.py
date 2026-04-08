@@ -80,6 +80,9 @@ class ToolPluginLoader:
                         plugin_dir=str(plugin_dir),
                         enabled=manifest.enabled,
                         loaded=False,
+                        has_settings_schema=bool(manifest.settings_schema_path),
+                        settings_schema_path=manifest.settings_schema_path,
+                        settings_defaults_path=manifest.settings_defaults_path,
                         error=f"duplicate plugin id: {manifest.id}",
                     )
                 )
@@ -96,6 +99,9 @@ class ToolPluginLoader:
                         plugin_dir=str(plugin_dir),
                         enabled=False,
                         loaded=False,
+                        has_settings_schema=bool(manifest.settings_schema_path),
+                        settings_schema_path=manifest.settings_schema_path,
+                        settings_defaults_path=manifest.settings_defaults_path,
                         error=None,
                     )
                 )
@@ -115,6 +121,9 @@ class ToolPluginLoader:
                         loaded=True,
                         definitions_count=len(contribution.definitions),
                         tools_count=len(contribution.tools),
+                        has_settings_schema=bool(manifest.settings_schema_path),
+                        settings_schema_path=manifest.settings_schema_path,
+                        settings_defaults_path=manifest.settings_defaults_path,
                         error=None,
                     )
                 )
@@ -129,6 +138,9 @@ class ToolPluginLoader:
                         plugin_dir=str(plugin_dir),
                         enabled=True,
                         loaded=False,
+                        has_settings_schema=bool(manifest.settings_schema_path),
+                        settings_schema_path=manifest.settings_schema_path,
+                        settings_defaults_path=manifest.settings_defaults_path,
                         error=str(exc),
                     )
                 )
@@ -148,6 +160,20 @@ class ToolPluginLoader:
         entrypoint = str(raw.get("entrypoint") or "").strip()
         description = raw.get("description")
         enabled = bool(raw.get("enabled", True))
+        settings_schema_path_raw = raw.get("settings_schema_path")
+        settings_defaults_path_raw = raw.get("settings_defaults_path")
+        settings_schema_path = (
+            str(settings_schema_path_raw).strip() if settings_schema_path_raw is not None else None
+        )
+        settings_defaults_path = (
+            str(settings_defaults_path_raw).strip()
+            if settings_defaults_path_raw is not None
+            else None
+        )
+        if settings_schema_path == "":
+            settings_schema_path = None
+        if settings_defaults_path == "":
+            settings_defaults_path = None
 
         if schema_version != 1:
             raise ValueError(f"unsupported schema_version: {schema_version}")
@@ -168,6 +194,8 @@ class ToolPluginLoader:
             entrypoint=entrypoint,
             description=(str(description).strip() if description is not None else None),
             enabled=enabled,
+            settings_schema_path=settings_schema_path,
+            settings_defaults_path=settings_defaults_path,
             directory=manifest_path.parent,
         )
 

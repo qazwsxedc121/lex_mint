@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from './components/common';
 import * as api from '../../services/api';
 import type { ProjectToolCatalogItem } from '../../types/project';
-import type { ToolDescriptionItem } from '../../services/api';
+import type { ToolDescriptionItem, ToolPluginStatus } from '../../services/api';
 
 type ToolRow = ProjectToolCatalogItem & {
   override_description?: string | null;
@@ -14,12 +14,15 @@ interface ToolGroup {
   key: string;
   label: string;
   version: string | null;
+  pluginId: string | null;
+  plugin: ToolPluginStatus | null;
   tools: ToolRow[];
 }
 
 export const ToolDescriptionsSettings: React.FC = () => {
   const { t } = useTranslation('settings');
   const [toolRows, setToolRows] = useState<ToolRow[]>([]);
+  const [pluginsById, setPluginsById] = useState<Record<string, ToolPluginStatus>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,9 +31,10 @@ export const ToolDescriptionsSettings: React.FC = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [catalog, descriptions] = await Promise.all([
+        const [catalog, descriptions, pluginPayload] = await Promise.all([
           api.getToolCatalog(),
           api.getToolDescriptionsConfig(),
+          api.getToolPluginsConfig(),
         ]);
         if (cancelled) {
           return;
@@ -46,7 +50,13 @@ export const ToolDescriptionsSettings: React.FC = () => {
           override_description: descriptionMap.get(tool.name)?.override_description,
         }));
 
+        const nextPluginsById: Record<string, ToolPluginStatus> = {};
+        for (const plugin of pluginPayload.plugins || []) {
+          nextPluginsById[plugin.id] = plugin;
+        }
+
         setToolRows(rows);
+        setPluginsById(nextPluginsById);
         setError(null);
       } catch (err) {
         if (cancelled) {
@@ -74,6 +84,8 @@ export const ToolDescriptionsSettings: React.FC = () => {
       const key = isBuiltin ? '__builtin__' : String(tool.plugin_id || pluginName).trim();
       const label = isBuiltin ? t('toolsPage.builtinPluginLabel') : pluginName;
       const version = tool.plugin_version || null;
+      const pluginId = isBuiltin ? null : (tool.plugin_id || key);
+      const plugin = pluginId ? (pluginsById[pluginId] || null) : null;
       const existing = groups.get(key);
       if (existing) {
         existing.tools.push(tool);
@@ -86,6 +98,8 @@ export const ToolDescriptionsSettings: React.FC = () => {
         key,
         label,
         version,
+        pluginId,
+        plugin,
         tools: [tool],
       });
     }
@@ -105,7 +119,7 @@ export const ToolDescriptionsSettings: React.FC = () => {
     }
 
     return ordered;
-  }, [toolRows, t]);
+  }, [pluginsById, toolRows, t]);
 
   if (loading) {
     return (
@@ -138,8 +152,23 @@ export const ToolDescriptionsSettings: React.FC = () => {
                 {group.label}
                 {group.version ? ` (${group.version})` : ''}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {t('toolsPage.pluginToolsCount', { count: group.tools.length })}
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {t('toolsPage.pluginToolsCount', { count: group.tools.length })}
+                </div>
+                {group.plugin?.has_settings_schema && group.pluginId && (
+                  <Link
+                    to={`/settings/tools/plugins/${encodeURIComponent(group.pluginId)}`}
+                    className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                  >
+                    {t('toolsPage.pluginSettings')}
+                  </Link>
+                )}
+                {group.plugin?.settings_configured && (
+                  <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    {t('toolsPage.pluginSettingsConfigured')}
+                  </span>
+                )}
               </div>
             </div>
             <div className="space-y-2">

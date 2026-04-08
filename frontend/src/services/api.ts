@@ -114,6 +114,7 @@ export {
 export {
   getCodeExecutionConfig,
   getToolDescriptionsConfig,
+  getToolPluginSettings,
   getToolPluginsConfig,
   getToolGateConfig,
   generateTitleManually,
@@ -121,11 +122,13 @@ export {
   getTitleGenerationConfig,
   getWebpageConfig,
   updateCodeExecutionConfig,
+  updateToolPluginSettings,
   updateToolDescriptionsConfig,
   updateToolGateConfig,
   updateSearchConfig,
   updateTitleGenerationConfig,
   updateWebpageConfig,
+  validateToolPluginSettings,
 } from './configApi';
 export type {
   CodeExecutionConfig,
@@ -135,6 +138,9 @@ export type {
   ToolDescriptionItem,
   ToolDescriptionsConfig,
   ToolDescriptionsUpdate,
+  ToolPluginSettingsConfig,
+  ToolPluginSettingsUpdate,
+  ToolPluginSettingsValidateResult,
   ToolPluginStatus,
   ToolPluginsConfig,
   ToolGateConfig,
