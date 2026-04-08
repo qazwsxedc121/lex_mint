@@ -42,6 +42,8 @@ import { PromptTemplatesPage } from './modules/settings/PromptTemplatesPage';
 import { MemorySettings } from './modules/settings/MemorySettings';
 import { CodeExecutionSettingsPage } from './modules/settings/CodeExecutionSettings';
 import { ToolGateSettings } from './modules/settings/ToolGateSettings';
+import { ToolDescriptionsSettings } from './modules/settings/ToolDescriptionsSettings';
+import { ToolDescriptionDetailPage } from './modules/settings/ToolDescriptionDetailPage';
 import { DeveloperModule } from './modules/developer';
 import { WorkflowsModule } from './modules/workflows';
 import './index.css';
@@ -95,6 +97,8 @@ function App() {
             <Route path="compression" element={<CompressionSettings />} />
             <Route path="file-reference" element={<FileReferenceSettings />} />
             <Route path="code-execution" element={<CodeExecutionSettingsPage />} />
+            <Route path="tools" element={<ToolDescriptionsSettings />} />
+            <Route path="tools/:toolName" element={<ToolDescriptionDetailPage />} />
             <Route path="tool-gate" element={<ToolGateSettings />} />
             <Route path="translation" element={<TranslationSettings />} />
             <Route path="tts" element={<TTSSettings />} />

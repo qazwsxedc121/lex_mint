@@ -15,7 +15,6 @@ from src.infrastructure.config.yaml_config_utils import (
     save_yaml_section_updates,
 )
 from src.tools.registry import get_tool_registry
-from src.tools.request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +30,6 @@ def _build_default_description_map() -> dict[str, str]:
     defaults: dict[str, str] = {}
     for definition in get_tool_registry().get_all_definitions():
         defaults[definition.name] = definition.description
-    for definition in REQUEST_SCOPED_TOOL_DEFINITIONS:
-        defaults.setdefault(definition.name, definition.description)
     return defaults
 
 

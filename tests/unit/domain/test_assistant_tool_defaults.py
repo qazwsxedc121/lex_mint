@@ -11,6 +11,7 @@ def test_assistant_default_tool_map_contains_expected_core_tools():
 
     assert defaults["get_current_time"] is False
     assert defaults["execute_python"] is True
+    assert defaults["execute_javascript"] is True
     assert defaults["simple_calculator"] is False
     assert defaults["format_json"] is False
     assert defaults["text_statistics"] is False

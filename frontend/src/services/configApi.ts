@@ -130,6 +130,9 @@ export interface ToolDescriptionItem {
   name: string;
   group: string;
   source: string;
+  plugin_id?: string | null;
+  plugin_name?: string | null;
+  plugin_version?: string | null;
   default_description: string;
   override_description?: string | null;
   effective_description: string;
@@ -143,6 +146,23 @@ export interface ToolDescriptionsConfig {
 
 export interface ToolDescriptionsUpdate {
   overrides: Record<string, string | null>;
+}
+
+export interface ToolPluginStatus {
+  id: string;
+  name: string;
+  version: string;
+  entrypoint: string;
+  plugin_dir: string;
+  enabled: boolean;
+  loaded: boolean;
+  definitions_count: number;
+  tools_count: number;
+  error?: string | null;
+}
+
+export interface ToolPluginsConfig {
+  plugins: ToolPluginStatus[];
 }
 
 export async function getCodeExecutionConfig(): Promise<CodeExecutionConfig> {
@@ -174,6 +194,11 @@ export async function updateToolDescriptionsConfig(
   updates: ToolDescriptionsUpdate
 ): Promise<void> {
   await api.put('/api/tools/descriptions', updates);
+}
+
+export async function getToolPluginsConfig(): Promise<ToolPluginsConfig> {
+  const response = await api.get<ToolPluginsConfig>('/api/tools/plugins');
+  return response.data;
 }
 
 /**

@@ -5,28 +5,17 @@ from __future__ import annotations
 from src.domain.models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalogResponse
 from src.tools.definitions import ToolDefinition
 from src.tools.registry import get_tool_registry
-from src.tools.request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
 
 
 class ToolCatalogService:
-    """Aggregates builtin and request-scoped tool definitions into one catalog."""
+    """Aggregates plugin-provided tool definitions into one catalog."""
 
     GROUP_ORDER = ["builtin", "web", "projectDocuments", "knowledge"]
 
     @classmethod
     def get_tool_definitions(cls) -> list[ToolDefinition]:
         registry = get_tool_registry()
-        definitions = list(registry.get_all_definitions())
-        definitions.extend(REQUEST_SCOPED_TOOL_DEFINITIONS)
-
-        seen_names = set()
-        unique_definitions: list[ToolDefinition] = []
-        for definition in definitions:
-            if definition.name in seen_names:
-                continue
-            seen_names.add(definition.name)
-            unique_definitions.append(definition)
-        return unique_definitions
+        return list(registry.get_all_definitions())
 
     @classmethod
     def build_catalog(
@@ -76,4 +65,7 @@ class ToolCatalogService:
             title_i18n_key=definition.title_i18n_key,
             description_i18n_key=definition.description_i18n_key,
             requires_project_knowledge=definition.requires_project_knowledge,
+            plugin_id=definition.plugin_id,
+            plugin_name=definition.plugin_name,
+            plugin_version=definition.plugin_version,
         )

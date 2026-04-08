@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from src.domain.models.project_config import get_default_project_tool_enabled_map
-from src.tools.builtin import BUILTIN_TOOL_DEFINITIONS
-from src.tools.request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
+from src.tools.registry import get_tool_registry
 
 
 def test_project_tool_defaults_match_shared_definitions():
@@ -12,7 +11,7 @@ def test_project_tool_defaults_match_shared_definitions():
 
     expected = {
         definition.name: definition.enabled_by_default
-        for definition in [*BUILTIN_TOOL_DEFINITIONS, *REQUEST_SCOPED_TOOL_DEFINITIONS]
+        for definition in get_tool_registry().get_all_definitions()
     }
 
     assert defaults == expected
@@ -24,6 +23,7 @@ def test_project_tool_defaults_include_all_known_tools():
     assert list(defaults.keys()) == [
         "get_current_time",
         "execute_python",
+        "execute_javascript",
         "simple_calculator",
         "format_json",
         "text_statistics",

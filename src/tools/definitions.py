@@ -24,6 +24,9 @@ class ToolDefinition:
     source: str
     enabled_by_default: bool = False
     requires_project_knowledge: bool = False
+    plugin_id: str | None = None
+    plugin_name: str | None = None
+    plugin_version: str | None = None
 
     @property
     def title_i18n_key(self) -> str:
@@ -39,6 +42,9 @@ class ToolDefinition:
             "source": self.source,
             "enabled_by_default": self.enabled_by_default,
             "requires_project_knowledge": self.requires_project_knowledge,
+            "plugin_id": self.plugin_id,
+            "plugin_name": self.plugin_name,
+            "plugin_version": self.plugin_version,
         }
 
     def build_tool(

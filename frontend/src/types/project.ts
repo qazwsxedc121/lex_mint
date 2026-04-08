@@ -24,6 +24,9 @@ export interface ProjectToolCatalogItem {
   description: string;
   group: string;
   source: string;
+  plugin_id?: string | null;
+  plugin_name?: string | null;
+  plugin_version?: string | null;
   enabled_by_default: boolean;
   title_i18n_key: string;
   description_i18n_key: string;

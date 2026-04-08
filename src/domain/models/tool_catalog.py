@@ -23,6 +23,9 @@ class ToolCatalogItem(BaseModel):
         default=False,
         description="Whether the tool requires project knowledge bases to be usable",
     )
+    plugin_id: str | None = Field(default=None, description="Owning plugin id")
+    plugin_name: str | None = Field(default=None, description="Owning plugin display name")
+    plugin_version: str | None = Field(default=None, description="Owning plugin version")
 
 
 class ToolCatalogGroup(BaseModel):

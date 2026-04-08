@@ -114,6 +114,7 @@ export {
 export {
   getCodeExecutionConfig,
   getToolDescriptionsConfig,
+  getToolPluginsConfig,
   getToolGateConfig,
   generateTitleManually,
   getSearchConfig,
@@ -134,6 +135,8 @@ export type {
   ToolDescriptionItem,
   ToolDescriptionsConfig,
   ToolDescriptionsUpdate,
+  ToolPluginStatus,
+  ToolPluginsConfig,
   ToolGateConfig,
   ToolGateConfigUpdate,
   ToolGateRule,

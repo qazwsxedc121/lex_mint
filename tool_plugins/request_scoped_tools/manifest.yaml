@@ -1,0 +1,7 @@
+schema_version: 1
+id: request_scoped_tools
+name: Request Scoped Tools
+version: 1.0.0
+enabled: true
+entrypoint: src.tools.plugins.request_scoped_plugin:register
+description: Metadata-only tools that are activated by request-scoped services.

@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, SuccessMessage } from './components/common';
 import * as api from '../../services/api';
-import type { ToolDescriptionItem, ToolGateConfig, ToolGateRule } from '../../services/api';
+import type { ToolGateConfig, ToolGateRule } from '../../services/api';
 import type { ProjectToolCatalogItem } from '../../types/project';
 
 const EMPTY_RULE: ToolGateRule = {
@@ -21,15 +21,10 @@ export const ToolGateSettings: React.FC = () => {
   const [config, setConfig] = useState<ToolGateConfig | null>(null);
   const [toolCatalogItems, setToolCatalogItems] = useState<ProjectToolCatalogItem[]>([]);
   const [toolCatalogError, setToolCatalogError] = useState<string | null>(null);
-  const [toolDescriptions, setToolDescriptions] = useState<ToolDescriptionItem[]>([]);
-  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingDescriptions, setSavingDescriptions] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [savedDescriptions, setSavedDescriptions] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [descriptionError, setDescriptionError] = useState<string | null>(null);
 
   const loadConfig = async () => {
     setLoading(true);
@@ -44,25 +39,8 @@ export const ToolGateSettings: React.FC = () => {
     }
   };
 
-  const loadToolDescriptions = async () => {
-    try {
-      const payload = await api.getToolDescriptionsConfig();
-      const items = Array.isArray(payload.tools) ? payload.tools : [];
-      setToolDescriptions(items);
-      const nextDrafts: Record<string, string> = {};
-      items.forEach((item) => {
-        nextDrafts[item.name] = item.override_description || '';
-      });
-      setDescriptionDrafts(nextDrafts);
-      setDescriptionError(null);
-    } catch (err) {
-      setDescriptionError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   useEffect(() => {
     void loadConfig();
-    void loadToolDescriptions();
   }, []);
 
   useEffect(() => {
@@ -151,11 +129,6 @@ export const ToolGateSettings: React.FC = () => {
     return Array.from(new Set([...names, ...rule.include_tools, ...rule.exclude_tools]));
   };
 
-  const descriptionDirty = useMemo(
-    () => toolDescriptions.some((item) => (descriptionDrafts[item.name] || '') !== (item.override_description || '')),
-    [descriptionDrafts, toolDescriptions],
-  );
-
   const handleSave = async () => {
     if (!config) {
       return;
@@ -170,26 +143,6 @@ export const ToolGateSettings: React.FC = () => {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleSaveDescriptions = async () => {
-    setSavingDescriptions(true);
-    try {
-      const overrides: Record<string, string | null> = {};
-      Object.entries(descriptionDrafts).forEach(([name, value]) => {
-        const trimmed = value.trim();
-        overrides[name] = trimmed.length > 0 ? trimmed : null;
-      });
-      await api.updateToolDescriptionsConfig({ overrides });
-      await loadToolDescriptions();
-      setSavedDescriptions(true);
-      setDescriptionError(null);
-      window.setTimeout(() => setSavedDescriptions(false), 2000);
-    } catch (err) {
-      setDescriptionError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingDescriptions(false);
     }
   };
 
@@ -214,15 +167,9 @@ export const ToolGateSettings: React.FC = () => {
       <PageHeader title={t('toolGate.title')} description={t('toolGate.description')} />
 
       {saved && <SuccessMessage message={t('config.savedSuccess')} />}
-      {savedDescriptions && <SuccessMessage message={t('config.savedSuccess')} />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
           {error}
-        </div>
-      )}
-      {descriptionError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
-          {descriptionError}
         </div>
       )}
 
@@ -387,44 +334,6 @@ export const ToolGateSettings: React.FC = () => {
         </div>
       </section>
 
-      <section
-        className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
-        data-name="tool-description-settings"
-      >
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('toolDescriptions.title')}</h2>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('toolDescriptions.description')}</p>
-        </div>
-        <div className="space-y-4">
-          {toolDescriptions.map((item) => (
-            <div key={item.name} className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
-              <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">{item.name}</div>
-              <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{t('toolDescriptions.defaultLabel')}</div>
-              <div className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700/40 dark:text-gray-200">
-                {item.default_description}
-              </div>
-              <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{t('toolDescriptions.overrideLabel')}</div>
-              <textarea
-                rows={3}
-                value={descriptionDrafts[item.name] || ''}
-                onChange={(event) => {
-                  setDescriptionDrafts((current) => ({ ...current, [item.name]: event.target.value }));
-                }}
-                placeholder={t('toolDescriptions.overridePlaceholder')}
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-              />
-              <button
-                type="button"
-                onClick={() => setDescriptionDrafts((current) => ({ ...current, [item.name]: '' }))}
-                className="mt-2 rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-              >
-                {t('toolDescriptions.restoreDefault')}
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {toolCatalogError && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
           {t('toolGate.toolCatalogLoadFailed')}: {toolCatalogError}
@@ -442,19 +351,10 @@ export const ToolGateSettings: React.FC = () => {
         </button>
         <button
           type="button"
-          onClick={() => void handleSaveDescriptions()}
-          disabled={savingDescriptions || !descriptionDirty}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {savingDescriptions ? t('toolDescriptions.saving') : t('toolDescriptions.saveDescriptions')}
-        </button>
-        <button
-          type="button"
           onClick={() => {
             void loadConfig();
-            void loadToolDescriptions();
           }}
-          disabled={saving || savingDescriptions}
+          disabled={saving}
           className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
           {t('toolGate.reload')}

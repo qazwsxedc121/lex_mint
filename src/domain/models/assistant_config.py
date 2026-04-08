@@ -9,17 +9,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.tools.builtin import get_builtin_tool_default_enabled_map
-from src.tools.request_scoped import get_request_scoped_tool_default_enabled_map
-
-DEFAULT_ASSISTANT_TOOL_ENABLED_MAP: dict[str, bool] = {
-    **get_builtin_tool_default_enabled_map(),
-    **get_request_scoped_tool_default_enabled_map(),
-}
+from src.tools.registry import get_tool_registry
 
 
 def get_default_assistant_tool_enabled_map() -> dict[str, bool]:
-    return dict(DEFAULT_ASSISTANT_TOOL_ENABLED_MAP)
+    return get_tool_registry().get_default_project_enabled_map()
 
 
 class Assistant(BaseModel):
