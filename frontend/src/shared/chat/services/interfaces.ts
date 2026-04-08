@@ -13,6 +13,7 @@ import type {
   ContextInfo,
   GroupChatMode,
 } from '../../../types/message';
+import type { ProjectChatCapabilityItem } from '../../../types/project';
 import type { Assistant } from '../../../types/assistant';
 import type { CapabilitiesResponse } from '../../../types/model';
 import type { MutableRefObject } from 'react';
@@ -23,6 +24,8 @@ import type { MutableRefObject } from 'react';
  */
 export interface ChatAPI {
   beforeSendMessage?(payload: { sessionId: string; message: string }): Promise<{ proceed: boolean; reason?: string }>;
+
+  getChatInputCapabilities?(): Promise<ProjectChatCapabilityItem[]>;
 
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;
@@ -76,7 +79,8 @@ export interface ChatAPI {
     attachments?: UploadedFile[],
     onUserMessageId?: (messageId: string) => void,
     onAssistantMessageId?: (messageId: string) => void,
-    useWebSearch?: boolean,
+    contextCapabilities?: string[],
+    contextCapabilityArgs?: Record<string, Record<string, unknown>>,
     onFollowupQuestions?: (questions: string[]) => void,
     onContextInfo?: (info: ContextInfo) => void,
     onThinkingDuration?: (durationMs: number) => void,
@@ -165,7 +169,8 @@ export interface ChatAPI {
     options?: {
       reasoningEffort?: string;
       attachments?: UploadedFile[];
-      useWebSearch?: boolean;
+      contextCapabilities?: string[];
+      contextCapabilityArgs?: Record<string, Record<string, unknown>>;
       fileReferences?: Array<{ path: string; project_id: string }>;
     }
   ): Promise<void>;

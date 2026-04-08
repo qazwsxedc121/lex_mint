@@ -11,11 +11,9 @@ from src.application.chat.service_contracts import (
     ContextPayload,
     MemoryContextServiceLike,
     RagConfigServiceLike,
-    SearchServiceLike,
     SessionStorageLike,
     SourceContextServiceLike,
     SourcePayload,
-    WebpageServiceLike,
 )
 from src.application.chat.source_diagnostics import merge_source_groups
 from src.tools.registry import get_tool_registry
@@ -31,16 +29,12 @@ class ContextAssemblyService:
         *,
         storage: SessionStorageLike,
         memory_service: MemoryContextServiceLike,
-        webpage_service: WebpageServiceLike,
-        search_service: SearchServiceLike,
         source_context_service: SourceContextServiceLike,
         rag_config_service: RagConfigServiceLike,
         rag_context_builder: Callable[..., Awaitable[tuple[str | None, list[SourcePayload]]]],
     ):
         self.storage = storage
         self.memory_service = memory_service
-        self.webpage_service = webpage_service
-        self.search_service = search_service
         self.source_context_service = source_context_service
         self.rag_config_service = rag_config_service
         self.rag_context_builder = rag_context_builder
@@ -52,11 +46,11 @@ class ContextAssemblyService:
         raw_user_message: str,
         context_type: str = "chat",
         project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
+        context_capabilities: list[str] | None = None,
+        context_capability_args: dict[str, dict[str, Any]] | None = None,
     ) -> ContextPayload:
         """Prepare context payload consumed by orchestrators."""
-        web_tools_loaded = bool(get_tool_registry().get_tool_names_by_group("web"))
+        tool_registry = get_tool_registry()
         session = await self.storage.get_session(
             session_id,
             context_type=context_type,
@@ -73,6 +67,7 @@ class ContextAssemblyService:
         memory_context: str | None = None
         webpage_context: str | None = None
         search_context: str | None = None
+        capability_contexts: dict[str, str] = {}
         rag_context: str | None = None
         structured_source_context: str | None = None
 
@@ -123,29 +118,49 @@ class ContextAssemblyService:
         except Exception as e:
             logger.warning("Memory retrieval failed: %s", e)
 
-        webpage_sources: list[SourcePayload] = []
-        if web_tools_loaded:
-            try:
-                webpage_context, webpage_source_models = await self.webpage_service.build_context(
-                    raw_user_message
-                )
-                if webpage_source_models:
-                    webpage_sources = [s.model_dump() for s in webpage_source_models]
-            except Exception as e:
-                logger.warning("Webpage parsing failed: %s", e)
+        normalized_capabilities = self._normalize_context_capabilities(context_capabilities)
+        normalized_capability_args = self._normalize_context_capability_args(
+            context_capability_args
+        )
+        unknown_args = sorted(set(normalized_capability_args.keys()) - set(normalized_capabilities))
+        if unknown_args:
+            raise ValueError(
+                "context_capability_args contains ids that are not requested: "
+                + ", ".join(unknown_args)
+            )
 
-        search_sources: list[SourcePayload] = []
-        if use_web_search and web_tools_loaded:
-            query = (search_query or raw_user_message).strip()
-            if len(query) > 200:
-                query = query[:200]
+        capability_sources: list[SourcePayload] = []
+        for capability_id in normalized_capabilities:
+            if not tool_registry.has_chat_capability(capability_id):
+                raise ValueError(f"Unknown or unavailable context capability: {capability_id}")
+            handler = tool_registry.get_context_capability_handler(capability_id)
+            if handler is None:
+                raise ValueError(f"Context capability is not executable: {capability_id}")
             try:
-                sources = await self.search_service.search(query)
-                search_sources = [s.model_dump() for s in sources]
-                if sources:
-                    search_context = self.search_service.build_search_context(query, sources)
+                payload = await tool_registry.execute_context_capability_async(
+                    capability_id,
+                    raw_user_message=raw_user_message,
+                    args=normalized_capability_args.get(capability_id) or {},
+                    context_type=context_type,
+                    project_id=project_id,
+                    session_id=session_id,
+                )
+                context_text = payload.get("context")
+                context_key = str(payload.get("context_key") or capability_id).strip()
+                if isinstance(context_text, str) and context_text.strip():
+                    capability_contexts[context_key] = context_text.strip()
+                raw_sources = payload.get("sources")
+                if isinstance(raw_sources, list):
+                    for item in raw_sources:
+                        if isinstance(item, dict):
+                            capability_sources.append(item)
+            except ValueError:
+                raise
             except Exception as e:
-                logger.warning("Web search failed: %s", e)
+                logger.warning("Context capability failed (%s): %s", capability_id, e)
+
+        webpage_context = capability_contexts.get("webpage_context")
+        search_context = capability_contexts.get("search_context")
 
         rag_context, rag_sources = await self.rag_context_builder(
             raw_user_message=raw_user_message,
@@ -158,8 +173,7 @@ class ContextAssemblyService:
 
         all_sources = merge_source_groups(
             memory_sources,
-            webpage_sources,
-            search_sources,
+            capability_sources,
             rag_sources,
         )
         structured_source_context = self._build_structured_source_context(
@@ -189,6 +203,7 @@ class ContextAssemblyService:
             memory_context=memory_context,
             webpage_context=webpage_context,
             search_context=search_context,
+            capability_contexts=capability_contexts,
             rag_context=rag_context,
             structured_source_context=structured_source_context,
         )
@@ -226,6 +241,39 @@ class ContextAssemblyService:
             if isinstance(segment, str) and segment.strip()
         ]
         return "\n\n".join(parts) if parts else None
+
+    @staticmethod
+    def _normalize_context_capabilities(capabilities: list[str] | None) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in capabilities or []:
+            capability_id = str(raw or "").strip()
+            if not capability_id or capability_id in seen:
+                continue
+            seen.add(capability_id)
+            normalized.append(capability_id)
+        return normalized
+
+    @staticmethod
+    def _normalize_context_capability_args(
+        capability_args: dict[str, dict[str, Any]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        if capability_args is None:
+            return {}
+        if not isinstance(capability_args, dict):
+            raise ValueError("context_capability_args must be an object")
+        normalized: dict[str, dict[str, Any]] = {}
+        for raw_key, raw_value in capability_args.items():
+            capability_id = str(raw_key or "").strip()
+            if not capability_id:
+                continue
+            if raw_value is None:
+                normalized[capability_id] = {}
+                continue
+            if not isinstance(raw_value, dict):
+                raise ValueError(f"context_capability_args['{capability_id}'] must be an object")
+            normalized[capability_id] = dict(raw_value)
+        return normalized
 
     def _build_structured_source_context(
         self,

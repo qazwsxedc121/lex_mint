@@ -20,7 +20,6 @@ from src.application.chat.chat_runtime import (
 from src.application.chat.request_contexts import CommitteeExecutionContext, GroupChatRequestContext
 from src.application.chat.service_contracts import (
     AssistantLike,
-    SearchServiceLike,
     SourcePayload,
     StreamEvent,
 )
@@ -77,7 +76,6 @@ class GroupChatDeps:
 
     chat_input_service: _ChatInputServiceLike
     post_turn_service: _PostTurnServiceLike
-    search_service: SearchServiceLike
     build_file_context_block: Callable[[list[dict[str, str]] | None], Awaitable[str]]
     build_group_runtime_assistant: Callable[[str], Awaitable[tuple[str, AssistantLike, str] | None]]
     resolve_group_settings: Callable[..., ResolvedGroupSettings]
@@ -142,8 +140,8 @@ class GroupChatService:
         group_settings = request.group_settings
         skip_user_append = request.stream.skip_user_append
         reasoning_effort = request.stream.reasoning_effort
-        use_web_search = request.search.use_web_search
-        search_query = request.search.search_query
+        context_capabilities = request.context_capabilities.context_capabilities
+        context_capability_args = request.context_capabilities.context_capability_args
 
         original_user_message = user_message
         file_context_block = await self.deps.build_file_context_block(file_references)
@@ -178,9 +176,12 @@ class GroupChatService:
             return
 
         search_context, search_sources = await self._build_optional_search_context(
-            use_web_search=use_web_search,
-            search_query=search_query,
+            context_capabilities=context_capabilities,
+            context_capability_args=context_capability_args,
             raw_user_message=raw_user_message,
+            session_id=session_id,
+            context_type=context_type,
+            project_id=project_id,
         )
         execution_context = CommitteeExecutionContext(
             scope=request.scope,
@@ -233,22 +234,39 @@ class GroupChatService:
     async def _build_optional_search_context(
         self,
         *,
-        use_web_search: bool,
-        search_query: str | None,
+        context_capabilities: list[str],
+        context_capability_args: dict[str, dict[str, object]],
         raw_user_message: str,
+        session_id: str,
+        context_type: str,
+        project_id: str | None,
     ) -> tuple[str | None, list[SourcePayload]]:
         search_sources: list[SourcePayload] = []
         search_context = None
-        if not use_web_search or not get_tool_registry().get_tool_names_by_group("web"):
+        normalized_capabilities = {
+            str(item or "").strip() for item in context_capabilities if str(item or "").strip()
+        }
+        if "web.search_context" not in normalized_capabilities:
             return search_context, search_sources
-        query = (search_query or raw_user_message).strip()
-        if not query:
-            return search_context, search_sources
+        registry = get_tool_registry()
+        if not registry.has_chat_capability("web.search_context"):
+            raise ValueError("Unknown or unavailable context capability: web.search_context")
         try:
-            sources = await self.deps.search_service.search(query)
-            search_sources = [s.model_dump() for s in sources]
-            if sources:
-                search_context = self.deps.search_service.build_search_context(query, sources)
+            payload = await registry.execute_context_capability_async(
+                "web.search_context",
+                raw_user_message=raw_user_message,
+                args=context_capability_args.get("web.search_context") or {},
+                context_type=context_type,
+                project_id=project_id,
+                session_id=session_id,
+            )
+            context_value = payload.get("context")
+            search_context = context_value if isinstance(context_value, str) else None
+            raw_sources = payload.get("sources")
+            if isinstance(raw_sources, list):
+                search_sources = [item for item in raw_sources if isinstance(item, dict)]
+        except ValueError:
+            raise
         except Exception as exc:
             logger.warning("[GroupChat] Web search failed: %s", exc)
         return search_context, search_sources

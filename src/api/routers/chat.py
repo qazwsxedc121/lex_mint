@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.chat import ChatApplicationService
 from src.application.chat.client_tool_call_coordinator import (
@@ -67,8 +67,10 @@ class ChatRequest(BaseModel):
     project_id: str | None = None  # Project ID (required when context_type="project")
     active_file_path: str | None = None  # Active file path for project chat document tools
     active_file_hash: str | None = None  # Optional client-side content hash for active file
-    use_web_search: bool = False  # Whether to use web search for this message
-    search_query: str | None = None  # Optional explicit search query
+    context_capabilities: list[str] = Field(default_factory=list)  # Requested capability ids
+    context_capability_args: dict[str, dict[str, object]] = Field(
+        default_factory=dict
+    )  # Capability args by id
 
 
 class ChatResponse(BaseModel):
@@ -133,8 +135,8 @@ class CompareRequest(BaseModel):
     reasoning_effort: str | None = None
     context_type: str = "chat"
     project_id: str | None = None
-    use_web_search: bool = False
-    search_query: str | None = None
+    context_capabilities: list[str] = Field(default_factory=list)
+    context_capability_args: dict[str, dict[str, object]] = Field(default_factory=dict)
     file_references: list[dict[str, str]] | None = (
         None  # List of {path, project_id} for @file references
     )
@@ -200,8 +202,8 @@ async def _build_stream_fn(
         attachments=request.attachments,
         context_type=request.context_type,
         project_id=request.project_id,
-        use_web_search=request.use_web_search,
-        search_query=request.search_query,
+        context_capabilities=request.context_capabilities,
+        context_capability_args=request.context_capability_args,
         file_references=request.file_references,
         active_file_path=request.active_file_path,
         active_file_hash=request.active_file_hash,
@@ -301,8 +303,8 @@ async def chat(
             request.message,
             context_type=request.context_type,
             project_id=request.project_id,
-            use_web_search=request.use_web_search,
-            search_query=request.search_query,
+            context_capabilities=request.context_capabilities,
+            context_capability_args=request.context_capability_args,
             file_references=request.file_references,
             active_file_path=request.active_file_path,
             active_file_hash=request.active_file_hash,
@@ -927,8 +929,8 @@ async def chat_compare(
                 attachments=request.attachments,
                 context_type=request.context_type,
                 project_id=request.project_id,
-                use_web_search=request.use_web_search,
-                search_query=request.search_query,
+                context_capabilities=request.context_capabilities,
+                context_capability_args=request.context_capability_args,
                 file_references=request.file_references,
             ):
                 mapped_payload = mapper.to_sse_payload(event)

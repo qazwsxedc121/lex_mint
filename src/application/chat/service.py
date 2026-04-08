@@ -14,10 +14,10 @@ from .orchestration_gateway import (
 )
 from .request_contexts import (
     CompareChatRequestContext,
+    ContextCapabilitiesOptions,
     ConversationScope,
     EditorContext,
     GroupChatRequestContext,
-    SearchOptions,
     SingleChatRequestContext,
     StreamOptions,
     UserInputPayload,
@@ -86,8 +86,8 @@ class ChatApplicationService:
         user_message: str,
         context_type: str = "chat",
         project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
+        context_capabilities: list[str] | None = None,
+        context_capability_args: dict[str, dict[str, object]] | None = None,
         file_references: list[dict[str, str]] | None = None,
         active_file_path: str | None = None,
         active_file_hash: str | None = None,
@@ -103,9 +103,9 @@ class ChatApplicationService:
                 user_message=user_message,
                 file_references=file_references,
             ),
-            search=SearchOptions(
-                use_web_search=use_web_search,
-                search_query=search_query,
+            context_capabilities=ContextCapabilitiesOptions(
+                context_capabilities=list(context_capabilities or []),
+                context_capability_args=dict(context_capability_args or {}),
             ),
             editor=EditorContext(
                 active_file_path=active_file_path,
@@ -124,8 +124,8 @@ class ChatApplicationService:
         attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
         project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
+        context_capabilities: list[str] | None = None,
+        context_capability_args: dict[str, dict[str, object]] | None = None,
         file_references: list[dict[str, str]] | None = None,
         active_file_path: str | None = None,
         active_file_hash: str | None = None,
@@ -156,9 +156,9 @@ class ChatApplicationService:
                 group_assistants=group_assistants,
                 group_mode=str(group_mode or "round_robin"),
                 group_settings=group_settings if isinstance(group_settings, dict) else None,
-                search=SearchOptions(
-                    use_web_search=use_web_search,
-                    search_query=search_query,
+                context_capabilities=ContextCapabilitiesOptions(
+                    context_capabilities=list(context_capabilities or []),
+                    context_capability_args=dict(context_capability_args or {}),
                 ),
                 stream=StreamOptions(
                     skip_user_append=skip_user_append,
@@ -183,9 +183,9 @@ class ChatApplicationService:
                 attachments=attachments,
                 file_references=file_references,
             ),
-            search=SearchOptions(
-                use_web_search=use_web_search,
-                search_query=search_query,
+            context_capabilities=ContextCapabilitiesOptions(
+                context_capabilities=list(context_capabilities or []),
+                context_capability_args=dict(context_capability_args or {}),
             ),
             stream=StreamOptions(
                 skip_user_append=skip_user_append,
@@ -211,8 +211,8 @@ class ChatApplicationService:
         attachments: list[SourcePayload] | None = None,
         context_type: str = "chat",
         project_id: str | None = None,
-        use_web_search: bool = False,
-        search_query: str | None = None,
+        context_capabilities: list[str] | None = None,
+        context_capability_args: dict[str, dict[str, object]] | None = None,
         file_references: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[StreamItem]:
         """Stream the compare-model use case."""
@@ -228,9 +228,9 @@ class ChatApplicationService:
                 file_references=file_references,
             ),
             model_ids=model_ids,
-            search=SearchOptions(
-                use_web_search=use_web_search,
-                search_query=search_query,
+            context_capabilities=ContextCapabilitiesOptions(
+                context_capabilities=list(context_capabilities or []),
+                context_capability_args=dict(context_capability_args or {}),
             ),
             stream=StreamOptions(reasoning_effort=reasoning_effort),
         )

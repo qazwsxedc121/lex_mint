@@ -214,8 +214,8 @@ export interface SessionDetail {
 export interface ChatRequest {
   session_id: string;
   message: string;
-  use_web_search?: boolean;
-  search_query?: string;
+  context_capabilities?: string[];
+  context_capability_args?: Record<string, Record<string, unknown>>;
 }
 
 export interface ChatResponse {

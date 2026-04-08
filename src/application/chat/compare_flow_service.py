@@ -96,8 +96,8 @@ class CompareFlowService:
         attachments = request.user_input.attachments
         file_references = request.user_input.file_references
         model_ids = request.model_ids
-        use_web_search = request.search.use_web_search
-        search_query = request.search.search_query
+        context_capabilities = request.context_capabilities.context_capabilities
+        context_capability_args = request.context_capabilities.context_capability_args
         reasoning_effort = request.stream.reasoning_effort
 
         original_user_message = user_message
@@ -121,8 +121,8 @@ class CompareFlowService:
             raw_user_message=prepared_input.raw_user_message,
             context_type=context_type,
             project_id=project_id,
-            use_web_search=use_web_search,
-            search_query=search_query,
+            context_capabilities=context_capabilities,
+            context_capability_args=context_capability_args,
         )
         if ctx.all_sources:
             yield {"type": "sources", "sources": ctx.all_sources}

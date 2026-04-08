@@ -10,7 +10,12 @@ import yaml
 
 from src.core.paths import repo_root
 
-from .models import ToolPluginContribution, ToolPluginManifest, ToolPluginStatus
+from .models import (
+    ChatCapabilityDefinition,
+    ToolPluginContribution,
+    ToolPluginManifest,
+    ToolPluginStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +179,10 @@ class ToolPluginLoader:
             settings_schema_path = None
         if settings_defaults_path == "":
             settings_defaults_path = None
+        chat_capabilities = ToolPluginLoader._load_chat_capabilities(
+            raw.get("chat_capabilities"),
+            plugin_id=plugin_id,
+        )
 
         if schema_version != 1:
             raise ValueError(f"unsupported schema_version: {schema_version}")
@@ -196,8 +205,65 @@ class ToolPluginLoader:
             enabled=enabled,
             settings_schema_path=settings_schema_path,
             settings_defaults_path=settings_defaults_path,
+            chat_capabilities=chat_capabilities,
             directory=manifest_path.parent,
         )
+
+    @staticmethod
+    def _load_chat_capabilities(
+        raw: object,
+        *,
+        plugin_id: str,
+    ) -> list[ChatCapabilityDefinition]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise ValueError("chat_capabilities must be a list when provided")
+
+        seen_ids: set[str] = set()
+        capabilities: list[ChatCapabilityDefinition] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise ValueError("chat_capabilities entries must be objects")
+            capability_id = str(item.get("id") or "").strip()
+            if not capability_id:
+                raise ValueError("chat_capabilities[].id is required")
+            if capability_id in seen_ids:
+                raise ValueError(f"duplicate chat_capabilities id: {capability_id}")
+            seen_ids.add(capability_id)
+            title_i18n_key = str(item.get("title_i18n_key") or "").strip()
+            description_i18n_key = str(item.get("description_i18n_key") or "").strip()
+            if not title_i18n_key:
+                raise ValueError(f"chat_capabilities[{capability_id}].title_i18n_key is required")
+            if not description_i18n_key:
+                raise ValueError(
+                    f"chat_capabilities[{capability_id}].description_i18n_key is required"
+                )
+            icon_raw = item.get("icon")
+            icon = str(icon_raw).strip() if icon_raw is not None else None
+            if icon == "":
+                icon = None
+            order_raw = item.get("order", 1000)
+            try:
+                order = int(order_raw)
+            except Exception:
+                raise ValueError(
+                    f"chat_capabilities[{capability_id}].order must be an integer"
+                ) from None
+
+            capabilities.append(
+                ChatCapabilityDefinition(
+                    id=capability_id,
+                    title_i18n_key=title_i18n_key,
+                    description_i18n_key=description_i18n_key,
+                    icon=icon,
+                    order=order,
+                    default_enabled=bool(item.get("default_enabled", False)),
+                    visible_in_input=bool(item.get("visible_in_input", True)),
+                    plugin_id=plugin_id,
+                )
+            )
+        return capabilities
 
     @staticmethod
     def _load_contribution(manifest: ToolPluginManifest) -> ToolPluginContribution:

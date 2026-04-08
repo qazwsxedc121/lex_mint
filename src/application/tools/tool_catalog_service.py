@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from src.domain.models.tool_catalog import ToolCatalogGroup, ToolCatalogItem, ToolCatalogResponse
+from src.domain.models.tool_catalog import (
+    ChatCapabilityItem,
+    ToolCatalogGroup,
+    ToolCatalogItem,
+    ToolCatalogResponse,
+)
 from src.tools.definitions import ToolDefinition
 from src.tools.registry import get_tool_registry
 
@@ -23,10 +28,26 @@ class ToolCatalogService:
         *,
         description_overrides: dict[str, str] | None = None,
     ) -> ToolCatalogResponse:
+        registry = get_tool_registry()
         definitions = cls.get_tool_definitions()
         items = [
             cls._to_item(definition, description_overrides=description_overrides)
             for definition in definitions
+        ]
+        chat_capabilities = [
+            ChatCapabilityItem(
+                id=item.id,
+                plugin_id=str(item.plugin_id or ""),
+                plugin_name=item.plugin_name,
+                plugin_version=item.plugin_version,
+                title_i18n_key=item.title_i18n_key,
+                description_i18n_key=item.description_i18n_key,
+                icon=item.icon,
+                order=item.order,
+                default_enabled=item.default_enabled,
+                visible_in_input=item.visible_in_input,
+            )
+            for item in registry.get_all_chat_capabilities()
         ]
 
         grouped: dict[str, list[ToolCatalogItem]] = {group: [] for group in cls.GROUP_ORDER}
@@ -43,7 +64,11 @@ class ToolCatalogService:
             for group in cls.GROUP_ORDER
             if grouped.get(group)
         ]
-        return ToolCatalogResponse(groups=groups, tools=items)
+        return ToolCatalogResponse(
+            groups=groups,
+            tools=items,
+            chat_capabilities=chat_capabilities,
+        )
 
     @staticmethod
     def _to_item(

@@ -7,6 +7,10 @@ import * as api from '../../../services/api';
 import type { ChatAPI } from './interfaces';
 
 export const defaultChatAPI: ChatAPI = {
+  getChatInputCapabilities: async () => {
+    const catalog = await api.getToolCatalog();
+    return Array.isArray(catalog.chat_capabilities) ? catalog.chat_capabilities : [];
+  },
   // Session operations
   getSession: api.getSession,
   createSession: (modelId?: string, assistantId?: string, temporary?: boolean, targetType?: 'assistant' | 'model') =>
@@ -36,7 +40,7 @@ export const defaultChatAPI: ChatAPI = {
     onChunk, onDone, onError,
     abortControllerRef?, reasoningEffort?, onUsage?, onSources?,
     attachments?, onUserMessageId?, onAssistantMessageId?,
-    useWebSearch?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?,
+    contextCapabilities?, contextCapabilityArgs?, onFollowupQuestions?, onContextInfo?, onThinkingDuration?, fileReferences?,
     onToolCalls?, onToolResults?,
     onAssistantStart?, onAssistantDone?, onGroupEvent?,
     activeFilePath?, activeFileHash?, temporaryTurn?
@@ -46,7 +50,8 @@ export const defaultChatAPI: ChatAPI = {
       onChunk, onDone, onError,
       abortControllerRef, reasoningEffort, onUsage, onSources,
       attachments, onUserMessageId, onAssistantMessageId,
-      useWebSearch,
+      contextCapabilities,
+      contextCapabilityArgs,
       'chat',       // contextType
       undefined,    // projectId
       onFollowupQuestions,

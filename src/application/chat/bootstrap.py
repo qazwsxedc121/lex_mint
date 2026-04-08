@@ -37,8 +37,6 @@ from src.infrastructure.projects.project_document_tool_service import ProjectDoc
 from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
-from src.infrastructure.web.search_service import SearchService
-from src.infrastructure.web.webpage_service import WebpageService
 from src.llm_runtime import call_llm, call_llm_stream
 from src.tools.registry import get_tool_registry
 
@@ -98,8 +96,6 @@ def build_default_chat_application_service(
         settings.attachments_dir,
         settings.max_file_size_mb,
     )
-    search_service = SearchService()
-    webpage_service = WebpageService()
     memory_service = MemoryService()
     project_service = ProjectService()
     file_reference_config_service = FileReferenceConfigService()
@@ -120,8 +116,6 @@ def build_default_chat_application_service(
     context_assembly_service = ContextAssemblyService(
         storage=storage,
         memory_service=memory_service,
-        webpage_service=webpage_service,
-        search_service=search_service,
         source_context_service=source_context_service,
         rag_config_service=rag_config_service,
         rag_context_builder=rag_context_builder_service.build_context_and_sources,
@@ -155,7 +149,6 @@ def build_default_chat_application_service(
         GroupChatDeps(
             chat_input_service=chat_input_service,
             post_turn_service=post_turn_service,
-            search_service=search_service,
             build_file_context_block=file_reference_context_builder.build_context_block,
             build_group_runtime_assistant=group_runtime_support_service.build_group_runtime_assistant,
             resolve_group_settings=lambda **kwargs: (

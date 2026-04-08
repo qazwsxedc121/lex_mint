@@ -35,6 +35,10 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
   let preparedActiveContext: ActiveDocumentContext | null = null;
 
   return {
+    getChatInputCapabilities: async () => {
+      const catalog = await api.getToolCatalog();
+      return Array.isArray(catalog.chat_capabilities) ? catalog.chat_capabilities : [];
+    },
     beforeSendMessage: async () => {
       if (!options?.beforeSendMessage) {
         preparedActiveContext = null;
@@ -149,7 +153,8 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
       attachments?,
       onUserMessageId?,
       onAssistantMessageId?,
-      useWebSearch?,
+      contextCapabilities?,
+      contextCapabilityArgs?,
       onFollowupQuestions?,
       onContextInfo?,
       onThinkingDuration?,
@@ -182,7 +187,8 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
         attachments,
         onUserMessageId,
         onAssistantMessageId,
-        useWebSearch,
+        contextCapabilities,
+        contextCapabilityArgs,
         contextType,
         projectId,
         onFollowupQuestions,

@@ -5,11 +5,12 @@ from __future__ import annotations
 import inspect
 import logging
 from dataclasses import replace
+from typing import Any
 
 from langchain_core.tools import BaseTool
 
 from .definitions import ToolDefinition
-from .plugins import ToolPluginLoader, ToolPluginStatus
+from .plugins import ChatCapabilityDefinition, ToolPluginLoader, ToolPluginStatus
 
 logger = logging.getLogger(__name__)
 _TOOL_GROUP_ORDER = ("builtin", "web", "projectDocuments", "knowledge")
@@ -23,14 +24,26 @@ class ToolRegistry:
         self._plugin_statuses = list(plugin_statuses)
 
         definitions: list[ToolDefinition] = []
+        chat_capabilities: list[ChatCapabilityDefinition] = []
         tools: list[BaseTool] = []
         handler_map: dict[str, object] = {}
+        context_capability_handler_map: dict[str, object] = {}
 
         for manifest, contribution in loaded_plugins:
             for definition in contribution.definitions:
                 definitions.append(
                     replace(
                         definition,
+                        plugin_id=manifest.id,
+                        plugin_name=manifest.name,
+                        plugin_version=manifest.version,
+                    )
+                )
+
+            for capability in manifest.chat_capabilities:
+                chat_capabilities.append(
+                    replace(
+                        capability,
                         plugin_id=manifest.id,
                         plugin_name=manifest.name,
                         plugin_version=manifest.version,
@@ -52,6 +65,19 @@ class ToolRegistry:
                     continue
                 handler_map[name] = handler
 
+            for capability_id, handler in contribution.context_capability_handlers.items():
+                normalized_id = str(capability_id or "").strip()
+                if not normalized_id:
+                    continue
+                if normalized_id in context_capability_handler_map:
+                    logger.warning(
+                        "Skipping duplicate context capability handler for %s from plugin %s",
+                        normalized_id,
+                        manifest.id,
+                    )
+                    continue
+                context_capability_handler_map[normalized_id] = handler
+
         self._definitions = self._dedupe_definitions(definitions)
         self._definition_map: dict[str, ToolDefinition] = {
             definition.name: definition for definition in self._definitions
@@ -59,6 +85,9 @@ class ToolRegistry:
         self._tools = self._dedupe_tools(tools)
         self._tool_map = {tool.name: tool for tool in self._tools}
         self._tool_handler_map = handler_map
+        self._chat_capabilities = self._dedupe_chat_capabilities(chat_capabilities)
+        self._chat_capability_map = {item.id: item for item in self._chat_capabilities}
+        self._context_capability_handler_map = context_capability_handler_map
         self._loaded_plugin_ids = {
             status.id for status in self._plugin_statuses if status.loaded and status.enabled
         }
@@ -94,6 +123,20 @@ class ToolRegistry:
             deduped.append(tool)
         return deduped
 
+    @staticmethod
+    def _dedupe_chat_capabilities(
+        capabilities: list[ChatCapabilityDefinition],
+    ) -> list[ChatCapabilityDefinition]:
+        deduped: list[ChatCapabilityDefinition] = []
+        seen_ids: set[str] = set()
+        for capability in sorted(capabilities, key=lambda item: (item.order, item.id)):
+            if capability.id in seen_ids:
+                logger.warning("Skipping duplicate chat capability: %s", capability.id)
+                continue
+            seen_ids.add(capability.id)
+            deduped.append(capability)
+        return deduped
+
     def get_all_tools(self) -> list[BaseTool]:
         """Return all registered tool objects for LangChain bind_tools()."""
         return list(self._tools)
@@ -106,9 +149,62 @@ class ToolRegistry:
         """Look up a tool by name."""
         return self._tool_map.get(name)
 
+    def get_all_chat_capabilities(self) -> list[ChatCapabilityDefinition]:
+        """Return all declared chat capabilities from loaded plugins."""
+        return list(self._chat_capabilities)
+
+    def get_chat_capability_by_id(self, capability_id: str) -> ChatCapabilityDefinition | None:
+        """Look up one chat capability metadata by id."""
+        normalized_id = str(capability_id or "").strip()
+        if not normalized_id:
+            return None
+        return self._chat_capability_map.get(normalized_id)
+
+    def has_chat_capability(self, capability_id: str) -> bool:
+        """Return whether one chat capability id exists in loaded plugins."""
+        return self.get_chat_capability_by_id(capability_id) is not None
+
+    def get_context_capability_handler(self, capability_id: str) -> object | None:
+        """Return one context capability execution handler by id."""
+        normalized_id = str(capability_id or "").strip()
+        if not normalized_id:
+            return None
+        return self._context_capability_handler_map.get(normalized_id)
+
     def get_definition_by_name(self, name: str) -> ToolDefinition | None:
         """Look up tool metadata by name."""
         return self._definition_map.get(name)
+
+    async def execute_context_capability_async(
+        self,
+        capability_id: str,
+        *,
+        raw_user_message: str,
+        args: dict[str, Any] | None = None,
+        context_type: str = "chat",
+        project_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute one context capability handler in async context."""
+        handler = self.get_context_capability_handler(capability_id)
+        if handler is None:
+            raise ValueError(f"Unknown context capability: {capability_id}")
+
+        payload_args = args if isinstance(args, dict) else {}
+        result = handler(
+            raw_user_message=raw_user_message,
+            args=payload_args,
+            context_type=context_type,
+            project_id=project_id,
+            session_id=session_id,
+        )
+        if inspect.isawaitable(result):
+            result = await result
+        if isinstance(result, dict):
+            return result
+        raise ValueError(
+            f"Context capability '{capability_id}' must return dict, got {type(result).__name__}"
+        )
 
     def execute_tool(self, name: str, args: dict) -> str:
         """Execute a builtin tool by name with validated LangChain args."""

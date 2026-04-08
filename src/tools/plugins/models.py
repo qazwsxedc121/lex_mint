@@ -12,6 +12,22 @@ from src.tools.definitions import ToolDefinition
 
 
 @dataclass(frozen=True)
+class ChatCapabilityDefinition:
+    """One chat input capability exposed by a plugin."""
+
+    id: str
+    title_i18n_key: str
+    description_i18n_key: str
+    icon: str | None = None
+    order: int = 1000
+    default_enabled: bool = False
+    visible_in_input: bool = True
+    plugin_id: str | None = None
+    plugin_name: str | None = None
+    plugin_version: str | None = None
+
+
+@dataclass(frozen=True)
 class ToolPluginManifest:
     """One parsed plugin manifest file."""
 
@@ -24,6 +40,7 @@ class ToolPluginManifest:
     enabled: bool = True
     settings_schema_path: str | None = None
     settings_defaults_path: str | None = None
+    chat_capabilities: list[ChatCapabilityDefinition] = field(default_factory=list)
     directory: Path | None = None
 
 
@@ -34,6 +51,7 @@ class ToolPluginContribution:
     definitions: list[ToolDefinition] = field(default_factory=list)
     tools: list[BaseTool] = field(default_factory=list)
     tool_handlers: dict[str, Any] = field(default_factory=dict)
+    context_capability_handlers: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

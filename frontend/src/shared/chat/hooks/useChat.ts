@@ -42,12 +42,16 @@ import { getCodeExecutionSettings } from '../config/codeExecution';
 type SendMessageOptions = {
   reasoningEffort?: string;
   attachments?: UploadedFile[];
-  useWebSearch?: boolean;
+  contextCapabilities?: string[];
+  contextCapabilityArgs?: Record<string, Record<string, unknown>>;
   fileReferences?: Array<{ path: string; project_id: string }>;
   temporaryTurn?: boolean;
 };
 
-type RegenerateMessageOptions = Pick<SendMessageOptions, 'reasoningEffort' | 'useWebSearch'>;
+type RegenerateMessageOptions = Pick<
+  SendMessageOptions,
+  'reasoningEffort' | 'contextCapabilities' | 'contextCapabilityArgs'
+>;
 
 type MessageStateSetter = Dispatch<SetStateAction<Message[]>>;
 
@@ -468,7 +472,8 @@ function createSendCompareMessage(params: {
         {
           reasoningEffort: options?.reasoningEffort,
           attachments: options?.attachments,
-          useWebSearch: options?.useWebSearch,
+          contextCapabilities: options?.contextCapabilities,
+          contextCapabilityArgs: options?.contextCapabilityArgs,
           fileReferences: options?.fileReferences,
         }
       );
@@ -923,7 +928,8 @@ export function useChat(sessionId: string | null) {
             { allowSingleFallback: true }
           );
         },
-        options?.useWebSearch,
+        options?.contextCapabilities,
+        options?.contextCapabilityArgs,
         (questions: string[]) => {
           // Backend returned follow-up questions
           setFollowupQuestions(questions);
@@ -1160,6 +1166,7 @@ export function useChat(sessionId: string | null) {
         },
         undefined,
         undefined,
+        undefined,
         (info: ContextInfo) => {
           setContextInfo(info);
         },
@@ -1354,7 +1361,8 @@ export function useChat(sessionId: string | null) {
             { allowSingleFallback: true }
           );
         },
-        options?.useWebSearch,
+        options?.contextCapabilities,
+        options?.contextCapabilityArgs,
         undefined,
         (info: ContextInfo) => {
           setContextInfo(info);

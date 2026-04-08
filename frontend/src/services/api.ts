@@ -220,7 +220,8 @@ interface ChatStreamRequestBody {
   context_type: string;
   reasoning_effort?: string;
   project_id?: string;
-  use_web_search?: boolean;
+  context_capabilities?: string[];
+  context_capability_args?: Record<string, Record<string, unknown>>;
   attachments?: UploadedFilePayload[];
   file_references?: FileReferenceInput[];
   active_file_path?: string;
@@ -232,7 +233,8 @@ interface CompareStreamRequestBody {
   message: string;
   model_ids: string[];
   context_type: string;
-  use_web_search: boolean;
+  context_capabilities?: string[];
+  context_capability_args?: Record<string, Record<string, unknown>>;
   reasoning_effort?: string;
   project_id?: string;
   attachments?: UploadedFilePayload[];
@@ -646,7 +648,7 @@ export async function sendMessage(
   message: string,
   contextType: string = 'chat',
   projectId?: string,
-  useWebSearch?: boolean
+  contextCapabilities?: string[]
 ): Promise<string> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
@@ -657,7 +659,7 @@ export async function sendMessage(
   const response = await api.post<ChatResponse>(`/api/chat?${params.toString()}`, {
     session_id: sessionId,
     message,
-    use_web_search: useWebSearch || false,
+    context_capabilities: contextCapabilities || [],
   } as ChatRequest);
   return response.data.response;
 }
@@ -712,7 +714,8 @@ export async function sendMessageStream(
   attachments?: UploadedFile[],
   onUserMessageId?: (messageId: string) => void,
   onAssistantMessageId?: (messageId: string) => void,
-  useWebSearch?: boolean,
+  contextCapabilities?: string[],
+  contextCapabilityArgs?: Record<string, Record<string, unknown>>,
   contextType: string = 'chat',
   projectId?: string,
   onFollowupQuestions?: (questions: string[]) => void,
@@ -955,8 +958,11 @@ export async function sendMessageStream(
       requestBody.project_id = projectId;
     }
 
-    if (useWebSearch) {
-      requestBody.use_web_search = true;
+    if (contextCapabilities && contextCapabilities.length > 0) {
+      requestBody.context_capabilities = contextCapabilities;
+    }
+    if (contextCapabilityArgs && Object.keys(contextCapabilityArgs).length > 0) {
+      requestBody.context_capability_args = contextCapabilityArgs;
     }
 
     if (attachments && attachments.length > 0) {
@@ -1124,7 +1130,8 @@ export async function sendCompareStream(
   options?: {
     reasoningEffort?: string;
     attachments?: UploadedFile[];
-    useWebSearch?: boolean;
+    contextCapabilities?: string[];
+    contextCapabilityArgs?: Record<string, Record<string, unknown>>;
     contextType?: string;
     projectId?: string;
     fileReferences?: FileReferenceInput[];
@@ -1141,8 +1148,13 @@ export async function sendCompareStream(
       message,
       model_ids: modelIds,
       context_type: options?.contextType || 'chat',
-      use_web_search: options?.useWebSearch || false,
     };
+    if (options?.contextCapabilities && options.contextCapabilities.length > 0) {
+      requestBody.context_capabilities = options.contextCapabilities;
+    }
+    if (options?.contextCapabilityArgs && Object.keys(options.contextCapabilityArgs).length > 0) {
+      requestBody.context_capability_args = options.contextCapabilityArgs;
+    }
 
     if (options?.reasoningEffort !== undefined && options.reasoningEffort !== '') {
       requestBody.reasoning_effort = options.reasoningEffort;

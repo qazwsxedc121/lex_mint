@@ -39,8 +39,30 @@ class ToolCatalogGroup(BaseModel):
     tools: list[ToolCatalogItem] = Field(default_factory=list)
 
 
+class ChatCapabilityItem(BaseModel):
+    """One plugin-declared chat input capability."""
+
+    id: str = Field(..., description="Stable capability id used in chat requests")
+    plugin_id: str = Field(..., description="Owning plugin id")
+    plugin_name: str | None = Field(default=None, description="Owning plugin display name")
+    plugin_version: str | None = Field(default=None, description="Owning plugin version")
+    title_i18n_key: str = Field(..., description="Frontend i18n key for capability title")
+    description_i18n_key: str = Field(
+        ..., description="Frontend i18n key for capability description"
+    )
+    icon: str | None = Field(default=None, description="Optional icon key for chat input button")
+    order: int = Field(default=1000, description="Display order for chat input capability toggles")
+    default_enabled: bool = Field(
+        default=False, description="Whether capability should be enabled by default in input"
+    )
+    visible_in_input: bool = Field(
+        default=True, description="Whether capability should be shown as input toggle"
+    )
+
+
 class ToolCatalogResponse(BaseModel):
     """Complete tool catalog payload."""
 
     groups: list[ToolCatalogGroup] = Field(default_factory=list)
     tools: list[ToolCatalogItem] = Field(default_factory=list)
+    chat_capabilities: list[ChatCapabilityItem] = Field(default_factory=list)

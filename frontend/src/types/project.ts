@@ -40,9 +40,23 @@ export interface ProjectToolCatalogGroup {
   tools: ProjectToolCatalogItem[];
 }
 
+export interface ProjectChatCapabilityItem {
+  id: string;
+  plugin_id: string;
+  plugin_name?: string | null;
+  plugin_version?: string | null;
+  title_i18n_key: string;
+  description_i18n_key: string;
+  icon?: string | null;
+  order: number;
+  default_enabled: boolean;
+  visible_in_input: boolean;
+}
+
 export interface ProjectToolCatalogResponse {
   groups: ProjectToolCatalogGroup[];
   tools: ProjectToolCatalogItem[];
+  chat_capabilities: ProjectChatCapabilityItem[];
 }
 
 export interface ProjectSettings {

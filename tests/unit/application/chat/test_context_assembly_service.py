@@ -1,6 +1,5 @@
 """Unit tests for context assembly service."""
 
-from collections.abc import Sequence
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -8,14 +7,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.application.chat.context_assembly_service import ContextAssemblyService
-
-
-class _Source:
-    def __init__(self, payload: dict[str, Any]):
-        self.payload = payload
-
-    def model_dump(self) -> dict[str, Any]:
-        return self.payload
 
 
 class _FakeStorage:
@@ -67,21 +58,34 @@ class _FakeMemoryService:
         return "MEM", [{"type": "memory"}]
 
 
-class _FakeWebpageService:
-    async def build_context(self, query: str) -> tuple[str | None, list[_Source]]:
-        _ = query
-        return "WEB", [_Source({"type": "webpage"})]
+class _FakeRegistry:
+    def __init__(self, *, available: bool = True):
+        self.available = available
 
+    def has_chat_capability(self, capability_id: str) -> bool:
+        if not self.available:
+            return False
+        return capability_id in {"web.webpage_context", "web.search_context"}
 
-class _FakeSearchService:
-    async def search(self, query: str) -> list[_Source]:
-        _ = query
-        return [_Source({"type": "search"})]
+    def get_context_capability_handler(self, capability_id: str):
+        if self.has_chat_capability(capability_id):
+            return object()
+        return None
 
-    @staticmethod
-    def build_search_context(query: str, sources: Sequence[Any]) -> str | None:
-        _ = query, sources
-        return "SEARCH"
+    async def execute_context_capability_async(self, capability_id: str, **_kwargs):
+        if capability_id == "web.webpage_context":
+            return {
+                "context_key": "webpage_context",
+                "context": "WEB",
+                "sources": [{"type": "webpage"}],
+            }
+        if capability_id == "web.search_context":
+            return {
+                "context_key": "search_context",
+                "context": "SEARCH",
+                "sources": [{"type": "search"}],
+            }
+        raise ValueError(f"Unknown context capability: {capability_id}")
 
 
 class _FakeSourceContextService:
@@ -114,18 +118,20 @@ async def test_prepare_context_builds_prompt_and_sources():
     service = ContextAssemblyService(
         storage=_FakeStorage(),
         memory_service=_FakeMemoryService(),
-        webpage_service=_FakeWebpageService(),
-        search_service=_FakeSearchService(),
         source_context_service=_FakeSourceContextService(),
         rag_config_service=_FakeRagConfigService(enabled=True),
         rag_context_builder=fake_rag_context_builder,
     )
-
-    ctx = await service.prepare_context(
-        session_id="s1",
-        raw_user_message="hello",
-        use_web_search=True,
-    )
+    registry = _FakeRegistry()
+    with patch(
+        "src.application.chat.context_assembly_service.get_tool_registry",
+        return_value=registry,
+    ):
+        ctx = await service.prepare_context(
+            session_id="s1",
+            raw_user_message="hello",
+            context_capabilities=["web.webpage_context", "web.search_context"],
+        )
 
     assert ctx.assistant_id is None
     assert ctx.assistant_memory_enabled is True
@@ -147,8 +153,6 @@ async def test_prepare_context_honors_param_overrides_and_disabled_structured_co
     service = ContextAssemblyService(
         storage=_FakeStorage(param_overrides={"model_id": "provider:model-b", "max_rounds": 5}),
         memory_service=_FakeMemoryService(),
-        webpage_service=_FakeWebpageService(),
-        search_service=_FakeSearchService(),
         source_context_service=_FakeSourceContextService(),
         rag_config_service=_FakeRagConfigService(enabled=False),
         rag_context_builder=fake_rag_context_builder,
@@ -157,14 +161,14 @@ async def test_prepare_context_honors_param_overrides_and_disabled_structured_co
     ctx = await service.prepare_context(
         session_id="s2",
         raw_user_message="hello",
-        use_web_search=False,
     )
 
     assert ctx.model_id == "provider:model-b"
     assert ctx.max_rounds == 5
     assert ctx.search_context is None
     assert ctx.structured_source_context is None
-    assert ctx.system_prompt == "MEM\n\nWEB\n\nRAG"
+    assert ctx.webpage_context is None
+    assert ctx.system_prompt == "MEM\n\nRAG"
 
 
 @pytest.mark.asyncio
@@ -190,8 +194,6 @@ async def test_prepare_context_disables_assistant_memory_when_assistant_setting_
     service = ContextAssemblyService(
         storage=_FakeStorage(assistant_id="assistant-a"),
         memory_service=memory_service,
-        webpage_service=_FakeWebpageService(),
-        search_service=_FakeSearchService(),
         source_context_service=_FakeSourceContextService(),
         rag_config_service=_FakeRagConfigService(enabled=False),
         rag_context_builder=fake_rag_context_builder,
@@ -204,7 +206,6 @@ async def test_prepare_context_disables_assistant_memory_when_assistant_setting_
         ctx = await service.prepare_context(
             session_id="s3",
             raw_user_message="hello",
-            use_web_search=False,
         )
 
     assert ctx.assistant_id == "assistant-a"
@@ -228,24 +229,18 @@ async def test_prepare_context_skips_web_context_when_web_tools_plugin_unavailab
 
     monkeypatch.setattr(
         "src.application.chat.context_assembly_service.get_tool_registry",
-        lambda: SimpleNamespace(get_tool_names_by_group=lambda _group: set()),
+        lambda: _FakeRegistry(available=False),
     )
     service = ContextAssemblyService(
         storage=_FakeStorage(),
         memory_service=_FakeMemoryService(),
-        webpage_service=_FakeWebpageService(),
-        search_service=_FakeSearchService(),
         source_context_service=_FakeSourceContextService(),
         rag_config_service=_FakeRagConfigService(enabled=False),
         rag_context_builder=fake_rag_context_builder,
     )
-
-    ctx = await service.prepare_context(
-        session_id="s4",
-        raw_user_message="hello",
-        use_web_search=True,
-    )
-
-    assert ctx.webpage_context is None
-    assert ctx.search_context is None
-    assert [s["type"] for s in ctx.all_sources] == ["memory"]
+    with pytest.raises(ValueError):
+        await service.prepare_context(
+            session_id="s4",
+            raw_user_message="hello",
+            context_capabilities=["web.search_context"],
+        )

@@ -8,9 +8,9 @@ import pytest
 
 from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.request_contexts import (
+    ContextCapabilitiesOptions,
     ConversationScope,
     EditorContext,
-    SearchOptions,
     SingleChatRequestContext,
     StreamOptions,
     ToolResolutionContext,
@@ -265,7 +265,10 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         prepare_context=lambda **_kwargs: _return_async(None),
         build_file_context_block=lambda _refs: _return_async(""),
         tool_registry_getter=lambda: SimpleNamespace(
-            get_tool_names_by_group=lambda _group: {"web_search", "read_webpage"}
+            get_tool_names_by_group=lambda _group: {"web_search", "read_webpage"},
+            get_all_chat_capabilities=lambda: [
+                SimpleNamespace(id="web.search_context", plugin_id="web_tools")
+            ],
         ),
     )
     service = SingleChatFlowService(deps)
@@ -285,7 +288,7 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         session_id="s1",
         context_type="chat",
         project_id=None,
-        use_web_search=True,
+        context_capabilities=["web.search_context"],
     )
 
     assert result is True
@@ -338,6 +341,9 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
                 SimpleNamespace(name="read_webpage"),
             ]
 
+        def get_all_chat_capabilities(self):
+            return [SimpleNamespace(id="web.search_context", plugin_id="web_tools")]
+
         def get_tool_names_by_group(self, group):
             if group == "web":
                 return {"web_search", "read_webpage"}
@@ -362,7 +368,7 @@ async def test_resolve_tools_adds_web_tools_when_enabled(monkeypatch):
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=True,
+            context_capabilities=["web.search_context"],
         ),
     )
 
@@ -437,6 +443,9 @@ async def test_resolve_tools_applies_regex_gate(monkeypatch):
                 SimpleNamespace(name="web_search"),
             ]
 
+        def get_all_chat_capabilities(self):
+            return [SimpleNamespace(id="web.search_context", plugin_id="web_tools")]
+
         def get_tool_names_by_group(self, group):
             if group == "web":
                 return {"web_search"}
@@ -461,7 +470,7 @@ async def test_resolve_tools_applies_regex_gate(monkeypatch):
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=True,
+            context_capabilities=["web.search_context"],
             user_message="这是常识题，定义是什么？",
         ),
     )
@@ -526,6 +535,9 @@ async def test_resolve_tools_applies_description_overrides(monkeypatch):
         def get_all_tools(self):
             return [_FakeTool(name="execute_python", description="old description")]
 
+        def get_all_chat_capabilities(self):
+            return []
+
         def get_tool_names_by_group(self, group):
             _ = group
             return set()
@@ -549,7 +561,7 @@ async def test_resolve_tools_applies_description_overrides(monkeypatch):
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=False,
+            context_capabilities=[],
         ),
     )
 
@@ -603,7 +615,9 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
         request=SingleChatRequestContext(
             scope=ConversationScope(session_id="s1", context_type="chat"),
             user_input=UserInputPayload(user_message="hello"),
-            search=SearchOptions(use_web_search=True),
+            context_capabilities=ContextCapabilitiesOptions(
+                context_capabilities=["web.search_context"]
+            ),
         )
     )
 
@@ -972,7 +986,7 @@ async def test_resolve_tools_handles_resolution_exception(monkeypatch):
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=False,
+            context_capabilities=[],
         ),
     )
     assert tools is None
@@ -1005,7 +1019,7 @@ async def test_combined_tool_executor_blocks_and_falls_back():
         model_id="provider:model-a",
         scope=ConversationScope(session_id="s1", context_type="project", project_id="p1"),
         editor=EditorContext(),
-        use_web_search=False,
+        context_capabilities=[],
     )
     resolved_tools = SingleChatResolvedTools(
         allowed_tool_names={"allowed_tool"},
@@ -1083,7 +1097,7 @@ async def test_execute_python_falls_back_to_server_execution_when_enabled(monkey
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=False,
+            context_capabilities=[],
         ),
         resolved_tools=SingleChatResolvedTools(
             llm_tools=[],
@@ -1161,7 +1175,7 @@ async def test_execute_python_uses_priority_when_client_disabled(monkeypatch):
             model_id="provider:model-a",
             scope=ConversationScope(session_id="s1", context_type="chat"),
             editor=EditorContext(),
-            use_web_search=False,
+            context_capabilities=[],
         ),
         resolved_tools=SingleChatResolvedTools(
             llm_tools=[],

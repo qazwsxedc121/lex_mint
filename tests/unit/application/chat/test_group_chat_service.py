@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -12,12 +10,11 @@ from src.application.chat.chat_input_service import PreparedUserInput
 from src.application.chat.chat_runtime import ResolvedCommitteeSettings, ResolvedGroupSettings
 from src.application.chat.group_chat_service import GroupChatDeps, GroupChatService
 from src.application.chat.request_contexts import (
+    ContextCapabilitiesOptions,
     ConversationScope,
     GroupChatRequestContext,
-    SearchOptions,
     UserInputPayload,
 )
-from src.application.chat.service_contracts import SupportsModelDump
 from src.domain.models.assistant_config import Assistant
 
 
@@ -37,27 +34,6 @@ class _FakePostTurnService:
 
     async def schedule_title_generation(self, **kwargs):
         self.calls.append(kwargs)
-
-
-@dataclass
-class _SearchSource:
-    url: str
-
-    def model_dump(self):
-        return {"url": self.url}
-
-
-class _FakeSearchService:
-    def __init__(self, *, fail: bool = False):
-        self.fail = fail
-
-    async def search(self, query: str):
-        if self.fail:
-            raise RuntimeError("search failed")
-        return [_SearchSource(url=f"https://example.com/{query}")]
-
-    def build_search_context(self, query: str, sources: Sequence[SupportsModelDump]):
-        return f"context:{query}:{len(sources)}"
 
 
 class _FakeRoundRobinOrchestrator:
@@ -86,7 +62,7 @@ async def _build_file_context_block(_refs):
     return "[files]"
 
 
-def _make_service(*, search_fail: bool = False, trace_enabled: bool = False):
+def _make_service(*, trace_enabled: bool = False):
     round_robin = _FakeRoundRobinOrchestrator()
     committee = _FakeCommitteeOrchestrator()
     post_turn = _FakePostTurnService()
@@ -128,7 +104,6 @@ def _make_service(*, search_fail: bool = False, trace_enabled: bool = False):
     deps = GroupChatDeps(
         chat_input_service=_FakeChatInputService(),
         post_turn_service=post_turn,
-        search_service=_FakeSearchService(fail=search_fail),
         build_file_context_block=_build_file_context_block,
         build_group_runtime_assistant=_build_group_runtime_assistant,
         resolve_group_settings=_resolve_group_settings,
@@ -142,8 +117,30 @@ def _make_service(*, search_fail: bool = False, trace_enabled: bool = False):
     return GroupChatService(deps), round_robin, committee, post_turn
 
 
+class _FakeRegistry:
+    def __init__(self, *, available: bool = True, fail: bool = False):
+        self.available = available
+        self.fail = fail
+
+    def has_chat_capability(self, capability_id: str) -> bool:
+        return self.available and capability_id == "web.search_context"
+
+    async def execute_context_capability_async(self, capability_id: str, **kwargs):
+        _ = capability_id, kwargs
+        if self.fail:
+            raise RuntimeError("search failed")
+        return {
+            "context": "context:hello:1",
+            "sources": [{"url": "https://example.com/hello"}],
+        }
+
+
 @pytest.mark.asyncio
-async def test_group_chat_service_round_robin_flow():
+async def test_group_chat_service_round_robin_flow(monkeypatch):
+    monkeypatch.setattr(
+        "src.application.chat.group_chat_service.get_tool_registry",
+        lambda: _FakeRegistry(),
+    )
     service, round_robin, _, post_turn = _make_service()
 
     events = [
@@ -156,7 +153,9 @@ async def test_group_chat_service_round_robin_flow():
                     file_references=[{"project_id": "p1", "path": "src/app.py"}],
                 ),
                 group_assistants=["a", "a", "b"],
-                search=SearchOptions(use_web_search=True),
+                context_capabilities=ContextCapabilitiesOptions(
+                    context_capabilities=["web.search_context"]
+                ),
             )
         )
     ]
@@ -170,7 +169,7 @@ async def test_group_chat_service_round_robin_flow():
 
 @pytest.mark.asyncio
 async def test_group_chat_service_handles_missing_participants_and_search_failures():
-    service, round_robin, _, post_turn = _make_service(search_fail=True)
+    service, round_robin, _, post_turn = _make_service()
 
     events = [
         event
@@ -179,7 +178,9 @@ async def test_group_chat_service_handles_missing_participants_and_search_failur
                 scope=ConversationScope(session_id="session-1234"),
                 user_input=UserInputPayload(user_message="hello"),
                 group_assistants=["missing"],
-                search=SearchOptions(use_web_search=True),
+                context_capabilities=ContextCapabilitiesOptions(
+                    context_capabilities=["web.search_context"]
+                ),
             )
         )
     ]
@@ -215,20 +216,23 @@ async def test_group_chat_service_committee_flow_and_trace_id():
 async def test_group_chat_service_skips_search_when_web_tools_plugin_unavailable(monkeypatch):
     monkeypatch.setattr(
         "src.application.chat.group_chat_service.get_tool_registry",
-        lambda: type("Registry", (), {"get_tool_names_by_group": lambda self, _group: set()})(),
+        lambda: _FakeRegistry(available=False),
     )
     service, round_robin, _, _ = _make_service()
 
-    _ = [
-        event
-        async for event in service.process_group_message_stream(
-            request=GroupChatRequestContext(
-                scope=ConversationScope(session_id="session-1234"),
-                user_input=UserInputPayload(user_message="hello"),
-                group_assistants=["a", "b"],
-                search=SearchOptions(use_web_search=True),
+    with pytest.raises(ValueError):
+        _ = [
+            event
+            async for event in service.process_group_message_stream(
+                request=GroupChatRequestContext(
+                    scope=ConversationScope(session_id="session-1234"),
+                    user_input=UserInputPayload(user_message="hello"),
+                    group_assistants=["a", "b"],
+                    context_capabilities=ContextCapabilitiesOptions(
+                        context_capabilities=["web.search_context"]
+                    ),
+                )
             )
-        )
-    ]
+        ]
 
-    assert round_robin.requests[0].search_context is None
+    assert round_robin.requests == []

@@ -307,7 +307,8 @@ class LexMintEvalClient:
         question: str,
         context_type: str,
         project_id: str | None,
-        use_web_search: bool,
+        context_capabilities: list[str] | None = None,
+        context_capability_args: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         wrapped_question = f"{_ANSWER_ONLY_PROMPT}\n\nQuestion:\n{question}"
         request: dict[str, Any] = {
@@ -315,7 +316,8 @@ class LexMintEvalClient:
             "message": wrapped_question,
             "context_type": context_type,
             "project_id": project_id,
-            "use_web_search": use_web_search,
+            "context_capabilities": list(context_capabilities or []),
+            "context_capability_args": dict(context_capability_args or {}),
         }
 
         final_chunks: list[str] = []
@@ -546,7 +548,7 @@ async def run_eval(
                 question=case.question,
                 context_type=context_type,
                 project_id=project_id,
-                use_web_search=True,
+                context_capabilities=["web.search_context"],
             )
             results.append(summarize_case_result(case, session_id, raw_result))
         finally:

@@ -234,5 +234,6 @@ class ContextPayload:
     memory_context: str | None = None
     webpage_context: str | None = None
     search_context: str | None = None
+    capability_contexts: dict[str, str] | None = None
     rag_context: str | None = None
     structured_source_context: str | None = None

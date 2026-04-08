@@ -118,8 +118,8 @@ const createBlockId = () => {
 };
 
 interface InputBoxProps {
-  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }>; temporaryTurn?: boolean }) => void;
-  onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; useWebSearch?: boolean; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
+  onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; contextCapabilities?: string[]; contextCapabilityArgs?: Record<string, Record<string, unknown>>; fileReferences?: Array<{ path: string; project_id: string }>; temporaryTurn?: boolean }) => void;
+  onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; contextCapabilities?: string[]; contextCapabilityArgs?: Record<string, Record<string, unknown>>; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
   onCompressContext?: () => void;
@@ -134,9 +134,14 @@ interface InputBoxProps {
   reasoningEffort?: string;
   onReasoningEffortChange?: (reasoningEffort: string) => void;
   supportsVision?: boolean;
-  useWebSearch?: boolean;
-  onUseWebSearchChange?: (enabled: boolean) => void;
-  showWebSearchToggle?: boolean;
+  contextCapabilities?: string[];
+  onContextCapabilitiesChange?: (capabilityIds: string[]) => void;
+  capabilityToggles?: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    icon?: string | null;
+  }>;
   sessionId?: string;
   currentAssistantId?: string;
   paramOverrides?: ParamOverrides;
@@ -160,9 +165,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   reasoningEffort: controlledReasoningEffort,
   onReasoningEffortChange,
   supportsVision = false,
-  useWebSearch: controlledUseWebSearch,
-  onUseWebSearchChange,
-  showWebSearchToggle = true,
+  contextCapabilities: controlledContextCapabilities,
+  onContextCapabilitiesChange,
+  capabilityToggles = [],
   sessionId,
   currentAssistantId: _currentAssistantId,
   paramOverrides,
@@ -175,7 +180,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [input, setInput] = useState('');
   const [uncontrolledReasoningEffort, setUncontrolledReasoningEffort] = useState('default');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
-  const [uncontrolledUseWebSearch, setUncontrolledUseWebSearch] = useState(false);
+  const [uncontrolledContextCapabilities, setUncontrolledContextCapabilities] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -202,8 +207,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const translateInputMenuRef = useRef<HTMLDivElement>(null);
   const reasoningEffort = controlledReasoningEffort ?? uncontrolledReasoningEffort;
   const setReasoningEffort = onReasoningEffortChange ?? setUncontrolledReasoningEffort;
-  const useWebSearch = controlledUseWebSearch ?? uncontrolledUseWebSearch;
-  const setUseWebSearch = onUseWebSearchChange ?? setUncontrolledUseWebSearch;
+  const contextCapabilities = controlledContextCapabilities ?? uncontrolledContextCapabilities;
+  const setContextCapabilities = onContextCapabilitiesChange ?? setUncontrolledContextCapabilities;
 
   useEffect(() => {
     if (!showTranslateInputMenu) return;
@@ -605,7 +610,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       const sendOptions = {
         reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
         attachments: attachments.length > 0 ? attachments : undefined,
-        useWebSearch,
+        contextCapabilities,
         fileReferences: fileReferences.length > 0 ? fileReferences : undefined,
         temporaryTurn,
       };
@@ -805,6 +810,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const currentOption = reasoningOptions.find((o) => o.value === reasoningEffort) || reasoningOptions[0];
   const blocksMessage = buildBlocksMessage();
   const canSend = !!input.trim() || !!blocksMessage || attachments.length > 0;
+  const toggleCapability = (capabilityId: string) => {
+    const nextSet = new Set(contextCapabilities);
+    if (nextSet.has(capabilityId)) {
+      nextSet.delete(capabilityId);
+    } else {
+      nextSet.add(capabilityId);
+    }
+    setContextCapabilities(Array.from(nextSet));
+  };
   const selectedInputTranslateLabel = useMemo(
     () => TRANSLATION_TARGET_OPTIONS.find((option) => option.value === selectedInputTranslateTarget)?.label || 'Auto',
     [selectedInputTranslateTarget]
@@ -939,23 +953,31 @@ export const InputBox: React.FC<InputBoxProps> = ({
           </div>
         )}
 
-        {/* Web search toggle */}
-        {showWebSearchToggle && (
-          <button
-            type="button"
-            onClick={() => setUseWebSearch(!useWebSearch)}
-            disabled={disabled || isStreaming}
-            data-name="input-box-web-search-toggle"
-            className={`${TOOLBAR_BTN} ${
-              useWebSearch
-                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-            }`}
-            title={useWebSearch ? t('input.webSearchEnabled') : t('input.enableWebSearch')}
-          >
-            <GlobeAltIcon className="h-4 w-4" />
-          </button>
-        )}
+        {/* Context capability toggles */}
+        {capabilityToggles.map((capability) => {
+          const enabled = contextCapabilities.includes(capability.id);
+          const IconComponent =
+            capability.icon === 'document'
+              ? DocumentTextIcon
+              : GlobeAltIcon;
+          return (
+            <button
+              key={capability.id}
+              type="button"
+              onClick={() => toggleCapability(capability.id)}
+              disabled={disabled || isStreaming}
+              data-name={`input-box-capability-toggle-${capability.id}`}
+              className={`${TOOLBAR_BTN} ${
+                enabled
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+              }`}
+              title={capability.description || capability.title}
+            >
+              <IconComponent className="h-4 w-4" />
+            </button>
+          );
+        })}
 
         {/* Compare models button */}
         <CompareModelButton

@@ -301,7 +301,7 @@ class SingleChatFlowService:
                 assistant_id=runtime.assistant_id,
                 assistant_obj=runtime.assistant_obj,
                 model_id=runtime.model_id,
-                use_web_search=request.search.use_web_search,
+                context_capabilities=request.context_capabilities.context_capabilities,
                 user_message=runtime.raw_user_message,
             )
         )
@@ -464,15 +464,30 @@ class SingleChatFlowService:
             session_id=request.scope.session_id,
             context_type=request.scope.context_type,
             project_id=request.scope.project_id,
-            use_web_search=request.search.use_web_search,
+            context_capabilities=request.context_capabilities.context_capabilities,
         )
+        requested_capabilities = list(request.context_capabilities.context_capabilities or [])
+        requested_capability_args = dict(request.context_capabilities.context_capability_args or {})
+        preloaded_capabilities = list(requested_capabilities)
+        if prefer_web_tools:
+            preloaded_capabilities = [
+                capability_id
+                for capability_id in requested_capabilities
+                if capability_id not in self._web_context_capability_ids()
+            ]
+        preloaded_capability_set = set(preloaded_capabilities)
+        preloaded_capability_args = {
+            capability_id: value
+            for capability_id, value in requested_capability_args.items()
+            if capability_id in preloaded_capability_set
+        }
         ctx = await self.deps.prepare_context(
             session_id=request.scope.session_id,
             raw_user_message=raw_user_message,
             context_type=request.scope.context_type,
             project_id=request.scope.project_id,
-            use_web_search=request.search.use_web_search and not prefer_web_tools,
-            search_query=request.search.search_query,
+            context_capabilities=preloaded_capabilities,
+            context_capability_args=preloaded_capability_args,
         )
         print(f"[OK] Session loaded, {len(ctx.messages)} messages")
         print(f"   Assistant: {ctx.assistant_id}, Model: {ctx.model_id}")
@@ -565,9 +580,14 @@ class SingleChatFlowService:
         session_id: str,
         context_type: str,
         project_id: str | None,
-        use_web_search: bool,
+        context_capabilities: list[str],
     ) -> bool:
-        if not use_web_search:
+        requested_capabilities = {
+            str(item or "").strip() for item in context_capabilities if str(item or "").strip()
+        }
+        if not requested_capabilities:
+            return False
+        if not requested_capabilities.intersection(self._web_context_capability_ids()):
             return False
         if not self._web_tool_names():
             return False
@@ -764,7 +784,7 @@ class SingleChatFlowService:
 
             tool_registry = self.deps.tool_registry_getter()
             resolved_tools.llm_tools = list(tool_registry.get_all_tools())
-            if not request.use_web_search:
+            if not self._has_requested_web_context_capability(request.context_capabilities):
                 web_tool_names = self._web_tool_names()
                 resolved_tools.llm_tools = [
                     tool for tool in resolved_tools.llm_tools if tool.name not in web_tool_names
@@ -811,6 +831,27 @@ class SingleChatFlowService:
                 resolved_tools=resolved_tools,
             ),
         )
+
+    def _web_context_capability_ids(self) -> set[str]:
+        try:
+            registry = self.deps.tool_registry_getter()
+            capability_ids: set[str] = set()
+            for item in registry.get_all_chat_capabilities():
+                capability_id = str(getattr(item, "id", "") or "").strip()
+                if not capability_id:
+                    continue
+                plugin_id = str(getattr(item, "plugin_id", "") or "").strip()
+                if plugin_id == "web_tools" or capability_id.startswith("web."):
+                    capability_ids.add(capability_id)
+            return capability_ids
+        except Exception:
+            return set()
+
+    def _has_requested_web_context_capability(self, capability_ids: list[str]) -> bool:
+        requested = {str(item or "").strip() for item in capability_ids if str(item or "").strip()}
+        if not requested:
+            return False
+        return bool(requested.intersection(self._web_context_capability_ids()))
 
     def _apply_tool_description_overrides(
         self,

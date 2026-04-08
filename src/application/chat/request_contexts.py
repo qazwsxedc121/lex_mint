@@ -34,11 +34,11 @@ class UserInputPayload:
 
 
 @dataclass(frozen=True)
-class SearchOptions:
-    """Optional web-search settings attached to one chat request."""
+class ContextCapabilitiesOptions:
+    """Optional context capability settings attached to one chat request."""
 
-    use_web_search: bool = False
-    search_query: str | None = None
+    context_capabilities: list[str] = field(default_factory=list)
+    context_capability_args: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,9 @@ class SingleChatRequestContext:
 
     scope: ConversationScope
     user_input: UserInputPayload
-    search: SearchOptions = field(default_factory=SearchOptions)
+    context_capabilities: ContextCapabilitiesOptions = field(
+        default_factory=ContextCapabilitiesOptions
+    )
     stream: StreamOptions = field(default_factory=StreamOptions)
     editor: EditorContext = field(default_factory=EditorContext)
 
@@ -78,7 +80,9 @@ class GroupChatRequestContext:
     group_assistants: list[str]
     group_mode: str = "round_robin"
     group_settings: dict[str, object] | None = None
-    search: SearchOptions = field(default_factory=SearchOptions)
+    context_capabilities: ContextCapabilitiesOptions = field(
+        default_factory=ContextCapabilitiesOptions
+    )
     stream: StreamOptions = field(default_factory=StreamOptions)
 
 
@@ -89,7 +93,9 @@ class CompareChatRequestContext:
     scope: ConversationScope
     user_input: UserInputPayload
     model_ids: list[str]
-    search: SearchOptions = field(default_factory=SearchOptions)
+    context_capabilities: ContextCapabilitiesOptions = field(
+        default_factory=ContextCapabilitiesOptions
+    )
     stream: StreamOptions = field(default_factory=StreamOptions)
 
     def to_orchestration_request(
@@ -125,7 +131,7 @@ class ToolResolutionContext:
     assistant_id: str | None
     assistant_obj: AssistantLike | None
     model_id: str
-    use_web_search: bool
+    context_capabilities: list[str] = field(default_factory=list)
     user_message: str = ""
 
 

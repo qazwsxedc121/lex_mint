@@ -211,7 +211,7 @@ async def test_stream_helpers_build_and_produce_payloads():
         skip_user_message=True,
         temporary_turn=True,
         reasoning_effort="medium",
-        use_web_search=True,
+        context_capabilities=["web.search_context"],
     )
 
     stream_fn = await chat_router._build_stream_fn(request, agent)  # type: ignore[arg-type]
