@@ -85,6 +85,74 @@ class _FakeInputService:
 
 
 @pytest.mark.asyncio
+async def test_diagnose_request_reports_attachment_count_and_tools(monkeypatch):
+    class _DiagInputService(_FakeInputService):
+        async def prepare_user_input(self, **kwargs):
+            self.calls.append(dict(kwargs))
+            return PreparedUserInput(
+                raw_user_message="hello",
+                full_message_content="hello with files",
+                attachment_metadata=[
+                    {"filename": "a.txt", "mime_type": "text/plain", "size": 10},
+                    {"filename": "b.png", "mime_type": "image/png", "size": 20},
+                ],
+                user_message_id=None,
+            )
+
+    input_service = _DiagInputService()
+    deps = SingleChatFlowDeps(
+        storage=SimpleNamespace(get_session=lambda *args, **kwargs: None),
+        chat_input_service=input_service,
+        post_turn_service=_FakePostTurnService(),
+        call_llm_stream=_fake_call_llm_stream,
+        pricing_service=_FakePricingService(),
+        file_service=None,
+        prepare_context=lambda **_kwargs: _return_async(
+            ContextPayload(
+                messages=[{"role": "assistant", "content": "history"}],
+                assistant_id="assistant-1",
+                assistant_obj=SimpleNamespace(name="General"),
+                model_id="provider:model-a",
+                system_prompt="SYSTEM",
+                assistant_params={"temperature": 0.2},
+                all_sources=[{"type": "memory"}, {"type": "rag"}],
+                max_rounds=None,
+                assistant_memory_enabled=True,
+            )
+        ),
+        build_file_context_block=lambda _refs: _return_async(""),
+    )
+    service = SingleChatFlowService(deps)
+    monkeypatch.setattr(
+        service,
+        "_resolve_tools",
+        lambda **_kwargs: _return_async(([SimpleNamespace(name="search_knowledge")], None)),
+    )
+    monkeypatch.setattr(
+        "src.application.chat.single_chat_flow_service.estimate_total_tokens",
+        lambda _messages: 10,
+    )
+
+    diagnostics = await service.diagnose_request(
+        request=SingleChatRequestContext(
+            scope=ConversationScope(session_id="s1", context_type="chat"),
+            user_input=UserInputPayload(user_message="hello"),
+        )
+    )
+
+    assert diagnostics["session_id"] == "s1"
+    assert diagnostics["assistant_name"] == "General"
+    assert diagnostics["attachment_count"] == 2
+    assert diagnostics["allowed_tool_names"] == ["search_knowledge"]
+    assert diagnostics["function_calling_enabled"] is True
+    assert diagnostics["estimated_prompt_tokens"] == 20
+    assert diagnostics["source_type_counts"] == {"memory": 1, "rag": 1}
+    assert len(input_service.calls) == 1
+    assert input_service.calls[0]["skip_user_append"] is True
+    assert input_service.calls[0]["persist_attachments"] is False
+
+
+@pytest.mark.asyncio
 async def test_single_chat_flow_streams_events_and_finalizes(monkeypatch):
     post_turn = _FakePostTurnService()
     deps = SingleChatFlowDeps(

@@ -203,6 +203,7 @@ class SingleChatPreparedInput:
 
     raw_user_message: str
     full_message_content: str
+    attachment_metadata: list[SourcePayload]
     user_message_id: str | None
 
 
@@ -263,6 +264,89 @@ class SingleChatFlowService:
                     latest_sources = sources
 
         return "".join(response_chunks), latest_sources
+
+    async def diagnose_request(
+        self,
+        *,
+        request: SingleChatRequestContext,
+    ) -> dict[str, Any]:
+        """Build a side-effect-free diagnostics snapshot for one pending single turn."""
+        prepared_input = await self._prepare_single_chat_input(
+            request=request,
+            force_skip_user_append=True,
+            persist_attachments=False,
+        )
+        prepared_context = await self._prepare_single_chat_context(
+            request=request,
+            raw_user_message=prepared_input.raw_user_message,
+            full_message_content=prepared_input.full_message_content,
+            inject_user_message=True,
+            allow_auto_compress=False,
+        )
+        llm_tools, _ = await self._resolve_tools(
+            request=ToolResolutionContext(
+                scope=request.scope,
+                editor=request.editor,
+                assistant_id=prepared_context.assistant_id,
+                assistant_obj=prepared_context.assistant_obj,
+                model_id=prepared_context.model_id,
+                context_capabilities=request.context_capabilities.context_capabilities,
+                user_message=prepared_input.raw_user_message,
+            )
+        )
+
+        messages_for_model = list(prepared_context.messages)
+        estimated_prompt_tokens = estimate_total_tokens(messages_for_model)
+        if prepared_context.system_prompt:
+            estimated_prompt_tokens += estimate_total_tokens(
+                [{"role": "system", "content": prepared_context.system_prompt}]
+            )
+        source_type_counts: dict[str, int] = {}
+        for source in prepared_context.all_sources:
+            source_type = str(source.get("type") or "unknown").strip() or "unknown"
+            source_type_counts[source_type] = source_type_counts.get(source_type, 0) + 1
+
+        tool_names = sorted(
+            {
+                str(getattr(tool, "name", "") or "").strip()
+                for tool in (llm_tools or [])
+                if str(getattr(tool, "name", "") or "").strip()
+            }
+        )
+        function_calling_enabled = bool(llm_tools)
+        return {
+            "session_id": request.scope.session_id,
+            "context_type": request.scope.context_type,
+            "project_id": request.scope.project_id,
+            "model_id": prepared_context.model_id,
+            "assistant_id": prepared_context.assistant_id,
+            "assistant_name": (
+                str(getattr(prepared_context.assistant_obj, "name", "") or "").strip()
+                if prepared_context.assistant_obj is not None
+                else None
+            ),
+            "reasoning_effort": request.stream.reasoning_effort,
+            "system_prompt": prepared_context.system_prompt,
+            "context_segments": prepared_context.context_segments,
+            "assistant_params": prepared_context.assistant_params,
+            "context_capabilities": list(request.context_capabilities.context_capabilities or []),
+            "context_capability_args": dict(
+                request.context_capabilities.context_capability_args or {}
+            ),
+            "messages_for_model": messages_for_model,
+            "draft_user_message": prepared_input.raw_user_message,
+            "full_user_message": prepared_input.full_message_content,
+            "attachment_count": len(prepared_input.attachment_metadata),
+            "file_reference_count": len(request.user_input.file_references or []),
+            "estimated_prompt_tokens": estimated_prompt_tokens,
+            "source_type_counts": source_type_counts,
+            "function_calling_enabled": function_calling_enabled,
+            "allowed_tool_names": tool_names,
+            "function_call_note": (
+                "Exact tool calls are decided by the model at inference time; "
+                "allowed_tool_names is the exact callable set for this turn."
+            ),
+        }
 
     async def process_message_stream(
         self,
@@ -419,24 +503,33 @@ class SingleChatFlowService:
         self,
         *,
         request: SingleChatRequestContext,
+        force_skip_user_append: bool | None = None,
+        persist_attachments: bool = True,
     ) -> SingleChatPreparedInput:
         user_message = request.user_input.user_message
         expanded_user_message = await self._expand_user_message_with_file_context(
             user_message=user_message,
             file_references=request.user_input.file_references,
         )
+        skip_user_append = (
+            force_skip_user_append
+            if force_skip_user_append is not None
+            else (request.stream.skip_user_append or request.stream.temporary_turn)
+        )
         prepared_input = await self.deps.chat_input_service.prepare_user_input(
             session_id=request.scope.session_id,
             raw_user_message=user_message,
             expanded_user_message=expanded_user_message,
             attachments=request.user_input.attachments,
-            skip_user_append=request.stream.skip_user_append or request.stream.temporary_turn,
+            skip_user_append=skip_user_append,
+            persist_attachments=persist_attachments,
             context_type=request.scope.context_type,
             project_id=request.scope.project_id,
         )
         return SingleChatPreparedInput(
             raw_user_message=prepared_input.raw_user_message,
             full_message_content=prepared_input.full_message_content,
+            attachment_metadata=list(prepared_input.attachment_metadata or []),
             user_message_id=prepared_input.user_message_id,
         )
 
@@ -457,6 +550,8 @@ class SingleChatFlowService:
         request: SingleChatRequestContext,
         raw_user_message: str,
         full_message_content: str,
+        inject_user_message: bool | None = None,
+        allow_auto_compress: bool = True,
     ) -> SingleChatPreparedContext:
         print("[Step 2] Loading session state...")
         logger.info("[Step 2] Loading session state")
@@ -493,10 +588,15 @@ class SingleChatFlowService:
         print(f"   Assistant: {ctx.assistant_id}, Model: {ctx.model_id}")
 
         messages = list(ctx.messages)
-        if request.stream.temporary_turn:
+        should_inject_user_message = (
+            request.stream.temporary_turn
+            if inject_user_message is None
+            else bool(inject_user_message)
+        )
+        if should_inject_user_message:
             messages.append({"role": "user", "content": full_message_content})
         compression_event: StreamEvent | None = None
-        if not request.stream.temporary_turn:
+        if not request.stream.temporary_turn and allow_auto_compress:
             messages, compression_event = await self._maybe_auto_compress(
                 session_id=request.scope.session_id,
                 model_id=ctx.model_id,

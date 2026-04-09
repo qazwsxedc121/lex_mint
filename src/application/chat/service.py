@@ -43,6 +43,7 @@ class ChatApplicationService:
 
     def __init__(self, deps: ChatApplicationDeps):
         self.storage = deps.storage
+        self._single_chat_flow_service = deps.single_chat_flow_service
         self._session_commands = deps.session_command_service or ChatSessionCommandService(
             ChatSessionCommandDeps(storage=deps.storage)
         )
@@ -327,3 +328,45 @@ class ChatApplicationService:
             project_id=project_id,
         ):
             yield event
+
+    async def diagnose_chat_context(
+        self,
+        *,
+        session_id: str,
+        user_message: str,
+        reasoning_effort: str | None = None,
+        attachments: list[SourcePayload] | None = None,
+        context_type: str = "chat",
+        project_id: str | None = None,
+        context_capabilities: list[str] | None = None,
+        context_capability_args: dict[str, dict[str, object]] | None = None,
+        file_references: list[dict[str, str]] | None = None,
+        active_file_path: str | None = None,
+        active_file_hash: str | None = None,
+    ) -> dict[str, object]:
+        request = SingleChatRequestContext(
+            scope=self._build_scope(
+                session_id=session_id,
+                context_type=context_type,
+                project_id=project_id,
+            ),
+            user_input=self._build_user_input(
+                user_message=user_message,
+                attachments=attachments,
+                file_references=file_references,
+            ),
+            context_capabilities=ContextCapabilitiesOptions(
+                context_capabilities=list(context_capabilities or []),
+                context_capability_args=dict(context_capability_args or {}),
+            ),
+            stream=StreamOptions(
+                skip_user_append=True,
+                temporary_turn=False,
+                reasoning_effort=reasoning_effort,
+            ),
+            editor=EditorContext(
+                active_file_path=active_file_path,
+                active_file_hash=active_file_hash,
+            ),
+        )
+        return await self._single_chat_flow_service.diagnose_request(request=request)

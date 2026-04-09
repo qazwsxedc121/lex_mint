@@ -118,9 +118,24 @@ const createBlockId = () => {
   return `block-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+export interface ContextDiagnosticsRequest {
+  draftMessage: string;
+  estimatedInputTokens: number;
+  attachments: UploadedFile[];
+  fileReferences: Array<{ path: string; project_id: string }>;
+  contextCapabilities: string[];
+  reasoningEffort?: string;
+  paramOverrides?: ParamOverrides;
+  compareModelIds: string[];
+  hasAttachments: boolean;
+  attachmentCount: number;
+  isTemporaryTurn: boolean;
+}
+
 interface InputBoxProps {
   onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; contextCapabilities?: string[]; contextCapabilityArgs?: Record<string, Record<string, unknown>>; fileReferences?: Array<{ path: string; project_id: string }>; temporaryTurn?: boolean }) => void;
   onShowSlashHelp?: (message: string) => void;
+  onShowContextDiagnostics?: (payload: ContextDiagnosticsRequest) => void;
   onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; contextCapabilities?: string[]; contextCapabilityArgs?: Record<string, Record<string, unknown>>; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
@@ -154,6 +169,7 @@ interface InputBoxProps {
 export const InputBox: React.FC<InputBoxProps> = ({
   onSend,
   onShowSlashHelp,
+  onShowContextDiagnostics,
   onCompare,
   onStop,
   onInsertSeparator,
@@ -612,6 +628,18 @@ export const InputBox: React.FC<InputBoxProps> = ({
     const rawMessage = messageParts.join('\n\n');
     const { temporaryTurn, strippedMessage, action } = applyOutgoingSlashCommandEffects(rawMessage);
     const message = strippedMessage;
+    const fileReferencePattern = /@\[file:(.*?)\]/g;
+    const matches = [...message.matchAll(fileReferencePattern)];
+    const fileReferences = activeProjectId
+      ? matches.map(match => ({
+          path: match[1],
+          project_id: activeProjectId
+        }))
+      : [];
+    const estimatedInputTokens = Math.max(
+      1,
+      Math.ceil((message.length + attachments.reduce((total, item) => total + item.filename.length, 0)) / 4)
+    );
 
     if (action !== 'none') {
       if (action === 'insert_separator') {
@@ -622,6 +650,20 @@ export const InputBox: React.FC<InputBoxProps> = ({
         onCompressContext?.();
       } else if (action === 'show_help') {
         onShowSlashHelp?.(buildSlashHelpMessage(t));
+      } else if (action === 'show_context_diagnostics') {
+        onShowContextDiagnostics?.({
+          draftMessage: message,
+          estimatedInputTokens,
+          attachments,
+          fileReferences,
+          contextCapabilities,
+          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+          paramOverrides,
+          compareModelIds: pendingCompareModelIds.length >= 2 ? pendingCompareModelIds : [],
+          hasAttachments: attachments.length > 0,
+          attachmentCount: attachments.length,
+          isTemporaryTurn: true,
+        });
       }
 
       setInput('');
@@ -637,16 +679,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
 
     if (message || attachments.length > 0) {
-      // Parse file references from message
-      const fileReferencePattern = /@\[file:(.*?)\]/g;
-      const matches = [...message.matchAll(fileReferencePattern)];
-      const fileReferences = activeProjectId
-        ? matches.map(match => ({
-            path: match[1],
-            project_id: activeProjectId
-          }))
-        : [];
-
       const sendOptions = {
         reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
         attachments: attachments.length > 0 ? attachments : undefined,

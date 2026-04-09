@@ -26,6 +26,19 @@ export interface ChatAPI {
   beforeSendMessage?(payload: { sessionId: string; message: string }): Promise<{ proceed: boolean; reason?: string }>;
 
   getChatInputCapabilities?(): Promise<ProjectChatCapabilityItem[]>;
+  diagnoseContext?(
+    sessionId: string,
+    message: string,
+    options?: {
+      reasoningEffort?: string;
+      attachments?: UploadedFile[];
+      contextCapabilities?: string[];
+      contextCapabilityArgs?: Record<string, Record<string, unknown>>;
+      fileReferences?: Array<{ path: string; project_id: string }>;
+      activeFilePath?: string;
+      activeFileHash?: string;
+    }
+  ): Promise<Record<string, unknown>>;
 
   // Session operations
   getSession(sessionId: string): Promise<SessionDetail>;

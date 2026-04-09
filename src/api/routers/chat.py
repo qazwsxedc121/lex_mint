@@ -81,6 +81,22 @@ class ChatResponse(BaseModel):
     sources: list[SearchSource] | None = None
 
 
+class ChatDiagnoseRequest(BaseModel):
+    """Request model for context diagnostics endpoint."""
+
+    session_id: str
+    message: str
+    attachments: list[dict[str, Any]] | None = None
+    file_references: list[dict[str, str]] | None = None
+    reasoning_effort: str | None = None
+    context_type: str = "chat"
+    project_id: str | None = None
+    active_file_path: str | None = None
+    active_file_hash: str | None = None
+    context_capabilities: list[str] = Field(default_factory=list)
+    context_capability_args: dict[str, dict[str, object]] = Field(default_factory=dict)
+
+
 class DeleteMessageRequest(BaseModel):
     """Request model for delete message endpoint."""
 
@@ -343,6 +359,39 @@ async def chat(
         print(f"❌ Agent 错误: {str(e)}")
         logger.error(f"❌ Agent 错误: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+
+
+@router.post("/chat/diagnose")
+async def diagnose_chat_context(
+    request: ChatDiagnoseRequest,
+    agent: ChatApplicationService = Depends(get_chat_application_service),
+):
+    """Diagnose the exact backend context/tool setup for one pending chat turn."""
+    if request.context_type == "project" and not request.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required for project context")
+
+    try:
+        diagnostics = await agent.diagnose_chat_context(
+            session_id=request.session_id,
+            user_message=request.message,
+            reasoning_effort=request.reasoning_effort,
+            attachments=request.attachments,
+            context_type=request.context_type,
+            project_id=request.project_id,
+            context_capabilities=request.context_capabilities,
+            context_capability_args=request.context_capability_args,
+            file_references=request.file_references,
+            active_file_path=request.active_file_path,
+            active_file_hash=request.active_file_hash,
+        )
+        return diagnostics
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Diagnose chat context error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Diagnose error: {str(e)}")
 
 
 @router.post("/chat/stream")

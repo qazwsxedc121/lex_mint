@@ -39,6 +39,21 @@ export const createProjectChatAPI = (projectId: string, options?: ProjectChatAPI
       const catalog = await api.getToolCatalog();
       return Array.isArray(catalog.chat_capabilities) ? catalog.chat_capabilities : [];
     },
+    diagnoseContext: async (sessionId, message, diagnoseOptions) => {
+      const activeContext = preparedActiveContext || options?.getActiveDocumentContext?.() || {};
+      preparedActiveContext = null;
+      return api.diagnoseChatContext(sessionId, message, {
+        reasoningEffort: diagnoseOptions?.reasoningEffort,
+        attachments: diagnoseOptions?.attachments,
+        contextCapabilities: diagnoseOptions?.contextCapabilities,
+        contextCapabilityArgs: diagnoseOptions?.contextCapabilityArgs,
+        contextType,
+        projectId,
+        fileReferences: diagnoseOptions?.fileReferences,
+        activeFilePath: activeContext.activeFilePath || diagnoseOptions?.activeFilePath,
+        activeFileHash: activeContext.activeFileHash || diagnoseOptions?.activeFileHash,
+      }) as unknown as Record<string, unknown>;
+    },
     beforeSendMessage: async () => {
       if (!options?.beforeSendMessage) {
         preparedActiveContext = null;

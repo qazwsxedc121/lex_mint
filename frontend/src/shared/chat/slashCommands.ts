@@ -12,7 +12,7 @@ interface SlashCommandDefinition {
   descriptionKey: string;
 }
 
-export type SlashCommandAction = 'none' | 'insert_separator' | 'clear_all' | 'compress_context' | 'show_help';
+export type SlashCommandAction = 'none' | 'insert_separator' | 'clear_all' | 'compress_context' | 'show_help' | 'show_context_diagnostics';
 
 const SLASH_COMMAND_DEFINITIONS: SlashCommandDefinition[] = [
   {
@@ -51,6 +51,12 @@ const SLASH_COMMAND_DEFINITIONS: SlashCommandDefinition[] = [
     labelKey: 'input.slashCommandHelpLabel',
     descriptionKey: 'input.slashCommandHelpDescription',
   },
+  {
+    id: 'context',
+    trigger: 'context',
+    labelKey: 'input.slashCommandContextLabel',
+    descriptionKey: 'input.slashCommandContextDescription',
+  },
 ];
 
 const BTW_COMMAND_PREFIX = /^\/btw(?:\s+|$)/i;
@@ -59,6 +65,7 @@ const RESET_COMMAND_PREFIX = /^\/reset(?:\s+|$)/i;
 const NEW_COMMAND_PREFIX = /^\/new(?:\s+|$)/i;
 const COMPACT_COMMAND_PREFIX = /^\/compact(?:\s+|$)/i;
 const HELP_COMMAND_PREFIX = /^\/help(?:\s+|$)/i;
+const CONTEXT_COMMAND_PREFIX = /^\/context(?:\s+|$)/i;
 
 export function buildSlashCommandSuggestions(
   query: string,
@@ -91,6 +98,14 @@ export function applyOutgoingSlashCommandEffects(message: string): {
       temporaryTurn: true,
       strippedMessage: '',
       action: 'show_help',
+    };
+  }
+
+  if (CONTEXT_COMMAND_PREFIX.test(message)) {
+    return {
+      temporaryTurn: true,
+      strippedMessage: message.replace(/^\/context\b/i, '').trimStart(),
+      action: 'show_context_diagnostics',
     };
   }
 
@@ -133,6 +148,7 @@ export function applyOutgoingSlashCommandEffects(message: string): {
 export function buildSlashHelpMessage(t: (key: string) => string): string {
   const commandLines = [
     { usage: '/help', descriptionKey: 'input.slashCommandHelpDescription' },
+    { usage: '/context [message]', descriptionKey: 'input.slashCommandContextDescription' },
     { usage: '/clear', descriptionKey: 'input.slashCommandClearDescription' },
     { usage: '/reset', descriptionKey: 'input.slashCommandResetDescription' },
     { usage: '/new', descriptionKey: 'input.slashCommandNewDescription' },

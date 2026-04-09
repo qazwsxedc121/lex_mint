@@ -6,7 +6,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MessageList } from './MessageList';
-import { InputBox } from './InputBox';
+import { InputBox, type ContextDiagnosticsRequest } from './InputBox';
 import { AssistantSelector } from './AssistantSelector';
 import { FollowupChips } from './FollowupChips';
 import { ContextUsageBar } from './ContextUsageBar';
@@ -51,6 +51,17 @@ function extractErrorDetail(error: unknown): string | null {
     }
   }
   return typeof payload.message === 'string' && payload.message.trim() ? payload.message : null;
+}
+
+function summarizeSystemPrompt(prompt: string | undefined): string {
+  const value = (prompt || '').trim();
+  if (!value) {
+    return '_None_';
+  }
+  if (value.length <= 1200) {
+    return `\`\`\`text\n${value}\n\`\`\``;
+  }
+  return `\`\`\`text\n${value.slice(0, 1200)}\n... (truncated)\n\`\`\``;
 }
 
 export interface ChatViewProps {
@@ -272,6 +283,69 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const handleShowSlashHelp = (helpMessage: string) => {
     addTemporaryAssistantMessage(helpMessage);
+  };
+
+  const handleShowContextDiagnostics = async (payload: ContextDiagnosticsRequest) => {
+    if (!currentSessionId) {
+      return;
+    }
+    if (!api.diagnoseContext) {
+      addTemporaryAssistantMessage('Context diagnostics is not supported by current API implementation.');
+      return;
+    }
+    try {
+      const raw = await api.diagnoseContext(currentSessionId, payload.draftMessage, {
+        reasoningEffort: payload.reasoningEffort,
+        attachments: payload.attachments,
+        contextCapabilities: payload.contextCapabilities,
+        fileReferences: payload.fileReferences,
+      });
+      const diagnostics = raw as Record<string, unknown>;
+      const modelId = String(diagnostics.model_id || '');
+      const assistantId = String(diagnostics.assistant_id || '');
+      const assistantName = String(diagnostics.assistant_name || '');
+      const functionCallingEnabled = diagnostics.function_calling_enabled === true;
+      const allowedToolNames = Array.isArray(diagnostics.allowed_tool_names)
+        ? diagnostics.allowed_tool_names.map((item) => String(item))
+        : [];
+      const sourceTypeCounts = diagnostics.source_type_counts as Record<string, number> | undefined;
+      const contextCaps = Array.isArray(diagnostics.context_capabilities)
+        ? diagnostics.context_capabilities.map((item) => String(item))
+        : [];
+      const systemPrompt = typeof diagnostics.system_prompt === 'string' ? diagnostics.system_prompt : '';
+      const messagesForModel = Array.isArray(diagnostics.messages_for_model)
+        ? diagnostics.messages_for_model as Array<{ role?: string; content?: string }>
+        : [];
+      const messagePreview = messagesForModel.length > 0
+        ? messagesForModel
+            .map((msg) => `[${msg.role || 'unknown'}]\n${msg.content || ''}`)
+            .join('\n\n')
+        : payload.draftMessage;
+      const diagnosticsText = [
+        `### ${t('input.contextDiagTitle')}`,
+        '',
+        `- Model: \`${modelId || 'unknown'}\``,
+        `- Assistant: ${assistantName || '_none_'}${assistantId ? ` (\`${assistantId}\`)` : ''}`,
+        `- Estimated prompt tokens: ${String(diagnostics.estimated_prompt_tokens ?? 'unknown')}`,
+        `- Context capabilities: ${contextCaps.length > 0 ? contextCaps.map((item) => `\`${item}\``).join(', ') : '_none_'}`,
+        `- File references: ${String(diagnostics.file_reference_count ?? 0)}`,
+        `- Attachments: ${String(diagnostics.attachment_count ?? 0)}`,
+        `- Function calling enabled: ${functionCallingEnabled ? 'yes' : 'no'}`,
+        `- Allowed tools this turn: ${allowedToolNames.length > 0 ? allowedToolNames.map((name) => `\`${name}\``).join(', ') : '_none_'}`,
+        `- Sources by type: ${sourceTypeCounts && Object.keys(sourceTypeCounts).length > 0 ? Object.entries(sourceTypeCounts).map(([k, v]) => `\`${k}\`=${v}`).join(', ') : '_none_'}`,
+        `- Note: ${String(diagnostics.function_call_note || 'Exact function calls are determined by model inference.')}`,
+        '',
+        '#### System prompt',
+        summarizeSystemPrompt(systemPrompt),
+        '',
+        '#### Messages for model (exact current payload)',
+        messagePreview.trim() ? `\`\`\`text\n${messagePreview}\n\`\`\`` : `_${t('input.contextDiagNoMessage')}_`,
+      ].join('\n');
+      addTemporaryAssistantMessage(diagnosticsText);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      addTemporaryAssistantMessage(`Context diagnostics failed: ${msg}`);
+    }
   };
 
   const handleGenerateFollowups = async () => {
@@ -631,7 +705,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     });
     return map;
   }, [enabledModels]);
-
   useEffect(() => {
     setIsTimelineCollapsed(true);
   }, [currentSessionId]);
@@ -990,6 +1063,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       <InputBox
         onSend={handleSendMessage}
         onShowSlashHelp={handleShowSlashHelp}
+        onShowContextDiagnostics={handleShowContextDiagnostics}
         onCompare={handleCompare}
         onStop={stopGeneration}
         onInsertSeparator={handleInsertSeparator}

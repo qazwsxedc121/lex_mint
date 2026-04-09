@@ -23,6 +23,27 @@ class _FakeChatService:
         if kwargs.get("message_id") == "boom":
             raise RuntimeError("boom")
 
+    async def diagnose_chat_context(self, **kwargs):
+        self.calls.append(("diagnose_chat_context", kwargs))
+        if kwargs.get("session_id") == "missing":
+            raise FileNotFoundError()
+        if kwargs.get("session_id") == "bad":
+            raise ValueError("bad diagnose request")
+        if kwargs.get("session_id") == "boom":
+            raise RuntimeError("boom")
+        return {
+            "session_id": kwargs.get("session_id"),
+            "context_type": kwargs.get("context_type"),
+            "project_id": kwargs.get("project_id"),
+            "model_id": "openai:gpt-4o-mini",
+            "assistant_id": "assistant-1",
+            "system_prompt": "SYSTEM",
+            "messages_for_model": [{"role": "user", "content": kwargs.get("user_message", "")}],
+            "allowed_tool_names": ["search_knowledge"],
+            "estimated_prompt_tokens": 123,
+            "function_calling_enabled": True,
+        }
+
 
 def _build_client(fake_chat_service: _FakeChatService) -> TestClient:
     app = FastAPI()
@@ -117,3 +138,83 @@ def test_delete_message_contract_requires_project_id_for_project_context():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "project_id is required for project context"
+
+
+def test_diagnose_chat_context_contract_uses_chat_route():
+    fake_chat_service = _FakeChatService()
+    client = _build_client(fake_chat_service)
+
+    response = client.post(
+        "/api/chat/diagnose",
+        json={
+            "session_id": "s1",
+            "message": "hello",
+            "context_type": "chat",
+            "context_capabilities": ["web.search"],
+            "reasoning_effort": "medium",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "s1"
+    assert payload["context_type"] == "chat"
+    assert payload["estimated_prompt_tokens"] == 123
+    assert payload["allowed_tool_names"] == ["search_knowledge"]
+    assert fake_chat_service.calls[-1] == (
+        "diagnose_chat_context",
+        {
+            "session_id": "s1",
+            "user_message": "hello",
+            "reasoning_effort": "medium",
+            "attachments": None,
+            "context_type": "chat",
+            "project_id": None,
+            "context_capabilities": ["web.search"],
+            "context_capability_args": {},
+            "file_references": None,
+            "active_file_path": None,
+            "active_file_hash": None,
+        },
+    )
+
+
+def test_diagnose_chat_context_requires_project_id_for_project_context():
+    fake_chat_service = _FakeChatService()
+    client = _build_client(fake_chat_service)
+
+    response = client.post(
+        "/api/chat/diagnose",
+        json={
+            "session_id": "s1",
+            "message": "hello",
+            "context_type": "project",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "project_id is required for project context"
+
+
+@pytest.mark.parametrize(
+    ("session_id", "expected_status"),
+    [
+        ("missing", 404),
+        ("bad", 400),
+        ("boom", 500),
+    ],
+)
+def test_diagnose_chat_context_contract_error_status_mapping(session_id: str, expected_status: int):
+    fake_chat_service = _FakeChatService()
+    client = _build_client(fake_chat_service)
+
+    response = client.post(
+        "/api/chat/diagnose",
+        json={
+            "session_id": session_id,
+            "message": "hello",
+            "context_type": "chat",
+        },
+    )
+
+    assert response.status_code == expected_status

@@ -44,6 +44,12 @@ class SingleChatFlowServiceLike(Protocol):
         request: SingleChatRequestContext,
     ) -> AsyncIterator[StreamItem]: ...
 
+    async def diagnose_request(
+        self,
+        *,
+        request: SingleChatRequestContext,
+    ) -> dict[str, object]: ...
+
 
 class CompareFlowServiceLike(Protocol):
     """Minimal compare-chat flow interface consumed by gateway routes."""

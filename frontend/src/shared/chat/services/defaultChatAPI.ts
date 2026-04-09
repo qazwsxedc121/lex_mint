@@ -11,6 +11,18 @@ export const defaultChatAPI: ChatAPI = {
     const catalog = await api.getToolCatalog();
     return Array.isArray(catalog.chat_capabilities) ? catalog.chat_capabilities : [];
   },
+  diagnoseContext: async (sessionId, message, options) => {
+    return api.diagnoseChatContext(sessionId, message, {
+      reasoningEffort: options?.reasoningEffort,
+      attachments: options?.attachments,
+      contextCapabilities: options?.contextCapabilities,
+      contextCapabilityArgs: options?.contextCapabilityArgs,
+      contextType: 'chat',
+      fileReferences: options?.fileReferences,
+      activeFilePath: options?.activeFilePath,
+      activeFileHash: options?.activeFileHash,
+    }) as unknown as Record<string, unknown>;
+  },
   // Session operations
   getSession: api.getSession,
   createSession: (modelId?: string, assistantId?: string, temporary?: boolean, targetType?: 'assistant' | 'model') =>

@@ -33,6 +33,7 @@ class ChatInputService:
         expanded_user_message: str,
         attachments: list[SourcePayload] | None,
         skip_user_append: bool,
+        persist_attachments: bool = True,
         context_type: str,
         project_id: str | None,
     ) -> PreparedUserInput:
@@ -69,12 +70,13 @@ class ChatInputService:
                         f"\n\n[File {idx + 1}: {filename}]\n{content}\n[End of file]"
                     )
 
-                await self.file_service.move_to_permanent(
-                    session_id,
-                    message_index,
-                    temp_path,
-                    filename,
-                )
+                if persist_attachments:
+                    await self.file_service.move_to_permanent(
+                        session_id,
+                        message_index,
+                        temp_path,
+                        filename,
+                    )
 
         user_message_id: str | None = None
         if not skip_user_append:

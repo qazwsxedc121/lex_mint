@@ -241,6 +241,45 @@ interface CompareStreamRequestBody {
   file_references?: FileReferenceInput[];
 }
 
+interface ChatDiagnoseRequestBody {
+  session_id: string;
+  message: string;
+  context_type: string;
+  reasoning_effort?: string;
+  project_id?: string;
+  context_capabilities?: string[];
+  context_capability_args?: Record<string, Record<string, unknown>>;
+  attachments?: UploadedFilePayload[];
+  file_references?: FileReferenceInput[];
+  active_file_path?: string;
+  active_file_hash?: string;
+}
+
+export interface ChatContextDiagnostics {
+  session_id: string;
+  context_type: string;
+  project_id?: string | null;
+  model_id?: string;
+  assistant_id?: string | null;
+  assistant_name?: string | null;
+  reasoning_effort?: string | null;
+  system_prompt?: string | null;
+  context_segments?: Record<string, string | null>;
+  assistant_params?: Record<string, unknown>;
+  context_capabilities?: string[];
+  context_capability_args?: Record<string, Record<string, unknown>>;
+  messages_for_model?: Array<{ role?: string; content?: string }>;
+  draft_user_message?: string;
+  full_user_message?: string;
+  attachment_count?: number;
+  file_reference_count?: number;
+  estimated_prompt_tokens?: number;
+  source_type_counts?: Record<string, number>;
+  function_calling_enabled?: boolean;
+  allowed_tool_names?: string[];
+  function_call_note?: string;
+}
+
 interface CompareStreamCallbacks {
   onModelChunk: (modelId: string, chunk: string) => void;
   onModelStart: (modelId: string, modelName: string) => void;
@@ -662,6 +701,55 @@ export async function sendMessage(
     context_capabilities: contextCapabilities || [],
   } as ChatRequest);
   return response.data.response;
+}
+
+export async function diagnoseChatContext(
+  sessionId: string,
+  message: string,
+  options?: {
+    reasoningEffort?: string;
+    attachments?: UploadedFile[];
+    contextCapabilities?: string[];
+    contextCapabilityArgs?: Record<string, Record<string, unknown>>;
+    contextType?: string;
+    projectId?: string;
+    fileReferences?: FileReferenceInput[];
+    activeFilePath?: string;
+    activeFileHash?: string;
+  }
+): Promise<ChatContextDiagnostics> {
+  const requestBody: ChatDiagnoseRequestBody = {
+    session_id: sessionId,
+    message,
+    context_type: options?.contextType || 'chat',
+  };
+  if (options?.reasoningEffort) {
+    requestBody.reasoning_effort = options.reasoningEffort;
+  }
+  if (options?.projectId) {
+    requestBody.project_id = options.projectId;
+  }
+  if (options?.contextCapabilities && options.contextCapabilities.length > 0) {
+    requestBody.context_capabilities = options.contextCapabilities;
+  }
+  if (options?.contextCapabilityArgs && Object.keys(options.contextCapabilityArgs).length > 0) {
+    requestBody.context_capability_args = options.contextCapabilityArgs;
+  }
+  if (options?.attachments && options.attachments.length > 0) {
+    requestBody.attachments = toUploadedFilePayload(options.attachments);
+  }
+  if (options?.fileReferences && options.fileReferences.length > 0) {
+    requestBody.file_references = options.fileReferences;
+  }
+  if (options?.activeFilePath) {
+    requestBody.active_file_path = options.activeFilePath;
+  }
+  if (options?.activeFileHash) {
+    requestBody.active_file_hash = options.activeFileHash;
+  }
+
+  const response = await api.post<ChatContextDiagnostics>('/api/chat/diagnose', requestBody);
+  return response.data;
 }
 
 export async function submitChatToolResult(
