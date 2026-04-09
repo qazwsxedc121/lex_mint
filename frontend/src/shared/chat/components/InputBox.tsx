@@ -71,6 +71,7 @@ const TRANSLATION_TARGET_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'German', label: 'German' },
   { value: 'Spanish', label: 'Spanish' },
 ];
+const FILE_REFERENCE_PATTERN = /@\[file:(.*?)\]/g;
 
 // Brain icon color by reasoning level
 const getReasoningIconColor = (effort: string): string => {
@@ -166,6 +167,56 @@ interface InputBoxProps {
   onParamOverridesChange?: (overrides: ParamOverrides) => void;
 }
 
+type SlashAction = ReturnType<typeof applyOutgoingSlashCommandEffects>['action'];
+
+interface RunSlashActionOptions {
+  action: SlashAction;
+  onInsertSeparator?: () => void;
+  onClearAllMessages?: () => void;
+  onCompressContext?: () => void;
+  onShowSlashHelp?: (message: string) => void;
+  onShowContextDiagnostics?: (payload: ContextDiagnosticsRequest) => void;
+  helpMessage: string;
+  contextDiagnosticsPayload: ContextDiagnosticsRequest;
+}
+
+const runSlashAction = ({
+  action,
+  onInsertSeparator,
+  onClearAllMessages,
+  onCompressContext,
+  onShowSlashHelp,
+  onShowContextDiagnostics,
+  helpMessage,
+  contextDiagnosticsPayload,
+}: RunSlashActionOptions): boolean => {
+  switch (action) {
+    case 'insert_separator':
+      onInsertSeparator?.();
+      return true;
+    case 'clear_all':
+      onClearAllMessages?.();
+      return true;
+    case 'compress_context':
+      onCompressContext?.();
+      return true;
+    case 'show_help':
+      onShowSlashHelp?.(helpMessage);
+      return true;
+    case 'show_context_diagnostics':
+      onShowContextDiagnostics?.(contextDiagnosticsPayload);
+      return true;
+    default:
+      return false;
+  }
+};
+
+const estimateInputTokens = (message: string, attachments: UploadedFile[]): number =>
+  Math.max(
+    1,
+    Math.ceil((message.length + attachments.reduce((total, item) => total + item.filename.length, 0)) / 4)
+  );
+
 export const InputBox: React.FC<InputBoxProps> = ({
   onSend,
   onShowSlashHelp,
@@ -208,19 +259,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showTranslateInputMenu, setShowTranslateInputMenu] = useState(false);
   const [selectedInputTranslateTarget, setSelectedInputTranslateTarget] = useState('auto');
   const [pendingCompareModelIds, setPendingCompareModelIds] = useState<string[]>([]);
-
   // File reference state
   const [atFileCommand, setAtFileCommand] = useState<AtFileMatch | null>(null);
   const [fileMenuIndex, setFileMenuIndex] = useState(0);
   const location = useLocation();
   const { currentProjectId, getCurrentFile } = useProjectWorkspaceStore();
   const isProjectRoute = location.pathname.startsWith('/projects/');
-  const routeProjectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
-  const routeProjectId = routeProjectMatch ? routeProjectMatch[1] : null;
+  const routeProjectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
   const activeProjectId = isProjectRoute ? (routeProjectId || currentProjectId) : null;
   const currentFile = activeProjectId ? getCurrentFile(activeProjectId) : null;
-  const { results: fileSearchResults, setQuery: setFileQuery, loading: fileSearchLoading } = useFileSearch(activeProjectId, currentFile);
-
+  const { results: fileSearchResults, setQuery: setFileQuery, loading: fileSearchLoading } =
+    useFileSearch(activeProjectId, currentFile);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const translateInputMenuRef = useRef<HTMLDivElement>(null);
@@ -628,44 +677,38 @@ export const InputBox: React.FC<InputBoxProps> = ({
     const rawMessage = messageParts.join('\n\n');
     const { temporaryTurn, strippedMessage, action } = applyOutgoingSlashCommandEffects(rawMessage);
     const message = strippedMessage;
-    const fileReferencePattern = /@\[file:(.*?)\]/g;
-    const matches = [...message.matchAll(fileReferencePattern)];
+    const matches = [...message.matchAll(FILE_REFERENCE_PATTERN)];
     const fileReferences = activeProjectId
       ? matches.map(match => ({
           path: match[1],
           project_id: activeProjectId
         }))
       : [];
-    const estimatedInputTokens = Math.max(
-      1,
-      Math.ceil((message.length + attachments.reduce((total, item) => total + item.filename.length, 0)) / 4)
-    );
+    const estimatedInputTokens = estimateInputTokens(message, attachments);
 
-    if (action !== 'none') {
-      if (action === 'insert_separator') {
-        onInsertSeparator?.();
-      } else if (action === 'clear_all') {
-        onClearAllMessages?.();
-      } else if (action === 'compress_context') {
-        onCompressContext?.();
-      } else if (action === 'show_help') {
-        onShowSlashHelp?.(buildSlashHelpMessage(t));
-      } else if (action === 'show_context_diagnostics') {
-        onShowContextDiagnostics?.({
-          draftMessage: message,
-          estimatedInputTokens,
-          attachments,
-          fileReferences,
-          contextCapabilities,
-          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-          paramOverrides,
-          compareModelIds: pendingCompareModelIds.length >= 2 ? pendingCompareModelIds : [],
-          hasAttachments: attachments.length > 0,
-          attachmentCount: attachments.length,
-          isTemporaryTurn: true,
-        });
-      }
-
+    const slashHandled = runSlashAction({
+      action,
+      onInsertSeparator,
+      onClearAllMessages,
+      onCompressContext,
+      onShowSlashHelp,
+      onShowContextDiagnostics,
+      helpMessage: buildSlashHelpMessage(t),
+      contextDiagnosticsPayload: {
+        draftMessage: message,
+        estimatedInputTokens,
+        attachments,
+        fileReferences,
+        contextCapabilities,
+        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+        paramOverrides,
+        compareModelIds: pendingCompareModelIds.length >= 2 ? pendingCompareModelIds : [],
+        hasAttachments: attachments.length > 0,
+        attachmentCount: attachments.length,
+        isTemporaryTurn: true,
+      },
+    });
+    if (slashHandled) {
       setInput('');
       resetTemplateComposer();
       clearSlashCommand();
