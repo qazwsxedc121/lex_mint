@@ -12,7 +12,7 @@ interface SlashCommandDefinition {
   descriptionKey: string;
 }
 
-export type SlashCommandAction = 'none' | 'insert_separator' | 'clear_all' | 'compress_context';
+export type SlashCommandAction = 'none' | 'insert_separator' | 'clear_all' | 'compress_context' | 'show_help';
 
 const SLASH_COMMAND_DEFINITIONS: SlashCommandDefinition[] = [
   {
@@ -45,6 +45,12 @@ const SLASH_COMMAND_DEFINITIONS: SlashCommandDefinition[] = [
     labelKey: 'input.slashCommandBtwLabel',
     descriptionKey: 'input.slashCommandBtwDescription',
   },
+  {
+    id: 'help',
+    trigger: 'help',
+    labelKey: 'input.slashCommandHelpLabel',
+    descriptionKey: 'input.slashCommandHelpDescription',
+  },
 ];
 
 const BTW_COMMAND_PREFIX = /^\/btw(?:\s+|$)/i;
@@ -52,6 +58,7 @@ const CLEAR_COMMAND_PREFIX = /^\/clear(?:\s+|$)/i;
 const RESET_COMMAND_PREFIX = /^\/reset(?:\s+|$)/i;
 const NEW_COMMAND_PREFIX = /^\/new(?:\s+|$)/i;
 const COMPACT_COMMAND_PREFIX = /^\/compact(?:\s+|$)/i;
+const HELP_COMMAND_PREFIX = /^\/help(?:\s+|$)/i;
 
 export function buildSlashCommandSuggestions(
   query: string,
@@ -79,6 +86,14 @@ export function applyOutgoingSlashCommandEffects(message: string): {
   strippedMessage: string;
   action: SlashCommandAction;
 } {
+  if (HELP_COMMAND_PREFIX.test(message)) {
+    return {
+      temporaryTurn: true,
+      strippedMessage: '',
+      action: 'show_help',
+    };
+  }
+
   if (COMPACT_COMMAND_PREFIX.test(message)) {
     return {
       temporaryTurn: false,
@@ -113,4 +128,19 @@ export function applyOutgoingSlashCommandEffects(message: string): {
 
   const stripped = message.replace(/^\/btw\b/i, '').trimStart();
   return { temporaryTurn: true, strippedMessage: stripped, action: 'none' };
+}
+
+export function buildSlashHelpMessage(t: (key: string) => string): string {
+  const commandLines = [
+    { usage: '/help', descriptionKey: 'input.slashCommandHelpDescription' },
+    { usage: '/clear', descriptionKey: 'input.slashCommandClearDescription' },
+    { usage: '/reset', descriptionKey: 'input.slashCommandResetDescription' },
+    { usage: '/new', descriptionKey: 'input.slashCommandNewDescription' },
+    { usage: '/compact', descriptionKey: 'input.slashCommandCompactDescription' },
+    { usage: '/btw <message>', descriptionKey: 'input.slashCommandBtwDescription' },
+  ];
+  const renderedLines = commandLines.map((item) => (
+    `- \`${item.usage}\`: ${t(item.descriptionKey)}`
+  ));
+  return `### ${t('input.slashHelpTitle')}\n\n${renderedLines.join('\n')}`;
 }

@@ -119,6 +119,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     deleteMessage,
     insertSeparator,
     clearAllMessages,
+    addTemporaryAssistantMessage,
     compressContext,
     stopGeneration,
     updateTarget,
@@ -267,6 +268,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
 
   const handleCompressContext = () => {
     compressContext();
+  };
+
+  const handleShowSlashHelp = (helpMessage: string) => {
+    addTemporaryAssistantMessage(helpMessage);
   };
 
   const handleGenerateFollowups = async () => {
@@ -984,6 +989,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
       {/* Input with toolbar */}
       <InputBox
         onSend={handleSendMessage}
+        onShowSlashHelp={handleShowSlashHelp}
         onCompare={handleCompare}
         onStop={stopGeneration}
         onInsertSeparator={handleInsertSeparator}

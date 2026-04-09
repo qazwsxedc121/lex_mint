@@ -29,6 +29,7 @@ import type { ReasoningControls } from '../../../types/model';
 import { usePromptTemplateComposer } from '../hooks/usePromptTemplateComposer';
 import {
   applyOutgoingSlashCommandEffects,
+  buildSlashHelpMessage,
   buildSlashCommandSuggestions,
   type SlashCommandSuggestion,
 } from '../slashCommands';
@@ -119,6 +120,7 @@ const createBlockId = () => {
 
 interface InputBoxProps {
   onSend: (message: string, options?: { reasoningEffort?: string; attachments?: UploadedFile[]; contextCapabilities?: string[]; contextCapabilityArgs?: Record<string, Record<string, unknown>>; fileReferences?: Array<{ path: string; project_id: string }>; temporaryTurn?: boolean }) => void;
+  onShowSlashHelp?: (message: string) => void;
   onCompare?: (message: string, modelIds: string[], options?: { reasoningEffort?: string; attachments?: UploadedFile[]; contextCapabilities?: string[]; contextCapabilityArgs?: Record<string, Record<string, unknown>>; fileReferences?: Array<{ path: string; project_id: string }> }) => void;
   onStop?: () => void;
   onInsertSeparator?: () => void;
@@ -151,6 +153,7 @@ interface InputBoxProps {
 
 export const InputBox: React.FC<InputBoxProps> = ({
   onSend,
+  onShowSlashHelp,
   onCompare,
   onStop,
   onInsertSeparator,
@@ -313,6 +316,20 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
     return buildSlashCommandSuggestions(slashCommand.query, t);
   }, [slashCommand, t]);
+  const isExactSlashCommandReadyToSend = useMemo(() => {
+    if (!slashCommand) {
+      return false;
+    }
+    const query = slashCommand.query.trim().toLowerCase();
+    if (!query) {
+      return false;
+    }
+    const exactCommand = slashCommandSuggestions.find((command) => command.trigger === query);
+    if (!exactCommand) {
+      return false;
+    }
+    return input.trim() === `/${exactCommand.trigger}`;
+  }, [input, slashCommand, slashCommandSuggestions]);
 
   const slashSuggestionCount = slashCommandSuggestions.length + slashMatchedTemplates.length;
   const activeSlashIndex = slashSuggestionCount > 0 ? Math.min(slashMenuIndex, slashSuggestionCount - 1) : 0;
@@ -603,6 +620,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
         onClearAllMessages?.();
       } else if (action === 'compress_context') {
         onCompressContext?.();
+      } else if (action === 'show_help') {
+        onShowSlashHelp?.(buildSlashHelpMessage(t));
       }
 
       setInput('');
@@ -698,6 +717,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
       }
 
       if (e.key === 'Enter' && !e.shiftKey) {
+        if (isExactSlashCommandReadyToSend) {
+          e.preventDefault();
+          if (!isStreaming) {
+            handleSend();
+          }
+          return;
+        }
+
         if (slashSuggestionCount > 0) {
           e.preventDefault();
           if (activeSlashIndex < slashCommandSuggestions.length) {

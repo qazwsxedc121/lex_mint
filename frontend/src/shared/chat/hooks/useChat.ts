@@ -1531,6 +1531,20 @@ export function useChat(sessionId: string | null) {
     }
   };
 
+  const addTemporaryAssistantMessage = (content: string) => {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return;
+    }
+    const message: Message = {
+      role: 'assistant',
+      content: trimmed,
+      created_at: nowTimestamp(),
+      ephemeral: true,
+    };
+    setMessages((prev) => [...prev, message]);
+  };
+
   const updateModelId = (modelId: string) => {
     setCurrentModelId(modelId);
     setCurrentAssistantId(null);
@@ -1638,6 +1652,7 @@ export function useChat(sessionId: string | null) {
     deleteMessage,
     insertSeparator,
     clearAllMessages,
+    addTemporaryAssistantMessage,
     compressContext,
     stopGeneration,
     updateModelId,
