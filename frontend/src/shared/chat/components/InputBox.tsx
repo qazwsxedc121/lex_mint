@@ -593,8 +593,29 @@ export const InputBox: React.FC<InputBoxProps> = ({
     const blocksMessage = buildBlocksMessage();
     const messageParts = [blocksMessage, input.trim()].filter(Boolean);
     const rawMessage = messageParts.join('\n\n');
-    const { temporaryTurn, strippedMessage } = applyOutgoingSlashCommandEffects(rawMessage);
+    const { temporaryTurn, strippedMessage, action } = applyOutgoingSlashCommandEffects(rawMessage);
     const message = strippedMessage;
+
+    if (action !== 'none') {
+      if (action === 'insert_separator') {
+        onInsertSeparator?.();
+      } else if (action === 'clear_all') {
+        onClearAllMessages?.();
+      } else if (action === 'compress_context') {
+        onCompressContext?.();
+      }
+
+      setInput('');
+      resetTemplateComposer();
+      clearSlashCommand();
+      setAtFileCommand(null);
+      setAttachments([]);
+      setBlocks([]);
+      if (pendingCompareModelIds.length >= 2) {
+        setPendingCompareModelIds([]);
+      }
+      return;
+    }
 
     if (message || attachments.length > 0) {
       // Parse file references from message

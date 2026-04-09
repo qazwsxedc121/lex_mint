@@ -17,3 +17,6 @@
 *.woff2 binary
 *.ttf binary
 *.eot binary
+
+# Keep pyodide lock payload byte-stable (avoid line-ending normalization churn)
+frontend/public/pyodide/pyodide-lock.json -text
