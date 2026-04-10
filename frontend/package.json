@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "prepare:pyodide": "node ../scripts/prepare_pyodide_assets.mjs",
+    "prepare:pyodide:sync-lock": "node ../scripts/prepare_pyodide_assets.mjs --sync-lock",
     "predev": "node ../scripts/run_workflow_schema_generation.mjs && npm run prepare:pyodide",
     "dev": "vite",
     "prebuild": "node ../scripts/run_workflow_schema_generation.mjs && npm run prepare:pyodide",

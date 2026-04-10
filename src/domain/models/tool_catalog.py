@@ -42,6 +42,13 @@ class ToolCatalogGroup(BaseModel):
 class ChatCapabilityItem(BaseModel):
     """One plugin-declared chat input capability."""
 
+    class OptionItem(BaseModel):
+        value: str = Field(..., description="Stable option value sent to backend args")
+        label_i18n_key: str = Field(..., description="Frontend i18n key for option label")
+        description_i18n_key: str | None = Field(
+            default=None, description="Optional frontend i18n key for option description"
+        )
+
     id: str = Field(..., description="Stable capability id used in chat requests")
     plugin_id: str = Field(..., description="Owning plugin id")
     plugin_name: str | None = Field(default=None, description="Owning plugin display name")
@@ -51,6 +58,18 @@ class ChatCapabilityItem(BaseModel):
         ..., description="Frontend i18n key for capability description"
     )
     icon: str | None = Field(default=None, description="Optional icon key for chat input button")
+    control_type: str = Field(
+        default="toggle", description="Input control type for this capability: toggle or select"
+    )
+    arg_key: str = Field(
+        default="value", description="Argument key used when sending selected control value"
+    )
+    options: list[OptionItem] = Field(
+        default_factory=list, description="Selectable options for select controls"
+    )
+    default_value: str | None = Field(
+        default=None, description="Default selected value for select controls"
+    )
     order: int = Field(default=1000, description="Display order for chat input capability toggles")
     default_enabled: bool = Field(
         default=False, description="Whether capability should be enabled by default in input"

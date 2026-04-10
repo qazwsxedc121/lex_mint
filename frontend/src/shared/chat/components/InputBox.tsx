@@ -118,6 +118,7 @@ export interface ContextDiagnosticsRequest {
   attachments: UploadedFile[];
   fileReferences: Array<{ path: string; project_id: string }>;
   contextCapabilities: string[];
+  contextCapabilityArgs: Record<string, Record<string, unknown>>;
   reasoningEffort?: string;
   paramOverrides?: ParamOverrides;
   compareModelIds: string[];
@@ -147,11 +148,26 @@ interface InputBoxProps {
   supportsVision?: boolean;
   contextCapabilities?: string[];
   onContextCapabilitiesChange?: (capabilityIds: string[]) => void;
+  contextCapabilityArgs?: Record<string, Record<string, unknown>>;
+  onContextCapabilityArgsChange?: React.Dispatch<React.SetStateAction<Record<string, Record<string, unknown>>>>;
   capabilityToggles?: Array<{
     id: string;
     title: string;
     description?: string;
     icon?: string | null;
+  }>;
+  capabilitySelects?: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    icon?: string | null;
+    argKey: string;
+    defaultValue: string;
+    options: Array<{
+      value: string;
+      label: string;
+      description?: string;
+    }>;
   }>;
   sessionId?: string;
   currentAssistantId?: string;
@@ -230,7 +246,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   supportsVision = false,
   contextCapabilities: controlledContextCapabilities,
   onContextCapabilitiesChange,
+  contextCapabilityArgs: controlledContextCapabilityArgs,
+  onContextCapabilityArgsChange,
   capabilityToggles = [],
+  capabilitySelects = [],
   sessionId,
   currentAssistantId: _currentAssistantId,
   paramOverrides,
@@ -244,6 +263,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [uncontrolledReasoningEffort, setUncontrolledReasoningEffort] = useState('default');
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
   const [uncontrolledContextCapabilities, setUncontrolledContextCapabilities] = useState<string[]>([]);
+  const [uncontrolledContextCapabilityArgs, setUncontrolledContextCapabilityArgs] = useState<Record<string, Record<string, unknown>>>({});
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -269,6 +289,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const setReasoningEffort = onReasoningEffortChange ?? setUncontrolledReasoningEffort;
   const contextCapabilities = controlledContextCapabilities ?? uncontrolledContextCapabilities;
   const setContextCapabilities = onContextCapabilitiesChange ?? setUncontrolledContextCapabilities;
+  const contextCapabilityArgs = controlledContextCapabilityArgs ?? uncontrolledContextCapabilityArgs;
+  const setContextCapabilityArgs = onContextCapabilityArgsChange ?? setUncontrolledContextCapabilityArgs;
   const {
     addBlock,
     blocks,
@@ -580,6 +602,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         attachments,
         fileReferences,
         contextCapabilities,
+        contextCapabilityArgs,
         reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
         paramOverrides,
         compareModelIds: pendingCompareModelIds.length >= 2 ? pendingCompareModelIds : [],
@@ -606,6 +629,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
         attachments: attachments.length > 0 ? attachments : undefined,
         contextCapabilities,
+        contextCapabilityArgs,
         fileReferences: fileReferences.length > 0 ? fileReferences : undefined,
         temporaryTurn,
       };
@@ -822,6 +846,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
     }
     setContextCapabilities(Array.from(nextSet));
   };
+  const updateSelectCapabilityValue = useCallback((capabilityId: string, argKey: string, value: string) => {
+    setContextCapabilityArgs((prev) => ({
+      ...prev,
+      [capabilityId]: {
+        ...(prev[capabilityId] || {}),
+        [argKey]: value,
+      },
+    }));
+  }, [setContextCapabilityArgs]);
   const selectedInputTranslateLabel = useMemo(
     () => TRANSLATION_TARGET_OPTIONS.find((option) => option.value === selectedInputTranslateTarget)?.label || 'Auto',
     [selectedInputTranslateTarget]
@@ -979,6 +1012,35 @@ export const InputBox: React.FC<InputBoxProps> = ({
             >
               <IconComponent className="h-4 w-4" />
             </button>
+          );
+        })}
+        {capabilitySelects.map((capability) => {
+          const argKey = capability.argKey || 'value';
+          const rawValue = contextCapabilityArgs[capability.id]?.[argKey];
+          const selectedValue = typeof rawValue === 'string' && capability.options.some((option) => option.value === rawValue)
+            ? rawValue
+            : capability.defaultValue;
+          return (
+            <label
+              key={capability.id}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md border bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600"
+              title={capability.description || capability.title}
+              data-name={`input-box-capability-select-${capability.id}`}
+            >
+              <span className="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">{capability.title}</span>
+              <select
+                value={selectedValue}
+                disabled={disabled || isStreaming}
+                onChange={(e) => updateSelectCapabilityValue(capability.id, argKey, e.target.value)}
+                className="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-1.5 py-1"
+              >
+                {capability.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           );
         })}
 

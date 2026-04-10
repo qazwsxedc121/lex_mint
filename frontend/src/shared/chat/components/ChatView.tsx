@@ -11,14 +11,14 @@ import { AssistantSelector } from './AssistantSelector';
 import { FollowupChips } from './FollowupChips';
 import { ContextUsageBar } from './ContextUsageBar';
 import { useChat } from '../hooks/useChat';
+import { useChatInputCapabilities } from '../hooks/useChatInputCapabilities';
 import { useModelCapabilities } from '../hooks/useModelCapabilities';
 import { useChatServices } from '../services/ChatServiceProvider';
-import { getToolCatalog, listModels } from '../../../services/api';
+import { listModels } from '../../../services/api';
 import type { UploadedFile } from '../../../types/message';
 import type { GroupTimelineEvent, Message } from '../../../types/message';
 import type { Assistant } from '../../../types/assistant';
 import type { Model } from '../../../types/model';
-import type { ProjectChatCapabilityItem } from '../../../types/project';
 import {
   ArrowPathRoundedSquareIcon,
   Bars3Icon,
@@ -87,13 +87,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
   const wasStreamingRef = useRef(false);
   const [isGeneratingFollowups, setIsGeneratingFollowups] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState('default');
-  const [enabledContextCapabilities, setEnabledContextCapabilities] = useState<string[]>([]);
-  const [inputCapabilityToggles, setInputCapabilityToggles] = useState<Array<{
-    id: string;
-    title: string;
-    description: string;
-    icon?: string | null;
-  }>>([]);
   const [groupAssistantNameMap, setGroupAssistantNameMap] = useState<Record<string, string>>({});
   const [enabledAssistants, setEnabledAssistants] = useState<Assistant[]>([]);
   const [enabledModels, setEnabledModels] = useState<Model[]>([]);
@@ -151,6 +144,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     currentModelId,
   );
   const isGenerating = isStreaming || isComparing;
+  const {
+    contextCapabilityArgs,
+    enabledContextCapabilities,
+    inputCapabilitySelects,
+    inputCapabilityToggles,
+    setContextCapabilityArgs,
+    setEnabledContextCapabilities,
+  } = useChatInputCapabilities(api, i18n);
 
   // Auto-refresh title after streaming completes
   useEffect(() => {
@@ -217,58 +218,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
     sendCompareMessage(message, modelIds, options);
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadChatInputCapabilities = async () => {
-      try {
-        const capabilities = api.getChatInputCapabilities
-          ? await api.getChatInputCapabilities()
-          : (await getToolCatalog()).chat_capabilities;
-        if (cancelled) {
-          return;
-        }
-
-        const visibleCapabilities = (Array.isArray(capabilities) ? capabilities : [])
-          .filter((item: ProjectChatCapabilityItem) => item.visible_in_input)
-          .sort((a: ProjectChatCapabilityItem, b: ProjectChatCapabilityItem) => {
-            if (a.order !== b.order) {
-              return a.order - b.order;
-            }
-            return a.id.localeCompare(b.id);
-          });
-        setInputCapabilityToggles(
-          visibleCapabilities.map((item: ProjectChatCapabilityItem) => ({
-            id: item.id,
-            title: i18n.t(item.title_i18n_key, { ns: 'projects', defaultValue: item.id }),
-            description: i18n.t(item.description_i18n_key, {
-              ns: 'projects',
-              defaultValue: item.id,
-            }),
-            icon: item.icon,
-          }))
-        );
-        setEnabledContextCapabilities((prev) => {
-          const visibleIds = new Set(visibleCapabilities.map((item) => item.id));
-          if (prev.length > 0) {
-            return prev.filter((item) => visibleIds.has(item));
-          }
-          return visibleCapabilities
-            .filter((item) => item.default_enabled)
-            .map((item) => item.id);
-        });
-      } catch {
-        if (!cancelled) {
-          setInputCapabilityToggles([]);
-          setEnabledContextCapabilities([]);
-        }
-      }
-    };
-    void loadChatInputCapabilities();
-    return () => {
-      cancelled = true;
-    };
-  }, [api, i18n, i18n.resolvedLanguage]);
-
   const handleInsertSeparator = () => {
     insertSeparator();
   };
@@ -298,6 +247,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         reasoningEffort: payload.reasoningEffort,
         attachments: payload.attachments,
         contextCapabilities: payload.contextCapabilities,
+        contextCapabilityArgs: payload.contextCapabilityArgs,
         fileReferences: payload.fileReferences,
       });
       const diagnostics = raw as Record<string, unknown>;
@@ -1079,7 +1029,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ showHeader = true, customMes
         onReasoningEffortChange={setReasoningEffort}
         contextCapabilities={enabledContextCapabilities}
         onContextCapabilitiesChange={setEnabledContextCapabilities}
+        contextCapabilityArgs={contextCapabilityArgs}
+        onContextCapabilityArgsChange={setContextCapabilityArgs}
         capabilityToggles={inputCapabilityToggles}
+        capabilitySelects={inputCapabilitySelects}
         sessionId={currentSessionId}
         currentAssistantId={currentTargetType === 'assistant' ? currentAssistantId || undefined : undefined}
         paramOverrides={paramOverrides}

@@ -132,3 +132,59 @@ def test_loader_reports_entrypoint_failure(tmp_path):
     assert len(statuses) == 1
     assert statuses[0].loaded is False
     assert statuses[0].error is not None
+
+
+def test_loader_parses_select_chat_capability(tmp_path, monkeypatch):
+    pkg_dir = tmp_path / "pkg_select"
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
+    (pkg_dir / "plug.py").write_text(
+        "\n".join(
+            [
+                "from src.tools.plugins.models import ToolPluginContribution",
+                "def register():",
+                "    return ToolPluginContribution()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    _write_manifest(
+        tmp_path / "tool_plugins" / "select_demo" / "manifest.yaml",
+        body="\n".join(
+            [
+                "schema_version: 1",
+                "id: select_demo",
+                "name: Select Demo",
+                "version: 0.1.0",
+                "enabled: true",
+                "entrypoint: pkg_select.plug:register",
+                "chat_capabilities:",
+                "  - id: select.mode",
+                "    title_i18n_key: workspace.settings.tools.select_mode.title",
+                "    description_i18n_key: workspace.settings.tools.select_mode.description",
+                "    control_type: select",
+                "    arg_key: mode",
+                "    default_value: balanced",
+                "    options:",
+                "      - value: fast",
+                "        label_i18n_key: workspace.settings.tools.select_mode.fast",
+                "      - value: balanced",
+                "        label_i18n_key: workspace.settings.tools.select_mode.balanced",
+            ]
+        ),
+    )
+
+    loaded, statuses = ToolPluginLoader(tmp_path / "tool_plugins").load()
+
+    assert len(loaded) == 1
+    assert len(statuses) == 1
+    assert statuses[0].loaded is True
+    manifest = loaded[0][0]
+    assert len(manifest.chat_capabilities) == 1
+    capability = manifest.chat_capabilities[0]
+    assert capability.control_type == "select"
+    assert capability.arg_key == "mode"
+    assert capability.default_value == "balanced"
+    assert [option.value for option in capability.options] == ["fast", "balanced"]

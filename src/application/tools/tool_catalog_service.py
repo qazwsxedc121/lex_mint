@@ -43,6 +43,17 @@ class ToolCatalogService:
                 title_i18n_key=item.title_i18n_key,
                 description_i18n_key=item.description_i18n_key,
                 icon=item.icon,
+                control_type=item.control_type,
+                arg_key=item.arg_key,
+                options=[
+                    ChatCapabilityItem.OptionItem(
+                        value=option.value,
+                        label_i18n_key=option.label_i18n_key,
+                        description_i18n_key=option.description_i18n_key,
+                    )
+                    for option in item.options
+                ],
+                default_value=item.default_value,
                 order=item.order,
                 default_enabled=item.default_enabled,
                 visible_in_input=item.visible_in_input,

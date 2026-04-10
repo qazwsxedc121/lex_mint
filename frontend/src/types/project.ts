@@ -41,6 +41,14 @@ export interface ProjectToolCatalogGroup {
 }
 
 export interface ProjectChatCapabilityItem {
+  control_type?: 'toggle' | 'select';
+  arg_key?: string;
+  options?: Array<{
+    value: string;
+    label_i18n_key: string;
+    description_i18n_key?: string | null;
+  }>;
+  default_value?: string | null;
   id: string;
   plugin_id: string;
   plugin_name?: string | null;

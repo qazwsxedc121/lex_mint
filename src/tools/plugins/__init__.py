@@ -3,6 +3,7 @@
 from .loader import ToolPluginLoader
 from .models import (
     ChatCapabilityDefinition,
+    ChatCapabilityOptionDefinition,
     ToolPluginContribution,
     ToolPluginLoadIssue,
     ToolPluginManifest,
@@ -11,6 +12,7 @@ from .models import (
 
 __all__ = [
     "ChatCapabilityDefinition",
+    "ChatCapabilityOptionDefinition",
     "ToolPluginContribution",
     "ToolPluginLoadIssue",
     "ToolPluginLoader",

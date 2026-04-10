@@ -59,3 +59,14 @@ def test_build_catalog_groups_tools_in_ui_order():
         catalog.tools[0].description_i18n_key
         == "workspace.settings.tools.get_current_time.description"
     )
+
+
+def test_build_catalog_exposes_chat_capability_control_metadata():
+    catalog = ToolCatalogService.build_catalog()
+    by_id = {item.id: item for item in catalog.chat_capabilities}
+
+    assert "web.search_context" in by_id
+    capability = by_id["web.search_context"]
+    assert capability.control_type == "toggle"
+    assert capability.arg_key == "value"
+    assert capability.options == []

@@ -12,12 +12,25 @@ from src.tools.definitions import ToolDefinition
 
 
 @dataclass(frozen=True)
+class ChatCapabilityOptionDefinition:
+    """One selectable option for a chat input capability control."""
+
+    value: str
+    label_i18n_key: str
+    description_i18n_key: str | None = None
+
+
+@dataclass(frozen=True)
 class ChatCapabilityDefinition:
     """One chat input capability exposed by a plugin."""
 
     id: str
     title_i18n_key: str
     description_i18n_key: str
+    control_type: str = "toggle"  # "toggle" | "select"
+    arg_key: str = "value"
+    options: list[ChatCapabilityOptionDefinition] = field(default_factory=list)
+    default_value: str | None = None
     icon: str | None = None
     order: int = 1000
     default_enabled: bool = False

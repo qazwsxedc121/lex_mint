@@ -12,6 +12,7 @@ from src.core.paths import repo_root
 
 from .models import (
     ChatCapabilityDefinition,
+    ChatCapabilityOptionDefinition,
     ToolPluginContribution,
     ToolPluginManifest,
     ToolPluginStatus,
@@ -243,6 +244,14 @@ class ToolPluginLoader:
             icon = str(icon_raw).strip() if icon_raw is not None else None
             if icon == "":
                 icon = None
+            control_type = str(item.get("control_type") or "toggle").strip().lower()
+            if control_type not in {"toggle", "select"}:
+                raise ValueError(
+                    f"chat_capabilities[{capability_id}].control_type must be 'toggle' or 'select'"
+                )
+            arg_key = str(item.get("arg_key") or "value").strip()
+            if not arg_key:
+                raise ValueError(f"chat_capabilities[{capability_id}].arg_key is required")
             order_raw = item.get("order", 1000)
             try:
                 order = int(order_raw)
@@ -250,12 +259,39 @@ class ToolPluginLoader:
                 raise ValueError(
                     f"chat_capabilities[{capability_id}].order must be an integer"
                 ) from None
+            options = ToolPluginLoader._load_chat_capability_options(
+                item.get("options"),
+                capability_id=capability_id,
+                control_type=control_type,
+            )
+            default_value_raw = item.get("default_value")
+            default_value = (
+                str(default_value_raw).strip() if default_value_raw is not None else None
+            )
+            if default_value == "":
+                default_value = None
+            if control_type == "select":
+                if not options:
+                    raise ValueError(
+                        f"chat_capabilities[{capability_id}].options is required for select control"
+                    )
+                if default_value is None:
+                    default_value = options[0].value
+                allowed_values = {opt.value for opt in options}
+                if default_value not in allowed_values:
+                    raise ValueError(
+                        f"chat_capabilities[{capability_id}].default_value must exist in options"
+                    )
 
             capabilities.append(
                 ChatCapabilityDefinition(
                     id=capability_id,
                     title_i18n_key=title_i18n_key,
                     description_i18n_key=description_i18n_key,
+                    control_type=control_type,
+                    arg_key=arg_key,
+                    options=options,
+                    default_value=default_value,
                     icon=icon,
                     order=order,
                     default_enabled=bool(item.get("default_enabled", False)),
@@ -264,6 +300,60 @@ class ToolPluginLoader:
                 )
             )
         return capabilities
+
+    @staticmethod
+    def _load_chat_capability_options(
+        raw: object,
+        *,
+        capability_id: str,
+        control_type: str,
+    ) -> list[ChatCapabilityOptionDefinition]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise ValueError(f"chat_capabilities[{capability_id}].options must be a list")
+
+        options: list[ChatCapabilityOptionDefinition] = []
+        seen_values: set[str] = set()
+        for idx, item in enumerate(raw):
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"chat_capabilities[{capability_id}].options[{idx}] must be an object"
+                )
+            value = str(item.get("value") or "").strip()
+            if not value:
+                raise ValueError(
+                    f"chat_capabilities[{capability_id}].options[{idx}].value is required"
+                )
+            if value in seen_values:
+                raise ValueError(
+                    f"duplicate option value for chat_capabilities[{capability_id}]: {value}"
+                )
+            seen_values.add(value)
+            label_i18n_key = str(item.get("label_i18n_key") or "").strip()
+            if not label_i18n_key:
+                raise ValueError(
+                    f"chat_capabilities[{capability_id}].options[{idx}].label_i18n_key is required"
+                )
+            description_raw = item.get("description_i18n_key")
+            description_i18n_key = (
+                str(description_raw).strip() if description_raw is not None else None
+            )
+            if description_i18n_key == "":
+                description_i18n_key = None
+            options.append(
+                ChatCapabilityOptionDefinition(
+                    value=value,
+                    label_i18n_key=label_i18n_key,
+                    description_i18n_key=description_i18n_key,
+                )
+            )
+
+        if control_type == "toggle" and options:
+            raise ValueError(
+                f"chat_capabilities[{capability_id}] toggle control cannot define options"
+            )
+        return options
 
     @staticmethod
     def _load_contribution(manifest: ToolPluginManifest) -> ToolPluginContribution:
