@@ -88,6 +88,9 @@ export interface Provider {
   auto_append_path?: boolean;
   supports_model_list?: boolean;
   sdk_class?: string;
+  source_plugin_id?: string | null;
+  source_plugin_name?: string | null;
+  source_plugin_version?: string | null;
 }
 
 export interface Model {
@@ -124,6 +127,9 @@ export interface BuiltinProviderInfo {
   default_capabilities: ModelCapabilities;
   endpoint_profiles: EndpointProfile[];
   default_endpoint_profile_id?: string | null;
+  source_plugin_id?: string | null;
+  source_plugin_name?: string | null;
+  source_plugin_version?: string | null;
 }
 
 // Model info (from fetch models API)

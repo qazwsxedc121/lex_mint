@@ -61,6 +61,9 @@ class Provider(BaseModel):
     api_key: str | None = Field(
         default=None, description="API 密钥（仅用于传输，不持久化到配置文件）"
     )
+    source_plugin_id: str | None = Field(default=None, description="来源 provider 插件 ID")
+    source_plugin_name: str | None = Field(default=None, description="来源 provider 插件名称")
+    source_plugin_version: str | None = Field(default=None, description="来源 provider 插件版本")
 
 
 class Model(BaseModel):

@@ -27,9 +27,11 @@ from src.infrastructure.config.model_config_service import ModelConfigService
 from src.infrastructure.config.provider_probe_service import ProviderProbeService
 from src.providers import (
     BUILTIN_PROVIDERS,
+    AdapterRegistry,
     EndpointProfile,
     ModelCapabilities,
     get_builtin_provider,
+    get_builtin_provider_plugin_source,
 )
 from src.providers.model_capability_rules import apply_model_capability_hints
 from src.providers.types import ApiProtocol, ProviderType
@@ -60,6 +62,9 @@ class BuiltinProviderInfo(BaseModel):
     default_capabilities: ModelCapabilities
     endpoint_profiles: list[EndpointProfile] = Field(default_factory=list)
     default_endpoint_profile_id: str | None = None
+    source_plugin_id: str | None = None
+    source_plugin_name: str | None = None
+    source_plugin_version: str | None = None
 
 
 class ModelInfo(BaseModel):
@@ -71,6 +76,21 @@ class ModelInfo(BaseModel):
     tags: list[str] | None = None
 
 
+class ProviderPluginStatusInfo(BaseModel):
+    """Provider 插件状态响应。"""
+
+    id: str
+    name: str
+    version: str
+    entrypoint: str
+    plugin_dir: str
+    enabled: bool
+    loaded: bool
+    adapters_count: int = 0
+    builtin_providers_count: int = 0
+    error: str | None = None
+
+
 @router.get("/providers/builtin", response_model=list[BuiltinProviderInfo])
 async def get_builtin_providers():
     """
@@ -80,6 +100,7 @@ async def get_builtin_providers():
     """
     result = []
     for _, definition in BUILTIN_PROVIDERS.items():
+        source = get_builtin_provider_plugin_source(definition.id) or {}
         result.append(
             BuiltinProviderInfo(
                 id=definition.id,
@@ -91,9 +112,33 @@ async def get_builtin_providers():
                 default_capabilities=definition.default_capabilities,
                 endpoint_profiles=definition.endpoint_profiles,
                 default_endpoint_profile_id=definition.default_endpoint_profile_id,
+                source_plugin_id=source.get("plugin_id"),
+                source_plugin_name=source.get("plugin_name"),
+                source_plugin_version=source.get("plugin_version"),
             )
         )
     return result
+
+
+@router.get("/providers/plugins", response_model=list[ProviderPluginStatusInfo])
+async def get_provider_plugins():
+    """获取 provider 插件加载状态。"""
+    statuses = AdapterRegistry.get_plugin_statuses()
+    return [
+        ProviderPluginStatusInfo(
+            id=item.id,
+            name=item.name,
+            version=item.version,
+            entrypoint=item.entrypoint,
+            plugin_dir=item.plugin_dir,
+            enabled=item.enabled,
+            loaded=item.loaded,
+            adapters_count=item.adapters_count,
+            builtin_providers_count=item.builtin_providers_count,
+            error=item.error,
+        )
+        for item in statuses
+    ]
 
 
 @router.get("/providers/builtin/{provider_id}", response_model=BuiltinProviderInfo)
@@ -107,6 +152,7 @@ async def get_builtin_provider_info(provider_id: str):
     definition = get_builtin_provider(provider_id)
     if not definition:
         raise HTTPException(status_code=404, detail=f"Builtin provider '{provider_id}' not found")
+    source = get_builtin_provider_plugin_source(definition.id) or {}
 
     return BuiltinProviderInfo(
         id=definition.id,
@@ -118,7 +164,21 @@ async def get_builtin_provider_info(provider_id: str):
         default_capabilities=definition.default_capabilities,
         endpoint_profiles=definition.endpoint_profiles,
         default_endpoint_profile_id=definition.default_endpoint_profile_id,
+        source_plugin_id=source.get("plugin_id"),
+        source_plugin_name=source.get("plugin_name"),
+        source_plugin_version=source.get("plugin_version"),
     )
+
+
+def _attach_provider_plugin_source(provider: Provider) -> Provider:
+    source = get_builtin_provider_plugin_source(provider.id)
+    if source is None:
+        return provider
+    provider_dict = provider.model_dump()
+    provider_dict["source_plugin_id"] = source.get("plugin_id")
+    provider_dict["source_plugin_name"] = source.get("plugin_name")
+    provider_dict["source_plugin_version"] = source.get("plugin_version")
+    return Provider(**provider_dict)
 
 
 @router.get("/providers", response_model=list[Provider])
@@ -127,7 +187,8 @@ async def list_providers(
     service: ModelConfigService = Depends(get_model_service),
 ):
     """获取所有提供商列表"""
-    return await service.get_providers(enabled_only=enabled_only)
+    providers = await service.get_providers(enabled_only=enabled_only)
+    return [_attach_provider_plugin_source(provider) for provider in providers]
 
 
 @router.get("/providers/{provider_id}", response_model=Provider)
@@ -146,7 +207,7 @@ async def get_provider(
     provider = await service.get_provider(provider_id, include_masked_key=include_masked_key)
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
-    return provider
+    return _attach_provider_plugin_source(provider)
 
 
 @router.post("/providers", status_code=201)

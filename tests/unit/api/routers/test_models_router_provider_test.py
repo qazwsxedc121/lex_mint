@@ -1,5 +1,6 @@
 """Unit tests for provider stored-connection test route behavior."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -268,6 +269,14 @@ async def test_builtin_provider_catalog_includes_lmstudio():
 
 
 @pytest.mark.asyncio
+async def test_builtin_provider_info_includes_plugin_source_for_bailian():
+    info = await models_router.get_builtin_provider_info("bailian")
+
+    assert info.source_plugin_id == "bailian"
+    assert info.source_plugin_name == "Alibaba Cloud (Qwen)"
+
+
+@pytest.mark.asyncio
 async def test_fetch_provider_models_for_local_gguf_returns_results_without_api_key_prompt():
     service = Mock()
     provider = _provider(
@@ -372,3 +381,54 @@ async def test_fetch_provider_models_returns_400_when_no_key_and_empty_result():
 
     assert exc.value.status_code == 400
     assert "Try configuring an API key" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_get_provider_plugins_returns_plugin_statuses(monkeypatch):
+    monkeypatch.setattr(
+        models_router.AdapterRegistry,
+        "get_plugin_statuses",
+        lambda: [
+            SimpleNamespace(
+                id="bailian",
+                name="Alibaba Cloud (Qwen)",
+                version="1.0.0",
+                entrypoint="provider_plugins.bailian.plugin:register",
+                plugin_dir="D:/work/pythonProjects/lex_mint/provider_plugins/bailian",
+                enabled=True,
+                loaded=True,
+                adapters_count=1,
+                builtin_providers_count=1,
+                error=None,
+            )
+        ],
+    )
+
+    response = await models_router.get_provider_plugins()
+
+    assert len(response) == 1
+    item = response[0]
+    assert item.id == "bailian"
+    assert item.loaded is True
+    assert item.adapters_count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_providers_attaches_plugin_source_metadata():
+    service = Mock()
+    service.get_providers = AsyncMock(
+        return_value=[
+            _provider(
+                provider_id="bailian",
+                protocol=ApiProtocol.OPENAI,
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            )
+        ]
+    )
+
+    result = await models_router.list_providers(enabled_only=False, service=service)
+
+    assert len(result) == 1
+    item = result[0]
+    assert item.id == "bailian"
+    assert item.source_plugin_id == "bailian"

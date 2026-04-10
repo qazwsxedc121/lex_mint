@@ -168,6 +168,28 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       hideOnMobile: true
     },
     {
+      key: 'source_plugin_id',
+      label: 'Source Plugin',
+      hideOnMobile: true,
+      render: (_value, row) => {
+        if (!row.source_plugin_id) {
+          return (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              -
+            </span>
+          );
+        }
+        return (
+          <div data-name="provider-source-plugin" className="text-xs text-gray-700 dark:text-gray-300">
+            <div className="font-medium">{row.source_plugin_name || row.source_plugin_id}</div>
+            <div className="font-mono text-gray-500 dark:text-gray-400">
+              {row.source_plugin_id}{row.source_plugin_version ? ` @ ${row.source_plugin_version}` : ''}
+            </div>
+          </div>
+        );
+      }
+    },
+    {
       key: 'api_key',
       get label() { return i18n.t('settings:providers.col.apiKey'); },
       hideOnMobile: true,
@@ -298,6 +320,14 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
       get label() { return i18n.t('settings:providers.field.id'); },
       required: true,
       disabled: true
+    },
+    {
+      type: 'text',
+      name: 'source_plugin_id',
+      label: 'Source Plugin',
+      disabled: true,
+      helpText: 'This built-in provider is contributed by a provider plugin.',
+      condition: (formData) => isBuiltinProvider(formData) && Boolean(formData?.source_plugin_id)
     },
     {
       type: 'text',

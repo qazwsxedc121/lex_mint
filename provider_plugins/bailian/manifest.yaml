@@ -1,0 +1,7 @@
+schema_version: 1
+id: bailian
+name: Alibaba Cloud (Qwen)
+version: 1.0.0
+entrypoint: provider_plugins.bailian.plugin:register
+enabled: true
+description: Alibaba Cloud DashScope provider adapter and builtin definition.

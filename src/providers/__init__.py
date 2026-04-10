@@ -36,6 +36,7 @@ from .builtin import (
     BUILTIN_PROVIDERS,
     get_all_builtin_providers,
     get_builtin_provider,
+    get_builtin_provider_plugin_source,
     is_builtin_provider,
 )
 from .registry import (
@@ -79,6 +80,7 @@ __all__ = [
     "BUILTIN_PROVIDERS",
     "get_builtin_provider",
     "get_all_builtin_providers",
+    "get_builtin_provider_plugin_source",
     "is_builtin_provider",
     # Registry
     "AdapterRegistry",

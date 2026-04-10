@@ -7,7 +7,6 @@ This package contains SDK adapters for different LLM providers.
 from typing import Any
 
 from .anthropic_adapter import AnthropicAdapter
-from .bailian_adapter import BailianAdapter
 from .deepseek_adapter import DeepSeekAdapter
 from .gemini_adapter import GeminiAdapter
 from .kimi_adapter import KimiAdapter
@@ -43,7 +42,6 @@ __all__ = [
     "ZhipuAdapter",
     "VolcEngineAdapter",
     "GeminiAdapter",
-    "BailianAdapter",
     "SiliconFlowAdapter",
     "KimiAdapter",
     "LocalGgufAdapter",

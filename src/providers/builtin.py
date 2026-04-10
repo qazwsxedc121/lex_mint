@@ -10,6 +10,7 @@ import yaml
 
 from src.core.paths import config_defaults_dir
 
+from .plugins import ProviderPluginLoader
 from .types import ProviderDefinition
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,56 @@ def _coerce_provider_definition(entry: dict[str, Any]) -> ProviderDefinition | N
         return None
 
 
+def _load_plugin_builtin_provider_entries() -> list[ProviderDefinition]:
+    loaded_plugins, statuses = ProviderPluginLoader().load()
+    definitions: list[ProviderDefinition] = []
+
+    for status in statuses:
+        if status.enabled and not status.loaded:
+            logger.warning(
+                "Provider plugin %s failed to load while collecting builtin providers: %s",
+                status.id,
+                status.error,
+            )
+
+    for manifest, contribution in loaded_plugins:
+        for definition in contribution.builtin_providers:
+            if not isinstance(definition, ProviderDefinition):
+                logger.warning(
+                    "Ignoring invalid builtin provider definition from plugin %s",
+                    manifest.id,
+                )
+                continue
+            definitions.append(definition)
+
+    return definitions
+
+
+@lru_cache(maxsize=1)
+def _plugin_builtin_provider_source_map() -> dict[str, dict[str, str]]:
+    loaded_plugins, statuses = ProviderPluginLoader().load()
+    source_map: dict[str, dict[str, str]] = {}
+
+    for status in statuses:
+        if status.enabled and not status.loaded:
+            logger.warning(
+                "Provider plugin %s failed to load while collecting builtin provider sources: %s",
+                status.id,
+                status.error,
+            )
+
+    for manifest, contribution in loaded_plugins:
+        for definition in contribution.builtin_providers:
+            if not isinstance(definition, ProviderDefinition):
+                continue
+            source_map[definition.id] = {
+                "plugin_id": manifest.id,
+                "plugin_name": manifest.name,
+                "plugin_version": manifest.version,
+            }
+    return source_map
+
+
 @lru_cache(maxsize=1)
 def _builtin_provider_map() -> dict[str, ProviderDefinition]:
     providers: dict[str, ProviderDefinition] = {}
@@ -61,6 +112,15 @@ def _builtin_provider_map() -> dict[str, ProviderDefinition]:
         if definition is None:
             continue
         providers[definition.id] = definition
+
+    for definition in _load_plugin_builtin_provider_entries():
+        if definition.id in providers:
+            logger.info(
+                "Builtin provider '%s' overridden by provider plugin definition",
+                definition.id,
+            )
+        providers[definition.id] = definition
+
     return providers
 
 
@@ -77,3 +137,11 @@ def get_all_builtin_providers() -> dict[str, ProviderDefinition]:
 
 def is_builtin_provider(provider_id: str) -> bool:
     return provider_id in _builtin_provider_map()
+
+
+def get_builtin_provider_plugin_source(provider_id: str) -> dict[str, str] | None:
+    """Return plugin source metadata for one builtin provider when available."""
+    source = _plugin_builtin_provider_source_map().get(provider_id)
+    if source is None:
+        return None
+    return source.copy()

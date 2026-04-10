@@ -836,7 +836,16 @@ class ModelConfigService:
             raise ValueError(f"Provider with id '{provider.id}' already exists")
 
         # Remove transient fields so they are not persisted to config.
-        provider_dict = provider.model_dump(exclude={"api_key", "has_api_key", "requires_api_key"})
+        provider_dict = provider.model_dump(
+            exclude={
+                "api_key",
+                "has_api_key",
+                "requires_api_key",
+                "source_plugin_id",
+                "source_plugin_name",
+                "source_plugin_version",
+            }
+        )
         config.providers.append(Provider(**provider_dict))
         await self.save_config(config)
 
@@ -852,7 +861,14 @@ class ModelConfigService:
         for i, provider in enumerate(config.providers):
             if provider.id == provider_id:
                 updated_dict = updated.model_dump(
-                    exclude={"api_key", "has_api_key", "requires_api_key"}
+                    exclude={
+                        "api_key",
+                        "has_api_key",
+                        "requires_api_key",
+                        "source_plugin_id",
+                        "source_plugin_name",
+                        "source_plugin_version",
+                    }
                 )
                 config.providers[i] = Provider(**updated_dict)
                 if config.default.provider == provider_id and (
