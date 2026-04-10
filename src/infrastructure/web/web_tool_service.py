@@ -51,6 +51,104 @@ class WebToolService:
         return self._json(payload)
 
     @staticmethod
+    def _ui_field(*, label: str, value: Any) -> dict[str, Any]:
+        return {"label": label, "value": "" if value is None else str(value)}
+
+    def _build_web_search_ui(
+        self,
+        *,
+        query: str,
+        provider: str,
+        total_results: int,
+        results: list[dict[str, Any]],
+        ok: bool,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        fields = [
+            self._ui_field(label="Query", value=query),
+            self._ui_field(label="Provider", value=provider or "-"),
+            self._ui_field(label="Results", value=total_results),
+        ]
+        item_cards: list[dict[str, Any]] = []
+        for item in results:
+            rank = item.get("rank")
+            domain = str(item.get("domain") or "").strip()
+            rank_text = f"#{rank}" if rank is not None else ""
+            subtitle = " · ".join([part for part in [rank_text, domain] if part])
+            item_cards.append(
+                {
+                    "title": str(item.get("title") or item.get("url") or "-"),
+                    "subtitle": subtitle,
+                    "description": str(item.get("snippet") or ""),
+                    "url": str(item.get("url") or ""),
+                }
+            )
+        return {
+            "version": 1,
+            "kind": "report",
+            "summary": (f"{total_results} results" if ok else (error_message or "Search failed")),
+            "status": "ok" if ok else "error",
+            "error_message": error_message,
+            "sections": [
+                {"kind": "fields", "fields": fields},
+                {
+                    "kind": "items",
+                    "title": "Results",
+                    "empty_message": "No results returned.",
+                    "items": item_cards,
+                },
+            ],
+        }
+
+    def _build_read_webpage_ui(
+        self,
+        *,
+        url: str,
+        final_url: str,
+        domain: str,
+        title: str,
+        content: str,
+        content_chars: int,
+        truncated: bool,
+        status_code: int | None,
+        content_type: str | None,
+        ok: bool,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        target = final_url or url
+        label = title or target or "Webpage"
+        return {
+            "version": 1,
+            "kind": "report",
+            "summary": label if ok else (error_message or "Read failed"),
+            "status": "ok" if ok else "error",
+            "error_message": error_message,
+            "sections": [
+                {
+                    "kind": "fields",
+                    "fields": [
+                        self._ui_field(label="Requested URL", value=url),
+                        self._ui_field(label="Final URL", value=final_url or "-"),
+                        self._ui_field(label="Domain", value=domain or "-"),
+                        self._ui_field(label="Content Type", value=content_type or "-"),
+                        self._ui_field(
+                            label="Status",
+                            value=status_code if status_code is not None else "-",
+                        ),
+                        self._ui_field(label="Content Chars", value=content_chars),
+                        self._ui_field(label="Truncated", value="yes" if truncated else "no"),
+                    ],
+                },
+                {
+                    "kind": "text",
+                    "title": "Extracted content",
+                    "text": content or "-",
+                    "truncated": bool(truncated),
+                },
+            ],
+        }
+
+    @staticmethod
     def _normalize_text(value: Any, *, limit: int | None = None) -> str:
         text = str(value or "")
         text = " ".join(text.split())
@@ -79,17 +177,58 @@ class WebToolService:
     async def web_search(self, *, query: str, page: int = 1) -> str:
         query_text = (query or "").strip()
         if not query_text:
-            return self._error("EMPTY_QUERY", "query must not be empty")
+            return self._error(
+                "EMPTY_QUERY",
+                "query must not be empty",
+                ui=self._build_web_search_ui(
+                    query="",
+                    provider="",
+                    total_results=0,
+                    results=[],
+                    ok=False,
+                    error_message="query must not be empty",
+                ),
+            )
         safe_page = max(1, int(page or 1))
 
         try:
             raw_results = await self.search_service.search(query_text, page=safe_page)
         except ValueError as exc:
             logger.warning("web_search pagination not supported: %s", exc)
-            return self._error("UNSUPPORTED_PAGE", f"{exc}", query=query_text, page=safe_page)
+            return self._error(
+                "UNSUPPORTED_PAGE",
+                f"{exc}",
+                query=query_text,
+                page=safe_page,
+                ui=self._build_web_search_ui(
+                    query=query_text,
+                    provider=str(
+                        getattr(getattr(self.search_service, "config", None), "provider", "")
+                    ),
+                    total_results=0,
+                    results=[],
+                    ok=False,
+                    error_message=str(exc),
+                ),
+            )
         except Exception as exc:
             logger.error("web_search failed: %s", exc, exc_info=True)
-            return self._error("SEARCH_FAILED", f"{exc}", query=query_text, page=safe_page)
+            return self._error(
+                "SEARCH_FAILED",
+                f"{exc}",
+                query=query_text,
+                page=safe_page,
+                ui=self._build_web_search_ui(
+                    query=query_text,
+                    provider=str(
+                        getattr(getattr(self.search_service, "config", None), "provider", "")
+                    ),
+                    total_results=0,
+                    results=[],
+                    ok=False,
+                    error_message=str(exc),
+                ),
+            )
 
         provider = getattr(getattr(self.search_service, "config", None), "provider", "unknown")
         page_size = max(
@@ -146,23 +285,78 @@ class WebToolService:
                     )
                 ),
                 "results": results,
+                "ui": self._build_web_search_ui(
+                    query=query_text,
+                    provider=str(provider),
+                    total_results=len(results),
+                    results=results,
+                    ok=True,
+                ),
             }
         )
 
     async def read_webpage(self, *, url: str) -> str:
         url_text = (url or "").strip()
         if not url_text:
-            return self._error("EMPTY_URL", "url must not be empty")
+            return self._error(
+                "EMPTY_URL",
+                "url must not be empty",
+                ui=self._build_read_webpage_ui(
+                    url="",
+                    final_url="",
+                    domain="",
+                    title="",
+                    content="",
+                    content_chars=0,
+                    truncated=False,
+                    status_code=None,
+                    content_type=None,
+                    ok=False,
+                    error_message="url must not be empty",
+                ),
+            )
         if not self._is_supported_url(url_text):
             return self._error(
-                "INVALID_URL", "url must be an absolute http or https URL", url=url_text
+                "INVALID_URL",
+                "url must be an absolute http or https URL",
+                url=url_text,
+                ui=self._build_read_webpage_ui(
+                    url=url_text,
+                    final_url="",
+                    domain="",
+                    title="",
+                    content="",
+                    content_chars=0,
+                    truncated=False,
+                    status_code=None,
+                    content_type=None,
+                    ok=False,
+                    error_message="url must be an absolute http or https URL",
+                ),
             )
 
         try:
             result = await self.webpage_service.fetch_and_parse(url_text)
         except Exception as exc:
             logger.error("read_webpage failed: %s", exc, exc_info=True)
-            return self._error("READ_WEBPAGE_FAILED", f"{exc}", url=url_text)
+            return self._error(
+                "READ_WEBPAGE_FAILED",
+                f"{exc}",
+                url=url_text,
+                ui=self._build_read_webpage_ui(
+                    url=url_text,
+                    final_url=url_text,
+                    domain=self._domain_from_url(url_text),
+                    title="",
+                    content="",
+                    content_chars=0,
+                    truncated=False,
+                    status_code=None,
+                    content_type=None,
+                    ok=False,
+                    error_message=str(exc),
+                ),
+            )
 
         final_url = str(result.final_url or result.url or url_text)
         title = self._normalize_text(result.title, limit=300)
@@ -178,6 +372,19 @@ class WebToolService:
                 domain=self._domain_from_url(final_url),
                 status_code=result.status_code,
                 content_type=result.content_type,
+                ui=self._build_read_webpage_ui(
+                    url=str(result.url or url_text),
+                    final_url=final_url,
+                    domain=self._domain_from_url(final_url),
+                    title=title,
+                    content="",
+                    content_chars=0,
+                    truncated=False,
+                    status_code=result.status_code,
+                    content_type=result.content_type,
+                    ok=False,
+                    error_message=str(result.error),
+                ),
             )
 
         return self._json(
@@ -193,6 +400,18 @@ class WebToolService:
                 "truncated": result.truncated,
                 "status_code": result.status_code,
                 "content_type": result.content_type,
+                "ui": self._build_read_webpage_ui(
+                    url=str(result.url or url_text),
+                    final_url=final_url,
+                    domain=self._domain_from_url(final_url),
+                    title=title,
+                    content=content,
+                    content_chars=len(content),
+                    truncated=bool(result.truncated),
+                    status_code=result.status_code,
+                    content_type=result.content_type,
+                    ok=True,
+                ),
             }
         )
 

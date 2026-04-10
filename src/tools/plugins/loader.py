@@ -282,6 +282,18 @@ class ToolPluginLoader:
                     raise ValueError(
                         f"chat_capabilities[{capability_id}].default_value must exist in options"
                     )
+            tool_group_raw = item.get("tool_group")
+            tool_group = str(tool_group_raw).strip() if tool_group_raw is not None else None
+            if tool_group == "":
+                tool_group = None
+            context_keys = ToolPluginLoader._normalize_str_list(
+                item.get("context_keys"),
+                field_name=f"chat_capabilities[{capability_id}].context_keys",
+            )
+            source_types = ToolPluginLoader._normalize_str_list(
+                item.get("source_types"),
+                field_name=f"chat_capabilities[{capability_id}].source_types",
+            )
 
             capabilities.append(
                 ChatCapabilityDefinition(
@@ -292,6 +304,10 @@ class ToolPluginLoader:
                     arg_key=arg_key,
                     options=options,
                     default_value=default_value,
+                    tool_group=tool_group,
+                    prefer_tool_execution=bool(item.get("prefer_tool_execution", False)),
+                    context_keys=context_keys,
+                    source_types=source_types,
                     icon=icon,
                     order=order,
                     default_enabled=bool(item.get("default_enabled", False)),
@@ -354,6 +370,20 @@ class ToolPluginLoader:
                 f"chat_capabilities[{capability_id}] toggle control cannot define options"
             )
         return options
+
+    @staticmethod
+    def _normalize_str_list(raw: object, *, field_name: str) -> list[str]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise ValueError(f"{field_name} must be a list")
+        normalized: list[str] = []
+        for idx, item in enumerate(raw):
+            value = str(item or "").strip()
+            if not value:
+                raise ValueError(f"{field_name}[{idx}] must be a non-empty string")
+            normalized.append(value)
+        return normalized
 
     @staticmethod
     def _load_contribution(manifest: ToolPluginManifest) -> ToolPluginContribution:

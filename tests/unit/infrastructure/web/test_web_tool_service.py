@@ -104,6 +104,10 @@ def test_web_search_returns_structured_results():
         "domain": "a.test",
         "snippet": "Snippet A",
     }
+    assert payload["ui"]["kind"] == "report"
+    assert payload["ui"]["status"] == "ok"
+    assert payload["ui"]["sections"][1]["kind"] == "items"
+    assert payload["ui"]["sections"][1]["items"][0]["url"] == "https://a.test"
 
 
 def test_web_search_supports_pagination_metadata():
@@ -147,15 +151,15 @@ def test_web_search_rejects_page_beyond_simulated_tavily_limit():
 
     payload = json.loads(asyncio.run(service.web_search(query="latest llm news", page=3)))
 
-    assert payload == {
-        "ok": False,
-        "error": {
-            "code": "UNSUPPORTED_PAGE",
-            "message": "Search provider 'tavily' supports simulated pagination only up to page 2",
-        },
-        "query": "latest llm news",
-        "page": 3,
+    assert payload["ok"] is False
+    assert payload["error"] == {
+        "code": "UNSUPPORTED_PAGE",
+        "message": "Search provider 'tavily' supports simulated pagination only up to page 2",
     }
+    assert payload["query"] == "latest llm news"
+    assert payload["page"] == 3
+    assert payload["ui"]["kind"] == "report"
+    assert payload["ui"]["status"] == "error"
 
 
 def test_read_webpage_returns_research_friendly_payload():
@@ -166,19 +170,20 @@ def test_read_webpage_returns_research_friendly_payload():
 
     payload = json.loads(asyncio.run(service.read_webpage(url="https://example.com/article")))
 
-    assert payload == {
-        "ok": True,
-        "url": "https://example.com/article",
-        "final_url": "https://example.com/article",
-        "domain": "example.com",
-        "title": "Example Article",
-        "content": "Main article content",
-        "preview": "Main article content",
-        "content_chars": 20,
-        "truncated": False,
-        "status_code": 200,
-        "content_type": "text/html",
-    }
+    assert payload["ok"] is True
+    assert payload["url"] == "https://example.com/article"
+    assert payload["final_url"] == "https://example.com/article"
+    assert payload["domain"] == "example.com"
+    assert payload["title"] == "Example Article"
+    assert payload["content"] == "Main article content"
+    assert payload["preview"] == "Main article content"
+    assert payload["content_chars"] == 20
+    assert payload["truncated"] is False
+    assert payload["status_code"] == 200
+    assert payload["content_type"] == "text/html"
+    assert payload["ui"]["kind"] == "report"
+    assert payload["ui"]["status"] == "ok"
+    assert payload["ui"]["sections"][1]["kind"] == "text"
 
 
 def test_read_webpage_returns_structured_error():
@@ -201,14 +206,14 @@ def test_read_webpage_rejects_non_http_url():
 
     payload = json.loads(asyncio.run(service.read_webpage(url="file:///tmp/test.txt")))
 
-    assert payload == {
-        "ok": False,
-        "error": {
-            "code": "INVALID_URL",
-            "message": "url must be an absolute http or https URL",
-        },
-        "url": "file:///tmp/test.txt",
+    assert payload["ok"] is False
+    assert payload["error"] == {
+        "code": "INVALID_URL",
+        "message": "url must be an absolute http or https URL",
     }
+    assert payload["url"] == "file:///tmp/test.txt"
+    assert payload["ui"]["kind"] == "report"
+    assert payload["ui"]["status"] == "error"
 
 
 def test_get_tools_include_web_metadata():
@@ -220,15 +225,9 @@ def test_get_tools_include_web_metadata():
     tools = service.get_tools()
     metadata_by_name = {tool.name: tool.metadata for tool in tools}
 
-    assert metadata_by_name["web_search"] == {
-        "group": "web",
-        "source": "web",
-        "enabled_by_default": False,
-        "requires_project_knowledge": False,
-    }
-    assert metadata_by_name["read_webpage"] == {
-        "group": "web",
-        "source": "web",
-        "enabled_by_default": False,
-        "requires_project_knowledge": False,
-    }
+    for tool_name in ("web_search", "read_webpage"):
+        metadata = metadata_by_name[tool_name]
+        assert metadata["group"] == "web"
+        assert metadata["source"] == "web"
+        assert metadata["enabled_by_default"] is False
+        assert metadata["requires_project_knowledge"] is False

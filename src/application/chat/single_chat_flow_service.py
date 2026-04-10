@@ -237,9 +237,9 @@ class SingleChatFlowService:
             )
         )
 
-    def _web_tool_names(self) -> set[str]:
+    def _tool_names_by_group(self, group: str) -> set[str]:
         try:
-            return set(self.deps.tool_registry_getter().get_tool_names_by_group("web"))
+            return set(self.deps.tool_registry_getter().get_tool_names_by_group(group))
         except Exception:
             return set()
 
@@ -555,7 +555,7 @@ class SingleChatFlowService:
     ) -> SingleChatPreparedContext:
         print("[Step 2] Loading session state...")
         logger.info("[Step 2] Loading session state")
-        prefer_web_tools = await self._should_prefer_web_tools(
+        prefer_capabilities = await self._capability_ids_prefer_tool_execution(
             session_id=request.scope.session_id,
             context_type=request.scope.context_type,
             project_id=request.scope.project_id,
@@ -564,11 +564,11 @@ class SingleChatFlowService:
         requested_capabilities = list(request.context_capabilities.context_capabilities or [])
         requested_capability_args = dict(request.context_capabilities.context_capability_args or {})
         preloaded_capabilities = list(requested_capabilities)
-        if prefer_web_tools:
+        if prefer_capabilities:
             preloaded_capabilities = [
                 capability_id
                 for capability_id in requested_capabilities
-                if capability_id not in self._web_context_capability_ids()
+                if capability_id not in prefer_capabilities
             ]
         preloaded_capability_set = set(preloaded_capabilities)
         preloaded_capability_args = {
@@ -604,9 +604,13 @@ class SingleChatFlowService:
                 context_type=request.scope.context_type,
                 project_id=request.scope.project_id,
             )
+        strip_context_keys, strip_source_types = self._metadata_for_capabilities(
+            prefer_capabilities
+        )
         system_prompt, context_segments, all_sources = self._normalize_context_payload(
             context_payload=ctx,
-            prefer_web_tools=prefer_web_tools,
+            strip_context_keys=strip_context_keys,
+            strip_source_types=strip_source_types,
         )
         return SingleChatPreparedContext(
             messages=messages,
@@ -626,7 +630,8 @@ class SingleChatFlowService:
         self,
         *,
         context_payload: ContextPayload,
-        prefer_web_tools: bool,
+        strip_context_keys: set[str],
+        strip_source_types: set[str],
     ) -> tuple[str | None, dict[str, str | None], list[SourcePayload]]:
         system_prompt = context_payload.system_prompt
         context_segments = {
@@ -638,10 +643,12 @@ class SingleChatFlowService:
             "structured_source_context": context_payload.structured_source_context,
         }
         all_sources = list(context_payload.all_sources)
-        if prefer_web_tools:
-            system_prompt, context_segments, all_sources = self._strip_preloaded_web_context(
+        if strip_context_keys or strip_source_types:
+            system_prompt, context_segments, all_sources = self._strip_preloaded_context_segments(
                 context_segments=context_segments,
                 all_sources=all_sources,
+                strip_context_keys=strip_context_keys,
+                strip_source_types=strip_source_types,
             )
         return system_prompt, context_segments, all_sources
 
@@ -654,15 +661,18 @@ class SingleChatFlowService:
         ]
         return "\n\n".join(parts) if parts else None
 
-    def _strip_preloaded_web_context(
+    def _strip_preloaded_context_segments(
         self,
         *,
         context_segments: dict[str, str | None],
         all_sources: list[SourcePayload],
+        strip_context_keys: set[str],
+        strip_source_types: set[str],
     ) -> tuple[str | None, dict[str, str | None], list[SourcePayload]]:
         pruned_segments = dict(context_segments)
-        pruned_segments["webpage_context"] = None
-        pruned_segments["search_context"] = None
+        for context_key in strip_context_keys:
+            if context_key in pruned_segments:
+                pruned_segments[context_key] = None
         system_prompt = self._compose_system_prompt(
             pruned_segments.get("base_system_prompt"),
             pruned_segments.get("memory_context"),
@@ -670,27 +680,42 @@ class SingleChatFlowService:
             pruned_segments.get("structured_source_context"),
         )
         filtered_sources = [
-            source for source in all_sources if source.get("type") not in {"search", "webpage"}
+            source for source in all_sources if source.get("type") not in strip_source_types
         ]
         return system_prompt, pruned_segments, filtered_sources
 
-    async def _should_prefer_web_tools(
+    async def _capability_ids_prefer_tool_execution(
         self,
         *,
         session_id: str,
         context_type: str,
         project_id: str | None,
         context_capabilities: list[str],
-    ) -> bool:
+    ) -> set[str]:
         requested_capabilities = {
             str(item or "").strip() for item in context_capabilities if str(item or "").strip()
         }
         if not requested_capabilities:
-            return False
-        if not requested_capabilities.intersection(self._web_context_capability_ids()):
-            return False
-        if not self._web_tool_names():
-            return False
+            return set()
+        registry = self.deps.tool_registry_getter()
+        preferred_ids: set[str] = set()
+        required_groups: set[str] = set()
+        for item in registry.get_all_chat_capabilities():
+            capability_id = str(getattr(item, "id", "") or "").strip()
+            if not capability_id or capability_id not in requested_capabilities:
+                continue
+            if not bool(getattr(item, "prefer_tool_execution", False)):
+                continue
+            preferred_ids.add(capability_id)
+            tool_group = str(getattr(item, "tool_group", "") or "").strip()
+            if tool_group:
+                required_groups.add(tool_group)
+        if not preferred_ids:
+            return set()
+        if required_groups and not any(
+            self._tool_names_by_group(group) for group in required_groups
+        ):
+            return set()
 
         try:
             session = await self.deps.storage.get_session(
@@ -703,15 +728,15 @@ class SingleChatFlowService:
             if "model_id" in param_overrides:
                 model_id = param_overrides["model_id"]
             if not model_id:
-                return False
+                return set()
 
             model_service = self.deps.model_service_factory()
             model_cfg, provider_cfg = model_service.get_model_and_provider_sync(str(model_id))
             merged_caps = model_service.get_merged_capabilities(model_cfg, provider_cfg)
-            return bool(getattr(merged_caps, "function_calling", False))
+            return preferred_ids if bool(getattr(merged_caps, "function_calling", False)) else set()
         except Exception as exc:
-            logger.warning("Failed to determine web tool preference: %s", exc)
-            return False
+            logger.warning("Failed to determine capability tool preference: %s", exc)
+            return set()
 
     def _apply_usage_to_outcome(
         self,
@@ -884,10 +909,19 @@ class SingleChatFlowService:
 
             tool_registry = self.deps.tool_registry_getter()
             resolved_tools.llm_tools = list(tool_registry.get_all_tools())
-            if not self._has_requested_web_context_capability(request.context_capabilities):
-                web_tool_names = self._web_tool_names()
+            requested_groups = self._requested_tool_groups_from_capabilities(
+                request.context_capabilities
+            )
+            guarded_groups = self._guarded_tool_groups_from_capabilities()
+            blocked_groups = guarded_groups - requested_groups
+            blocked_tool_names: set[str] = set()
+            for group in blocked_groups:
+                blocked_tool_names.update(self._tool_names_by_group(group))
+            if blocked_tool_names:
                 resolved_tools.llm_tools = [
-                    tool for tool in resolved_tools.llm_tools if tool.name not in web_tool_names
+                    tool
+                    for tool in resolved_tools.llm_tools
+                    if str(getattr(tool, "name", "") or "").strip() not in blocked_tool_names
                 ]
             await self._add_rag_tools_if_needed(
                 request=request,
@@ -932,26 +966,58 @@ class SingleChatFlowService:
             ),
         )
 
-    def _web_context_capability_ids(self) -> set[str]:
+    def _metadata_for_capabilities(self, capability_ids: set[str]) -> tuple[set[str], set[str]]:
         try:
             registry = self.deps.tool_registry_getter()
-            capability_ids: set[str] = set()
+            context_keys: set[str] = set()
+            source_types: set[str] = set()
+            for item in registry.get_all_chat_capabilities():
+                item_capability_id = str(getattr(item, "id", "") or "").strip()
+                if not item_capability_id or item_capability_id not in capability_ids:
+                    continue
+                for context_key in list(getattr(item, "context_keys", []) or []):
+                    normalized = str(context_key or "").strip()
+                    if normalized:
+                        context_keys.add(normalized)
+                for source_type in list(getattr(item, "source_types", []) or []):
+                    normalized = str(source_type or "").strip()
+                    if normalized:
+                        source_types.add(normalized)
+            return context_keys, source_types
+        except Exception:
+            return set(), set()
+
+    def _requested_tool_groups_from_capabilities(self, capability_ids: list[str]) -> set[str]:
+        requested_ids = {
+            str(item or "").strip() for item in capability_ids if str(item or "").strip()
+        }
+        if not requested_ids:
+            return set()
+        try:
+            registry = self.deps.tool_registry_getter()
+            groups: set[str] = set()
             for item in registry.get_all_chat_capabilities():
                 capability_id = str(getattr(item, "id", "") or "").strip()
-                if not capability_id:
+                if not capability_id or capability_id not in requested_ids:
                     continue
-                plugin_id = str(getattr(item, "plugin_id", "") or "").strip()
-                if plugin_id == "web_tools" or capability_id.startswith("web."):
-                    capability_ids.add(capability_id)
-            return capability_ids
+                group = str(getattr(item, "tool_group", "") or "").strip()
+                if group:
+                    groups.add(group)
+            return groups
         except Exception:
             return set()
 
-    def _has_requested_web_context_capability(self, capability_ids: list[str]) -> bool:
-        requested = {str(item or "").strip() for item in capability_ids if str(item or "").strip()}
-        if not requested:
-            return False
-        return bool(requested.intersection(self._web_context_capability_ids()))
+    def _guarded_tool_groups_from_capabilities(self) -> set[str]:
+        try:
+            registry = self.deps.tool_registry_getter()
+            groups: set[str] = set()
+            for item in registry.get_all_chat_capabilities():
+                group = str(getattr(item, "tool_group", "") or "").strip()
+                if group:
+                    groups.add(group)
+            return groups
+        except Exception:
+            return set()
 
     def _apply_tool_description_overrides(
         self,

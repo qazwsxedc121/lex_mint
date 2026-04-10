@@ -11,6 +11,10 @@ chat_capabilities:
   - id: web.search_context
     title_i18n_key: workspace.settings.tools.web_search.title
     description_i18n_key: workspace.settings.tools.web_search.description
+    tool_group: web
+    prefer_tool_execution: true
+    context_keys: [search_context]
+    source_types: [search]
     icon: globe
     order: 10
     default_enabled: false
@@ -18,6 +22,10 @@ chat_capabilities:
   - id: web.webpage_context
     title_i18n_key: workspace.settings.tools.read_webpage.title
     description_i18n_key: workspace.settings.tools.read_webpage.description
+    tool_group: web
+    prefer_tool_execution: true
+    context_keys: [webpage_context]
+    source_types: [webpage]
     icon: document
     order: 20
     default_enabled: false

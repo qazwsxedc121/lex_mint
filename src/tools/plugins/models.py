@@ -31,6 +31,10 @@ class ChatCapabilityDefinition:
     arg_key: str = "value"
     options: list[ChatCapabilityOptionDefinition] = field(default_factory=list)
     default_value: str | None = None
+    tool_group: str | None = None
+    prefer_tool_execution: bool = False
+    context_keys: list[str] = field(default_factory=list)
+    source_types: list[str] = field(default_factory=list)
     icon: str | None = None
     order: int = 1000
     default_enabled: bool = False

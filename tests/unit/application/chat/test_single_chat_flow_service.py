@@ -315,7 +315,9 @@ async def _return_async(value):
 
 
 @pytest.mark.asyncio
-async def test_should_prefer_web_tools_when_model_supports_function_calling(monkeypatch):
+async def test_capability_ids_prefer_tool_execution_when_model_supports_function_calling(
+    monkeypatch,
+):
     deps = SingleChatFlowDeps(
         storage=SimpleNamespace(
             get_session=lambda *args, **kwargs: _return_async(
@@ -335,7 +337,11 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
         tool_registry_getter=lambda: SimpleNamespace(
             get_tool_names_by_group=lambda _group: {"web_search", "read_webpage"},
             get_all_chat_capabilities=lambda: [
-                SimpleNamespace(id="web.search_context", plugin_id="web_tools")
+                SimpleNamespace(
+                    id="web.search_context",
+                    prefer_tool_execution=True,
+                    tool_group="web",
+                )
             ],
         ),
     )
@@ -352,14 +358,14 @@ async def test_should_prefer_web_tools_when_model_supports_function_calling(monk
 
     monkeypatch.setattr(model_config_service, "ModelConfigService", _FakeModelService)
 
-    result = await service._should_prefer_web_tools(
+    result = await service._capability_ids_prefer_tool_execution(
         session_id="s1",
         context_type="chat",
         project_id=None,
         context_capabilities=["web.search_context"],
     )
 
-    assert result is True
+    assert result == {"web.search_context"}
 
 
 @pytest.mark.asyncio
@@ -671,13 +677,26 @@ async def test_prepare_runtime_strips_preloaded_web_context_when_preferring_tool
             )
         ),
         build_file_context_block=lambda _refs: _return_async(""),
+        tool_registry_getter=lambda: SimpleNamespace(
+            get_all_chat_capabilities=lambda: [
+                SimpleNamespace(
+                    id="web.search_context",
+                    context_keys=["webpage_context", "search_context"],
+                    source_types=["webpage", "search"],
+                )
+            ]
+        ),
     )
     service = SingleChatFlowService(deps)
 
     monkeypatch.setattr(
         service, "_maybe_auto_compress", lambda **kwargs: _return_async((kwargs["messages"], None))
     )
-    monkeypatch.setattr(service, "_should_prefer_web_tools", lambda **_kwargs: _return_async(True))
+    monkeypatch.setattr(
+        service,
+        "_capability_ids_prefer_tool_execution",
+        lambda **_kwargs: _return_async({"web.search_context"}),
+    )
 
     runtime = await service._prepare_runtime(
         request=SingleChatRequestContext(

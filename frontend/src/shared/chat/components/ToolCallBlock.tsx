@@ -44,37 +44,35 @@ interface ApplyDiffResultPayload {
   error?: ToolErrorPayload;
 }
 
-interface WebSearchResultItem {
-  rank?: number;
-  title?: string;
-  url?: string;
-  domain?: string;
-  snippet?: string;
+interface ToolUiField {
+  label?: string;
+  value?: unknown;
 }
 
-interface WebSearchResultPayload {
-  ok?: boolean;
-  query?: string;
-  provider?: string;
-  has_results?: boolean;
-  total_results?: number;
-  results?: WebSearchResultItem[];
-  error?: ToolErrorPayload;
+interface ToolUiItem {
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  url?: string;
 }
 
-interface ReadWebpageResultPayload {
-  ok?: boolean;
-  url?: string;
-  final_url?: string;
-  domain?: string;
+interface ToolUiSection {
+  kind?: 'fields' | 'items' | 'text';
   title?: string;
-  content?: string;
-  preview?: string;
-  content_chars?: number;
+  fields?: ToolUiField[];
+  items?: ToolUiItem[];
+  text?: string;
+  empty_message?: string;
   truncated?: boolean;
-  status_code?: number;
-  content_type?: string;
-  error?: ToolErrorPayload;
+}
+
+interface ToolUiPayload {
+  version?: number;
+  kind?: string;
+  summary?: string;
+  status?: 'ok' | 'error';
+  error_message?: string;
+  sections?: ToolUiSection[];
 }
 
 type DiffPreviewLineType = 'meta' | 'hunk' | 'context' | 'add' | 'remove';
@@ -96,8 +94,6 @@ const APPLY_DIFF_TOOL_NAMES = new Set([
   'apply_diff_current_document',
   'apply_diff_project_document',
 ]);
-const WEB_SEARCH_TOOL_NAME = 'web_search';
-const READ_WEBPAGE_TOOL_NAME = 'read_webpage';
 const APPLIED_PATCH_STORAGE_KEY = 'lex-mint.project-chat.applied-patches.v1';
 const DISMISSED_PATCH_STORAGE_KEY = 'lex-mint.project-chat.dismissed-patches.v1';
 const MAX_DIFF_PREVIEW_LINES = 240;
@@ -159,6 +155,38 @@ const safeParseJson = <T extends object>(raw?: string): T | null => {
     return null;
   } catch {
     return null;
+  }
+};
+
+const parseToolUiPayload = (raw?: string): ToolUiPayload | null => {
+  const parsed = safeParseJson<Record<string, unknown>>(raw);
+  if (!parsed) {
+    return null;
+  }
+  const ui = parsed.ui;
+  if (!ui || typeof ui !== 'object') {
+    return null;
+  }
+  return ui as ToolUiPayload;
+};
+
+const formatUiValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'yes' : 'no';
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  if (typeof value === 'string') {
+    return value || '-';
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 };
 
@@ -251,13 +279,6 @@ const truncateText = (value: string, maxChars: number): string => {
   return `${value.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 };
 
-const displayUrl = (url?: string): string => {
-  if (!url) {
-    return '';
-  }
-  return url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-};
-
 const developerPayloadBlock = (
   title: string,
   argumentsLabel: string,
@@ -296,276 +317,154 @@ const buildToolHeaderText = (
   t: TFunction,
   tc: ToolCallInfo,
   formatArgs: (args: Record<string, unknown>) => string,
-  parsedSearchResult: WebSearchResultPayload | null,
-  parsedReadResult: ReadWebpageResultPayload | null,
+  parsedToolUi: ToolUiPayload | null,
 ): string => {
   if (tc.status === 'calling') {
     return t('toolCall.calling', { name: tc.name });
   }
 
-  if (parsedSearchResult) {
-    const query = parsedSearchResult.query || (typeof tc.args.query === 'string' ? tc.args.query : '');
-    if (parsedSearchResult.ok) {
-      return `${tc.name}(${JSON.stringify(truncateText(query, 72))}) · ${t('toolCall.webSearch.resultCount', { count: parsedSearchResult.total_results ?? 0 })}`;
+  if (parsedToolUi) {
+    const summary = String(parsedToolUi.summary || '').trim();
+    if (summary) {
+      return `${tc.name}(${formatArgs(tc.args)}) · ${truncateText(summary, 88)}`;
     }
-    return `${tc.name}(${JSON.stringify(truncateText(query, 72))}) · ${parsedSearchResult.error?.message || t('toolCall.webSearch.error')}`;
-  }
-
-  if (parsedReadResult) {
-    const targetUrl = parsedReadResult.final_url || parsedReadResult.url || (typeof tc.args.url === 'string' ? tc.args.url : '');
-    const label = parsedReadResult.title || displayUrl(targetUrl) || tc.name;
-    if (parsedReadResult.ok) {
-      return `${tc.name}(${truncateText(displayUrl(targetUrl), 48)}) · ${truncateText(label, 64)}`;
-    }
-    return `${tc.name}(${truncateText(displayUrl(targetUrl), 48)}) · ${parsedReadResult.error?.message || t('toolCall.readWebpage.error')}`;
   }
 
   return `${tc.name}(${formatArgs(tc.args)})`;
 };
 
-interface WebSearchDetailsProps {
-  developerModeEnabled: boolean;
-  parsedSearchResult: WebSearchResultPayload;
-  t: TFunction;
-  tc: ToolCallInfo;
+interface ToolUiDetailsProps {
+  parsedToolUi: ToolUiPayload;
 }
 
-const WebSearchDetails = ({
-  developerModeEnabled,
-  parsedSearchResult,
-  t,
-  tc,
-}: WebSearchDetailsProps) => (
-  <div data-name="tool-web-search" className="space-y-3">
-    <div className="grid gap-2 sm:grid-cols-3">
-      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          {t('toolCall.webSearch.query')}
-        </div>
-        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-          {parsedSearchResult.query || '-'}
-        </div>
-      </div>
-      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          {t('toolCall.webSearch.provider')}
-        </div>
-        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-          {parsedSearchResult.provider || '-'}
-        </div>
-      </div>
-      <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          {t('toolCall.webSearch.totalResults')}
-        </div>
-        <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-          {parsedSearchResult.total_results ?? 0}
-        </div>
-      </div>
-    </div>
-
-    {parsedSearchResult.ok === false && (
+const ToolUiDetails = ({ parsedToolUi }: ToolUiDetailsProps) => (
+  <div data-name="tool-ui-details" className="space-y-3">
+    {parsedToolUi.status === 'error' && parsedToolUi.error_message && (
       <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-        {parsedSearchResult.error?.message || t('toolCall.webSearch.error')}
+        {parsedToolUi.error_message}
       </div>
     )}
 
-    {parsedSearchResult.ok && !parsedSearchResult.has_results && (
-      <div className="rounded border border-gray-200 bg-white/70 p-3 text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
-        {t('toolCall.webSearch.noResults')}
-      </div>
-    )}
-
-    {parsedSearchResult.ok && Boolean(parsedSearchResult.results?.length) && (
-      <div className="space-y-2">
-        {parsedSearchResult.results?.map((result) => {
-          const resultUrl = result.url || '';
-          const resultKey = `${result.rank || 0}-${resultUrl || result.title || 'result'}`;
-          return (
-            <a
-              key={resultKey}
-              href={resultUrl || '#'}
-              target="_blank"
-              rel="noreferrer"
-              className="block rounded-lg border border-gray-200 bg-white/80 p-3 transition hover:border-sky-300 hover:bg-white dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-sky-700"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    #{result.rank || 0}
-                    {result.domain ? ` · ${result.domain}` : ''}
-                  </div>
-                  <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
-                    {result.title || displayUrl(resultUrl) || '-'}
-                  </div>
-                  <div className="mt-1 break-all text-xs text-sky-700 dark:text-sky-300">
-                    {resultUrl}
-                  </div>
-                </div>
-                <ArrowTopRightOnSquareIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
-              </div>
-              {result.snippet && (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                  {result.snippet}
-                </p>
-              )}
-            </a>
-          );
-        })}
-      </div>
-    )}
-
-    {developerModeEnabled && developerPayloadBlock(
-      t('toolCall.rawPayload'),
-      t('toolCall.arguments'),
-      t('toolCall.result'),
-      tc.args,
-      tc.result,
-    )}
-  </div>
-);
-
-interface ReadWebpageDetailsProps {
-  developerModeEnabled: boolean;
-  parsedReadResult: ReadWebpageResultPayload;
-  t: TFunction;
-  tc: ToolCallInfo;
-}
-
-const ReadWebpageDetails = ({
-  developerModeEnabled,
-  parsedReadResult,
-  t,
-  tc,
-}: ReadWebpageDetailsProps) => (
-  <div data-name="tool-read-webpage" className="space-y-3">
-    {parsedReadResult.ok === false ? (
-      <div className="space-y-2">
-        <div className="rounded border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-          {parsedReadResult.error?.message || t('toolCall.readWebpage.error')}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {t('toolCall.readWebpage.url')}
-            </div>
-            <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
-              {parsedReadResult.url || '-'}
-            </div>
-          </div>
-          <div className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30">
-            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {t('toolCall.readWebpage.statusCode')}
-            </div>
-            <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-              {parsedReadResult.status_code ?? '-'}
-            </div>
-          </div>
-        </div>
-      </div>
-    ) : (
-      <>
-        <div className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {parsedReadResult.domain && (
-                <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  {parsedReadResult.domain}
-                </div>
-              )}
-              <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
-                {parsedReadResult.title || displayUrl(parsedReadResult.final_url || parsedReadResult.url) || '-'}
-              </div>
-            </div>
-            {(parsedReadResult.final_url || parsedReadResult.url) && (
-              <a
-                href={parsedReadResult.final_url || parsedReadResult.url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+    {(parsedToolUi.sections || []).map((section, sectionIndex) => {
+      const key = `${section.kind || 'unknown'}-${sectionIndex}`;
+      if (section.kind === 'fields') {
+        const fields = Array.isArray(section.fields) ? section.fields : [];
+        if (fields.length === 0) {
+          return null;
+        }
+        return (
+          <div key={key} className="grid gap-2 sm:grid-cols-2">
+            {fields.map((field, fieldIndex) => (
+              <div
+                key={`${key}-field-${fieldIndex}`}
+                className="rounded border border-gray-200 bg-white/70 p-2 dark:border-gray-700 dark:bg-gray-900/30"
               >
-                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-              </a>
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {field.label || '-'}
+                </div>
+                <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
+                  {formatUiValue(field.value)}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      if (section.kind === 'items') {
+        const items = Array.isArray(section.items) ? section.items : [];
+        return (
+          <div key={key} className="space-y-2">
+            {section.title && (
+              <div className="font-medium text-gray-700 dark:text-gray-200">
+                {section.title}
+              </div>
+            )}
+            {items.length === 0 ? (
+              <div className="rounded border border-gray-200 bg-white/70 p-3 text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
+                {section.empty_message || '-'}
+              </div>
+            ) : (
+              items.map((item, itemIndex) => {
+                const itemUrl = String(item.url || '').trim();
+                const itemKey = `${key}-item-${itemIndex}`;
+                const cardBody = (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        {item.subtitle && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {item.subtitle}
+                          </div>
+                        )}
+                        <div className="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">
+                          {item.title || '-'}
+                        </div>
+                        {itemUrl && (
+                          <div className="mt-1 break-all text-xs text-sky-700 dark:text-sky-300">
+                            {itemUrl}
+                          </div>
+                        )}
+                      </div>
+                      {itemUrl && (
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                      )}
+                    </div>
+                    {item.description && (
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                        {item.description}
+                      </p>
+                    )}
+                  </>
+                );
+                if (itemUrl) {
+                  return (
+                    <a
+                      key={itemKey}
+                      href={itemUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-lg border border-gray-200 bg-white/80 p-3 transition hover:border-sky-300 hover:bg-white dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-sky-700"
+                    >
+                      {cardBody}
+                    </a>
+                  );
+                }
+                return (
+                  <div
+                    key={itemKey}
+                    className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30"
+                  >
+                    {cardBody}
+                  </div>
+                );
+              })
             )}
           </div>
+        );
+      }
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {t('toolCall.readWebpage.url')}
+      if (section.kind === 'text') {
+        return (
+          <div key={key} className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="font-medium text-gray-700 dark:text-gray-200">
+                {section.title || 'Text'}
               </div>
-              <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
-                {parsedReadResult.url || '-'}
-              </div>
+              {section.truncated && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  Truncated
+                </span>
+              )}
             </div>
-            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {t('toolCall.readWebpage.finalUrl')}
-              </div>
-              <div className="mt-1 break-all text-gray-800 dark:text-gray-100">
-                {parsedReadResult.final_url || '-'}
-              </div>
-            </div>
-            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {t('toolCall.readWebpage.contentType')}
-              </div>
-              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                {parsedReadResult.content_type || '-'}
-              </div>
-            </div>
-            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {t('toolCall.readWebpage.statusCode')}
-              </div>
-              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                {parsedReadResult.status_code ?? '-'}
-              </div>
-            </div>
-            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {t('toolCall.readWebpage.contentChars')}
-              </div>
-              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                {parsedReadResult.content_chars ?? 0}
-              </div>
-            </div>
-            <div className="rounded border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30">
-              <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {t('toolCall.readWebpage.truncated')}
-              </div>
-              <div className="mt-1 break-words text-gray-800 dark:text-gray-100">
-                {parsedReadResult.truncated ? 'yes' : 'no'}
-              </div>
-            </div>
+            <pre className="max-h-72 max-w-full overflow-auto whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">
+              {section.text || '-'}
+            </pre>
           </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/30">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="font-medium text-gray-700 dark:text-gray-200">
-              {t('toolCall.readWebpage.preview')}
-            </div>
-            {parsedReadResult.truncated && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                {t('toolCall.readWebpage.truncated')}
-              </span>
-            )}
-          </div>
-          <pre className="max-h-72 max-w-full overflow-auto whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">
-            {parsedReadResult.content || parsedReadResult.preview || '-'}
-          </pre>
-        </div>
-      </>
-    )}
-
-    {developerModeEnabled && developerPayloadBlock(
-      t('toolCall.rawPayload'),
-      t('toolCall.arguments'),
-      t('toolCall.result'),
-      tc.args,
-      tc.result,
-    )}
+        );
+      }
+      return null;
+    })}
   </div>
 );
 
@@ -815,11 +714,8 @@ const ToolCallItem = ({
   const isCalling = tc.status === 'calling';
   const isError = tc.status === 'error';
   const isApplyDiffTool = APPLY_DIFF_TOOL_NAMES.has(tc.name);
-  const isWebSearchTool = tc.name === WEB_SEARCH_TOOL_NAME;
-  const isReadWebpageTool = tc.name === READ_WEBPAGE_TOOL_NAME;
   const parsedResult = isApplyDiffTool ? safeParseJson<ApplyDiffResultPayload>(tc.result) : null;
-  const parsedSearchResult = isWebSearchTool ? safeParseJson<WebSearchResultPayload>(tc.result) : null;
-  const parsedReadResult = isReadWebpageTool ? safeParseJson<ReadWebpageResultPayload>(tc.result) : null;
+  const parsedToolUi = parseToolUiPayload(tc.result);
   const applyDiffRaw = isApplyDiffTool ? extractUnifiedDiff(tc.args) : '';
   const applyDiffPreview = applyDiffRaw ? parseUnifiedDiffPreview(applyDiffRaw) : null;
   const patchId = parsedResult?.pending_patch_id || '';
@@ -848,7 +744,7 @@ const ToolCallItem = ({
   ) : (
     <CheckCircleIcon className="h-4 w-4 text-green-500 dark:text-green-400" />
   );
-  const headerText = buildToolHeaderText(t, tc, formatArgs, parsedSearchResult, parsedReadResult);
+  const headerText = buildToolHeaderText(t, tc, formatArgs, parsedToolUi);
 
   return (
     <div
@@ -871,21 +767,7 @@ const ToolCallItem = ({
 
       {isExpanded && (
         <div className="min-w-0 max-w-full space-y-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
-          {isWebSearchTool && parsedSearchResult ? (
-            <WebSearchDetails
-              developerModeEnabled={developerModeEnabled}
-              parsedSearchResult={parsedSearchResult}
-              t={t}
-              tc={tc}
-            />
-          ) : isReadWebpageTool && parsedReadResult ? (
-            <ReadWebpageDetails
-              developerModeEnabled={developerModeEnabled}
-              parsedReadResult={parsedReadResult}
-              t={t}
-              tc={tc}
-            />
-          ) : isApplyDiffTool ? (
+          {isApplyDiffTool ? (
             <ApplyDiffDetails
               applyDiffPreview={applyDiffPreview}
               applyError={applyError}
@@ -899,8 +781,18 @@ const ToolCallItem = ({
               t={t}
               tc={tc}
             />
+          ) : parsedToolUi ? (
+            <ToolUiDetails parsedToolUi={parsedToolUi} />
           ) : (
             <DefaultToolDetails t={t} tc={tc} />
+          )}
+
+          {!isApplyDiffTool && developerModeEnabled && developerPayloadBlock(
+            t('toolCall.rawPayload'),
+            t('toolCall.arguments'),
+            t('toolCall.result'),
+            tc.args,
+            tc.result,
           )}
 
           {isDryRunApplyDiff && parsedResult && patchId && (
