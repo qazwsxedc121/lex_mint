@@ -15,7 +15,7 @@ chat_capabilities:
     prefer_tool_execution: true
     context_keys: [search_context]
     source_types: [search]
-    icon: globe
+    icon: MagnifyingGlassIcon
     order: 10
     default_enabled: false
     visible_in_input: true
@@ -26,7 +26,7 @@ chat_capabilities:
     prefer_tool_execution: true
     context_keys: [webpage_context]
     source_types: [webpage]
-    icon: document
+    icon: DocumentTextIcon
     order: 20
     default_enabled: false
     visible_in_input: false

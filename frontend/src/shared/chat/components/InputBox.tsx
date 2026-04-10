@@ -6,7 +6,6 @@ import React, { useState, useRef, useCallback, useEffect, useMemo, type Keyboard
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import {
-  GlobeAltIcon,
   PaperClipIcon,
   DocumentTextIcon,
   PlusIcon,
@@ -33,6 +32,7 @@ import {
   buildSlashCommandSuggestions,
   type SlashCommandSuggestion,
 } from '../slashCommands';
+import { resolveCapabilityIcon } from '../icons/capabilityIconRegistry';
 
 // Legacy fallback reasoning options.
 const LEGACY_REASONING_OPTIONS = [
@@ -992,10 +992,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         {/* Context capability toggles */}
         {capabilityToggles.map((capability) => {
           const enabled = contextCapabilities.includes(capability.id);
-          const IconComponent =
-            capability.icon === 'document'
-              ? DocumentTextIcon
-              : GlobeAltIcon;
+          const IconComponent = resolveCapabilityIcon(capability.icon);
           return (
             <button
               key={capability.id}
