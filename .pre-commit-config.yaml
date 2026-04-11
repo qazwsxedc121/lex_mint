@@ -1,15 +1,21 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: trailing-whitespace
-        exclude: ^frontend/public/pyodide/
-      - id: end-of-file-fixer
-        exclude: ^frontend/public/pyodide/
-      - id: check-yaml
-
   - repo: local
     hooks:
+      - id: trailing-whitespace
+        name: trailing-whitespace
+        entry: venv/Scripts/python.exe scripts/precommit/local_hooks.py trailing-whitespace
+        language: system
+        exclude: ^frontend/public/pyodide/
+      - id: end-of-file-fixer
+        name: end-of-file-fixer
+        entry: venv/Scripts/python.exe scripts/precommit/local_hooks.py end-of-file-fixer
+        language: system
+        exclude: ^frontend/public/pyodide/
+      - id: check-yaml
+        name: check-yaml
+        entry: venv/Scripts/python.exe scripts/precommit/local_hooks.py check-yaml
+        language: system
+        types: [yaml]
       - id: ruff-check
         name: ruff-check
         entry: venv/Scripts/python.exe -m ruff check --fix
