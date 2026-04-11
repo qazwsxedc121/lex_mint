@@ -73,6 +73,9 @@ async def update_config(
 
         _validate_provider(update_dict.get("provider"))
         save_web_tools_settings_updates({"search": update_dict})
+        save_config = getattr(service, "save_config", None)
+        if callable(save_config):
+            save_config(update_dict)
         if hasattr(service, "_load_config"):
             service.config = service._load_config()
         return {"message": "Configuration updated successfully"}

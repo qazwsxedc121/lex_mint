@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from src.core.paths import repo_root
+from src.core.paths import repo_root, source_repo_root
 
 from .models import ProviderPluginContribution, ProviderPluginManifest, ProviderPluginStatus
 
@@ -24,7 +24,19 @@ class ProviderPluginLoader:
     """Load provider plugins from manifest directories at startup."""
 
     def __init__(self, plugins_dir: Path | None = None) -> None:
-        self.plugins_dir = plugins_dir or (repo_root() / "plugins")
+        self.plugins_dir = plugins_dir or self._default_plugins_dir()
+
+    @staticmethod
+    def _default_plugins_dir() -> Path:
+        runtime_plugins_dir = repo_root() / "plugins"
+        if runtime_plugins_dir.exists():
+            return runtime_plugins_dir
+
+        source_plugins_dir = source_repo_root() / "plugins"
+        if source_plugins_dir.exists():
+            return source_plugins_dir
+
+        return runtime_plugins_dir
 
     def load(
         self,

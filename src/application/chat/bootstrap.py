@@ -37,6 +37,9 @@ from src.infrastructure.projects.project_document_tool_service import ProjectDoc
 from src.infrastructure.projects.project_knowledge_base_resolver import ProjectKnowledgeBaseResolver
 from src.infrastructure.projects.project_tool_policy_resolver import ProjectToolPolicyResolver
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
+from src.infrastructure.web.search_service import SearchService
+from src.infrastructure.web.web_tool_service import WebToolService
+from src.infrastructure.web.webpage_service import WebpageService
 from src.llm_runtime import call_llm, call_llm_stream
 from src.tools.registry import get_tool_registry
 
@@ -55,6 +58,7 @@ from .session_command_service import ChatSessionCommandDeps, ChatSessionCommandS
 from .tool_gate_service import ToolGateService
 
 logger = logging.getLogger(__name__)
+_ = (SearchService, WebpageService, WebToolService)
 
 _GROUP_TRACE_PREVIEW_CHARS = 1600
 
