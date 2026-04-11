@@ -16,16 +16,12 @@ from .adapters import (
     AnthropicAdapter,
     DeepSeekAdapter,
     GeminiAdapter,
-    KimiAdapter,
     LmStudioAdapter,
     LocalGgufAdapter,
     OllamaAdapter,
     OpenAIAdapter,
     OpenRouterAdapter,
-    SiliconFlowAdapter,
-    VolcEngineAdapter,
     XAIAdapter,
-    ZhipuAdapter,
 )
 from .base import BaseLLMAdapter
 from .builtin import get_builtin_provider
@@ -115,11 +111,7 @@ class AdapterRegistry:
         "anthropic": AnthropicAdapter,
         "ollama": OllamaAdapter,
         "xai": XAIAdapter,
-        "zhipu": ZhipuAdapter,
-        "volcengine": VolcEngineAdapter,
         "gemini": GeminiAdapter,
-        "siliconflow": SiliconFlowAdapter,
-        "kimi": KimiAdapter,
         "local_gguf": LocalGgufAdapter,
     }
     if LmStudioAdapter is not None:
@@ -136,7 +128,13 @@ class AdapterRegistry:
     }
     _plugin_statuses: list[ProviderPluginStatus] = []
     _plugins_loaded = False
-    _strict_plugin_sdk_types: set[str] = {"bailian"}
+    _strict_plugin_sdk_types: set[str] = {
+        "bailian",
+        "zhipu",
+        "volcengine",
+        "siliconflow",
+        "kimi",
+    }
 
     @classmethod
     def _ensure_plugins_loaded(cls) -> None:

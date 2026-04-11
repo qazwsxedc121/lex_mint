@@ -1,0 +1,9 @@
+schema_version: 1
+id: zhipu
+name: Zhipu (GLM)
+version: 1.0.0
+enabled: true
+description: Zhipu provider adapter and builtin definition.
+provider:
+  enabled: true
+  entrypoint: plugin.py:register_provider

@@ -1,0 +1,9 @@
+schema_version: 1
+id: together
+name: Together AI
+version: 1.0.0
+enabled: true
+description: Together AI provider definition contributed via plugin.
+provider:
+  enabled: true
+  entrypoint: plugin.py:register_provider
