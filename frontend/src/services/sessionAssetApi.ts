@@ -3,6 +3,17 @@ import { api } from './apiClient';
 
 import type { MutableRefObject } from 'react';
 
+export interface SessionExportFormat {
+  id: string;
+  display_name: string;
+  media_type: string;
+  extension: string;
+  source: 'core' | 'plugin';
+  plugin_id?: string | null;
+  plugin_name?: string | null;
+  plugin_version?: string | null;
+}
+
 /**
  * Generate follow-up questions for a session on demand.
  */
@@ -18,11 +29,25 @@ export async function generateFollowups(sessionId: string, contextType: string =
 }
 
 /**
- * Export a session as a clean Markdown file and trigger browser download.
+ * Return all currently available session export formats.
  */
-export async function exportSession(sessionId: string, contextType: string = 'chat', projectId?: string): Promise<void> {
+export async function listSessionExportFormats(): Promise<SessionExportFormat[]> {
+  const response = await api.get<{ formats: SessionExportFormat[] }>('/api/features/session-export/formats');
+  return response.data.formats;
+}
+
+/**
+ * Export a session and trigger browser download.
+ */
+export async function exportSession(
+  sessionId: string,
+  contextType: string = 'chat',
+  projectId?: string,
+  format: string = 'markdown',
+): Promise<void> {
   const params = new URLSearchParams();
   params.append('context_type', contextType);
+  params.append('format', format);
   if (projectId) {
     params.append('project_id', projectId);
   }

@@ -21,6 +21,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { Session } from '../../../types/message';
 import type { Folder } from '../../../types/folder';
+import type { SessionExportFormat } from '../../../services/sessionAssetApi';
 
 interface DraggableSessionProps {
   session: Session;
@@ -30,6 +31,7 @@ interface DraggableSessionProps {
   generatingTitleId: string | null;
   openMenuId: string | null;
   folders: Folder[];
+  exportFormats: SessionExportFormat[];
   onSelect: (sessionId: string) => void;
   onDelete: (sessionId: string, e: React.MouseEvent) => void;
   onMenuClick: (e: React.MouseEvent, sessionId: string) => void;
@@ -39,7 +41,7 @@ interface DraggableSessionProps {
   onCancelEdit: () => void;
   onDuplicate: (e: React.MouseEvent, sessionId: string) => void;
   onOpenTransfer: (e: React.MouseEvent, sessionId: string, mode: 'move' | 'copy') => void;
-  onExport: (e: React.MouseEvent, sessionId: string) => void;
+  onExport: (e: React.MouseEvent, sessionId: string, format: string) => void;
   onMoveToFolder: (sessionId: string, folderId: string | null) => void;
   setEditTitle: (title: string) => void;
 }
@@ -78,6 +80,7 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
   generatingTitleId,
   openMenuId,
   folders,
+  exportFormats,
   onSelect,
   onDelete,
   onMenuClick,
@@ -241,13 +244,20 @@ export const DraggableSession: React.FC<DraggableSessionProps> = ({
                   <DocumentDuplicateIcon className="h-4 w-4" />
                   {t('session.copyToProject')}
                 </button>
-                <button
-                  onClick={(e) => onExport(e, session.session_id)}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
-                >
-                  <ArrowDownTrayIcon className="h-4 w-4" />
+                <div className="border-t border-gray-300 dark:border-gray-600 my-1"></div>
+                <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 uppercase">
                   {t('session.export')}
-                </button>
+                </div>
+                {exportFormats.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={(e) => onExport(e, session.session_id, item.id)}
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                  >
+                    <ArrowDownTrayIcon className="h-4 w-4" />
+                    {t(`session.exportFormat.${item.id}`, { defaultValue: item.display_name })}
+                  </button>
+                ))}
                 <div className="border-t border-gray-300 dark:border-gray-600 my-1"></div>
                 <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 uppercase">
                   {t('session.moveToFolder')}

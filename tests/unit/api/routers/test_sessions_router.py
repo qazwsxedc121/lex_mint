@@ -285,19 +285,31 @@ async def test_session_router_export_and_format_helpers():
 
 
 @pytest.mark.asyncio
-async def test_session_router_export_returns_404_when_plugin_unavailable(monkeypatch):
+async def test_session_router_export_supports_json_format():
+    storage = _FakeStorage()
+    response = await sessions_router.export_session(session_id="s1", storage=storage, format="json")
+    assert response.media_type == "application/json; charset=utf-8"
+    assert "Demo%20_Session_.json" in response.headers["Content-Disposition"]
+    assert '"role": "user"' in response.body.decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_session_router_export_returns_400_when_format_unsupported(monkeypatch):
     storage = _FakeStorage()
     monkeypatch.setattr(
         sessions_router,
-        "build_session_export_markdown",
+        "export_session_artifact",
         lambda **_: (_ for _ in ()).throw(
-            sessions_router.SessionExportPluginUnavailable("session export plugin is not enabled")
+            sessions_router.SessionExportUnsupportedFormatError(
+                "xml",
+                ["json", "markdown"],
+            )
         ),
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await sessions_router.export_session(session_id="s1", storage=storage)
-    assert exc_info.value.status_code == 404
+        await sessions_router.export_session(session_id="s1", storage=storage, format="xml")
+    assert exc_info.value.status_code == 400
 
 
 @pytest.mark.asyncio

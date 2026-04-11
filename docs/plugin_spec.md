@@ -80,9 +80,13 @@ feature:
 
 Current experimental capability:
 
-- `session_export`: entrypoint callable returns a formatter callable.
-- Formatter callable receives `session` data and returns markdown text.
-- This capability is plugin-owned: if no enabled `session_export` plugin is present, session export API is unavailable.
+- `session_export`: entrypoint callable returns one contribution object with multiple formats:
+  - `formats`: list of `{ id, display_name, media_type, extension }`
+  - `handlers`: map `{ format_id: callable }`
+- Handler callable receives `session` and returns `str` / `bytes` / `dict` / `list` / `ExportArtifact`-compatible payload.
+- Core provides default `markdown` and `json` export formats when no plugin exists.
+- If plugin and core provide the same format id, plugin handler takes precedence.
+- Legacy compatibility: returning a single callable is still accepted and treated as `markdown`.
 
 ## Entrypoint Rule
 
@@ -126,6 +130,7 @@ provider:
   - Tool plugins: `GET /api/tools/plugins`
   - Provider plugins: `GET /api/models/providers/plugins`
   - Feature plugins (session export): `GET /api/features/plugins`
+  - Session export formats: `GET /api/features/session-export/formats`
 
 ## Static Isolation Check Rule
 

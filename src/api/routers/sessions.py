@@ -3,7 +3,6 @@
 import io
 import json
 import logging
-import re
 import zipfile
 from typing import Any, Literal
 from urllib.parse import quote
@@ -21,8 +20,8 @@ from src.application.chat import SessionApplicationService
 from src.application.chat.chatgpt_import_service import ChatGPTImportService
 from src.application.chat.markdown_import_service import MarkdownImportService
 from src.application.chat.session_export_plugins import (
-    SessionExportPluginUnavailable,
-    build_session_export_markdown,
+    SessionExportUnsupportedFormatError,
+    export_session_artifact,
 )
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.storage.conversation_storage import ConversationStorage
@@ -882,21 +881,22 @@ async def export_session(
     session_id: str,
     context_type: str = Query("chat", description="Session context: 'chat' or 'project'"),
     project_id: str | None = Query(None, description="Project ID (required for project context)"),
+    format: str = Query("markdown", description="Export format, for example markdown or json"),
     storage: ConversationQueryStorageLike = Depends(get_storage),
 ):
-    """Export a conversation session as a clean Markdown file.
+    """Export a conversation session as downloadable content.
 
-    Returns a downloadable .md file with user/assistant messages,
-    stripped of internal metadata (usage, cost, message IDs).
+    Returns a downloadable file rendered by the requested export format.
 
     Args:
         session_id: Session UUID
         context_type: Context type ("chat" or "project")
         project_id: Project ID (required when context_type="project")
+        format: Export format id, default is markdown
 
     Raises:
         404: Session not found
-        400: Invalid context parameters
+        400: Invalid context parameters or unsupported format
     """
     if context_type == "project" and not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for project context")
@@ -906,29 +906,29 @@ async def export_session(
         session = await storage.get_session(
             session_id, context_type=context_type, project_id=project_id
         )
-        markdown_content = build_session_export_markdown(
+        requested_format = format if isinstance(format, str) else "markdown"
+        artifact = export_session_artifact(
             session=session,
+            export_format=requested_format,
         )
-
-        # Build filename from title
-        title = session.get("title", "conversation")
-        # Sanitize title for filename
-        safe_title = re.sub(r'[\\/*?:"<>|]', "_", title).strip()
-        if not safe_title:
-            safe_title = "conversation"
-        filename = f"{safe_title}.md"
-        encoded_filename = quote(filename)
+        encoded_filename = quote(artifact.filename)
 
         return Response(
-            content=markdown_content.encode("utf-8"),
-            media_type="text/markdown; charset=utf-8",
+            content=artifact.content_bytes,
+            media_type=artifact.media_type,
             headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
         )
     except FileNotFoundError:
         logger.error(f"Session not found: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
-    except SessionExportPluginUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SessionExportUnsupportedFormatError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(exc),
+                "available_formats": exc.available_formats,
+            },
+        ) from exc
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

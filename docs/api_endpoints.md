@@ -52,7 +52,7 @@ Protocol doc: `docs/flow_event_protocol_v1.md`
 - `POST /api/sessions/{session_id}/move` - move session between contexts
 - `POST /api/sessions/{session_id}/copy` - copy session between contexts
 - `POST /api/sessions/{session_id}/save` - persist temporary session
-- `GET /api/sessions/{session_id}/export` - export session markdown
+- `GET /api/sessions/{session_id}/export` - export session (`format=markdown|json|...`)
 - `POST /api/sessions/import/chatgpt` - import ChatGPT export
 - `POST /api/sessions/import/markdown` - import markdown sessions
 - `PUT /api/sessions/{session_id}/group-assistants` - set group participants
@@ -130,3 +130,8 @@ Protocol doc: `docs/flow_event_protocol_v1.md`
 ## Tools
 
 - `GET /api/tools/catalog`
+
+## Features
+
+- `GET /api/features/plugins` - feature plugin statuses
+- `GET /api/features/session-export/formats` - available session export formats

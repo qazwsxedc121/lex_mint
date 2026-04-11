@@ -29,7 +29,14 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useChatServices } from '../services/ChatServiceProvider';
 import { useFolders } from '../hooks/useFolders';
-import { exportSession, importChatGPTConversations, importMarkdownConversation, listProjects } from '../../../services/api';
+import {
+  exportSession,
+  importChatGPTConversations,
+  importMarkdownConversation,
+  listProjects,
+  listSessionExportFormats,
+  type SessionExportFormat,
+} from '../../../services/api';
 import type { Session } from '../../../types/message';
 import type { Project } from '../../../types/project';
 import { SessionTransferModal } from './SessionTransferModal';
@@ -122,6 +129,15 @@ export const ChatSidebar: React.FC = () => {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [transferBusy, setTransferBusy] = useState(false);
+  const [exportFormats, setExportFormats] = useState<SessionExportFormat[]>([
+    {
+      id: 'markdown',
+      display_name: 'Markdown',
+      media_type: 'text/markdown; charset=utf-8',
+      extension: 'md',
+      source: 'core',
+    },
+  ]);
 
   // Drag & drop state
   const [draggedItem, setDraggedItem] = useState<{
@@ -162,6 +178,25 @@ export const ChatSidebar: React.FC = () => {
       loadProjects();
     }
   }, [transferState, loadProjects]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const loadFormats = async () => {
+      try {
+        const formats = await listSessionExportFormats();
+        if (!mounted) return;
+        if (formats.length > 0) {
+          setExportFormats(formats);
+        }
+      } catch (err) {
+        console.error('Failed to load export formats, using markdown fallback:', err);
+      }
+    };
+    void loadFormats();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleNewSession = async () => {
     try {
@@ -392,15 +427,15 @@ export const ChatSidebar: React.FC = () => {
     }
   };
 
-  const handleExport = async (e: React.MouseEvent, sessionId: string) => {
+  const handleExport = async (e: React.MouseEvent, sessionId: string, format: string) => {
     e.stopPropagation();
     setOpenMenuId(null);
 
     try {
-      await exportSession(sessionId);
+      await exportSession(sessionId, 'chat', undefined, format);
     } catch (err) {
       console.error('Failed to export session:', err);
-      alert(t('sidebar.failedExport'));
+      alert(t('sidebar.failedExportWithFormat', { format }));
     }
   };
 
@@ -724,6 +759,7 @@ export const ChatSidebar: React.FC = () => {
                         generatingTitleId={generatingTitleId}
                         openMenuId={openMenuId}
                         folders={folders}
+                        exportFormats={exportFormats}
                         onSelect={handleSelectSession}
                         onDelete={handleDeleteSession}
                         onMenuClick={handleMenuClick}
@@ -769,6 +805,7 @@ export const ChatSidebar: React.FC = () => {
                             generatingTitleId={generatingTitleId}
                             openMenuId={openMenuId}
                             folders={folders}
+                            exportFormats={exportFormats}
                             onSelect={handleSelectSession}
                             onDelete={handleDeleteSession}
                             onMenuClick={handleMenuClick}
@@ -796,6 +833,7 @@ export const ChatSidebar: React.FC = () => {
                         generatingTitleId={generatingTitleId}
                         openMenuId={openMenuId}
                         folders={folders}
+                        exportFormats={exportFormats}
                         onSelect={handleSelectSession}
                         onDelete={handleDeleteSession}
                         onMenuClick={handleMenuClick}

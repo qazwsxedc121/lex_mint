@@ -41,4 +41,16 @@ def _build_export_markdown(session: dict[str, Any]) -> str:
 
 
 def register_session_export():
-    return _build_export_markdown
+    return {
+        "formats": [
+            {
+                "id": "markdown",
+                "display_name": "Markdown",
+                "media_type": "text/markdown; charset=utf-8",
+                "extension": "md",
+            }
+        ],
+        "handlers": {
+            "markdown": _build_export_markdown,
+        },
+    }

@@ -46,11 +46,13 @@ export {
   generateFollowups,
   importChatGPTConversations,
   importMarkdownConversation,
+  listSessionExportFormats,
   synthesizeSpeech,
 } from './sessionAssetApi';
 export type {
   ChatGPTImportResult,
   ChatGPTImportSessionSummary,
+  SessionExportFormat,
 } from './sessionAssetApi';
 export {
   checkHealth,

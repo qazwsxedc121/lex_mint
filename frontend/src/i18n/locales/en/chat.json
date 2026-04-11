@@ -20,6 +20,7 @@
   "sidebar.failedDuplicate": "Failed to duplicate session",
   "sidebar.failedTransfer": "Failed to transfer conversation",
   "sidebar.failedExport": "Failed to export session",
+  "sidebar.failedExportWithFormat": "Failed to export session ({{format}})",
 
   "timeGroup.today": "Today",
   "timeGroup.yesterday": "Yesterday",
@@ -33,6 +34,8 @@
   "session.moveToProject": "Move to Project",
   "session.copyToProject": "Copy to Project",
   "session.export": "Export",
+  "session.exportFormat.markdown": "Markdown",
+  "session.exportFormat.json": "JSON",
   "session.moveToFolder": "Move to Folder",
   "session.ungrouped": "Ungrouped",
   "session.moreOptions": "More options",

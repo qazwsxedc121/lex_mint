@@ -20,6 +20,7 @@
   "sidebar.failedDuplicate": "复制对话失败",
   "sidebar.failedTransfer": "转移对话失败",
   "sidebar.failedExport": "导出对话失败",
+  "sidebar.failedExportWithFormat": "导出对话失败（{{format}}）",
 
   "timeGroup.today": "今天",
   "timeGroup.yesterday": "昨天",
@@ -33,6 +34,8 @@
   "session.moveToProject": "移动到项目",
   "session.copyToProject": "复制到项目",
   "session.export": "导出",
+  "session.exportFormat.markdown": "Markdown",
+  "session.exportFormat.json": "JSON",
   "session.moveToFolder": "移动到文件夹",
   "session.ungrouped": "未分组",
   "session.moreOptions": "更多选项",
