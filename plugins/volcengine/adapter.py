@@ -87,7 +87,9 @@ class VolcEngineAdapter(BaseLLMAdapter):
                     self._EFFORT_LEVELS,
                 )
         elif reasoning_effort and disable_thinking:
-            logger.info("Volcengine reasoning_effort ignored because thinking is disabled for %s", model)
+            logger.info(
+                "Volcengine reasoning_effort ignored because thinking is disabled for %s", model
+            )
 
         for key in ["top_p", "frequency_penalty", "presence_penalty", "stop", "seed"]:
             if key in kwargs and kwargs[key] is not None:

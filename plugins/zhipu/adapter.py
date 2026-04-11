@@ -108,7 +108,13 @@ class ZhipuAdapter(BaseLLMAdapter):
             if key in kwargs and kwargs[key] is not None:
                 model_kwargs[key] = kwargs[key]
 
-        feature_keys = ["tools", "tool_choice", "parallel_tool_calls", "tool_stream", "response_format"]
+        feature_keys = [
+            "tools",
+            "tool_choice",
+            "parallel_tool_calls",
+            "tool_stream",
+            "response_format",
+        ]
         for key in feature_keys:
             if key in kwargs and kwargs[key] is not None:
                 model_kwargs[key] = kwargs[key]
