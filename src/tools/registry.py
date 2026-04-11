@@ -9,8 +9,10 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from .builtin import BUILTIN_TOOL_DEFINITIONS, build_builtin_tools, get_builtin_tool_handler
 from .definitions import ToolDefinition
 from .plugins import ChatCapabilityDefinition, ToolPluginLoader, ToolPluginStatus
+from .request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
 _TOOL_GROUP_ORDER = ("builtin", "web", "projectDocuments", "knowledge")
@@ -22,12 +24,25 @@ class ToolRegistry:
     def __init__(self) -> None:
         loaded_plugins, plugin_statuses = ToolPluginLoader().load()
         self._plugin_statuses = list(plugin_statuses)
+        loaded_plugin_ids = {
+            status.id for status in self._plugin_statuses if status.loaded and status.enabled
+        }
 
         definitions: list[ToolDefinition] = []
         chat_capabilities: list[ChatCapabilityDefinition] = []
         tools: list[BaseTool] = []
         handler_map: dict[str, object] = {}
         context_capability_handler_map: dict[str, object] = {}
+
+        if "builtin_tools" not in loaded_plugin_ids:
+            tools.extend(build_builtin_tools())
+            definitions.extend(BUILTIN_TOOL_DEFINITIONS)
+            definitions.extend(REQUEST_SCOPED_TOOL_DEFINITIONS)
+            for definition in BUILTIN_TOOL_DEFINITIONS:
+                handler = get_builtin_tool_handler(definition.name)
+                if handler is None:
+                    continue
+                handler_map[definition.name] = handler
 
         for manifest, contribution in loaded_plugins:
             for definition in contribution.definitions:

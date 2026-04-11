@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from src.tools import registry as registry_module
 from src.tools.registry import ToolRegistry
 
 
@@ -62,6 +63,40 @@ def test_builtin_registry_default_project_map_tracks_definitions():
         "text_statistics": False,
         "web_search": False,
         "read_webpage": False,
+        "read_project_document": True,
+        "read_current_document": True,
+        "search_project_text": True,
+        "apply_diff_project_document": False,
+        "apply_diff_current_document": False,
+        "search_knowledge": True,
+        "read_knowledge": True,
+    }
+
+
+def test_registry_falls_back_to_core_builtin_when_plugin_missing(monkeypatch):
+    class _NoopToolPluginLoader:
+        def load(self):
+            return [], []
+
+    monkeypatch.setattr(registry_module, "ToolPluginLoader", _NoopToolPluginLoader)
+
+    registry = ToolRegistry()
+
+    assert [tool.name for tool in registry.get_all_tools()] == [
+        "get_current_time",
+        "execute_python",
+        "execute_javascript",
+        "simple_calculator",
+        "format_json",
+        "text_statistics",
+    ]
+    assert registry.get_default_project_enabled_map() == {
+        "get_current_time": False,
+        "execute_python": True,
+        "execute_javascript": True,
+        "simple_calculator": False,
+        "format_json": False,
+        "text_statistics": False,
         "read_project_document": True,
         "read_current_document": True,
         "search_project_text": True,

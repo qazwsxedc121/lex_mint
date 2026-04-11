@@ -1,9 +1,0 @@
-schema_version: 1
-id: builtin_tools
-name: Builtin Tools
-version: 1.0.0
-enabled: true
-description: Builtin function-calling tools provided by lex_mint.
-tool:
-  enabled: true
-  entrypoint: plugin.py:register_tool
