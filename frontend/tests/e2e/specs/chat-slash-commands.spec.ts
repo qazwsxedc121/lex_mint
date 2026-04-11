@@ -74,4 +74,3 @@ test.describe('Chat slash commands', () => {
     }
   });
 });
-
