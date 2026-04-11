@@ -26,12 +26,14 @@ Top-level fields:
 - `description`: optional
 - `tool`: optional tool-plugin section
 - `provider`: optional provider-plugin section
+- `feature`: optional feature-plugin section (experimental)
 
 One plugin directory can expose:
 
 - only `tool`
 - only `provider`
 - both `tool` and `provider`
+- `feature` only, or mixed with `tool` / `provider`
 
 ### Tool Section
 
@@ -66,6 +68,21 @@ provider:
 ```
 
 Entrypoint callable must return `ProviderPluginContribution`.
+
+### Feature Section (Experimental)
+
+```yaml
+feature:
+  session_export:
+    enabled: true
+    entrypoint: plugin.py:register_session_export
+```
+
+Current experimental capability:
+
+- `session_export`: entrypoint callable returns a formatter callable.
+- Formatter callable receives `session` data and returns markdown text.
+- This capability is plugin-owned: if no enabled `session_export` plugin is present, session export API is unavailable.
 
 ## Entrypoint Rule
 
@@ -108,6 +125,7 @@ provider:
 - Plugin status APIs:
   - Tool plugins: `GET /api/tools/plugins`
   - Provider plugins: `GET /api/models/providers/plugins`
+  - Feature plugins (session export): `GET /api/features/plugins`
 
 ## Static Isolation Check Rule
 

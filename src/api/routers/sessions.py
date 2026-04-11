@@ -20,6 +20,10 @@ from src.api.routers.service_protocols import (
 from src.application.chat import SessionApplicationService
 from src.application.chat.chatgpt_import_service import ChatGPTImportService
 from src.application.chat.markdown_import_service import MarkdownImportService
+from src.application.chat.session_export_plugins import (
+    SessionExportPluginUnavailable,
+    build_session_export_markdown,
+)
 from src.infrastructure.storage.comparison_storage import ComparisonStorage
 from src.infrastructure.storage.conversation_storage import ConversationStorage
 
@@ -873,50 +877,6 @@ async def copy_session(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def _format_thinking_block(content: str) -> str:
-    """Extract thinking blocks from content and format as collapsible details."""
-    think_pattern = re.compile(r"<think>(.*?)</think>", re.DOTALL)
-    match = think_pattern.search(content)
-    if not match:
-        return content
-
-    thinking_text = match.group(1).strip()
-    # Remove the <think>...</think> from main content
-    main_content = think_pattern.sub("", content).strip()
-
-    # Build collapsible thinking block
-    thinking_html = f"<details>\n<summary>Thinking</summary>\n\n{thinking_text}\n\n</details>\n"
-
-    return f"{thinking_html}\n{main_content}"
-
-
-def _build_export_markdown(session: dict) -> str:
-    """Build clean export markdown from a session."""
-    title = session.get("title", "Untitled")
-    messages = session.get("state", {}).get("messages", [])
-
-    lines = [f"# {title}\n"]
-
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-
-        if role == "user":
-            lines.append("---")
-            lines.append("## User\n")
-            lines.append(content)
-            lines.append("")
-        elif role == "assistant":
-            lines.append("---")
-            lines.append("## Assistant\n")
-            formatted = _format_thinking_block(content)
-            lines.append(formatted)
-            lines.append("")
-        # Skip separator and summary messages
-
-    return "\n".join(lines)
-
-
 @router.get("/{session_id}/export")
 async def export_session(
     session_id: str,
@@ -946,7 +906,9 @@ async def export_session(
         session = await storage.get_session(
             session_id, context_type=context_type, project_id=project_id
         )
-        markdown_content = _build_export_markdown(session)
+        markdown_content = build_session_export_markdown(
+            session=session,
+        )
 
         # Build filename from title
         title = session.get("title", "conversation")
@@ -965,6 +927,8 @@ async def export_session(
     except FileNotFoundError:
         logger.error(f"Session not found: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
+    except SessionExportPluginUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

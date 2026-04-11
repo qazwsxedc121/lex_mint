@@ -277,13 +277,27 @@ async def test_session_router_updates_and_transfers():
 async def test_session_router_export_and_format_helpers():
     storage = _FakeStorage()
 
-    markdown = sessions_router._build_export_markdown(storage.session)
-    assert "<details>" in markdown
-    assert "## Assistant" in markdown
-
     response = await sessions_router.export_session(session_id="s1", storage=storage)
     assert response.media_type == "text/markdown; charset=utf-8"
     assert "Demo%20_Session_.md" in response.headers["Content-Disposition"]
+    assert "<details>" in response.body.decode("utf-8")
+    assert "## Assistant" in response.body.decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_session_router_export_returns_404_when_plugin_unavailable(monkeypatch):
+    storage = _FakeStorage()
+    monkeypatch.setattr(
+        sessions_router,
+        "build_session_export_markdown",
+        lambda **_: (_ for _ in ()).throw(
+            sessions_router.SessionExportPluginUnavailable("session export plugin is not enabled")
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await sessions_router.export_session(session_id="s1", storage=storage)
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.asyncio
