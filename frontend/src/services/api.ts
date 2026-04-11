@@ -104,6 +104,7 @@ export {
   getModel,
   getProvider,
   getReasoningSupportedPatterns,
+  listProviderPlugins,
   listModels,
   listProviders,
   setDefaultConfig,

@@ -1,6 +1,6 @@
 import { api } from './apiClient';
 
-import type { DefaultConfig, Model, Provider } from '../types/model';
+import type { DefaultConfig, Model, Provider, ProviderPluginStatus } from '../types/model';
 
 /**
  * List providers.
@@ -121,5 +121,13 @@ export async function setDefaultConfig(providerId: string, modelId: string): Pro
  */
 export async function getReasoningSupportedPatterns(): Promise<string[]> {
   const response = await api.get<string[]>('/api/models/reasoning-patterns');
+  return response.data;
+}
+
+/**
+ * List provider plugin statuses.
+ */
+export async function listProviderPlugins(): Promise<ProviderPluginStatus[]> {
+  const response = await api.get<ProviderPluginStatus[]>('/api/models/providers/plugins');
   return response.data;
 }

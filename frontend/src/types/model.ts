@@ -194,3 +194,16 @@ export interface ProviderEndpointProfilesResponse {
   endpoint_profiles: EndpointProfile[];
   recommended_endpoint_profile_id?: string | null;
 }
+
+export interface ProviderPluginStatus {
+  id: string;
+  name: string;
+  version: string;
+  entrypoint: string;
+  plugin_dir: string;
+  enabled: boolean;
+  loaded: boolean;
+  adapters_count: number;
+  builtin_providers_count: number;
+  error?: string | null;
+}

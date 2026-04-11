@@ -7,6 +7,7 @@
  */
 
 import { MagnifyingGlassIcon, SignalIcon } from '@heroicons/react/24/outline';
+import { Link } from 'react-router-dom';
 import type { CrudSettingsConfig } from './types';
 import type { Provider } from '../../../types/model';
 import { fetchProviderModels, probeProviderEndpoints, testProviderStoredConnection } from '../../../services/api';
@@ -181,7 +182,14 @@ export const providersConfig: CrudSettingsConfig<Provider> = {
         }
         return (
           <div data-name="provider-source-plugin" className="text-xs text-gray-700 dark:text-gray-300">
-            <div className="font-medium">{row.source_plugin_name || row.source_plugin_id}</div>
+            <div className="font-medium">
+              <Link
+                to={`/settings/providers/plugins/${encodeURIComponent(row.source_plugin_id)}`}
+                className="text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                {row.source_plugin_name || row.source_plugin_id}
+              </Link>
+            </div>
             <div className="font-mono text-gray-500 dark:text-gray-400">
               {row.source_plugin_id}{row.source_plugin_version ? ` @ ${row.source_plugin_version}` : ''}
             </div>

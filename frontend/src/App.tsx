@@ -43,6 +43,7 @@ import { ToolGateSettings } from './modules/settings/ToolGateSettings';
 import { ToolDescriptionsSettings } from './modules/settings/ToolDescriptionsSettings';
 import { ToolDescriptionDetailPage } from './modules/settings/ToolDescriptionDetailPage';
 import { ToolPluginSettingsPage } from './modules/settings/ToolPluginSettingsPage';
+import { ProviderPluginDetailPage } from './modules/settings/ProviderPluginDetailPage';
 import { DeveloperModule } from './modules/developer';
 import { WorkflowsModule } from './modules/workflows';
 import './index.css';
@@ -83,6 +84,7 @@ function App() {
             <Route path="providers" element={<ProvidersPage />} />
             <Route path="providers/new" element={<ProvidersCreatePage />} />
             <Route path="providers/:providerId" element={<ProvidersEditPage />} />
+            <Route path="providers/plugins/:pluginId" element={<ProviderPluginDetailPage />} />
             <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
             <Route path="knowledge-bases/new" element={<KnowledgeBaseCreatePage />} />
             <Route path="knowledge-bases/:kbId" element={<KnowledgeBaseEditPage />} />
