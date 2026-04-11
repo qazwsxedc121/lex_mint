@@ -10,9 +10,9 @@ def test_build_catalog_includes_all_tool_names():
     tool_names = [tool.name for tool in catalog.tools]
 
     assert tool_names == [
-        "get_current_time",
         "execute_python",
         "execute_javascript",
+        "get_current_time",
         "simple_calculator",
         "format_json",
         "text_statistics",
@@ -38,9 +38,9 @@ def test_build_catalog_groups_tools_in_ui_order():
         "knowledge",
     ]
     assert [tool.name for tool in catalog.groups[0].tools] == [
-        "get_current_time",
         "execute_python",
         "execute_javascript",
+        "get_current_time",
         "simple_calculator",
         "format_json",
         "text_statistics",
@@ -54,10 +54,10 @@ def test_build_catalog_groups_tools_in_ui_order():
         catalog.groups[0].description_i18n_key
         == "workspace.settings.toolGroups.builtin.description"
     )
-    assert catalog.tools[0].title_i18n_key == "workspace.settings.tools.get_current_time.title"
+    assert catalog.tools[0].title_i18n_key == "workspace.settings.tools.execute_python.title"
     assert (
         catalog.tools[0].description_i18n_key
-        == "workspace.settings.tools.get_current_time.description"
+        == "workspace.settings.tools.execute_python.description"
     )
 
 

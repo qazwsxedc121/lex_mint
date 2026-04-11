@@ -10,53 +10,14 @@ Stage 1 freezes the current tool architecture and onboarding rules. This stage d
 
 ### Builtin Tools
 
-Builtin tools use a one-file-per-tool plugin structure under `src/tools/builtin/`.
+Core builtin tools under `src/tools/builtin/` are reserved for runtime-coupled capabilities.
 
-Each builtin tool file must contain exactly these parts:
+Current core builtin tools:
 
-- A Pydantic args schema
-- A module-level `TOOL = ToolDefinition(...)`
-- An `execute(...)` function
-- A `build_tool()` function that returns `TOOL.build_tool(...)`
+- `execute_python`
+- `execute_javascript`
 
-Example shape:
-
-```python
-from pydantic import BaseModel, Field
-
-from ..definitions import ToolDefinition
-
-
-class MyToolArgs(BaseModel):
-    text: str = Field(..., min_length=1, description="Text to process.")
-
-
-TOOL = ToolDefinition(
-    name="my_tool",
-    description="Do something deterministic with text.",
-    args_schema=MyToolArgs,
-    group="builtin",
-    source="builtin",
-    enabled_by_default=False,
-)
-
-
-def execute(*, text: str) -> str:
-    return text.upper()
-
-
-def build_tool():
-    return TOOL.build_tool(func=execute)
-```
-
-To register a builtin tool:
-
-1. Add the tool module under `src/tools/builtin/`.
-2. Export its `TOOL`, `execute`, and `build_tool()` from `src/tools/builtin/__init__.py`.
-3. Add the definition to `BUILTIN_TOOL_DEFINITIONS`.
-4. Add the builder to `_BUILTIN_TOOL_BUILDERS`.
-5. Add the handler to `_BUILTIN_TOOL_HANDLERS`.
-6. Add i18n keys for title and description in both locale files.
+Pure utility-style tools should be implemented as tool plugins under `plugins/<plugin_id>/` and loaded through the plugin loader.
 
 ### Request-scoped Tools
 

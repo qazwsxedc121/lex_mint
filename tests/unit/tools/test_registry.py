@@ -14,9 +14,9 @@ def test_builtin_registry_exposes_all_builtin_tools():
     tool_names = [tool.name for tool in registry.get_all_tools()]
 
     assert tool_names == [
-        "get_current_time",
         "execute_python",
         "execute_javascript",
+        "get_current_time",
         "simple_calculator",
         "format_json",
         "text_statistics",
@@ -55,9 +55,9 @@ def test_builtin_registry_default_project_map_tracks_definitions():
     registry = ToolRegistry()
 
     assert registry.get_default_project_enabled_map() == {
-        "get_current_time": False,
         "execute_python": True,
         "execute_javascript": True,
+        "get_current_time": False,
         "simple_calculator": False,
         "format_json": False,
         "text_statistics": False,
@@ -83,20 +83,16 @@ def test_registry_falls_back_to_core_builtin_when_plugin_missing(monkeypatch):
     registry = ToolRegistry()
 
     assert [tool.name for tool in registry.get_all_tools()] == [
-        "get_current_time",
         "execute_python",
         "execute_javascript",
-        "simple_calculator",
-        "format_json",
-        "text_statistics",
     ]
+    assert registry.has_tool("get_current_time") is False
+    assert registry.has_tool("simple_calculator") is False
+    assert registry.has_tool("format_json") is False
+    assert registry.has_tool("text_statistics") is False
     assert registry.get_default_project_enabled_map() == {
-        "get_current_time": False,
         "execute_python": True,
         "execute_javascript": True,
-        "simple_calculator": False,
-        "format_json": False,
-        "text_statistics": False,
         "read_project_document": True,
         "read_current_document": True,
         "search_project_text": True,

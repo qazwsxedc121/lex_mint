@@ -21,9 +21,9 @@ def test_project_tool_defaults_include_all_known_tools():
     defaults = get_default_project_tool_enabled_map()
 
     assert list(defaults.keys()) == [
-        "get_current_time",
         "execute_python",
         "execute_javascript",
+        "get_current_time",
         "simple_calculator",
         "format_json",
         "text_statistics",

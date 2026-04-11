@@ -9,44 +9,20 @@ from .execute_javascript import execute as execute_javascript
 from .execute_python import TOOL as EXECUTE_PYTHON_TOOL
 from .execute_python import build_tool as build_execute_python_tool
 from .execute_python import execute as execute_python
-from .format_json import TOOL as FORMAT_JSON_TOOL
-from .format_json import build_tool as build_format_json_tool
-from .format_json import execute as format_json
-from .get_current_time import TOOL as GET_CURRENT_TIME_TOOL
-from .get_current_time import build_tool as build_get_current_time_tool
-from .get_current_time import execute as get_current_time
-from .simple_calculator import TOOL as SIMPLE_CALCULATOR_TOOL
-from .simple_calculator import build_tool as build_simple_calculator_tool
-from .simple_calculator import execute as simple_calculator
-from .text_statistics import TOOL as TEXT_STATISTICS_TOOL
-from .text_statistics import build_tool as build_text_statistics_tool
-from .text_statistics import execute as text_statistics
 
 BUILTIN_TOOL_DEFINITIONS: list[ToolDefinition] = [
-    GET_CURRENT_TIME_TOOL,
     EXECUTE_PYTHON_TOOL,
     EXECUTE_JAVASCRIPT_TOOL,
-    SIMPLE_CALCULATOR_TOOL,
-    FORMAT_JSON_TOOL,
-    TEXT_STATISTICS_TOOL,
 ]
 
 _BUILTIN_TOOL_BUILDERS = {
-    GET_CURRENT_TIME_TOOL.name: build_get_current_time_tool,
     EXECUTE_PYTHON_TOOL.name: build_execute_python_tool,
     EXECUTE_JAVASCRIPT_TOOL.name: build_execute_javascript_tool,
-    SIMPLE_CALCULATOR_TOOL.name: build_simple_calculator_tool,
-    FORMAT_JSON_TOOL.name: build_format_json_tool,
-    TEXT_STATISTICS_TOOL.name: build_text_statistics_tool,
 }
 
 _BUILTIN_TOOL_HANDLERS = {
-    GET_CURRENT_TIME_TOOL.name: get_current_time,
     EXECUTE_PYTHON_TOOL.name: execute_python,
     EXECUTE_JAVASCRIPT_TOOL.name: execute_javascript,
-    SIMPLE_CALCULATOR_TOOL.name: simple_calculator,
-    FORMAT_JSON_TOOL.name: format_json,
-    TEXT_STATISTICS_TOOL.name: text_statistics,
 }
 
 
@@ -72,10 +48,6 @@ __all__ = [
     "build_builtin_tools",
     "execute_javascript",
     "execute_python",
-    "format_json",
     "get_builtin_tool_default_enabled_map",
     "get_builtin_tool_handler",
-    "get_current_time",
-    "simple_calculator",
-    "text_statistics",
 ]
