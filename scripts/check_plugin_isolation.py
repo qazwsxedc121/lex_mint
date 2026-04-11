@@ -10,7 +10,6 @@ from pathlib import Path
 
 import yaml
 
-
 DEFAULT_ALLOWED_SRC_PREFIXES = (
     "src.tools.plugins.models",
     "src.providers.plugins.models",

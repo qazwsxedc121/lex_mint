@@ -37,4 +37,3 @@ Write-Host "[commit-check] Running git commit..."
 if ($LASTEXITCODE -ne 0) {
   Write-Error "git commit failed."
 }
-

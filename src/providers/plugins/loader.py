@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import logging
 import re
 import sys
 import types
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import yaml
 
