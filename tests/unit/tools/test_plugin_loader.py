@@ -13,17 +13,36 @@ def _write_manifest(path: Path, *, body: str) -> None:
 
 
 def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
-    pkg_dir = tmp_path / "testpkg"
-    pkg_dir.mkdir(parents=True, exist_ok=True)
-    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
-    (pkg_dir / "plugin.py").write_text(
+    plugin_dir = tmp_path / "plugins" / "demo"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "defs.py").write_text(
+        "\n".join(
+            [
+                "from src.tools.definitions import ToolDefinition",
+                "from src.tools.plugins.models import ToolPluginContribution",
+                "",
+                "DEMO_TOOL = ToolDefinition(",
+                "    name='demo_search',",
+                "    description='demo',",
+                "    args_schema=None,",
+                "    group='web',",
+                "    source='web',",
+                ")",
+                "",
+                "def make_contribution():",
+                "    return ToolPluginContribution(definitions=[DEMO_TOOL])",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (plugin_dir / "plugin.py").write_text(
         "\n".join(
             [
                 "from src.tools.plugins.models import ToolPluginContribution",
-                "from src.tools.plugins.web_tools_definitions import WEB_SEARCH_TOOL",
+                "from .defs import make_contribution",
                 "",
-                "def register():",
-                "    return ToolPluginContribution(definitions=[WEB_SEARCH_TOOL])",
+                "def register_tool():",
+                "    return make_contribution()",
             ]
         ),
         encoding="utf-8",
@@ -31,7 +50,7 @@ def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(tmp_path))
 
     _write_manifest(
-        tmp_path / "tool_plugins" / "demo" / "manifest.yaml",
+        plugin_dir / "manifest.yaml",
         body="\n".join(
             [
                 "schema_version: 1",
@@ -39,14 +58,15 @@ def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
                 "name: Demo",
                 "version: 0.1.0",
                 "enabled: true",
-                "entrypoint: testpkg.plugin:register",
-                "settings_schema_path: settings.schema.json",
-                "settings_defaults_path: settings.defaults.yaml",
+                "tool:",
+                "  entrypoint: plugin.py:register_tool",
+                "  settings_schema_path: settings.schema.json",
+                "  settings_defaults_path: settings.defaults.yaml",
             ]
         ),
     )
 
-    loaded, statuses = ToolPluginLoader(tmp_path / "tool_plugins").load()
+    loaded, statuses = ToolPluginLoader(tmp_path / "plugins").load()
 
     assert len(loaded) == 1
     assert loaded[0][0].id == "demo"
@@ -60,11 +80,20 @@ def test_loader_loads_valid_plugin(tmp_path, monkeypatch):
 
 def test_loader_reports_invalid_manifest(tmp_path):
     _write_manifest(
-        tmp_path / "tool_plugins" / "broken" / "manifest.yaml",
-        body="schema_version: 1\nid: broken\nname: Broken\n",
+        tmp_path / "plugins" / "broken" / "manifest.yaml",
+        body="\n".join(
+            [
+                "schema_version: 1",
+                "id: broken",
+                "name: Broken",
+                "version: 0.1.0",
+                "tool:",
+                "  entrypoint: plugin.py:register_tool",
+            ]
+        ),
     )
 
-    loaded, statuses = ToolPluginLoader(tmp_path / "tool_plugins").load()
+    loaded, statuses = ToolPluginLoader(tmp_path / "plugins").load()
 
     assert loaded == []
     assert len(statuses) == 1
@@ -73,24 +102,21 @@ def test_loader_reports_invalid_manifest(tmp_path):
 
 
 def test_loader_reports_duplicate_plugin_id(tmp_path, monkeypatch):
-    pkg_dir = tmp_path / "pkg"
-    pkg_dir.mkdir(parents=True, exist_ok=True)
-    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
-    (pkg_dir / "plug.py").write_text(
-        "\n".join(
-            [
-                "from src.tools.plugins.models import ToolPluginContribution",
-                "def register():",
-                "    return ToolPluginContribution()",
-            ]
-        ),
-        encoding="utf-8",
+    plugin_file_body = "\n".join(
+        [
+            "from src.tools.plugins.models import ToolPluginContribution",
+            "def register_tool():",
+            "    return ToolPluginContribution()",
+        ]
     )
     monkeypatch.syspath_prepend(str(tmp_path))
 
     for folder in ("a", "b"):
+        plugin_dir = tmp_path / "plugins" / folder
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        (plugin_dir / "plugin.py").write_text(plugin_file_body, encoding="utf-8")
         _write_manifest(
-            tmp_path / "tool_plugins" / folder / "manifest.yaml",
+            plugin_dir / "manifest.yaml",
             body="\n".join(
                 [
                     "schema_version: 1",
@@ -98,12 +124,13 @@ def test_loader_reports_duplicate_plugin_id(tmp_path, monkeypatch):
                     f"name: {folder}",
                     "version: 0.1.0",
                     "enabled: true",
-                    "entrypoint: pkg.plug:register",
+                    "tool:",
+                    "  entrypoint: plugin.py:register_tool",
                 ]
             ),
         )
 
-    loaded, statuses = ToolPluginLoader(tmp_path / "tool_plugins").load()
+    loaded, statuses = ToolPluginLoader(tmp_path / "plugins").load()
 
     assert len(loaded) == 1
     assert len(statuses) == 2
@@ -113,7 +140,7 @@ def test_loader_reports_duplicate_plugin_id(tmp_path, monkeypatch):
 
 def test_loader_reports_entrypoint_failure(tmp_path):
     _write_manifest(
-        tmp_path / "tool_plugins" / "broken_entrypoint" / "manifest.yaml",
+        tmp_path / "plugins" / "broken_entrypoint" / "manifest.yaml",
         body="\n".join(
             [
                 "schema_version: 1",
@@ -121,12 +148,13 @@ def test_loader_reports_entrypoint_failure(tmp_path):
                 "name: Broken Entrypoint",
                 "version: 0.1.0",
                 "enabled: true",
-                "entrypoint: not.exists.module:register",
+                "tool:",
+                "  entrypoint: plugin.py:register_tool",
             ]
         ),
     )
 
-    loaded, statuses = ToolPluginLoader(tmp_path / "tool_plugins").load()
+    loaded, statuses = ToolPluginLoader(tmp_path / "plugins").load()
 
     assert loaded == []
     assert len(statuses) == 1
@@ -135,14 +163,13 @@ def test_loader_reports_entrypoint_failure(tmp_path):
 
 
 def test_loader_parses_select_chat_capability(tmp_path, monkeypatch):
-    pkg_dir = tmp_path / "pkg_select"
-    pkg_dir.mkdir(parents=True, exist_ok=True)
-    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
-    (pkg_dir / "plug.py").write_text(
+    plugin_dir = tmp_path / "plugins" / "select_demo"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "plugin.py").write_text(
         "\n".join(
             [
                 "from src.tools.plugins.models import ToolPluginContribution",
-                "def register():",
+                "def register_tool():",
                 "    return ToolPluginContribution()",
             ]
         ),
@@ -151,7 +178,7 @@ def test_loader_parses_select_chat_capability(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(tmp_path))
 
     _write_manifest(
-        tmp_path / "tool_plugins" / "select_demo" / "manifest.yaml",
+        plugin_dir / "manifest.yaml",
         body="\n".join(
             [
                 "schema_version: 1",
@@ -159,24 +186,25 @@ def test_loader_parses_select_chat_capability(tmp_path, monkeypatch):
                 "name: Select Demo",
                 "version: 0.1.0",
                 "enabled: true",
-                "entrypoint: pkg_select.plug:register",
-                "chat_capabilities:",
-                "  - id: select.mode",
-                "    title_i18n_key: workspace.settings.tools.select_mode.title",
-                "    description_i18n_key: workspace.settings.tools.select_mode.description",
-                "    control_type: select",
-                "    arg_key: mode",
-                "    default_value: balanced",
-                "    options:",
-                "      - value: fast",
-                "        label_i18n_key: workspace.settings.tools.select_mode.fast",
-                "      - value: balanced",
-                "        label_i18n_key: workspace.settings.tools.select_mode.balanced",
+                "tool:",
+                "  entrypoint: plugin.py:register_tool",
+                "  chat_capabilities:",
+                "    - id: select.mode",
+                "      title_i18n_key: workspace.settings.tools.select_mode.title",
+                "      description_i18n_key: workspace.settings.tools.select_mode.description",
+                "      control_type: select",
+                "      arg_key: mode",
+                "      default_value: balanced",
+                "      options:",
+                "        - value: fast",
+                "          label_i18n_key: workspace.settings.tools.select_mode.fast",
+                "        - value: balanced",
+                "          label_i18n_key: workspace.settings.tools.select_mode.balanced",
             ]
         ),
     )
 
-    loaded, statuses = ToolPluginLoader(tmp_path / "tool_plugins").load()
+    loaded, statuses = ToolPluginLoader(tmp_path / "plugins").load()
 
     assert len(loaded) == 1
     assert len(statuses) == 1

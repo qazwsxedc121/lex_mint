@@ -6,7 +6,7 @@ from src.providers.types import ApiProtocol, ModelCapabilities, ProviderDefiniti
 from .adapter import BailianAdapter
 
 
-def register() -> ProviderPluginContribution:
+def register_provider() -> ProviderPluginContribution:
     return ProviderPluginContribution(
         adapters={"bailian": BailianAdapter},
         builtin_providers=[

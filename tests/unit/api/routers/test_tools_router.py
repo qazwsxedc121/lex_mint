@@ -75,12 +75,15 @@ async def test_get_tool_plugins(monkeypatch):
                     id="builtin_tools",
                     name="Builtin Tools",
                     version="1.0.0",
-                    entrypoint="src.tools.plugins.builtin_plugin:register",
-                    plugin_dir="D:/work/pythonProjects/lex_mint/tool_plugins/builtin_tools",
+                    entrypoint="plugin.py:register_tool",
+                    plugin_dir="D:/work/pythonProjects/lex_mint/plugins/builtin_tools",
                     enabled=True,
                     loaded=True,
                     definitions_count=6,
                     tools_count=6,
+                    has_settings_schema=False,
+                    settings_schema_path=None,
+                    settings_defaults_path=None,
                     error=None,
                 )
             ]

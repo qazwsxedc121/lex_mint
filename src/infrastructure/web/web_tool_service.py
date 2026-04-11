@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from langchain_core.tools import BaseTool
 from pydantic import ValidationError
 
-from src.tools.plugins.web_tools_definitions import (
+from plugins.web_tools.definitions import (
     READ_WEBPAGE_TOOL,
     WEB_SEARCH_TOOL,
     ReadWebpageArgs,

@@ -27,7 +27,7 @@ def _deep_merge(base: Any, updates: Any) -> Any:
 
 
 def _plugin_dir() -> Path:
-    return repo_root() / "tool_plugins" / WEB_TOOLS_PLUGIN_ID
+    return repo_root() / "plugins" / WEB_TOOLS_PLUGIN_ID
 
 
 def load_web_tools_defaults() -> dict[str, Any]:

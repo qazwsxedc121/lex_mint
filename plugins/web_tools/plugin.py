@@ -7,12 +7,12 @@ from typing import Any
 from src.infrastructure.web.search_service import SearchService
 from src.infrastructure.web.web_tool_service import WebToolService
 from src.infrastructure.web.webpage_service import WebpageService
-from src.tools.plugins.web_tools_definitions import READ_WEBPAGE_TOOL, WEB_SEARCH_TOOL
+from src.tools.plugins.models import ToolPluginContribution
 
-from .models import ToolPluginContribution
+from .definitions import READ_WEBPAGE_TOOL, WEB_SEARCH_TOOL
 
 
-def register() -> ToolPluginContribution:
+def register_tool() -> ToolPluginContribution:
     web_tool_service = WebToolService()
     search_service = SearchService()
     webpage_service = WebpageService()

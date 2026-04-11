@@ -21,7 +21,7 @@ def test_service_persists_plugin_settings(tmp_path):
 
 
 def test_service_loads_schema_and_defaults_and_merges(tmp_path):
-    plugin_dir = tmp_path / "tool_plugins" / "demo"
+    plugin_dir = tmp_path / "plugins" / "demo"
     plugin_dir.mkdir(parents=True)
     schema_path = plugin_dir / "settings.schema.json"
     defaults_path = plugin_dir / "settings.defaults.yaml"
@@ -61,7 +61,7 @@ def test_service_loads_schema_and_defaults_and_merges(tmp_path):
 
 
 def test_service_rejects_path_escape(tmp_path):
-    plugin_dir = tmp_path / "tool_plugins" / "demo"
+    plugin_dir = tmp_path / "plugins" / "demo"
     plugin_dir.mkdir(parents=True)
     outside = tmp_path / "outside.json"
     outside.write_text("{}", encoding="utf-8")
