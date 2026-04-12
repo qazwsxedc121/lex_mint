@@ -96,3 +96,27 @@ async def test_get_tool_plugins(monkeypatch):
     assert item.id == "builtin_tools"
     assert item.loaded is True
     assert item.definitions_count == 6
+
+
+@pytest.mark.asyncio
+async def test_get_tool_plugin_settings_response_keeps_schema_key(monkeypatch):
+    monkeypatch.setattr(
+        router,
+        "_load_plugin_settings_bundle",
+        lambda _plugin_id: (router.Path("plugins/web_tools"), "settings.schema.json", None),
+    )
+    monkeypatch.setattr(
+        router,
+        "ToolPluginSettingsService",
+        lambda: SimpleNamespace(
+            load_schema=lambda *_args, **_kwargs: {"type": "object"},
+            load_defaults=lambda *_args, **_kwargs: {"enabled": True},
+            get_plugin_settings=lambda _plugin_id: {"enabled": False},
+            merge_effective_settings=lambda defaults, settings: {**defaults, **settings},
+        ),
+    )
+
+    response = await router.get_tool_plugin_settings("web_tools")
+    payload = response.model_dump(by_alias=True)
+    assert payload["plugin_id"] == "web_tools"
+    assert payload["schema"] == {"type": "object"}

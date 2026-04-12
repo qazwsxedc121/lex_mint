@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema import validate as validate_jsonschema
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.application.tools.tool_catalog_service import ToolCatalogService
 from src.domain.models.tool_catalog import ToolCatalogResponse
@@ -64,8 +64,10 @@ class ToolPluginsResponse(BaseModel):
 
 
 class ToolPluginSettingsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     plugin_id: str
-    schema: dict[str, Any]
+    schema_: dict[str, Any] = Field(alias="schema")
     defaults: dict[str, Any]
     settings: dict[str, Any]
     effective_settings: dict[str, Any]
@@ -205,7 +207,7 @@ async def get_tool_plugin_settings(plugin_id: str) -> ToolPluginSettingsResponse
         effective_settings = settings_service.merge_effective_settings(defaults, settings)
         return ToolPluginSettingsResponse(
             plugin_id=plugin_id,
-            schema=schema,
+            schema_=schema,
             defaults=defaults,
             settings=settings,
             effective_settings=effective_settings,
