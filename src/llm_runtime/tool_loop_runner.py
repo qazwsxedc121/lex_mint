@@ -94,7 +94,15 @@ class ToolLoopRunner:
 
         search_names: set[str] = set()
         read_names: set[str] = set()
-        for definition in get_tool_registry().get_all_definitions():
+        try:
+            definitions = get_tool_registry().get_all_definitions()
+        except Exception:
+            return search_names, read_names
+
+        if not isinstance(definitions, list):
+            return search_names, read_names
+
+        for definition in definitions:
             if str(definition.group or "").strip() != "web":
                 continue
             name = str(definition.name or "").strip()

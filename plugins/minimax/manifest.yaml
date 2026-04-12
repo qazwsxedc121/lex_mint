@@ -1,0 +1,9 @@
+schema_version: 1
+id: minimax
+name: MiniMax
+version: 1.0.0
+enabled: true
+description: MiniMax provider definition contributed via plugin.
+provider:
+  enabled: true
+  entrypoint: plugin.py:register_provider

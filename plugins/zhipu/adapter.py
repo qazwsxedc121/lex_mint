@@ -1,0 +1,194 @@
+"""Zhipu (GLM) OpenAI-compatible adapter implementation."""
+
+import logging
+from collections.abc import AsyncIterator
+from typing import Any
+
+from langchain_core.messages import BaseMessage
+
+from src.providers.base import BaseLLMAdapter
+from src.providers.types import LLMResponse, StreamChunk, TokenUsage
+
+from .reasoning_openai import ChatReasoningOpenAI
+
+logger = logging.getLogger(__name__)
+
+
+def _response_content_to_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text")
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+        return "".join(parts)
+    return str(content or "")
+
+
+def _extract_tool_calls(payload: Any) -> list[Any]:
+    tool_calls: list[Any] = []
+    if hasattr(payload, "tool_calls") and payload.tool_calls:
+        tool_calls.extend(payload.tool_calls)
+    if hasattr(payload, "tool_call_chunks") and payload.tool_call_chunks:
+        tool_calls.extend(payload.tool_call_chunks)
+    if hasattr(payload, "additional_kwargs") and payload.additional_kwargs:
+        ak = payload.additional_kwargs
+        if isinstance(ak, dict):
+            ak_tool_calls = ak.get("tool_calls")
+            if ak_tool_calls:
+                tool_calls.extend(ak_tool_calls)
+    return tool_calls
+
+
+class ZhipuAdapter(BaseLLMAdapter):
+    """Adapter for Zhipu GLM OpenAI-compatible API."""
+
+    _DEFAULT_TEST_MODEL = "glm-4.5-flash"
+    _CURATED_MODELS: list[dict[str, str]] = [
+        {"id": "glm-5", "name": "GLM-5"},
+        {"id": "glm-4.7", "name": "GLM-4.7"},
+        {"id": "glm-4.6", "name": "GLM-4.6"},
+        {"id": "glm-4.6-flash", "name": "GLM-4.6 Flash"},
+        {"id": "glm-4.6v", "name": "GLM-4.6V"},
+        {"id": "glm-4.5", "name": "GLM-4.5"},
+        {"id": "glm-4.5-air", "name": "GLM-4.5 Air"},
+        {"id": "glm-4.5-flash", "name": "GLM-4.5 Flash"},
+        {"id": "glm-z1-air", "name": "GLM-Z1 Air"},
+        {"id": "glm-z1-airx", "name": "GLM-Z1 AirX"},
+    ]
+
+    def create_llm(
+        self,
+        model: str,
+        base_url: str,
+        api_key: str,
+        temperature: float = 0.7,
+        streaming: bool = True,
+        thinking_enabled: bool = False,
+        **kwargs,
+    ) -> ChatReasoningOpenAI:
+        llm_kwargs: dict[str, Any] = {
+            "model": model,
+            "temperature": temperature,
+            "base_url": base_url,
+            "api_key": api_key,
+            "streaming": streaming,
+            "stream_usage": True,
+        }
+        for key in ["timeout", "max_retries", "max_tokens"]:
+            if key in kwargs and kwargs[key] is not None:
+                llm_kwargs[key] = kwargs[key]
+
+        model_kwargs: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
+        disable_thinking = bool(kwargs.get("disable_thinking", False))
+        if disable_thinking:
+            extra_body["thinking"] = {"type": "disabled"}
+            logger.info("Zhipu thinking mode disabled for %s", model)
+        elif thinking_enabled:
+            extra_body["thinking"] = {"type": "enabled"}
+            logger.info("Zhipu thinking mode enabled for %s", model)
+
+        passthrough_keys = [
+            "top_p",
+            "top_k",
+            "frequency_penalty",
+            "presence_penalty",
+            "stop",
+            "seed",
+            "user",
+            "user_id",
+        ]
+        for key in passthrough_keys:
+            if key in kwargs and kwargs[key] is not None:
+                model_kwargs[key] = kwargs[key]
+
+        feature_keys = [
+            "tools",
+            "tool_choice",
+            "parallel_tool_calls",
+            "tool_stream",
+            "response_format",
+        ]
+        for key in feature_keys:
+            if key in kwargs and kwargs[key] is not None:
+                model_kwargs[key] = kwargs[key]
+
+        if extra_body:
+            llm_kwargs["extra_body"] = extra_body
+        if model_kwargs:
+            llm_kwargs["model_kwargs"] = model_kwargs
+        return ChatReasoningOpenAI(**llm_kwargs)
+
+    async def stream(
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
+    ) -> AsyncIterator[StreamChunk]:
+        usage_data = None
+        async for chunk in llm.astream(messages):
+            content = _response_content_to_text(chunk.content if hasattr(chunk, "content") else "")
+            thinking = ""
+            tool_calls = _extract_tool_calls(chunk)
+            if hasattr(chunk, "additional_kwargs") and chunk.additional_kwargs:
+                thinking = chunk.additional_kwargs.get("reasoning_content", "")
+            extracted = TokenUsage.extract_from_chunk(chunk)
+            if extracted:
+                usage_data = extracted
+            yield StreamChunk(
+                content=content,
+                thinking=thinking,
+                tool_calls=tool_calls,
+                usage=usage_data,
+                raw=chunk,
+            )
+
+    async def invoke(
+        self, llm: ChatReasoningOpenAI, messages: list[BaseMessage], **kwargs
+    ) -> LLMResponse:
+        response = await llm.ainvoke(messages)
+        thinking = ""
+        if hasattr(response, "additional_kwargs") and response.additional_kwargs:
+            thinking = response.additional_kwargs.get("reasoning_content", "")
+        usage = None
+        if hasattr(response, "response_metadata") and response.response_metadata:
+            usage = TokenUsage.from_dict(response.response_metadata.get("usage"))
+        return LLMResponse(
+            content=_response_content_to_text(response.content),
+            thinking=thinking,
+            tool_calls=_extract_tool_calls(response),
+            usage=usage,
+            raw=response,
+        )
+
+    def supports_thinking(self) -> bool:
+        return True
+
+    def get_thinking_params(self, effort: str = "medium") -> dict[str, Any]:
+        return {"thinking": {"type": "enabled"}}
+
+    async def fetch_models(self, base_url: str, api_key: str) -> list[dict[str, str]]:
+        import httpx
+
+        try:
+            models_url = f"{base_url.rstrip('/')}/models"
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    models_url, headers={"Authorization": f"Bearer {api_key}"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                models = []
+                for model in data.get("data", []):
+                    model_id = model.get("id", "")
+                    if model_id:
+                        models.append({"id": model_id, "name": model.get("name", model_id)})
+                if models:
+                    return sorted(models, key=lambda x: x["id"])
+        except Exception as exc:
+            logger.warning("Failed to fetch Zhipu models, using curated list: %s", exc)
+
+        return sorted(self._CURATED_MODELS, key=lambda x: x["id"])

@@ -23,37 +23,6 @@ providers:
   supports_model_list: true
   sdk_class: deepseek
   endpoint_profiles: []
-- id: zhipu
-  name: Zhipu (GLM)
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://open.bigmodel.cn/api/paas/v4
-  endpoint_profile_id: zhipu-cn
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 128000
-    vision: true
-    function_calling: true
-    reasoning: true
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: /v1
-  auto_append_path: true
-  supports_model_list: true
-  sdk_class: zhipu
-  endpoint_profiles:
-  - id: zhipu-cn
-    label: China Mainland (.cn)
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    region_tags:
-    - cn
-    priority: 10
-    probe_method: openai_models
 - id: openai
   name: OpenAI
   type: builtin
@@ -102,44 +71,6 @@ providers:
   supports_model_list: true
   sdk_class: openrouter
   endpoint_profiles: []
-- id: stepfun
-  name: StepFun
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://api.stepfun.com/v1
-  endpoint_profile_id: stepfun-cn
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 128000
-    vision: false
-    function_calling: true
-    reasoning: true
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: /v1
-  auto_append_path: true
-  supports_model_list: true
-  sdk_class: openai
-  endpoint_profiles:
-  - id: stepfun-cn
-    label: China Mainland (.com)
-    base_url: https://api.stepfun.com/v1
-    region_tags:
-    - cn
-    priority: 10
-    probe_method: openai_models
-  - id: stepfun-global
-    label: Global (.ai)
-    base_url: https://api.stepfun.ai/v1
-    region_tags:
-    - global
-    priority: 20
-    probe_method: openai_models
 - id: anthropic
   name: Anthropic
   type: builtin
@@ -236,54 +167,6 @@ providers:
   supports_model_list: true
   sdk_class: xai
   endpoint_profiles: []
-- id: together
-  name: Together AI
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://api.together.xyz/v1
-  endpoint_profile_id: null
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 32000
-    vision: false
-    function_calling: true
-    reasoning: false
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: /v1
-  auto_append_path: true
-  supports_model_list: true
-  sdk_class: openai
-  endpoint_profiles: []
-- id: minimax
-  name: MiniMax
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://api.minimax.chat/v1
-  endpoint_profile_id: null
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 128000
-    vision: false
-    function_calling: true
-    reasoning: false
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: /v1
-  auto_append_path: true
-  supports_model_list: true
-  sdk_class: openai
-  endpoint_profiles: []
 - id: gemini
   name: Google Gemini
   type: builtin
@@ -307,78 +190,6 @@ providers:
   auto_append_path: false
   supports_model_list: true
   sdk_class: gemini
-  endpoint_profiles: []
-- id: volcengine
-  name: Volcano Engine (Doubao)
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://ark.cn-beijing.volces.com/api/v3
-  endpoint_profile_id: null
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 128000
-    vision: true
-    function_calling: true
-    reasoning: true
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: ''
-  auto_append_path: false
-  supports_model_list: true
-  sdk_class: volcengine
-  endpoint_profiles: []
-- id: siliconflow
-  name: SiliconFlow
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://api.siliconflow.cn/v1
-  endpoint_profile_id: null
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 128000
-    vision: false
-    function_calling: true
-    reasoning: false
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: /v1
-  auto_append_path: true
-  supports_model_list: true
-  sdk_class: siliconflow
-  endpoint_profiles: []
-- id: kimi
-  name: Moonshot (Kimi)
-  type: builtin
-  protocol: openai
-  call_mode: auto
-  base_url: https://api.moonshot.cn/v1
-  endpoint_profile_id: null
-  api_keys: []
-  enabled: false
-  default_capabilities:
-    context_length: 262144
-    vision: true
-    function_calling: true
-    reasoning: true
-    reasoning_controls: null
-    requires_interleaved_thinking: false
-    streaming: true
-    file_upload: false
-    image_output: false
-  url_suffix: /v1
-  auto_append_path: true
-  supports_model_list: true
-  sdk_class: kimi
   endpoint_profiles: []
 - id: local_gguf
   name: Local GGUF

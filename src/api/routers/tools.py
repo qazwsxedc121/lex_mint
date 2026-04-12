@@ -99,14 +99,22 @@ def _load_plugin_settings_bundle(plugin_id: str) -> tuple[Path, str, str | None]
     )
 
 
+def _build_tool_catalog() -> ToolCatalogResponse:
+    description_service = ToolDescriptionConfigService()
+    description_overrides = description_service.get_effective_description_map()
+    try:
+        return ToolCatalogService.build_catalog(description_overrides=description_overrides)
+    except TypeError as exc:
+        if "description_overrides" not in str(exc):
+            raise
+        return ToolCatalogService.build_catalog()
+
+
 @router.get("/catalog", response_model=ToolCatalogResponse)
 async def get_tool_catalog() -> ToolCatalogResponse:
     """Return a unified catalog of builtin and request-scoped tools."""
     try:
-        description_service = ToolDescriptionConfigService()
-        return ToolCatalogService.build_catalog(
-            description_overrides=description_service.get_effective_description_map()
-        )
+        return _build_tool_catalog()
     except Exception as exc:
         logger.error("Failed to build tool catalog: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -117,9 +125,7 @@ async def get_tool_descriptions() -> ToolDescriptionsResponse:
     """Return default, override, and effective tool descriptions."""
     try:
         description_service = ToolDescriptionConfigService()
-        catalog = ToolCatalogService.build_catalog(
-            description_overrides=description_service.get_effective_description_map()
-        )
+        catalog = _build_tool_catalog()
         default_map = description_service.default_descriptions
         override_map = description_service.config.overrides
         return ToolDescriptionsResponse(

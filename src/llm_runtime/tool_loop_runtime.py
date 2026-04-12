@@ -85,7 +85,13 @@ def build_tool_loop_state(
     """Create the shared tool-loop runner/state pair for one request."""
     from src.tools.registry import get_tool_registry
 
-    web_tool_names = get_tool_registry().get_tool_names_by_group("web")
+    try:
+        web_tool_names_raw = get_tool_registry().get_tool_names_by_group("web")
+    except Exception:
+        web_tool_names_raw = set()
+    web_tool_names = (
+        set(web_tool_names_raw) if isinstance(web_tool_names_raw, (set, list, tuple)) else set()
+    )
     max_tool_rounds = ToolLoopRunner.resolve_max_tool_rounds(
         tool_names=tool_names,
         latest_user_text=latest_user_text,

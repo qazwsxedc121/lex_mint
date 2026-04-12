@@ -37,15 +37,19 @@ class ToolDefinition:
         return f"workspace.settings.tools.{self.name}.description"
 
     def metadata(self) -> dict[str, Any]:
-        return {
+        metadata: dict[str, Any] = {
             "group": self.group,
             "source": self.source,
             "enabled_by_default": self.enabled_by_default,
             "requires_project_knowledge": self.requires_project_knowledge,
-            "plugin_id": self.plugin_id,
-            "plugin_name": self.plugin_name,
-            "plugin_version": self.plugin_version,
         }
+        if self.plugin_id is not None:
+            metadata["plugin_id"] = self.plugin_id
+        if self.plugin_name is not None:
+            metadata["plugin_name"] = self.plugin_name
+        if self.plugin_version is not None:
+            metadata["plugin_version"] = self.plugin_version
+        return metadata
 
     def build_tool(
         self,
