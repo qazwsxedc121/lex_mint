@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -111,7 +111,27 @@ async def test_diagnose_request_reports_attachment_count_and_tools(monkeypatch):
             ContextPayload(
                 messages=[{"role": "assistant", "content": "history"}],
                 assistant_id="assistant-1",
-                assistant_obj=SimpleNamespace(name="General"),
+                assistant_obj=cast(
+                    Any,
+                    SimpleNamespace(
+                        id="assistant-1",
+                        name="General",
+                        icon=None,
+                        model_id="provider:model-a",
+                        system_prompt="SYSTEM",
+                        temperature=0.2,
+                        max_tokens=None,
+                        top_p=None,
+                        top_k=None,
+                        frequency_penalty=None,
+                        presence_penalty=None,
+                        max_rounds=None,
+                        memory_enabled=True,
+                        knowledge_base_ids=[],
+                        tool_enabled_map={},
+                        enabled=True,
+                    ),
+                ),
                 model_id="provider:model-a",
                 system_prompt="SYSTEM",
                 assistant_params={"temperature": 0.2},

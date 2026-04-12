@@ -33,6 +33,13 @@ class _FakeSingle:
         yield "ok"
         yield {"type": "sources", "sources": [{"type": "source"}]}
 
+    async def diagnose_request(
+        self,
+        *,
+        request: SingleChatRequestContext,
+    ) -> dict[str, object]:
+        return {"session_id": request.scope.session_id}
+
 
 class _FakeGroup:
     async def process_group_message_stream(self, **kwargs):

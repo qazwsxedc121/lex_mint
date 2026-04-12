@@ -10,6 +10,7 @@ import sys
 import types
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -166,7 +167,11 @@ class ProviderPluginLoader:
 
     @staticmethod
     def _load_manifest(raw: dict[str, object], *, manifest_path: Path) -> ProviderPluginManifest:
-        schema_version = int(raw.get("schema_version", 1))
+        schema_version_raw = raw.get("schema_version", 1)
+        try:
+            schema_version = int(str(schema_version_raw).strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError("schema_version must be an integer") from exc
         plugin_id = str(raw.get("id") or "").strip()
         name = str(raw.get("name") or "").strip()
         version = str(raw.get("version") or "").strip()
@@ -225,7 +230,7 @@ class ProviderPluginLoader:
         plugin_id: str,
         plugin_dir: Path | None,
         entrypoint: str,
-    ) -> Callable:
+    ) -> Callable[..., Any]:
         file_part, separator, callable_name = str(entrypoint or "").partition(":")
         if not separator or not callable_name.strip():
             raise ValueError("entrypoint must use format '<relative_file.py>:<callable>'")
@@ -239,7 +244,7 @@ class ProviderPluginLoader:
         register = getattr(module, callable_name.strip(), None)
         if not callable(register):
             raise ValueError("entrypoint callable not found")
-        return register
+        return cast(Callable[..., Any], register)
 
     @staticmethod
     def _resolve_entrypoint_file(plugin_dir: Path, relative_path: str) -> Path:

@@ -280,8 +280,9 @@ async def test_session_router_export_and_format_helpers():
     response = await sessions_router.export_session(session_id="s1", storage=storage)
     assert response.media_type == "text/markdown; charset=utf-8"
     assert "Demo%20_Session_.md" in response.headers["Content-Disposition"]
-    assert "<details>" in response.body.decode("utf-8")
-    assert "## Assistant" in response.body.decode("utf-8")
+    response_text = bytes(response.body).decode("utf-8")
+    assert "<details>" in response_text
+    assert "## Assistant" in response_text
 
 
 @pytest.mark.asyncio
@@ -290,7 +291,7 @@ async def test_session_router_export_supports_json_format():
     response = await sessions_router.export_session(session_id="s1", storage=storage, format="json")
     assert response.media_type == "application/json; charset=utf-8"
     assert "Demo%20_Session_.json" in response.headers["Content-Disposition"]
-    assert '"role": "user"' in response.body.decode("utf-8")
+    assert '"role": "user"' in bytes(response.body).decode("utf-8")
 
 
 @pytest.mark.asyncio

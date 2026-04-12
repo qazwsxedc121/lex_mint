@@ -12,7 +12,7 @@ import types
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -278,7 +278,7 @@ class SessionExportPluginLoader:
         entry_callable = getattr(module, callable_name, None)
         if entry_callable is None or not callable(entry_callable):
             raise TypeError(f"callable not found: {entrypoint}")
-        return entry_callable
+        return cast(Callable[..., object], entry_callable)
 
     @staticmethod
     def _normalize_contribution(raw: object) -> SessionExportPluginContribution:

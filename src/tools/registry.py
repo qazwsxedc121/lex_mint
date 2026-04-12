@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
@@ -16,6 +17,8 @@ from .request_scoped import REQUEST_SCOPED_TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
 _TOOL_GROUP_ORDER = ("builtin", "web", "projectDocuments", "knowledge")
+ToolHandler = Callable[..., Any]
+ContextCapabilityHandler = Callable[..., Any]
 
 
 class ToolRegistry:
@@ -31,8 +34,8 @@ class ToolRegistry:
         definitions: list[ToolDefinition] = []
         chat_capabilities: list[ChatCapabilityDefinition] = []
         tools: list[BaseTool] = []
-        handler_map: dict[str, object] = {}
-        context_capability_handler_map: dict[str, object] = {}
+        handler_map: dict[str, ToolHandler] = {}
+        context_capability_handler_map: dict[str, ContextCapabilityHandler] = {}
 
         if "builtin_tools" not in loaded_plugin_ids:
             tools.extend(build_builtin_tools())
@@ -179,7 +182,7 @@ class ToolRegistry:
         """Return whether one chat capability id exists in loaded plugins."""
         return self.get_chat_capability_by_id(capability_id) is not None
 
-    def get_context_capability_handler(self, capability_id: str) -> object | None:
+    def get_context_capability_handler(self, capability_id: str) -> ContextCapabilityHandler | None:
         """Return one context capability execution handler by id."""
         normalized_id = str(capability_id or "").strip()
         if not normalized_id:

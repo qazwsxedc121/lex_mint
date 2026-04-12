@@ -76,8 +76,9 @@ async def update_config(
         save_config = getattr(service, "save_config", None)
         if callable(save_config):
             save_config(update_dict)
-        if hasattr(service, "_load_config"):
-            service.config = service._load_config()
+        load_config = getattr(service, "_load_config", None)
+        if callable(load_config):
+            service.config = load_config()
         return {"message": "Configuration updated successfully"}
     except HTTPException:
         raise

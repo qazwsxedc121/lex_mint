@@ -227,6 +227,7 @@ def test_get_tools_include_web_metadata():
 
     for tool_name in ("web_search", "read_webpage"):
         metadata = metadata_by_name[tool_name]
+        assert metadata is not None
         assert metadata["group"] == "web"
         assert metadata["source"] == "web"
         assert metadata["enabled_by_default"] is False

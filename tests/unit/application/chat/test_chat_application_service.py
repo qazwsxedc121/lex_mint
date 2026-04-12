@@ -36,6 +36,13 @@ class _FakeSingleChatFlowService:
         yield {"type": "sources", "sources": [{"type": "memory"}]}
         yield {"type": "usage"}
 
+    async def diagnose_request(
+        self,
+        *,
+        request: SingleChatRequestContext,
+    ) -> dict[str, object]:
+        return {"session_id": request.scope.session_id}
+
 
 class _FakeCompareFlowService:
     def __init__(self):

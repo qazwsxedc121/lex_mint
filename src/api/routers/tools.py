@@ -207,7 +207,7 @@ async def get_tool_plugin_settings(plugin_id: str) -> ToolPluginSettingsResponse
         effective_settings = settings_service.merge_effective_settings(defaults, settings)
         return ToolPluginSettingsResponse(
             plugin_id=plugin_id,
-            schema_=schema,
+            schema=schema,
             defaults=defaults,
             settings=settings,
             effective_settings=effective_settings,

@@ -167,7 +167,7 @@ async def _execute_python_with_jupyter(*, code: str, timeout_ms: int, kernel_nam
 def _execute_python_with_jupyter_sync(code: str, timeout_ms: int, kernel_name: str) -> str:
     """Blocking Jupyter execution helper used through asyncio.to_thread."""
     try:
-        from jupyter_client import KernelManager
+        from jupyter_client.manager import KernelManager
     except Exception:
         return json.dumps(
             {

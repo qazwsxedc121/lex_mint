@@ -7,7 +7,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from src.application.chat.chat_runtime import (
     ChatOrchestrationRequest,
@@ -1082,6 +1082,7 @@ class SingleChatFlowService:
             user_message=request.user_message,
             config=tool_gate_config,
         )
+        decision = cast(ToolGateDecision, decision)
         resolved_tools.allowed_tool_names = set(resolved_tools.allowed_tool_names).intersection(
             decision.final_allowed_tool_names
         )
@@ -1364,7 +1365,7 @@ class SingleChatFlowService:
             registry = self.deps.tool_registry_getter()
             registry_result = await registry.try_execute_tool_async(name, args)
             if registry_result is not None:
-                return registry_result
+                return str(registry_result)
             for executor in resolved_tools.tool_executors:
                 try:
                     maybe_result = executor(name, args)
