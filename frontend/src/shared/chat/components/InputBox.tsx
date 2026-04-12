@@ -2,7 +2,7 @@
  * InputBox component - message input field with send button and toolbar.
  */
 
-import React, { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import {
@@ -110,6 +110,26 @@ const findAtFileCommand = (text: string, cursorPosition: number): AtFileMatch | 
     start: atStart,
     end: safeCursor,
   };
+};
+
+const hasImageInDragData = (dataTransfer: DataTransfer | null): boolean => {
+  if (!dataTransfer) {
+    return false;
+  }
+  const hasImageItem = Array.from(dataTransfer.items || []).some(
+    (item) => item.kind === 'file' && item.type.startsWith('image/')
+  );
+  if (hasImageItem) {
+    return true;
+  }
+  return Array.from(dataTransfer.files || []).some((file) => file.type.startsWith('image/'));
+};
+
+const extractDroppedImages = (dataTransfer: DataTransfer | null): File[] => {
+  if (!dataTransfer) {
+    return [];
+  }
+  return Array.from(dataTransfer.files || []).filter((file) => file.type.startsWith('image/'));
 };
 
 export interface ContextDiagnosticsRequest {
@@ -266,6 +286,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [uncontrolledContextCapabilityArgs, setUncontrolledContextCapabilityArgs] = useState<Record<string, Record<string, unknown>>>({});
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isTranslatingInput, setIsTranslatingInput] = useState(false);
   const [showTranslateInputMenu, setShowTranslateInputMenu] = useState(false);
@@ -285,6 +306,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const translateInputMenuRef = useRef<HTMLDivElement>(null);
+  const dragDepthRef = useRef(0);
   const reasoningEffort = controlledReasoningEffort ?? uncontrolledReasoningEffort;
   const setReasoningEffort = onReasoningEffortChange ?? setUncontrolledReasoningEffort;
   const contextCapabilities = controlledContextCapabilities ?? uncontrolledContextCapabilities;
@@ -535,27 +557,23 @@ export const InputBox: React.FC<InputBoxProps> = ({
     return () => registerComposer(null);
   }, [registerComposer, insertText, appendText, focusComposer, attachTextFile, addBlock]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || !sessionId) return;
-
+  const uploadAttachments = useCallback(async (files: File[]) => {
+    if (!sessionId || files.length === 0) {
+      return;
+    }
     setUploading(true);
     try {
       const uploaded: UploadedFile[] = [];
-      for (const file of Array.from(files)) {
-        // Validate size on client side (10MB limit)
+      for (const file of files) {
         if (file.size > 10 * 1024 * 1024) {
           alert(t('input.fileSizeExceeded', { name: file.name }));
           continue;
         }
-
-        // Check if file is an image
         const isImage = file.type.startsWith('image/');
         if (isImage && !supportsVision) {
           alert(t('input.noVisionSupport'));
           continue;
         }
-
         const result = await api.uploadFile(sessionId, file);
         uploaded.push(result);
       }
@@ -565,9 +583,49 @@ export const InputBox: React.FC<InputBoxProps> = ({
       alert(t('input.uploadFailed', { message }));
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  }, [api, sessionId, supportsVision, t]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || !sessionId) return;
+    await uploadAttachments(Array.from(files));
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  const handleComposerDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!hasImageInDragData(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDragOverComposer(true);
+  }, []);
+
+  const handleComposerDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!hasImageInDragData(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+    if (!isDragOverComposer) setIsDragOverComposer(true);
+  }, [isDragOverComposer]);
+
+  const handleComposerDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!isDragOverComposer) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDragOverComposer(false);
+  }, [isDragOverComposer]);
+
+  const handleComposerDrop = useCallback(async (event: DragEvent<HTMLDivElement>) => {
+    if (!hasImageInDragData(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragOverComposer(false);
+    const droppedImages = extractDroppedImages(event.dataTransfer);
+    await uploadAttachments(droppedImages);
+  }, [uploadAttachments]);
 
   const handleRemoveAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
@@ -1149,7 +1207,22 @@ export const InputBox: React.FC<InputBoxProps> = ({
       />
 
       {/* Input area */}
-      <div data-name="input-box-input-area" className="p-4">
+      <div
+        data-name="input-box-input-area"
+        className={`p-4 transition-colors ${isDragOverComposer ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+        onDragEnter={handleComposerDragEnter}
+        onDragOver={handleComposerDragOver}
+        onDragLeave={handleComposerDragLeave}
+        onDrop={handleComposerDrop}
+      >
+        {isDragOverComposer && (
+          <div
+            data-name="input-box-drop-hint"
+            className="mb-2 rounded-md border border-dashed border-blue-300 dark:border-blue-600 bg-blue-100/70 dark:bg-blue-900/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-200"
+          >
+            {t('input.attachFileImage')}
+          </div>
+        )}
         <div data-name="input-box-input-controls" className="flex gap-2 items-end">
           <div className="relative flex-1" data-name="input-box-textarea-wrap">
             {slashCommand && (
